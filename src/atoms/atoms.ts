@@ -14,7 +14,7 @@ const MAX_DESCRIPTION_LENGTH = 300
 const MAX_BODY_LINES = 35
 const MAX_ATOMS_PER_EVENT = 3
 const MAX_SESSION_ATOMS = 10
-const ATOMS_LINE = /^Atoms:(.*)$/gm
+const ATOMS_LINE = /^\s*Atoms:(.*)$/gm
 
 const listMarkdown = (dir: string): string[] => {
   try {

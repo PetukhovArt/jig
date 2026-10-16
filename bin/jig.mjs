@@ -887,7 +887,7 @@ var KEBAB_CASE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 var DESCRIPTION_START = /^Apply (when|before|after|to) /;
 var MAX_DESCRIPTION_LENGTH = 300;
 var MAX_BODY_LINES = 35;
-var ATOMS_LINE = /^Atoms:(.*)$/gm;
+var ATOMS_LINE = /^\s*Atoms:(.*)$/gm;
 var listMarkdown = (dir) => {
   try {
     return readdirSync3(dir).filter((name) => name.endsWith(".md")).sort();
