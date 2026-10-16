@@ -5,6 +5,7 @@ export interface Comment {
   line: number
   kind: CommentKind
   end: number
+  isExportMember: boolean
 }
 
 const SCRIPT_EXTENSION = /\.(?:ts|tsx|mts|cts|js|jsx|mjs|cjs)$/i
@@ -20,6 +21,8 @@ const SCRIPT_BLOCK = /(<script\b[^>]*>)([\s\S]*?)<\/script\s*>/gi
 const STYLE_BLOCK = /<style\b[^>]*>[\s\S]*?<\/style\s*>/gi
 const HTML_COMMENT = /<!--[\s\S]*?-->/g
 const SFC_TAG = /<(?:script|template|style)\b/i
+const EXPORT_MODIFIERS = new Set(['default', 'abstract', 'declare', 'const'])
+const EXPORT_BODY_KEYWORDS = new Set(['class', 'interface', 'enum'])
 
 const countNewlines = (text: string, from: number, to: number): number => {
   let count = 0
@@ -31,12 +34,71 @@ const countNewlines = (text: string, from: number, to: number): number => {
   return count
 }
 
+type ExportState = 'none' | 'modifiers' | 'declaration' | 'type-name' | 'type-value'
+
+class ExportBodyTracker {
+  private state: ExportState = 'none'
+  private bodyDepth: number | undefined
+
+  word(word: string, depth: number): void {
+    if (depth !== 0) return
+    if (word === 'export') {
+      this.state = 'modifiers'
+      return
+    }
+    if (this.state === 'type-value') {
+      this.state = 'none'
+      return
+    }
+    if (this.state !== 'modifiers') return
+    if (EXPORT_MODIFIERS.has(word)) return
+    if (word === 'type') {
+      this.state = 'type-name'
+      return
+    }
+    this.state = EXPORT_BODY_KEYWORDS.has(word) ? 'declaration' : 'none'
+  }
+
+  punctuator(char: string, depth: number): void {
+    if (char === '{' && depth === 1) {
+      const isBodyOpen = this.state === 'declaration' || this.state === 'type-value'
+      this.bodyDepth = isBodyOpen ? depth : this.bodyDepth
+      this.state = 'none'
+      return
+    }
+    if (this.bodyDepth !== undefined && depth < this.bodyDepth) {
+      this.bodyDepth = undefined
+    }
+    if (depth !== 0 || char === '{') return
+    if (this.state === 'type-name' && char === '=') {
+      this.state = 'type-value'
+      return
+    }
+    const isTypeParameter = this.state === 'type-name' || this.state === 'declaration'
+    if (char === ';' || !isTypeParameter) {
+      this.state = 'none'
+    }
+  }
+
+  other(): void {
+    if (this.state === 'type-value' || this.state === 'modifiers') {
+      this.state = 'none'
+    }
+  }
+
+  isMember(depth: number): boolean {
+    return this.bodyDepth !== undefined && depth === this.bodyDepth
+  }
+}
+
 class JsLexer {
   private index = 0
   private line: number
   private isRegexAllowed = true
   private isInTemplate = false
   private readonly templateDepths: number[] = []
+  private braceDepth = 0
+  private readonly exportBody = new ExportBodyTracker()
   readonly comments: Comment[] = []
 
   constructor(
@@ -89,6 +151,7 @@ class JsLexer {
     if (char === '`') {
       this.index++
       this.isInTemplate = true
+      this.exportBody.other()
       return
     }
     if (IDENTIFIER_START.test(char)) {
@@ -105,20 +168,35 @@ class JsLexer {
   private scanPunctuator(char: string): void {
     this.index++
     this.isRegexAllowed = !DIVISION_AFTER.has(char)
+    const isInterpolationEnd = this.updateTemplateDepth(char)
+    if (char === '{') {
+      this.braceDepth++
+    } else if (char === '}' && !isInterpolationEnd) {
+      this.braceDepth--
+    }
+    this.exportBody.punctuator(char, this.braceDepth)
+  }
+
+  private updateTemplateDepth(char: string): boolean {
     const top = this.templateDepths.length - 1
     const depth = this.templateDepths[top]
-    if (depth === undefined) return
+    if (depth === undefined) return false
     if (char === '{') {
       this.templateDepths[top] = depth + 1
-      return
+      return false
     }
-    if (char !== '}') return
+    if (char !== '}') return false
     if (depth > 0) {
       this.templateDepths[top] = depth - 1
-      return
+      return false
     }
     this.templateDepths.pop()
     this.isInTemplate = true
+    return true
+  }
+
+  private isExportMember(): boolean {
+    return this.templateDepths.length === 0 && this.exportBody.isMember(this.braceDepth)
   }
 
   private scanWord(): void {
@@ -126,10 +204,13 @@ class JsLexer {
     while (this.index < this.end && IDENTIFIER_PART.test(this.at())) {
       this.index++
     }
-    this.isRegexAllowed = REGEX_KEYWORDS.has(this.source.slice(start, this.index))
+    const word = this.source.slice(start, this.index)
+    this.isRegexAllowed = REGEX_KEYWORDS.has(word)
+    this.exportBody.word(word, this.braceDepth)
   }
 
   private scanNumber(): void {
+    this.exportBody.other()
     while (this.index < this.end && NUMBER_PART.test(this.at())) {
       this.index++
     }
@@ -137,6 +218,7 @@ class JsLexer {
   }
 
   private scanString(quote: string): void {
+    this.exportBody.other()
     this.index++
     while (this.index < this.end) {
       const char = this.at()
@@ -200,7 +282,7 @@ class JsLexer {
       this.index++
     }
     const text = this.source.slice(start, this.index).replace(/\r$/, '')
-    this.comments.push({ text, line: this.line, kind: 'line', end: this.index })
+    this.comments.push({ text, line: this.line, kind: 'line', end: this.index, isExportMember: this.isExportMember() })
   }
 
   private scanBlockComment(): void {
@@ -210,7 +292,8 @@ class JsLexer {
     const stop = close === -1 || close + 2 > this.end ? this.end : close + 2
     this.line += countNewlines(this.source, start, stop)
     this.index = stop
-    this.comments.push({ text: this.source.slice(start, stop), line, kind: 'block', end: stop })
+    const text = this.source.slice(start, stop)
+    this.comments.push({ text, line, kind: 'block', end: stop, isExportMember: this.isExportMember() })
   }
 
   private scanRegex(): boolean {
@@ -239,6 +322,7 @@ class JsLexer {
     }
     this.index = position
     this.isRegexAllowed = false
+    this.exportBody.other()
     return true
   }
 }
@@ -276,7 +360,7 @@ export const lexVue = (source: string): Comment[] => {
   for (const match of source.matchAll(HTML_COMMENT)) {
     if (isInside(match.index, skipped)) continue
     const end = match.index + match[0].length
-    comments.push({ text: match[0], line: lineAt(source, match.index), kind: 'block', end })
+    comments.push({ text: match[0], line: lineAt(source, match.index), kind: 'block', end, isExportMember: false })
   }
   return comments.sort((left, right) => left.end - right.end)
 }

@@ -14,7 +14,7 @@ const DIRECTIVES: readonly RegExp[] = [
 
 const LINE_BREAK = /\r?\n/
 
-const findDirective = (line: string): string | undefined => {
+export const findDirective = (line: string): string | undefined => {
   for (const directive of DIRECTIVES) {
     const match = directive.exec(line)
     if (match !== null) return match[0]

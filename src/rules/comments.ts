@@ -4,11 +4,18 @@ import { resolvePluginRoot, toSlash } from '../core/paths'
 import type { Finding } from '../tools/finding'
 import { lexComments, type Comment } from './lexer'
 import { activeSeverity, fileLine, jigFinding, type Edit } from './rule'
+import { findDirective } from './suppressions'
 
 const RULE = 'jig/comments'
 const LICENSE_HEADER_LINES = 15
 const LICENSE = /SPDX-License-Identifier|copyright|license/i
 const TICKET_TODO = /^\s*(?:\/\/+|\/\*+|\*)?\s*TODO\((?:[A-Z][A-Z0-9]+-\d+|#\d+)\):\s*\S/
+const LINE_BREAK = /\r?\n/
+const COMMENT_PREFIX = /^\s*(?:\/\/+|\/\*+|\*+)/
+const COMMENT_CLOSE = /\*+\/\s*$/
+const SUPPRESSION_PAIR = /\beslint-enable\b/
+
+const isSuppression = (text: string): boolean => findDirective(text) !== undefined || SUPPRESSION_PAIR.test(text)
 const EXTERNAL_LINK = /https?:\/\//
 const TOOL_DIRECTIVES: readonly RegExp[] = [
   /^\s*\/\/\/\s*<reference\b/,
@@ -50,13 +57,21 @@ const isFollowedByExport = (source: string, end: number): boolean => {
   }
 }
 
+const firstContentLine = (text: string): string =>
+  text
+    .split(LINE_BREAK)
+    .map((line) => line.replace(COMMENT_CLOSE, '').replace(COMMENT_PREFIX, '').trim())
+    .find((line) => line !== '') ?? ''
+
 const isAllowed = (comment: Comment, source: string): boolean => {
   const { text } = comment
   const isLicense = comment.line <= LICENSE_HEADER_LINES && LICENSE.test(text)
-  const isPublicJsDoc = comment.kind === 'block' && text.startsWith('/**') && isFollowedByExport(source, comment.end)
+  const isJsDoc = comment.kind === 'block' && text.startsWith('/**')
+  const isPublicJsDoc = isJsDoc && (comment.isExportMember || isFollowedByExport(source, comment.end))
   return (
     isLicense ||
-    TICKET_TODO.test(text) ||
+    isSuppression(text) ||
+    TICKET_TODO.test(firstContentLine(text)) ||
     isPublicJsDoc ||
     EXTERNAL_LINK.test(text) ||
     TOOL_DIRECTIVES.some((directive) => directive.test(text))
