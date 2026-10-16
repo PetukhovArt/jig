@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="refresh" content="30">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>jig run</title>
+<style>
+*{box-sizing:border-box}
+h1,h2,p,ol,ul{margin:0}
+ol,ul{padding:0;list-style:none}
+a:focus-visible,button:focus-visible{outline:3px solid currentColor;outline-offset:2px;border-radius:2px}
+@media (prefers-reduced-motion:reduce){*{animation:none!important}}
+body{--bg:#141B26;--ink:#E6EAF0;--muted:#8A96A8;--go:#2FB38A;--now:#4C8DFF;--stop:#F0564A;--wait:#465264;--sign:#FFC72C;--sign-ink:#14213D;--rule:#2A3444;
+  margin:0;min-height:100vh;background:var(--bg);color:var(--ink);font:15px/1.45 system-ui,-apple-system,'Segoe UI',sans-serif}
+body.light{--bg:#EEF1F4;--ink:#14213D;--muted:#5B6678;--go:#1F8A70;--now:#2F6FEB;--stop:#E03E2F;--wait:#B8C2CC;--rule:#14213D}
+a{color:var(--now)}
+.wrap{padding:24px 32px}
+.head{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap;padding-bottom:14px;border-bottom:2px solid var(--rule)}
+.head h1{font-size:22px;line-height:1.2;font-weight:700;letter-spacing:-.01em}
+.sub{margin-top:3px;color:var(--muted);font-size:14px}
+.pos{font-size:17px;font-weight:500;color:var(--muted);display:flex;gap:14px;align-items:center}
+.pos b{color:var(--ink);font-weight:700}
+.theme{background:none;border:1px solid var(--rule);color:var(--muted);border-radius:6px;padding:2px 8px;font:inherit;font-size:14px;cursor:pointer}
+.body{display:grid;grid-template-columns:minmax(0,1fr) 400px;gap:32px;margin-top:18px;align-items:start}
+.line{width:fit-content;max-width:100%;margin:0 auto}
+.line li{display:grid;grid-template-columns:46px 28px minmax(0,1fr);min-height:36px}
+.line time{font-size:13px;color:var(--muted);padding-top:1px;font-variant-numeric:tabular-nums}
+.st{position:relative}
+.st::before{content:"";position:absolute;left:11px;top:6px;bottom:-6px;width:6px;background:var(--c)}
+.line li:last-child .st::before{display:none}
+.st i{position:absolute;left:5px;top:1px;width:18px;height:18px;border-radius:50%;background:var(--bg);border:5px solid var(--c);z-index:1}
+.s-done{--c:var(--go)}
+.s-done .nm{color:var(--muted)}
+.s-todo{--c:var(--wait)}
+.s-todo .st::before{background:repeating-linear-gradient(var(--wait) 0 8px,transparent 8px 14px)}
+.s-blocked{--c:var(--stop)}
+.s-blocked .st i{background:var(--stop)}
+.s-blocked .st i::after{content:"";position:absolute;left:1px;right:1px;top:50%;height:3px;margin-top:-1.5px;background:#fff}
+.s-active{--c:var(--now)}
+.s-active .st i{left:1px;top:-3px;width:26px;height:26px;border-width:7px;animation:pulse 1.6s ease-out 1}
+@keyframes pulse{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--now) 60%,transparent)}100%{box-shadow:0 0 0 14px transparent}}
+.nm{padding:0 0 9px 8px}
+.nm b{font-weight:600}
+.nm small{display:block;font-size:13px;color:var(--muted)}
+.s-blocked small,.stale small{color:var(--stop);font-weight:500}
+.here{display:inline-block;margin-left:6px;padding:0 7px;border-radius:4px;background:var(--now);color:#fff;font-size:12px;font-weight:600;vertical-align:1px}
+.signs{display:flex;gap:16px;margin-top:16px;overflow-x:auto;scroll-snap-type:x mandatory;padding-bottom:6px;scrollbar-color:var(--wait) transparent}
+.sign{flex:0 0 min(320px,85%);scroll-snap-align:start;background:var(--sign);color:var(--sign-ink);padding:14px 16px;border-radius:6px}
+.sign h2{font-size:14px;font-weight:700}
+.sign p{margin-top:6px;font-size:15px;line-height:1.4;font-weight:500}
+.sign .def{margin-top:10px;padding-top:8px;border-top:2px solid var(--sign-ink);font-size:14px}
+.sign .when{margin-top:4px;font-size:12px}
+aside h2,.decided h2{font-size:14px;font-weight:700}
+aside{position:sticky;top:16px;max-height:calc(100vh - 32px);overflow-y:auto;padding-right:6px;scrollbar-color:var(--wait) transparent}
+aside section+section{margin-top:20px}
+aside .list li{padding:8px 0;margin:0;border-bottom:1px solid color-mix(in srgb,var(--muted) 22%,transparent);overflow-wrap:anywhere}
+.decided{margin-top:28px}
+.decided ol{margin-top:10px;max-width:110ch}
+.decided li{display:grid;grid-template-columns:46px 28px minmax(0,1fr);padding-bottom:14px;position:relative}
+.decided li::before{content:"";grid-column:2;justify-self:center;width:10px;height:10px;margin-top:6px;border-radius:50%;border:2px solid var(--muted);background:var(--bg);z-index:1}
+.decided li::after{content:"";position:absolute;left:59px;top:10px;bottom:-4px;width:2px;background:color-mix(in srgb,var(--muted) 35%,transparent)}
+.decided li:last-child::after{display:none}
+.decided li.reverted::before{border-color:var(--stop);background:var(--stop)}
+.decided li.reverted b{text-decoration:line-through;text-decoration-color:var(--stop)}
+.decided time{grid-row:1;grid-column:1;font-size:13px;color:var(--muted);padding-top:1px;font-variant-numeric:tabular-nums}
+.decided .txt{padding-left:8px;line-height:1.55;color:var(--muted)}
+.decided .txt b{display:block;color:var(--ink);font-weight:600}
+.decided .tag{display:inline-block;margin-left:6px;padding:0 6px;border-radius:4px;background:var(--stop);color:#fff;font-size:12px;font-weight:600}
+.decided dl{margin:2px 0 0;display:grid;grid-template-columns:auto 1fr;gap:0 8px;font-size:14px}
+.decided dt{color:var(--ink);font-weight:500}
+.decided dd{margin:0;overflow-wrap:anywhere}
+.closed li{display:grid;grid-template-columns:20px 1fr;gap:8px;margin-top:7px}
+.closed li::before{content:"";width:16px;height:16px;margin-top:2px;border-radius:50%;background:var(--stop) linear-gradient(#fff,#fff) center/10px 3px no-repeat}
+.closed small{display:block;color:var(--muted);font-size:13px}
+.list li{margin-top:6px;display:grid;grid-template-columns:42px 1fr;gap:6px;font-size:14px;line-height:1.4}
+.list time{color:var(--muted);font-size:13px;font-variant-numeric:tabular-nums}
+.list small{display:block;color:var(--muted);font-size:13px}
+@media (max-width:900px){.body{grid-template-columns:1fr}aside{position:static;max-height:none}}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script type="application/json" id="run">
+{"v":1,"title":"","branch":"","createdAt":"","updatedAt":"","steps":[],"decisions":[],"results":[],"asks":[]}
+</script>
+<script>
+const R = JSON.parse(document.getElementById('run').textContent);
+const STALE_MS = 15 * 60e3;
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
+const pad = n => String(n).padStart(2, '0');
+const hm = t => {
+  const d = new Date(t);
+  return Number.isNaN(d.getTime()) ? '' : `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+};
+const ago = t => {
+  const m = Math.round((Date.now() - new Date(t)) / 60e3);
+  return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.floor(m / 60)} h ${m % 60} min ago` : `${Math.floor(m / 1440)} d ago`;
+};
+const steps = R.steps.map(s => ({...s, stale: s.status === 'active' && Date.now() - new Date(R.updatedAt) > STALE_MS}));
+const stuck = steps.filter(s => s.status === 'blocked' || s.stale);
+const done = steps.filter(s => s.status === 'done').length;
+const current = steps.find(s => s.status === 'active');
+const openAsks = R.asks.filter(a => a.answer === undefined);
+const answered = R.asks.filter(a => a.answer !== undefined);
+const link = d => d.href ? `<a href="${esc(d.href)}">${esc(d.title)}</a>` : esc(d.title);
+const why = s => s.stale ? `no news since ${hm(R.updatedAt)}, ${ago(R.updatedAt)}` : `waits for ${esc(s.waitsFor)}`;
+const newest = (items, key) => [...items].sort((a, b) => (b[key] || '').localeCompare(a[key] || ''));
+const headline = t => {
+  const m = String(t).match(/^(.{1,160}?[.:?])\s+([\s\S]+)$/);
+  return m ? `<b>${esc(m[1])}</b>${esc(m[2])}` : `<b>${esc(t)}</b>`;
+};
+const details = d => [['why', d.why], ['evidence', d.evidence]].filter(([, v]) => v).map(([k, v]) => `<dt>${k}</dt><dd>${esc(v)}</dd>`).join('');
+const decision = d => {
+  const isReverted = d.result === 'reverted';
+  const extra = details(d);
+  return `<li class="${isReverted ? 'reverted' : ''}"><time>${hm(d.at)}</time><div class="txt">${headline(d.text)}${isReverted ? '<span class="tag">reverted</span>' : ''}${extra ? `<dl>${extra}</dl>` : ''}</div></li>`;
+};
+
+document.body.classList.toggle('light', localStorage.getItem('jig-dash-theme') === 'light');
+document.title = R.title || 'jig run';
+document.getElementById('app').innerHTML = `<div class="wrap">
+  <header class="head"><div><h1>${esc(R.title)}</h1><p class="sub">Branch ${esc(R.branch)}, updated at ${hm(R.updatedAt)}, ${ago(R.updatedAt)}</p></div>
+    <p class="pos"><span>${current ? `Step <b>${current.n}</b> of ${steps.length}` : `Done <b>${done}</b> of ${steps.length}`}</span>
+    <button class="theme" aria-label="Light or dark theme">&#9680;</button></p></header>
+  <div class="body"><div>
+    <ol class="line" aria-label="Steps">${steps.map(s => `<li class="s-${s.status}${s.stale ? ' stale' : ''}">
+      <time>${s.status === 'todo' ? '' : hm(s.at)}</time><span class="st"><i></i></span>
+      <div class="nm"><b>${s.n}. ${esc(s.title)}</b>${s === current ? '<span class="here">now here</span>' : ''}
+        ${s.status === 'blocked' || s.stale ? `<small>${why(s)}</small>` : s === current ? `<small>since ${hm(s.at)}</small>` : ''}</div></li>`).join('')}</ol>
+    ${openAsks.length ? `<div class="signs">${openAsks.map(q => `<section class="sign"><h2>Your decision needed (#${q.n})</h2><p>${esc(q.question)}</p>
+      <p class="def">Going with the default meanwhile: <b>${esc(q.default)}</b></p><p class="when">Asked at ${hm(q.askedAt)}, ${ago(q.askedAt)}</p></section>`).join('')}</div>` : ''}
+    ${R.decisions.length ? `<section class="decided"><h2>Decisions</h2><ol>${newest(R.decisions, 'at').map(decision).join('')}</ol></section>` : ''}</div>
+    <aside>
+      ${stuck.length ? `<section><h2>Stuck</h2><ul class="closed">${stuck.map(s => `<li><div>${s.n}. ${esc(s.title)}<small>${why(s)}</small></div></li>`).join('')}</ul></section>` : ''}
+      ${R.results.length ? `<section><h2>Results</h2><ul class="list">${newest(R.results, 'at').map(d => `<li><time>${hm(d.at)}</time><span>${link(d)}</span></li>`).join('')}</ul></section>` : ''}
+      ${answered.length ? `<section><h2>Answered</h2><ul class="list">${newest(answered, 'answeredAt').map(a => `<li><time>${hm(a.answeredAt)}</time><span>${esc(a.question)}<small>${esc(a.answer)}</small></span></li>`).join('')}</ul></section>` : ''}
+    </aside>
+  </div>
+</div>`;
+document.querySelector('.theme').onclick = () => {
+  const isLight = document.body.classList.toggle('light');
+  localStorage.setItem('jig-dash-theme', isLight ? 'light' : 'dark');
+};
+</script>
+</body>
+</html>

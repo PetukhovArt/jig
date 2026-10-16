@@ -290,6 +290,18 @@ var gitToplevel = (cwd) => {
   const result = git(["rev-parse", "--show-toplevel"], cwd);
   return result.ok ? firstLine(result.stdout) : void 0;
 };
+var gitLsFiles = (cwd) => {
+  const result = git(["ls-files", "-z"], cwd);
+  return result.ok ? result.stdout.split("\0").filter(Boolean) : [];
+};
+var gitCurrentBranch = (cwd) => {
+  const result = git(["symbolic-ref", "--quiet", "--short", "HEAD"], cwd);
+  return result.ok ? firstLine(result.stdout) : void 0;
+};
+var gitShortSha = (cwd, length = 7) => {
+  const result = git(["rev-parse", `--short=${length}`, "HEAD"], cwd);
+  return result.ok ? firstLine(result.stdout) : void 0;
+};
 
 // src/core/paths.ts
 var JIG_GITIGNORE = "journal/\nruns/\ncache/\n";
@@ -329,6 +341,7 @@ var ensureJigDir = (projectRoot) => {
   }
   return paths;
 };
+var toSlash = (path) => path.replace(/\\/g, "/");
 
 // src/core/plan.ts
 import { createHash } from "node:crypto";
@@ -693,6 +706,41 @@ var resolveBin = (projectRoot, pkgs, command) => {
   if (found === void 0) return void 0;
   return isShim(found) ? resolveShimTarget(found) : [found];
 };
+var findUnresolvedShim = (name, env = process.env) => {
+  const found = findInPath(name, env);
+  const isUnresolved = found !== void 0 && isShim(found) && resolveShimTarget(found) === void 0;
+  return isUnresolved ? found : void 0;
+};
+var isAlive = (pid) => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return error.code === "EPERM";
+  }
+};
+var readLock = (path) => {
+  try {
+    const value = JSON.parse(readFileSync2(path, "utf8"));
+    const isValid = typeof value.pid === "number" && typeof value.at === "number";
+    return isValid ? { pid: value.pid, at: value.at } : void 0;
+  } catch {
+    return void 0;
+  }
+};
+var lockFileAge = (path, now) => {
+  try {
+    return now - statSync(path).mtimeMs;
+  } catch {
+    return void 0;
+  }
+};
+var isLockAbandoned = (path, now = Date.now()) => {
+  const info = readLock(path);
+  if (info !== void 0) return now - info.at > LOCK_STALE_MS || !isAlive(info.pid);
+  const age = lockFileAge(path, now);
+  return age !== void 0 && age > LOCK_STALE_MS;
+};
 
 // src/core/state.ts
 import { mkdirSync as mkdirSync3, readdirSync, readFileSync as readFileSync3, renameSync, rmSync as rmSync2, statSync as statSync2, writeFileSync as writeFileSync3 } from "node:fs";
@@ -993,9 +1041,512 @@ var runAtom = (args) => {
   return 0;
 };
 
+// src/dash/dash.ts
+import { mkdirSync as mkdirSync5, readFileSync as readFileSync6 } from "node:fs";
+import { dirname as dirname4, join as join5 } from "node:path";
+
+// src/dash/template.html
+var template_default = "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<meta http-equiv=\"refresh\" content=\"30\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n<title>jig run</title>\n<style>\n*{box-sizing:border-box}\nh1,h2,p,ol,ul{margin:0}\nol,ul{padding:0;list-style:none}\na:focus-visible,button:focus-visible{outline:3px solid currentColor;outline-offset:2px;border-radius:2px}\n@media (prefers-reduced-motion:reduce){*{animation:none!important}}\nbody{--bg:#141B26;--ink:#E6EAF0;--muted:#8A96A8;--go:#2FB38A;--now:#4C8DFF;--stop:#F0564A;--wait:#465264;--sign:#FFC72C;--sign-ink:#14213D;--rule:#2A3444;\n  margin:0;min-height:100vh;background:var(--bg);color:var(--ink);font:15px/1.45 system-ui,-apple-system,'Segoe UI',sans-serif}\nbody.light{--bg:#EEF1F4;--ink:#14213D;--muted:#5B6678;--go:#1F8A70;--now:#2F6FEB;--stop:#E03E2F;--wait:#B8C2CC;--rule:#14213D}\na{color:var(--now)}\n.wrap{padding:24px 32px}\n.head{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap;padding-bottom:14px;border-bottom:2px solid var(--rule)}\n.head h1{font-size:22px;line-height:1.2;font-weight:700;letter-spacing:-.01em}\n.sub{margin-top:3px;color:var(--muted);font-size:14px}\n.pos{font-size:17px;font-weight:500;color:var(--muted);display:flex;gap:14px;align-items:center}\n.pos b{color:var(--ink);font-weight:700}\n.theme{background:none;border:1px solid var(--rule);color:var(--muted);border-radius:6px;padding:2px 8px;font:inherit;font-size:14px;cursor:pointer}\n.body{display:grid;grid-template-columns:minmax(0,1fr) 400px;gap:32px;margin-top:18px;align-items:start}\n.line{width:fit-content;max-width:100%;margin:0 auto}\n.line li{display:grid;grid-template-columns:46px 28px minmax(0,1fr);min-height:36px}\n.line time{font-size:13px;color:var(--muted);padding-top:1px;font-variant-numeric:tabular-nums}\n.st{position:relative}\n.st::before{content:\"\";position:absolute;left:11px;top:6px;bottom:-6px;width:6px;background:var(--c)}\n.line li:last-child .st::before{display:none}\n.st i{position:absolute;left:5px;top:1px;width:18px;height:18px;border-radius:50%;background:var(--bg);border:5px solid var(--c);z-index:1}\n.s-done{--c:var(--go)}\n.s-done .nm{color:var(--muted)}\n.s-todo{--c:var(--wait)}\n.s-todo .st::before{background:repeating-linear-gradient(var(--wait) 0 8px,transparent 8px 14px)}\n.s-blocked{--c:var(--stop)}\n.s-blocked .st i{background:var(--stop)}\n.s-blocked .st i::after{content:\"\";position:absolute;left:1px;right:1px;top:50%;height:3px;margin-top:-1.5px;background:#fff}\n.s-active{--c:var(--now)}\n.s-active .st i{left:1px;top:-3px;width:26px;height:26px;border-width:7px;animation:pulse 1.6s ease-out 1}\n@keyframes pulse{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--now) 60%,transparent)}100%{box-shadow:0 0 0 14px transparent}}\n.nm{padding:0 0 9px 8px}\n.nm b{font-weight:600}\n.nm small{display:block;font-size:13px;color:var(--muted)}\n.s-blocked small,.stale small{color:var(--stop);font-weight:500}\n.here{display:inline-block;margin-left:6px;padding:0 7px;border-radius:4px;background:var(--now);color:#fff;font-size:12px;font-weight:600;vertical-align:1px}\n.signs{display:flex;gap:16px;margin-top:16px;overflow-x:auto;scroll-snap-type:x mandatory;padding-bottom:6px;scrollbar-color:var(--wait) transparent}\n.sign{flex:0 0 min(320px,85%);scroll-snap-align:start;background:var(--sign);color:var(--sign-ink);padding:14px 16px;border-radius:6px}\n.sign h2{font-size:14px;font-weight:700}\n.sign p{margin-top:6px;font-size:15px;line-height:1.4;font-weight:500}\n.sign .def{margin-top:10px;padding-top:8px;border-top:2px solid var(--sign-ink);font-size:14px}\n.sign .when{margin-top:4px;font-size:12px}\naside h2,.decided h2{font-size:14px;font-weight:700}\naside{position:sticky;top:16px;max-height:calc(100vh - 32px);overflow-y:auto;padding-right:6px;scrollbar-color:var(--wait) transparent}\naside section+section{margin-top:20px}\naside .list li{padding:8px 0;margin:0;border-bottom:1px solid color-mix(in srgb,var(--muted) 22%,transparent);overflow-wrap:anywhere}\n.decided{margin-top:28px}\n.decided ol{margin-top:10px;max-width:110ch}\n.decided li{display:grid;grid-template-columns:46px 28px minmax(0,1fr);padding-bottom:14px;position:relative}\n.decided li::before{content:\"\";grid-column:2;justify-self:center;width:10px;height:10px;margin-top:6px;border-radius:50%;border:2px solid var(--muted);background:var(--bg);z-index:1}\n.decided li::after{content:\"\";position:absolute;left:59px;top:10px;bottom:-4px;width:2px;background:color-mix(in srgb,var(--muted) 35%,transparent)}\n.decided li:last-child::after{display:none}\n.decided li.reverted::before{border-color:var(--stop);background:var(--stop)}\n.decided li.reverted b{text-decoration:line-through;text-decoration-color:var(--stop)}\n.decided time{grid-row:1;grid-column:1;font-size:13px;color:var(--muted);padding-top:1px;font-variant-numeric:tabular-nums}\n.decided .txt{padding-left:8px;line-height:1.55;color:var(--muted)}\n.decided .txt b{display:block;color:var(--ink);font-weight:600}\n.decided .tag{display:inline-block;margin-left:6px;padding:0 6px;border-radius:4px;background:var(--stop);color:#fff;font-size:12px;font-weight:600}\n.decided dl{margin:2px 0 0;display:grid;grid-template-columns:auto 1fr;gap:0 8px;font-size:14px}\n.decided dt{color:var(--ink);font-weight:500}\n.decided dd{margin:0;overflow-wrap:anywhere}\n.closed li{display:grid;grid-template-columns:20px 1fr;gap:8px;margin-top:7px}\n.closed li::before{content:\"\";width:16px;height:16px;margin-top:2px;border-radius:50%;background:var(--stop) linear-gradient(#fff,#fff) center/10px 3px no-repeat}\n.closed small{display:block;color:var(--muted);font-size:13px}\n.list li{margin-top:6px;display:grid;grid-template-columns:42px 1fr;gap:6px;font-size:14px;line-height:1.4}\n.list time{color:var(--muted);font-size:13px;font-variant-numeric:tabular-nums}\n.list small{display:block;color:var(--muted);font-size:13px}\n@media (max-width:900px){.body{grid-template-columns:1fr}aside{position:static;max-height:none}}\n</style>\n</head>\n<body>\n<div id=\"app\"></div>\n<script type=\"application/json\" id=\"run\">\n{\"v\":1,\"title\":\"\",\"branch\":\"\",\"createdAt\":\"\",\"updatedAt\":\"\",\"steps\":[],\"decisions\":[],\"results\":[],\"asks\":[]}\n</script>\n<script>\nconst R = JSON.parse(document.getElementById('run').textContent);\nconst STALE_MS = 15 * 60e3;\nconst esc = s => String(s ?? '').replace(/[&<>\"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;'}[c]));\nconst pad = n => String(n).padStart(2, '0');\nconst hm = t => {\n  const d = new Date(t);\n  return Number.isNaN(d.getTime()) ? '' : `${pad(d.getHours())}:${pad(d.getMinutes())}`;\n};\nconst ago = t => {\n  const m = Math.round((Date.now() - new Date(t)) / 60e3);\n  return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.floor(m / 60)} h ${m % 60} min ago` : `${Math.floor(m / 1440)} d ago`;\n};\nconst steps = R.steps.map(s => ({...s, stale: s.status === 'active' && Date.now() - new Date(R.updatedAt) > STALE_MS}));\nconst stuck = steps.filter(s => s.status === 'blocked' || s.stale);\nconst done = steps.filter(s => s.status === 'done').length;\nconst current = steps.find(s => s.status === 'active');\nconst openAsks = R.asks.filter(a => a.answer === undefined);\nconst answered = R.asks.filter(a => a.answer !== undefined);\nconst link = d => d.href ? `<a href=\"${esc(d.href)}\">${esc(d.title)}</a>` : esc(d.title);\nconst why = s => s.stale ? `no news since ${hm(R.updatedAt)}, ${ago(R.updatedAt)}` : `waits for ${esc(s.waitsFor)}`;\nconst newest = (items, key) => [...items].sort((a, b) => (b[key] || '').localeCompare(a[key] || ''));\nconst headline = t => {\n  const m = String(t).match(/^(.{1,160}?[.:?])\\s+([\\s\\S]+)$/);\n  return m ? `<b>${esc(m[1])}</b>${esc(m[2])}` : `<b>${esc(t)}</b>`;\n};\nconst details = d => [['why', d.why], ['evidence', d.evidence]].filter(([, v]) => v).map(([k, v]) => `<dt>${k}</dt><dd>${esc(v)}</dd>`).join('');\nconst decision = d => {\n  const isReverted = d.result === 'reverted';\n  const extra = details(d);\n  return `<li class=\"${isReverted ? 'reverted' : ''}\"><time>${hm(d.at)}</time><div class=\"txt\">${headline(d.text)}${isReverted ? '<span class=\"tag\">reverted</span>' : ''}${extra ? `<dl>${extra}</dl>` : ''}</div></li>`;\n};\n\ndocument.body.classList.toggle('light', localStorage.getItem('jig-dash-theme') === 'light');\ndocument.title = R.title || 'jig run';\ndocument.getElementById('app').innerHTML = `<div class=\"wrap\">\n  <header class=\"head\"><div><h1>${esc(R.title)}</h1><p class=\"sub\">Branch ${esc(R.branch)}, updated at ${hm(R.updatedAt)}, ${ago(R.updatedAt)}</p></div>\n    <p class=\"pos\"><span>${current ? `Step <b>${current.n}</b> of ${steps.length}` : `Done <b>${done}</b> of ${steps.length}`}</span>\n    <button class=\"theme\" aria-label=\"Light or dark theme\">&#9680;</button></p></header>\n  <div class=\"body\"><div>\n    <ol class=\"line\" aria-label=\"Steps\">${steps.map(s => `<li class=\"s-${s.status}${s.stale ? ' stale' : ''}\">\n      <time>${s.status === 'todo' ? '' : hm(s.at)}</time><span class=\"st\"><i></i></span>\n      <div class=\"nm\"><b>${s.n}. ${esc(s.title)}</b>${s === current ? '<span class=\"here\">now here</span>' : ''}\n        ${s.status === 'blocked' || s.stale ? `<small>${why(s)}</small>` : s === current ? `<small>since ${hm(s.at)}</small>` : ''}</div></li>`).join('')}</ol>\n    ${openAsks.length ? `<div class=\"signs\">${openAsks.map(q => `<section class=\"sign\"><h2>Your decision needed (#${q.n})</h2><p>${esc(q.question)}</p>\n      <p class=\"def\">Going with the default meanwhile: <b>${esc(q.default)}</b></p><p class=\"when\">Asked at ${hm(q.askedAt)}, ${ago(q.askedAt)}</p></section>`).join('')}</div>` : ''}\n    ${R.decisions.length ? `<section class=\"decided\"><h2>Decisions</h2><ol>${newest(R.decisions, 'at').map(decision).join('')}</ol></section>` : ''}</div>\n    <aside>\n      ${stuck.length ? `<section><h2>Stuck</h2><ul class=\"closed\">${stuck.map(s => `<li><div>${s.n}. ${esc(s.title)}<small>${why(s)}</small></div></li>`).join('')}</ul></section>` : ''}\n      ${R.results.length ? `<section><h2>Results</h2><ul class=\"list\">${newest(R.results, 'at').map(d => `<li><time>${hm(d.at)}</time><span>${link(d)}</span></li>`).join('')}</ul></section>` : ''}\n      ${answered.length ? `<section><h2>Answered</h2><ul class=\"list\">${newest(answered, 'answeredAt').map(a => `<li><time>${hm(a.answeredAt)}</time><span>${esc(a.question)}<small>${esc(a.answer)}</small></span></li>`).join('')}</ul></section>` : ''}\n    </aside>\n  </div>\n</div>`;\ndocument.querySelector('.theme').onclick = () => {\n  const isLight = document.body.classList.toggle('light');\n  localStorage.setItem('jig-dash-theme', isLight ? 'light' : 'dark');\n};\n</script>\n</body>\n</html>\n";
+
+// src/dash/dash.ts
+var ACTIVE_RUN_MAX_AGE_MS = 12 * 60 * 60 * 1e3;
+var EXIT_NOT_MET = 1;
+var EXIT_USAGE = 2;
+var RUN_BLOCK = /(<script type="application\/json" id="run">)([\s\S]*?)(<\/script>)/;
+var DECISION_FLAGS = /* @__PURE__ */ new Set(["--why", "--evidence", "--result"]);
+var DECISION_RESULTS = /* @__PURE__ */ new Set(["kept", "reverted"]);
+var PLAIN_STATUSES = /* @__PURE__ */ new Set(["active", "done", "todo"]);
+var DashFailure = class extends Error {
+  constructor(code, message) {
+    super(message);
+    this.code = code;
+  }
+  code;
+};
+var usage = (message) => new DashFailure(EXIT_USAGE, message);
+var branchDirName = (projectRoot) => {
+  const branch = gitCurrentBranch(projectRoot);
+  if (branch !== void 0) return branch.replace(/[^A-Za-z0-9._-]/g, "_");
+  return `detached-${gitShortSha(projectRoot) ?? "none"}`;
+};
+var runLocation = (projectRoot) => {
+  const branch = branchDirName(projectRoot);
+  const dir = join5(jigPaths(projectRoot).runs, branch);
+  return { branch, data: join5(dir, "run.json"), page: join5(dir, "index.html") };
+};
+var isRun = (value) => {
+  if (typeof value !== "object" || value === null) return false;
+  const candidate = value;
+  return candidate.v === 1 && typeof candidate.updatedAt === "string" && Array.isArray(candidate.steps);
+};
+var readRun = (path) => {
+  let text;
+  try {
+    text = readFileSync6(path, "utf8");
+  } catch {
+    return void 0;
+  }
+  const value = JSON.parse(text);
+  return isRun(value) ? value : void 0;
+};
+var isActive = (run2, now) => now.getTime() - Date.parse(run2.updatedAt) < ACTIVE_RUN_MAX_AGE_MS;
+var renderPage = (run2) => {
+  const json = JSON.stringify(run2, null, 2).replace(/</g, "\\u003c");
+  return template_default.replace(RUN_BLOCK, (_match, open, _body, close) => `${open}
+${json}
+${close}`);
+};
+var saveRun = (location, run2) => {
+  mkdirSync5(dirname4(location.data), { recursive: true });
+  writeFileAtomic(location.data, `${JSON.stringify(run2, null, 2)}
+`);
+  writeFileAtomic(location.page, renderPage(run2));
+};
+var required2 = (value, what) => {
+  if (value === void 0 || value === "") throw usage(`${what} is required`);
+  return value;
+};
+var parseNumber = (value, what) => {
+  const text = required2(value, what);
+  const n = Number(text);
+  if (!Number.isInteger(n) || n < 1) throw new DashFailure(EXIT_NOT_MET, `${what} must be a positive integer, got ${text}`);
+  return n;
+};
+var stepAt = (run2, n) => {
+  const step = run2.steps.find((candidate) => candidate.n === n);
+  if (step === void 0) throw new DashFailure(EXIT_NOT_MET, `no step ${n}, the run has ${run2.steps.length}`);
+  return step;
+};
+var nextNumber = (items) => items.reduce((max, item) => Math.max(max, item.n), 0) + 1;
+var setStep = (run2, [nText, status, waitsFor], at) => {
+  const step = stepAt(run2, parseNumber(nText, "step number"));
+  delete step.waitsFor;
+  step.at = at;
+  if (status === "blocked") {
+    step.status = "blocked";
+    step.waitsFor = required2(waitsFor, "what the blocked step waits for");
+    return "ok";
+  }
+  const isPlainStatus = status !== void 0 && PLAIN_STATUSES.has(status);
+  if (!isPlainStatus) throw usage(`step status must be active, done, todo or blocked, got ${status ?? "nothing"}`);
+  step.status = status;
+  return "ok";
+};
+var addStep = (run2, [title], at) => {
+  run2.steps.push({ n: nextNumber(run2.steps), title: required2(title, "step title"), status: "todo", at });
+  return "ok";
+};
+var parseDecisionFlags = (args) => {
+  const flags = /* @__PURE__ */ new Map();
+  for (let index = 0; index < args.length; index += 2) {
+    const flag = args[index] ?? "";
+    if (!DECISION_FLAGS.has(flag)) throw usage(`unknown decision option ${flag}`);
+    flags.set(flag, required2(args[index + 1], `value of ${flag}`));
+  }
+  return flags;
+};
+var addDecision = (run2, [text, ...rest], at) => {
+  const flags = parseDecisionFlags(rest);
+  const why = flags.get("--why");
+  const evidence = flags.get("--evidence");
+  const result = flags.get("--result");
+  if (result !== void 0 && !DECISION_RESULTS.has(result)) throw usage(`--result must be kept or reverted, got ${result}`);
+  run2.decisions.push({
+    n: nextNumber(run2.decisions),
+    text: required2(text, "decision text"),
+    ...why === void 0 ? {} : { why },
+    ...evidence === void 0 ? {} : { evidence },
+    ...result === void 0 ? {} : { result },
+    at
+  });
+  return "ok";
+};
+var addResult = (run2, [title, href], at) => {
+  run2.results.push({ title: required2(title, "result title"), ...href ? { href } : {}, at });
+  return "ok";
+};
+var addAsk = (run2, [question, fallback], at) => {
+  const n = nextNumber(run2.asks);
+  run2.asks.push({ n, question: required2(question, "question"), default: required2(fallback, "default answer"), askedAt: at });
+  return String(n);
+};
+var answerAsk = (run2, [nText, answer], at) => {
+  const n = parseNumber(nText, "question number");
+  const text = required2(answer, "answer");
+  const ask = run2.asks.find((candidate) => candidate.n === n && candidate.answer === void 0);
+  if (ask === void 0) throw new DashFailure(EXIT_NOT_MET, `no open question ${n}`);
+  ask.answer = text;
+  ask.answeredAt = at;
+  run2.decisions.push({ n: nextNumber(run2.decisions), text: `${ask.question} ${text}`, at });
+  return "ok";
+};
+var MUTATIONS = /* @__PURE__ */ new Map([
+  ["step", setStep],
+  ["add", addStep],
+  ["decision", addDecision],
+  ["result", addResult],
+  ["ask", addAsk],
+  ["answer", answerAsk]
+]);
+var sameShape = (run2, title, steps) => run2.title === title && run2.steps.length === steps.length && run2.steps.every((step, index) => step.title === steps[index]);
+var initRun = (projectRoot, location, [title, ...steps], now) => {
+  const runTitle = required2(title, "run title");
+  if (steps.length === 0) throw usage("init needs at least one step");
+  ensureJigDir(projectRoot);
+  const at = now.toISOString();
+  const existing = readRun(location.data);
+  const isKept = existing !== void 0 && sameShape(existing, runTitle, steps);
+  const run2 = isKept ? { ...existing, updatedAt: at } : {
+    v: 1,
+    title: runTitle,
+    branch: location.branch,
+    createdAt: at,
+    updatedAt: at,
+    steps: steps.map((stepTitle, index) => ({
+      n: index + 1,
+      title: stepTitle,
+      status: index === 0 ? "active" : "todo",
+      at
+    })),
+    decisions: [],
+    results: [],
+    asks: []
+  };
+  saveRun(location, run2);
+  return toSlash(location.page);
+};
+var dispatch = (args, now) => {
+  const [sub, ...rest] = args;
+  const projectRoot = resolveProjectRoot(process.cwd());
+  const location = runLocation(projectRoot);
+  if (sub === "init") return initRun(projectRoot, location, rest, now);
+  const mutation = sub === void 0 ? void 0 : MUTATIONS.get(sub);
+  if (sub !== "path" && mutation === void 0) {
+    throw usage(`unknown dash subcommand ${sub ?? "(none)"}, expected init, step, add, decision, result, ask, answer or path`);
+  }
+  const run2 = readRun(location.data);
+  if (run2 === void 0 || !isActive(run2, now)) {
+    throw new DashFailure(EXIT_NOT_MET, `no active run for branch ${location.branch}, start one with: dash init "<title>" "<step>"...`);
+  }
+  if (mutation === void 0) return toSlash(location.page);
+  const at = now.toISOString();
+  const output = mutation(run2, rest, at);
+  run2.updatedAt = at;
+  saveRun(location, run2);
+  return output;
+};
+var runDash = (args) => {
+  try {
+    process.stdout.write(`${dispatch(args, /* @__PURE__ */ new Date())}
+`);
+    return 0;
+  } catch (error) {
+    if (!(error instanceof DashFailure)) throw error;
+    process.stderr.write(`jig: ${error.message}
+`);
+    return error.code;
+  }
+};
+
+// src/doctor.ts
+import { existsSync as existsSync4, readFileSync as readFileSync8 } from "node:fs";
+import { join as join7 } from "node:path";
+
+// src/core/journal.ts
+import { appendFileSync, mkdirSync as mkdirSync6, readdirSync as readdirSync4, readFileSync as readFileSync7, rmSync as rmSync3, statSync as statSync4 } from "node:fs";
+import { join as join6 } from "node:path";
+var JOURNAL_MAX_BYTES = 50 * 1024 * 1024;
+var DAY_MS = 24 * 60 * 60 * 1e3;
+var JOURNAL_FILE = /^(\d{4}-\d{2}-\d{2})\.jsonl$/;
+var listJournalFiles = (projectRoot) => {
+  const dir = jigPaths(projectRoot).journal;
+  let names;
+  try {
+    names = readdirSync4(dir);
+  } catch {
+    return [];
+  }
+  const files = [];
+  for (const name of names.sort()) {
+    const day = JOURNAL_FILE.exec(name)?.[1];
+    if (day === void 0) continue;
+    const path = join6(dir, name);
+    files.push({ name, path, day, size: statSync4(path).size });
+  }
+  return files;
+};
+var dayOf = (ms) => new Date(ms).toISOString().slice(0, 10);
+var parseRecord = (line) => {
+  try {
+    const value = JSON.parse(line);
+    const isRecord = value.v === 1 && typeof value.ts === "string" && typeof value.kind === "string";
+    return isRecord ? value : void 0;
+  } catch {
+    return void 0;
+  }
+};
+var readJournal = (projectRoot, sinceMs = 0) => {
+  const sinceDay = dayOf(sinceMs);
+  const records = [];
+  for (const file of listJournalFiles(projectRoot)) {
+    if (file.day < sinceDay) continue;
+    for (const line of readFileSync7(file.path, "utf8").split("\n")) {
+      const record = line.trim() === "" ? void 0 : parseRecord(line);
+      if (record !== void 0 && Date.parse(record.ts) >= sinceMs) {
+        records.push(record);
+      }
+    }
+  }
+  return records;
+};
+
+// src/doctor.ts
+var MIN_NODE_MAJOR = 20;
+var BYTES_PER_MB = 1024 * 1024;
+var STATUS_WIDTH = 4;
+var TOOLS = [
+  { key: "oxlint", label: "oxlint", command: "oxlint", configs: OXLINT_CONFIGS },
+  { key: "eslint", label: "eslint", command: "eslint", configs: ESLINT_CONFIGS },
+  { key: "tsc", label: "tsc", command: "tsc", configs: [TSCONFIG] },
+  { key: "vueTsc", label: "vue-tsc", command: "vue-tsc", configs: [] },
+  { key: "stratum", label: "stratum", command: "stratum-lint", configs: [STRATUM_CONFIG] },
+  { key: "agentView", label: "agent-view", command: "agent-view", configs: [AGENT_VIEW_CONFIG] }
+];
+var PROTECTED_FOR_DENY = [
+  ".jig/config.jsonc",
+  "eslint.config.*",
+  "tsconfig*.json",
+  ".oxlintrc.json",
+  "stratum.config.jsonc",
+  ".github/workflows/**",
+  ".gitlab-ci.yml",
+  ".husky/**"
+];
+var RECOMMENDED_DENY = PROTECTED_FOR_DENY.flatMap((path) => [`Edit(${path})`, `Write(${path})`]);
+var formatDenyBlock = () => {
+  const pairs = PROTECTED_FOR_DENY.map((path) => `      "Edit(${path})", "Write(${path})"`);
+  return ["{", '  "permissions": {', '    "deny": [', pairs.join(",\n"), "    ]", "  }", "}"].join("\n");
+};
+var ok = (text) => ({ status: "ok", text });
+var warn = (text) => ({ status: "warn", text });
+var fail2 = (text) => ({ status: "fail", text });
+var checkNode = () => {
+  const version2 = process.versions.node;
+  const major = Number(version2.split(".")[0]);
+  return major >= MIN_NODE_MAJOR ? ok(`node: ${version2}`) : fail2(`node: ${version2}, Node >= ${MIN_NODE_MAJOR} required`);
+};
+var checkConfig = (projectRoot) => {
+  const path = jigPaths(projectRoot).config;
+  if (!existsSync4(path)) return ok(`config: ${path} absent, defaults apply`);
+  const { error } = loadConfig(projectRoot);
+  return error === void 0 ? ok(`config: ${path} valid`) : fail2(`config: ${path} invalid: ${error}`);
+};
+var firstExisting = (projectRoot, names) => names.map((name) => join7(projectRoot, name)).find((path) => existsSync4(path));
+var checkTool = (projectRoot, tools, spec) => {
+  const found = tools[spec.key];
+  if (found !== void 0) {
+    const config2 = "config" in found ? ` config ${found.config}` : "";
+    return ok(`${spec.label}: ${found.bin.join(" ")}${config2}`);
+  }
+  const shim = findUnresolvedShim(spec.command);
+  if (shim !== void 0) return warn(`${spec.label}: shim ${shim} has no recognizable target, tool not used`);
+  const config = firstExisting(projectRoot, spec.configs);
+  if (config === void 0) return ok(`${spec.label}: not used`);
+  return warn(`${spec.label}: ${config} found, binary not found, tool not used`);
+};
+var checkGitignore = (projectRoot) => {
+  const path = jigPaths(projectRoot).gitignore;
+  return existsSync4(path) ? ok(`gitignore: ${path}`) : warn(`gitignore: ${path} missing, jig creates it on first run`);
+};
+var readDenyList = (path) => {
+  const settings = parseJsonc(readFileSync8(path, "utf8"));
+  const deny = settings?.permissions?.deny;
+  return Array.isArray(deny) ? deny.filter((entry) => typeof entry === "string") : [];
+};
+var checkDeny = (projectRoot) => {
+  const path = join7(projectRoot, ".claude", "settings.json");
+  let deny = [];
+  if (existsSync4(path)) {
+    try {
+      deny = readDenyList(path);
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      return { ...warn(`deny: ${path} unreadable (${reason}), add the recommended block:`), block: formatDenyBlock() };
+    }
+  }
+  const missing = RECOMMENDED_DENY.filter((entry) => !deny.includes(entry));
+  if (missing.length === 0) return ok(`deny: ${path} has the recommended block`);
+  const text = `deny: ${path} misses ${missing.length} of ${RECOMMENDED_DENY.length} rules (${missing.join(", ")}), add the recommended block:`;
+  return { ...warn(text), block: formatDenyBlock() };
+};
+var checkAtomPaths = (projectRoot, pluginRoot) => {
+  const files = gitLsFiles(projectRoot);
+  const checks = [];
+  let globs = 0;
+  for (const atom of readAtomIndex(pluginRoot)) {
+    for (const glob of atom.paths ?? []) {
+      globs++;
+      const matches = createMatcher([glob]);
+      if (!files.some(matches)) {
+        checks.push(warn(`atom ${atom.name}: paths glob ${glob} matches no file`));
+      }
+    }
+  }
+  return checks.length > 0 ? checks : [ok(`atoms: ${globs} paths globs match files`)];
+};
+var checkJournal = (projectRoot) => {
+  const files = listJournalFiles(projectRoot);
+  const bytes = files.reduce((total, file) => total + file.size, 0);
+  const text = `journal: ${(bytes / BYTES_PER_MB).toFixed(1)} MB in ${files.length} files`;
+  return bytes > JOURNAL_MAX_BYTES ? warn(`${text}, above ${JOURNAL_MAX_BYTES / BYTES_PER_MB} MB`) : ok(text);
+};
+var checkLock = (path) => {
+  if (!existsSync4(path)) return ok(`lock: ${path} free`);
+  if (isLockAbandoned(path)) return warn(`lock: ${path} abandoned, remove it`);
+  const holder = readLock(path);
+  return ok(`lock: ${path} held${holder === void 0 ? "" : ` by pid ${holder.pid}`}`);
+};
+var formatCheck = (check) => {
+  const line = `${check.status.padEnd(STATUS_WIDTH)} ${check.text}`;
+  return check.block === void 0 ? line : `${line}
+${check.block}`;
+};
+var runDoctor = (args) => {
+  if (args.length > 0) {
+    throw new Error("usage: jig doctor");
+  }
+  const projectRoot = resolveProjectRoot(process.cwd());
+  const pluginRoot = resolvePluginRoot();
+  const paths = jigPaths(projectRoot);
+  const tools = detectTools(projectRoot);
+  const checks = [
+    checkNode(),
+    ok(`plugin: ${pluginRoot}`),
+    ok(`project: ${projectRoot}`),
+    checkConfig(projectRoot),
+    ...TOOLS.map((spec) => checkTool(projectRoot, tools, spec)),
+    checkGitignore(projectRoot),
+    checkDeny(projectRoot),
+    ...checkAtomPaths(projectRoot, pluginRoot),
+    checkJournal(projectRoot),
+    checkLock(paths.heavyLock),
+    checkLock(join7(paths.cache, "slot.lock"))
+  ];
+  process.stdout.write(`${checks.map(formatCheck).join("\n")}
+`);
+  return checks.some((check) => check.status === "fail") ? 1 : 0;
+};
+
+// src/loop/loop.ts
+import { mkdirSync as mkdirSync7, writeFileSync as writeFileSync4 } from "node:fs";
+import { join as join8 } from "node:path";
+var DEFAULT_DAYS = 7;
+var DAY_MS2 = 24 * 60 * 60 * 1e3;
+var MIN_RECORDS = 2;
+var MIN_TURNS = 2;
+var MAX_EXAMPLES = 3;
+var SINGLE_RECORD_KINDS = /* @__PURE__ */ new Set(["gate-giveup", "gate-unresolved", "hook-failure", "tool-failure"]);
+var DISTINCT_TURN_KINDS = /* @__PURE__ */ new Set(["deny", "finding"]);
+var TURN_CLOSING_KINDS = /* @__PURE__ */ new Set(["gate-pass", "gate-skipped", "gate-unresolved", "gate-giveup"]);
+var byTime = (left, right) => Date.parse(left.ts) - Date.parse(right.ts);
+var assignTurns = (records) => {
+  const closedTurns = /* @__PURE__ */ new Map();
+  const turns = /* @__PURE__ */ new Map();
+  for (const record of records) {
+    const actor = `${record.session}\0${record.agent}`;
+    const index = closedTurns.get(actor) ?? 0;
+    turns.set(record, `${actor}\0${index}`);
+    if (TURN_CLOSING_KINDS.has(record.kind)) {
+      closedTurns.set(actor, index + 1);
+    }
+  }
+  return turns;
+};
+var isCandidate = (group) => {
+  if (SINGLE_RECORD_KINDS.has(group.kind)) return true;
+  if (DISTINCT_TURN_KINDS.has(group.kind)) return group.turns.size >= MIN_TURNS;
+  return group.records.length >= MIN_RECORDS;
+};
+var compareCandidates = (left, right) => right.count - left.count || left.kind.localeCompare(right.kind) || (left.rule ?? "").localeCompare(right.rule ?? "") || (left.file ?? "").localeCompare(right.file ?? "");
+var findCandidates = (records) => {
+  const sorted = [...records].sort(byTime);
+  const turns = assignTurns(sorted);
+  const groups = /* @__PURE__ */ new Map();
+  for (const record of sorted) {
+    const key = JSON.stringify([record.kind, record.rule ?? null, record.file ?? null]);
+    let group = groups.get(key);
+    if (group === void 0) {
+      group = {
+        kind: record.kind,
+        records: [],
+        turns: /* @__PURE__ */ new Set(),
+        ...record.rule !== void 0 && { rule: record.rule },
+        ...record.file !== void 0 && { file: record.file }
+      };
+      groups.set(key, group);
+    }
+    group.records.push(record);
+    group.turns.add(turns.get(record) ?? "");
+  }
+  return [...groups.values()].filter(isCandidate).map((group) => ({
+    kind: group.kind,
+    ...group.rule !== void 0 && { rule: group.rule },
+    ...group.file !== void 0 && { file: group.file },
+    count: group.records.length,
+    examples: group.records.slice(0, MAX_EXAMPLES)
+  })).sort(compareCandidates);
+};
+var cell = (text) => text.replace(/\r?\n/g, " ").replace(/\|/g, "\\|");
+var formatLocation = (record) => {
+  if (record.file === void 0) return void 0;
+  return record.line === void 0 ? record.file : `${record.file}:${record.line}`;
+};
+var formatExample = (record) => {
+  const location = formatLocation(record);
+  const parts = [location === void 0 ? void 0 : `\`${location}\``, record.ts, record.message];
+  return cell(parts.filter((part) => part !== void 0).join(" "));
+};
+var formatCandidates = (candidates, from, to, days) => {
+  const header = [
+    "# jig loop candidates",
+    "",
+    `Window: ${from.toISOString()} .. ${to.toISOString()} (${days} days)`,
+    ""
+  ];
+  if (candidates.length === 0) return [...header, "No candidates.", ""].join("\n");
+  const rows = candidates.map(
+    (candidate) => `| ${candidate.kind} | ${cell(candidate.rule ?? "")} | ${candidate.count} | ${candidate.examples.map(formatExample).join("<br>")} |`
+  );
+  return [...header, "| Signal | Rule | Count | Examples |", "| --- | --- | --- | --- |", ...rows, ""].join("\n");
+};
+var parseDays = (args) => {
+  if (args.length === 0) return DEFAULT_DAYS;
+  const [flag, value, ...rest] = args;
+  const days = Number(value);
+  const isValid = flag === "--days" && rest.length === 0 && Number.isInteger(days) && days > 0;
+  if (!isValid) {
+    throw new Error("usage: jig loop [--days <positive integer>]");
+  }
+  return days;
+};
+var runLoop = (args) => {
+  const days = parseDays(args);
+  const projectRoot = resolveProjectRoot(process.cwd());
+  const to = /* @__PURE__ */ new Date();
+  const from = new Date(to.getTime() - days * DAY_MS2);
+  const candidates = findCandidates(readJournal(projectRoot, from.getTime()));
+  const dir = join8(ensureJigDir(projectRoot).runs, "_loop", to.toISOString().slice(0, 10));
+  mkdirSync7(dir, { recursive: true });
+  const path = join8(dir, "candidates.md");
+  writeFileSync4(path, formatCandidates(candidates, from, to, days));
+  process.stdout.write(`${path}
+`);
+  return 0;
+};
+
 // src/cli/main.ts
 var EXIT_FAILURE = 2;
-var MIN_NODE_MAJOR = 20;
+var MIN_NODE_MAJOR2 = 20;
 var runVersion = () => {
   process.stdout.write(`jig ${version}
 `);
@@ -1004,9 +1555,12 @@ var runVersion = () => {
 var commands = /* @__PURE__ */ new Map([
   ["build", runBuild],
   ["atom", runAtom],
+  ["dash", runDash],
+  ["loop", runLoop],
+  ["doctor", runDoctor],
   ["version", runVersion]
 ]);
-var fail2 = (message) => {
+var fail3 = (message) => {
   process.stderr.write(`jig: ${message}
 `);
   return EXIT_FAILURE;
@@ -1014,22 +1568,22 @@ var fail2 = (message) => {
 var run = async (argv) => {
   const nodeVersion = process.versions.node;
   const nodeMajor = Number(nodeVersion.split(".")[0]);
-  if (nodeMajor < MIN_NODE_MAJOR) {
-    return fail2(`Node >= ${MIN_NODE_MAJOR} required, found ${nodeVersion}`);
+  if (nodeMajor < MIN_NODE_MAJOR2) {
+    return fail3(`Node >= ${MIN_NODE_MAJOR2} required, found ${nodeVersion}`);
   }
   const [name, ...args] = argv;
   if (name === void 0) {
-    return fail2(`missing command, expected one of: ${[...commands.keys()].join(", ")}`);
+    return fail3(`missing command, expected one of: ${[...commands.keys()].join(", ")}`);
   }
   const command = commands.get(name);
   if (command === void 0) {
-    return fail2(`unknown command ${name}`);
+    return fail3(`unknown command ${name}`);
   }
   try {
     return await command(args);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    return fail2(message);
+    return fail3(message);
   }
 };
 process.exitCode = await run(process.argv.slice(2));
