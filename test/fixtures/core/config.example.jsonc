@@ -1,0 +1,26 @@
+{
+  "$schema": "https://raw.githubusercontent.com/PetukhovArt/jig/main/schema/config.schema.json",
+  // Severity per rule: off | warn | error. Missing keys use the default (error).
+  "rules": {
+    "jig/comments": "error",
+    "jig/suppressions": "error",
+    "jig/protected-paths": "error",
+    "jig/no-verify": "error",
+    "jig/test-review": "error",
+    "jig/verify-fact": "error",
+    "gate/oxlint": "error",
+    "gate/stratum": "error",
+    "gate/tsc": "error",
+    "gate/eslint": "error"
+  },
+  "slots": {
+    "worktreesDir": "..",
+    "install": "npm ci --prefer-offline --no-audit --no-fund",
+    "dev": "npm run dev",
+    "runtime": "electron",
+    "ports": { "VITE_SERVER_PORT": { "base": 3000, "step": 10, "target": ".env" } },
+    "cdp": { "base": 9900, "step": 1 },
+    "copyFiles": [".env.local"],
+    "clearCache": []
+  }
+}

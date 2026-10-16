@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/PetukhovArt/jig/main/schema/config.schema.json",
+  "title": "jig project config",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "rules": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "jig/comments": { "$ref": "#/$defs/severity" },
+        "jig/suppressions": { "$ref": "#/$defs/severity" },
+        "jig/protected-paths": { "$ref": "#/$defs/severity" },
+        "jig/no-verify": { "$ref": "#/$defs/severity" },
+        "jig/test-review": { "$ref": "#/$defs/severity" },
+        "jig/verify-fact": { "$ref": "#/$defs/severity" },
+        "gate/oxlint": { "$ref": "#/$defs/severity" },
+        "gate/stratum": { "$ref": "#/$defs/severity" },
+        "gate/tsc": { "$ref": "#/$defs/severity" },
+        "gate/eslint": { "$ref": "#/$defs/severity" }
+      }
+    },
+    "slots": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["worktreesDir"],
+      "properties": {
+        "worktreesDir": { "type": "string" },
+        "install": { "type": "string" },
+        "dev": { "type": "string" },
+        "runtime": { "enum": ["electron", "tauri", "browser", "none"] },
+        "verifyRuntime": { "enum": ["electron", "tauri", "browser"] },
+        "linkedPackages": { "type": "array", "items": { "type": "string" } },
+        "ports": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["base", "step"],
+            "properties": {
+              "base": { "type": "integer", "minimum": 1, "maximum": 65535 },
+              "step": { "type": "integer", "minimum": 1 },
+              "target": { "type": "string", "default": ".env" }
+            }
+          }
+        },
+        "cdp": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["base", "step"],
+          "properties": {
+            "base": { "type": "integer", "minimum": 1, "maximum": 65535 },
+            "step": { "type": "integer", "minimum": 1 }
+          }
+        },
+        "instance": { "type": "object" },
+        "copyFiles": { "type": "array", "items": { "type": "string" } },
+        "clearCache": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  },
+  "$defs": {
+    "severity": { "enum": ["off", "warn", "error"] }
+  }
+}
