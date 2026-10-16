@@ -1,0 +1,7 @@
+schema_version: "1.1"
+name: tests
+description: A filter string parser without tests.
+tags: [tests]
+context:
+  scaffold_script: scaffold.sh
+  add_dirs: []

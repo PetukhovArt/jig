@@ -1,0 +1,7 @@
+schema_version: "1.1"
+name: bug-fix
+description: Off-by-one on the last page of a paginated list; the existing test misses it.
+tags: [bug]
+context:
+  scaffold_script: scaffold.sh
+  add_dirs: []

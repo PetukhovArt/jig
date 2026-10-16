@@ -1,0 +1,7 @@
+schema_version: "1.1"
+name: feature-ui
+description: Status filter for a camera list that must survive a reload through the existing storage module.
+tags: [feature]
+context:
+  scaffold_script: scaffold.sh
+  add_dirs: []

@@ -1,0 +1,26 @@
+{
+  "name": "camera-console",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "ci": "tsc --noEmit && eslint . && vitest run"
+  },
+  "dependencies": {
+    "vue": "^3.5.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.30.0",
+    "@vitejs/plugin-vue": "^6.0.0",
+    "eslint": "^9.30.0",
+    "typescript": "~5.9.0",
+    "typescript-eslint": "^8.40.0",
+    "vite": "^7.0.0",
+    "vitest": "^4.0.0"
+  }
+}
