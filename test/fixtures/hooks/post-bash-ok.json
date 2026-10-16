@@ -1,0 +1,31 @@
+{
+  "name": "post-bash",
+  "input": {
+    "session_id": "s1",
+    "transcript_path": "/tmp/t.jsonl",
+    "cwd": "${PROJECT}",
+    "permission_mode": "default",
+    "hook_event_name": "PostToolUse",
+    "tool_name": "Bash",
+    "tool_input": {
+      "command": "npx agent-view snap"
+    },
+    "tool_response": {
+      "stdout": "ok",
+      "stderr": "",
+      "interrupted": false,
+      "isImage": false
+    },
+    "duration_ms": 120
+  },
+  "expected": {
+    "base": {
+      "sessionId": "s1"
+    },
+    "event": {
+      "kind": "post-bash",
+      "command": "npx agent-view snap",
+      "ok": true
+    }
+  }
+}

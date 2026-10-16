@@ -1,0 +1,29 @@
+{
+  "name": "post-edit",
+  "input": {
+    "session_id": "s1",
+    "transcript_path": "/tmp/t.jsonl",
+    "cwd": "${PROJECT}",
+    "permission_mode": "default",
+    "hook_event_name": "PostToolUse",
+    "tool_name": "Edit",
+    "tool_input": {
+      "file_path": "${PROJECT}/src/a.ts",
+      "old_string": "1",
+      "new_string": "2"
+    },
+    "tool_response": {
+      "filePath": "${PROJECT}/src/a.ts"
+    },
+    "duration_ms": 4
+  },
+  "expected": {
+    "base": {
+      "sessionId": "s1"
+    },
+    "event": {
+      "kind": "post-edit",
+      "file": "src/a.ts"
+    }
+  }
+}

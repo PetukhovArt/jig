@@ -1,0 +1,24 @@
+{
+  "name": "pre-bash",
+  "input": {
+    "session_id": "s1",
+    "transcript_path": "/tmp/t.jsonl",
+    "cwd": "${PROJECT}",
+    "permission_mode": "default",
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Bash",
+    "tool_use_id": "t2",
+    "tool_input": {
+      "command": "git commit -m wip"
+    }
+  },
+  "expected": {
+    "base": {
+      "sessionId": "s1"
+    },
+    "event": {
+      "kind": "pre-bash",
+      "command": "git commit -m wip"
+    }
+  }
+}

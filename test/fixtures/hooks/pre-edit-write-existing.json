@@ -1,0 +1,34 @@
+{
+  "name": "pre-edit",
+  "files": {
+    "src/old.ts": "export const old = 1\n"
+  },
+  "input": {
+    "session_id": "s1",
+    "transcript_path": "/tmp/t.jsonl",
+    "cwd": "${PROJECT}",
+    "permission_mode": "default",
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Write",
+    "tool_input": {
+      "file_path": "${PROJECT}/src/old.ts",
+      "content": "export const old = 2\n"
+    }
+  },
+  "expected": {
+    "base": {
+      "sessionId": "s1"
+    },
+    "event": {
+      "kind": "pre-edit",
+      "file": "src/old.ts",
+      "edits": [
+        {
+          "before": "export const old = 1\n",
+          "after": "export const old = 2\n"
+        }
+      ],
+      "wholeFile": "export const old = 2\n"
+    }
+  }
+}

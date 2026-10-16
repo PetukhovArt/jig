@@ -1,0 +1,21 @@
+{
+  "name": "stop",
+  "input": {
+    "session_id": "s1",
+    "transcript_path": "/tmp/t.jsonl",
+    "cwd": "${PROJECT}",
+    "permission_mode": "default",
+    "hook_event_name": "Stop",
+    "stop_hook_active": true,
+    "last_assistant_message": "done"
+  },
+  "expected": {
+    "base": {
+      "sessionId": "s1"
+    },
+    "event": {
+      "kind": "stop",
+      "stopHookActive": true
+    }
+  }
+}

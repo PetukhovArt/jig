@@ -1,0 +1,43 @@
+{
+  "name": "pre-edit",
+  "input": {
+    "session_id": "s1",
+    "transcript_path": "/tmp/t.jsonl",
+    "cwd": "${PROJECT}",
+    "permission_mode": "default",
+    "hook_event_name": "PreToolUse",
+    "tool_name": "MultiEdit",
+    "tool_input": {
+      "file_path": "${PROJECT}/src/a.ts",
+      "edits": [
+        {
+          "old_string": "a",
+          "new_string": "b"
+        },
+        {
+          "old_string": "c",
+          "new_string": "d"
+        }
+      ]
+    }
+  },
+  "expected": {
+    "base": {
+      "sessionId": "s1"
+    },
+    "event": {
+      "kind": "pre-edit",
+      "file": "src/a.ts",
+      "edits": [
+        {
+          "before": "a",
+          "after": "b"
+        },
+        {
+          "before": "c",
+          "after": "d"
+        }
+      ]
+    }
+  }
+}

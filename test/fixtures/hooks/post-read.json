@@ -1,0 +1,24 @@
+{
+  "name": "post-read",
+  "input": {
+    "session_id": "s1",
+    "transcript_path": "/tmp/t.jsonl",
+    "cwd": "${PROJECT}",
+    "permission_mode": "default",
+    "hook_event_name": "PostToolUse",
+    "tool_name": "Read",
+    "tool_input": {
+      "file_path": "${PROJECT}/src/view.vue"
+    },
+    "tool_response": {}
+  },
+  "expected": {
+    "base": {
+      "sessionId": "s1"
+    },
+    "event": {
+      "kind": "post-read",
+      "file": "src/view.vue"
+    }
+  }
+}

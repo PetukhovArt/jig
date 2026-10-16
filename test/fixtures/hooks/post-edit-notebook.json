@@ -1,0 +1,25 @@
+{
+  "name": "post-edit",
+  "input": {
+    "session_id": "s1",
+    "transcript_path": "/tmp/t.jsonl",
+    "cwd": "${PROJECT}",
+    "permission_mode": "default",
+    "hook_event_name": "PostToolUse",
+    "tool_name": "NotebookEdit",
+    "tool_input": {
+      "notebook_path": "${PROJECT}/nb/x.ipynb",
+      "new_source": "print(1)"
+    },
+    "tool_response": {}
+  },
+  "expected": {
+    "base": {
+      "sessionId": "s1"
+    },
+    "event": {
+      "kind": "post-edit",
+      "file": "nb/x.ipynb"
+    }
+  }
+}

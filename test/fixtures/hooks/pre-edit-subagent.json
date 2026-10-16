@@ -1,0 +1,34 @@
+{
+  "name": "pre-edit",
+  "input": {
+    "session_id": "s1",
+    "transcript_path": "/tmp/t.jsonl",
+    "cwd": "${PROJECT}",
+    "permission_mode": "default",
+    "agent_id": "ag-7",
+    "agent_type": "implementer",
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Edit",
+    "tool_input": {
+      "file_path": "${PROJECT}/src/a.ts",
+      "old_string": "1",
+      "new_string": "2"
+    }
+  },
+  "expected": {
+    "base": {
+      "sessionId": "s1",
+      "agentId": "ag-7"
+    },
+    "event": {
+      "kind": "pre-edit",
+      "file": "src/a.ts",
+      "edits": [
+        {
+          "before": "1",
+          "after": "2"
+        }
+      ]
+    }
+  }
+}

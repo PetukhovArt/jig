@@ -1,0 +1,23 @@
+{
+  "name": "subagent-start",
+  "input": {
+    "session_id": "s1",
+    "transcript_path": "/tmp/t.jsonl",
+    "cwd": "${PROJECT}",
+    "permission_mode": "default",
+    "agent_id": "ag-7",
+    "agent_type": "implementer",
+    "hook_event_name": "SubagentStart"
+  },
+  "expected": {
+    "base": {
+      "sessionId": "s1",
+      "agentId": "ag-7"
+    },
+    "event": {
+      "kind": "subagent-start",
+      "agentId": "ag-7",
+      "agentType": "implementer"
+    }
+  }
+}

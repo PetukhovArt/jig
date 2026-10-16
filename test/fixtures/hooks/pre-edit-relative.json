@@ -1,0 +1,31 @@
+{
+  "name": "pre-edit",
+  "input": {
+    "session_id": "s1",
+    "transcript_path": "/tmp/t.jsonl",
+    "cwd": "${PROJECT}/src",
+    "permission_mode": "default",
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Edit",
+    "tool_input": {
+      "file_path": "lib/b.ts",
+      "old_string": "x",
+      "new_string": "y"
+    }
+  },
+  "expected": {
+    "base": {
+      "sessionId": "s1"
+    },
+    "event": {
+      "kind": "pre-edit",
+      "file": "src/lib/b.ts",
+      "edits": [
+        {
+          "before": "x",
+          "after": "y"
+        }
+      ]
+    }
+  }
+}
