@@ -1,0 +1,24 @@
+{
+  "name": "jig",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "check": "node scripts/build.mjs --check && node scripts/sync-plugin-version.mjs --check && tsc --noEmit && vitest run && node bin/jig.mjs build --atoms-only",
+    "test": "vitest run",
+    "eval:prepare": "npm --prefix evals/_fixture-base install --no-audit --no-fund && node -e \"require('fs').cpSync('evals/_fixture-base/node_modules','evals/_toolchain/node_modules',{recursive:true})\"",
+    "changeset": "changeset",
+    "version": "changeset version && node scripts/sync-plugin-version.mjs && npm run build"
+  },
+  "devDependencies": {
+    "@changesets/changelog-github": "^0.7.0",
+    "@changesets/cli": "^2.30.0",
+    "@types/node": "^22.0.0",
+    "esbuild": "^0.28.0",
+    "typescript": "^5.9.0",
+    "vitest": "^4.0.0"
+  }
+}

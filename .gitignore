@@ -147,3 +147,8 @@ vite.config.ts.timestamp-*
 
 # Turbo Repo
 .turbo
+
+# jig
+evals/**/results/
+evals/_toolchain/
+evals/private/
