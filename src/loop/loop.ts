@@ -32,7 +32,7 @@ interface Group {
 const byTime = (left: JournalRecord, right: JournalRecord): number => Date.parse(left.ts) - Date.parse(right.ts)
 
 const turnKey = (record: JournalRecord, index: number): string =>
-  record.turn === undefined ? `record:${index}` : JSON.stringify([record.session, record.agent, record.turn])
+  record.turn === undefined ? `record:${index}` : JSON.stringify([record.session, record.turn])
 
 const isCandidate = (group: Group): boolean => {
   if (SINGLE_RECORD_KINDS.has(group.kind)) return true

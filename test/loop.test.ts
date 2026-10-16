@@ -83,9 +83,9 @@ describe('jig loop', () => {
     expect(signals(records)).toEqual(['deny jig/comments 2', 'finding no-unused-vars 2', 'gate-block gate/tsc 2'])
   })
 
-  it('counts a subagent turn apart from the main agent turn', () => {
+  it('counts a subagent record in the same turn as that turn', () => {
     const deny = { kind: 'deny', rule: 'jig/protected-paths', file: '.husky/pre-commit' } as const
-    expect(signals([record(deny), record({ ...deny, agent: 'agent-7' })])).toEqual(['deny jig/protected-paths 2'])
+    expect(signals([record(deny), record({ ...deny, agent: 'agent-7' })])).toEqual([])
   })
 
   it('treats each record without a turn as its own turn', () => {
