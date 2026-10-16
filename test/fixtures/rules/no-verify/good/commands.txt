@@ -1,0 +1,6 @@
+git commit -m "no-verify docs"
+git log -n 5
+git push -n
+git commit -am "message"
+git commit -m -n
+git status

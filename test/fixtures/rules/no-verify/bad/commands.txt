@@ -1,0 +1,9 @@
+git commit -m x --no-verify
+git commit -nm x
+HUSKY=0 git commit -m x
+git push --no-verify
+git -c core.hooksPath=/dev/null commit -m x
+git add . && git commit --no-verify -m x
+HUSKY_SKIP_HOOKS=1 git commit -m x
+git config core.hooksPath .nohooks
+git commit -anm x

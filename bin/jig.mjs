@@ -5,7 +5,7 @@ var version = "0.1.0";
 
 // src/atoms/atoms.ts
 import { readdirSync as readdirSync3, readFileSync as readFileSync5 } from "node:fs";
-import { basename as basename2, join as join4 } from "node:path";
+import { basename as basename2, join as join5 } from "node:path";
 
 // src/core/frontmatter.ts
 var FrontmatterError = class extends Error {
@@ -24,11 +24,11 @@ var fail = (cursor, message) => {
   throw new FrontmatterError(message, cursor.line);
 };
 var readDoubleQuoted = (cursor) => {
-  const { text } = cursor;
+  const { text: text2 } = cursor;
   let value = "";
   let index = cursor.index + 1;
-  while (index < text.length) {
-    const char = text[index] ?? "";
+  while (index < text2.length) {
+    const char = text2[index] ?? "";
     if (char === '"') {
       cursor.index = index + 1;
       return value;
@@ -38,9 +38,9 @@ var readDoubleQuoted = (cursor) => {
       index++;
       continue;
     }
-    const escape = text[index + 1] ?? "";
+    const escape = text2[index + 1] ?? "";
     if (escape === "u") {
-      const hex = text.slice(index + 2, index + 6);
+      const hex = text2.slice(index + 2, index + 6);
       if (!/^[0-9a-fA-F]{4}$/.test(hex)) fail(cursor, `invalid escape \\u${hex}`);
       value += String.fromCharCode(Number.parseInt(hex, 16));
       index += 6;
@@ -52,17 +52,17 @@ var readDoubleQuoted = (cursor) => {
   return fail(cursor, "unterminated double-quoted string");
 };
 var readSingleQuoted = (cursor) => {
-  const { text } = cursor;
+  const { text: text2 } = cursor;
   let value = "";
   let index = cursor.index + 1;
-  while (index < text.length) {
-    const char = text[index] ?? "";
+  while (index < text2.length) {
+    const char = text2[index] ?? "";
     if (char !== "'") {
       value += char;
       index++;
       continue;
     }
-    if (text[index + 1] === "'") {
+    if (text2[index + 1] === "'") {
       value += "'";
       index += 2;
       continue;
@@ -80,9 +80,9 @@ var isRestEmpty = (cursor) => {
   const rest = cursor.text.slice(cursor.index);
   return rest === "" || rest.startsWith("#");
 };
-var stripPlainComment = (text) => {
-  const match = /(^|\s)#/.exec(text);
-  return (match ? text.slice(0, match.index) : text).trim();
+var stripPlainComment = (text2) => {
+  const match = /(^|\s)#/.exec(text2);
+  return (match ? text2.slice(0, match.index) : text2).trim();
 };
 var readFlowItem = (cursor) => {
   const char = cursor.text[cursor.index];
@@ -124,8 +124,8 @@ var readInlineValue = (cursor) => {
   if (!isRestEmpty(cursor)) fail(cursor, "unexpected text after value");
   return value;
 };
-var readScalar = (text, line) => {
-  const cursor = { text, index: 0, line };
+var readScalar = (text2, line) => {
+  const cursor = { text: text2, index: 0, line };
   const value = readInlineValue(cursor);
   if (Array.isArray(value)) return fail(cursor, "nested arrays are not supported");
   return value;
@@ -163,8 +163,8 @@ var parseBlock = (lines, firstLine2) => {
   }
   return data;
 };
-var parseFrontmatter = (text) => {
-  const lines = text.replace(/^﻿/, "").replace(/\r\n/g, "\n").split("\n");
+var parseFrontmatter = (text2) => {
+  const lines = text2.replace(/^﻿/, "").replace(/\r\n/g, "\n").split("\n");
   if (lines[0]?.trimEnd() !== FENCE) return void 0;
   const closing = lines.findIndex((line, index) => index > 0 && line.trimEnd() === FENCE);
   if (closing === -1) throw new FrontmatterError('missing closing "---"', lines.length);
@@ -261,6 +261,7 @@ var createMatcher = (globs) => {
   const pattern = new RegExp(`^(?:${globs.map(globToRegExpSource).join("|")})$`);
   return (path) => pattern.test(path.replace(/\\/g, "/"));
 };
+var matchGlob = (path, glob) => createMatcher(typeof glob === "string" ? [glob] : glob)(path);
 
 // src/core/paths.ts
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
@@ -282,16 +283,37 @@ var git = (args, cwd, input) => {
   }
   return { ok: result.status === 0, code: result.status, stdout: result.stdout, stderr: result.stderr };
 };
-var firstLine = (text) => {
-  const line = text.split("\n")[0]?.trim();
+var firstLine = (text2) => {
+  const line = text2.split("\n")[0]?.trim();
   return line === "" ? void 0 : line;
 };
 var gitToplevel = (cwd) => {
   const result = git(["rev-parse", "--show-toplevel"], cwd);
   return result.ok ? firstLine(result.stdout) : void 0;
 };
+var gitStatus = (cwd) => {
+  const result = git(["status", "--porcelain=v1", "-z", "--untracked-files=all"], cwd);
+  if (!result.ok) return void 0;
+  const tokens = result.stdout.split("\0");
+  const entries = [];
+  for (let index = 0; index < tokens.length; index++) {
+    const token = tokens[index] ?? "";
+    if (token.length < 4) continue;
+    const status = token.slice(0, 2);
+    entries.push({ status, path: token.slice(3) });
+    const hasOriginalPath = status.includes("R") || status.includes("C");
+    if (hasOriginalPath) {
+      index++;
+    }
+  }
+  return entries;
+};
 var gitLsFiles = (cwd) => {
   const result = git(["ls-files", "-z"], cwd);
+  return result.ok ? result.stdout.split("\0").filter(Boolean) : [];
+};
+var gitStagedFiles = (cwd) => {
+  const result = git(["diff", "--cached", "--name-only", "-z"], cwd);
   return result.ok ? result.stdout.split("\0").filter(Boolean) : [];
 };
 var gitCurrentBranch = (cwd) => {
@@ -342,11 +364,15 @@ var ensureJigDir = (projectRoot) => {
   return paths;
 };
 var toSlash = (path) => path.replace(/\\/g, "/");
+var toProjectPath = (projectRoot, file, cwd = projectRoot) => {
+  const absolute = isAbsolute(file) ? file : resolve(cwd, file);
+  return toSlash(relative(projectRoot, absolute));
+};
 
 // src/core/plan.ts
 import { createHash } from "node:crypto";
 import { mkdirSync as mkdirSync4, readdirSync as readdirSync2, readFileSync as readFileSync4, statSync as statSync3 } from "node:fs";
-import { dirname as dirname3, join as join3 } from "node:path";
+import { dirname as dirname3, join as join4 } from "node:path";
 
 // src/core/config.ts
 import { existsSync as existsSync2, readFileSync } from "node:fs";
@@ -354,11 +380,11 @@ import { existsSync as existsSync2, readFileSync } from "node:fs";
 // src/core/jsonc.ts
 var BOM = "\uFEFF";
 var isWhitespace = (char) => char === " " || char === "	" || char === "\n" || char === "\r";
-var blank = (text) => text.replace(/[^\n]/g, " ");
-var skipString = (text, start) => {
+var blank = (text2) => text2.replace(/[^\n]/g, " ");
+var skipString = (text2, start) => {
   let index = start + 1;
-  while (index < text.length) {
-    const char = text[index];
+  while (index < text2.length) {
+    const char = text2[index];
     if (char === "\\") {
       index += 2;
       continue;
@@ -368,33 +394,33 @@ var skipString = (text, start) => {
   }
   return index;
 };
-var commentEnd = (text, start) => {
-  const next = text[start + 1];
+var commentEnd = (text2, start) => {
+  const next = text2[start + 1];
   if (next === "/") {
-    const newline = text.indexOf("\n", start);
-    return newline === -1 ? text.length : newline;
+    const newline = text2.indexOf("\n", start);
+    return newline === -1 ? text2.length : newline;
   }
   if (next === "*") {
-    const close = text.indexOf("*/", start + 2);
+    const close = text2.indexOf("*/", start + 2);
     if (close === -1) throw new SyntaxError("unterminated block comment");
     return close + 2;
   }
   return void 0;
 };
-var stripComments = (text) => {
+var stripComments = (text2) => {
   let output = "";
   let index = 0;
-  while (index < text.length) {
-    const char = text[index];
+  while (index < text2.length) {
+    const char = text2[index];
     if (char === '"') {
-      const end2 = skipString(text, index);
-      output += text.slice(index, end2);
+      const end2 = skipString(text2, index);
+      output += text2.slice(index, end2);
       index = end2;
       continue;
     }
-    const end = char === "/" ? commentEnd(text, index) : void 0;
+    const end = char === "/" ? commentEnd(text2, index) : void 0;
     if (end !== void 0) {
-      output += blank(text.slice(index, end));
+      output += blank(text2.slice(index, end));
       index = end;
       continue;
     }
@@ -403,13 +429,13 @@ var stripComments = (text) => {
   }
   return output;
 };
-var stripTrailingCommas = (text) => {
-  const chars = text.split("");
+var stripTrailingCommas = (text2) => {
+  const chars = text2.split("");
   let index = 0;
   while (index < chars.length) {
     const char = chars[index];
     if (char === '"') {
-      index = skipString(text, index);
+      index = skipString(text2, index);
       continue;
     }
     if (char === ",") {
@@ -424,8 +450,8 @@ var stripTrailingCommas = (text) => {
   }
   return chars.join("");
 };
-var parseJsonc = (text) => {
-  const source = text.startsWith(BOM) ? text.slice(1) : text;
+var parseJsonc = (text2) => {
+  const source = text2.startsWith(BOM) ? text2.slice(1) : text2;
   return JSON.parse(stripTrailingCommas(stripComments(source)));
 };
 
@@ -474,8 +500,8 @@ var Validator = class {
     return typeof value === "string" ? value : this.report(path, "expected a string");
   }
   oneOf(value, path, allowed) {
-    const isAllowed = typeof value === "string" && allowed.includes(value);
-    return isAllowed ? value : this.report(path, `expected one of ${allowed.join(", ")}`);
+    const isAllowed2 = typeof value === "string" && allowed.includes(value);
+    return isAllowed2 ? value : this.report(path, `expected one of ${allowed.join(", ")}`);
   }
   integer(value, path, min, max = Number.MAX_SAFE_INTEGER) {
     const isInRange = Number.isInteger(value) && value >= min && value <= max;
@@ -583,10 +609,10 @@ var validateConfig = (value) => {
   const config = slots === void 0 ? { rules } : { rules, slots };
   return { config, errors: validator.errors };
 };
-var parseConfig = (text) => {
+var parseConfig = (text2) => {
   let value;
   try {
-    value = parseJsonc(text);
+    value = parseJsonc(text2);
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
     return { ...defaultConfig(), error: `$: ${reason}` };
@@ -689,8 +715,8 @@ var readText = (path) => {
   }
 };
 var resolveShimTarget = (shimPath) => {
-  const text = readText(shimPath) ?? "";
-  const targets = [...text.matchAll(SHIM_TARGET)].map((match) => (match[1] ?? "").replace(/\\/g, "/")).filter((target2) => !NODE_EXECUTABLE.test(basename(target2)));
+  const text2 = readText(shimPath) ?? "";
+  const targets = [...text2.matchAll(SHIM_TARGET)].map((match) => (match[1] ?? "").replace(/\\/g, "/")).filter((target2) => !NODE_EXECUTABLE.test(basename(target2)));
   const target = targets.at(-1);
   if (target === void 0) return void 0;
   const absolute = resolve2(dirname2(shimPath), target);
@@ -771,10 +797,55 @@ var acquireLock = async (path, waitMs = LOCK_WAIT_MS) => {
 
 // src/core/state.ts
 import { mkdirSync as mkdirSync3, readdirSync, readFileSync as readFileSync3, renameSync, rmSync as rmSync2, statSync as statSync2, writeFileSync as writeFileSync3 } from "node:fs";
+import { join as join3 } from "node:path";
+var MAIN_AGENT = "main";
 var STATE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1e3;
 var RENAME_ATTEMPTS = 20;
 var RENAME_RETRY_CODES = /* @__PURE__ */ new Set(["EPERM", "EACCES", "EBUSY"]);
 var tmpCounter = 0;
+var sessionFileName = (sessionId) => `${sessionId.replace(/[^A-Za-z0-9._-]/g, "_")}.json`;
+var sessionStatePath = (projectRoot, sessionId) => join3(jigPaths(projectRoot).sessions, sessionFileName(sessionId));
+var createSessionState = (sessionId, snapshot, now = /* @__PURE__ */ new Date()) => {
+  const iso = now.toISOString();
+  return {
+    v: 1,
+    sessionId,
+    turn: 0,
+    createdAt: iso,
+    updatedAt: iso,
+    snapshot,
+    edits: [],
+    testChecklistShown: false,
+    delivered: {},
+    sessionAtoms: [],
+    pendingWarnings: [],
+    stop: { consecutiveBlocks: 0 }
+  };
+};
+var resetSnapshot = (state, snapshot) => {
+  state.snapshot = snapshot;
+  state.edits = [];
+};
+var isSessionState = (value) => {
+  if (typeof value !== "object" || value === null) return false;
+  const candidate = value;
+  return candidate.v === 1 && typeof candidate.sessionId === "string" && typeof candidate.snapshot === "object";
+};
+var readState = (projectRoot, sessionId) => {
+  let text2;
+  try {
+    text2 = readFileSync3(sessionStatePath(projectRoot, sessionId), "utf8");
+  } catch {
+    return void 0;
+  }
+  try {
+    const value = JSON.parse(text2);
+    if (!isSessionState(value)) return void 0;
+    return typeof value.turn === "number" ? value : { ...value, turn: 0 };
+  } catch {
+    return void 0;
+  }
+};
 var isRetryable = (error) => error instanceof Error && RENAME_RETRY_CODES.has(error.code ?? "");
 var renameWithRetry = (from, to) => {
   for (let attempt = 1; ; attempt++) {
@@ -790,11 +861,38 @@ var renameWithRetry = (from, to) => {
     }
   }
 };
-var writeFileAtomic = (path, text) => {
+var writeFileAtomic = (path, text2) => {
   tmpCounter++;
   const tmp = `${path}.${process.pid}-${tmpCounter}.tmp`;
-  writeFileSync3(tmp, text);
+  writeFileSync3(tmp, text2);
   renameWithRetry(tmp, path);
+};
+var writeState = (projectRoot, state, now = /* @__PURE__ */ new Date()) => {
+  const path = sessionStatePath(projectRoot, state.sessionId);
+  mkdirSync3(jigPaths(projectRoot).sessions, { recursive: true });
+  state.updatedAt = now.toISOString();
+  writeFileAtomic(path, JSON.stringify(state));
+};
+var pruneStates = (projectRoot, now = Date.now(), maxAgeMs = STATE_MAX_AGE_MS) => {
+  const dir = jigPaths(projectRoot).sessions;
+  let names;
+  try {
+    names = readdirSync(dir);
+  } catch {
+    return [];
+  }
+  const removed = [];
+  for (const name of names) {
+    const path = join3(dir, name);
+    try {
+      if (now - statSync2(path).mtimeMs <= maxAgeMs) continue;
+      rmSync2(path, { force: true });
+      removed.push(name);
+    } catch {
+      continue;
+    }
+  }
+  return removed;
 };
 
 // src/core/plan.ts
@@ -818,8 +916,10 @@ var AGENT_VIEW_CONFIG = "agent-view.config.json";
 var TSCONFIG = "tsconfig.json";
 var TEST_FILE_GLOBS = ["**/*.{test,spec}.{ts,tsx,js,jsx,mts,cts,mjs,cjs}", "**/__tests__/**"];
 var RUNTIME_VISIBLE_GLOBS = ["**/*.{vue,tsx,jsx,svelte,html,css,scss,less}"];
+var AGENT_VIEW_VERIFY_COMMAND = /(?:^|[\s;&|])(?:npx\s+)?agent-view\s+(?:act\s+replay|dom|screenshot|snap|click|fill|wait|eval|drag|key|upload)\b/;
 var isTestFile = createMatcher(TEST_FILE_GLOBS);
 var matchesRuntimeGlob = createMatcher(RUNTIME_VISIBLE_GLOBS);
+var isRuntimeVisible = (path) => matchesRuntimeGlob(path) && !isTestFile(path);
 var HASHED_INPUTS = [
   ...OXLINT_CONFIGS,
   ...ESLINT_CONFIGS,
@@ -839,10 +939,10 @@ var fileStamp = (path) => {
 };
 var isFile2 = (path) => fileStamp(path) !== "missing";
 var planInputsHash = (projectRoot, pluginRoot) => {
-  const lines = [`version:${version}`, `plugin:${pluginRoot}`, ...HASHED_INPUTS.map((name) => `${name}:${fileStamp(join3(projectRoot, name))}`)];
+  const lines = [`version:${version}`, `plugin:${pluginRoot}`, ...HASHED_INPUTS.map((name) => `${name}:${fileStamp(join4(projectRoot, name))}`)];
   return createHash("sha1").update(lines.join("\n")).digest("hex");
 };
-var findConfig = (projectRoot, names) => names.map((name) => join3(projectRoot, name)).find(isFile2);
+var findConfig = (projectRoot, names) => names.map((name) => join4(projectRoot, name)).find(isFile2);
 var withConfig = (config, bin) => config !== void 0 && bin !== void 0 ? { bin, config } : void 0;
 var detectTools = (projectRoot) => {
   const oxlint = withConfig(findConfig(projectRoot, OXLINT_CONFIGS), resolveBin(projectRoot, ["oxlint"], "oxlint"));
@@ -883,14 +983,14 @@ var toPlanAtom = (file) => {
   return atom;
 };
 var readAtomIndex = (pluginRoot) => {
-  const dir = join3(pluginRoot, "atoms");
+  const dir = join4(pluginRoot, "atoms");
   let names;
   try {
     names = readdirSync2(dir);
   } catch {
     return [];
   }
-  return names.filter((name) => name.endsWith(".md")).sort().map((name) => toPlanAtom(join3(dir, name))).filter((atom) => atom !== void 0);
+  return names.filter((name) => name.endsWith(".md")).sort().map((name) => toPlanAtom(join4(dir, name))).filter((atom) => atom !== void 0);
 };
 var buildPlan = (projectRoot, pluginRoot, now = /* @__PURE__ */ new Date()) => ({
   v: 1,
@@ -901,11 +1001,26 @@ var buildPlan = (projectRoot, pluginRoot, now = /* @__PURE__ */ new Date()) => (
   tools: detectTools(projectRoot),
   atoms: readAtomIndex(pluginRoot)
 });
+var readPlan = (projectRoot) => {
+  try {
+    const value = JSON.parse(readFileSync4(jigPaths(projectRoot).plan, "utf8"));
+    return value.v === 1 && typeof value.inputsHash === "string" ? value : void 0;
+  } catch {
+    return void 0;
+  }
+};
 var writePlan = (projectRoot, plan) => {
   const path = jigPaths(projectRoot).plan;
   mkdirSync4(dirname3(path), { recursive: true });
   writeFileAtomic(path, `${JSON.stringify(plan, null, 2)}
 `);
+};
+var loadPlan = (projectRoot, pluginRoot) => {
+  const cached = readPlan(projectRoot);
+  if (cached !== void 0 && cached.inputsHash === planInputsHash(projectRoot, pluginRoot)) return cached;
+  const plan = buildPlan(projectRoot, pluginRoot);
+  writePlan(projectRoot, plan);
+  return plan;
 };
 
 // src/atoms/atoms.ts
@@ -914,6 +1029,8 @@ var KEBAB_CASE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 var DESCRIPTION_START = /^Apply (when|before|after|to) /;
 var MAX_DESCRIPTION_LENGTH = 300;
 var MAX_BODY_LINES = 35;
+var MAX_ATOMS_PER_EVENT = 3;
+var MAX_SESSION_ATOMS = 10;
 var ATOMS_LINE = /^\s*Atoms:(.*)$/gm;
 var listMarkdown = (dir) => {
   try {
@@ -930,18 +1047,18 @@ var readText2 = (path) => {
   }
 };
 var reachableNames = (pluginRoot) => {
-  const skillDir = join4(pluginRoot, "skills", "jig");
-  const flowsDir = join4(skillDir, "flows");
+  const skillDir = join5(pluginRoot, "skills", "jig");
+  const flowsDir = join5(skillDir, "flows");
   const texts = [
-    readText2(join4(skillDir, "SKILL.md")),
-    ...listMarkdown(flowsDir).map((name) => readText2(join4(flowsDir, name)))
-  ].map((text) => text.replace(/\r\n/g, "\n"));
+    readText2(join5(skillDir, "SKILL.md")),
+    ...listMarkdown(flowsDir).map((name) => readText2(join5(flowsDir, name)))
+  ].map((text2) => text2.replace(/\r\n/g, "\n"));
   const names = /* @__PURE__ */ new Set();
-  for (const text of texts) {
-    for (const match of text.matchAll(/atom `([^`]+)`/g)) {
+  for (const text2 of texts) {
+    for (const match of text2.matchAll(/atom `([^`]+)`/g)) {
       names.add(match[1] ?? "");
     }
-    for (const match of text.matchAll(ATOMS_LINE)) {
+    for (const match of text2.matchAll(ATOMS_LINE)) {
       for (const item of (match[1] ?? "").split(",")) {
         names.add(item.trim().replace(/[`.]/g, ""));
       }
@@ -983,9 +1100,9 @@ var checkDescription = (description) => {
   }
   return problems;
 };
-var parseAtomFile = (text) => {
+var parseAtomFile = (text2) => {
   try {
-    return parseFrontmatter(text) ?? "frontmatter is missing";
+    return parseFrontmatter(text2) ?? "frontmatter is missing";
   } catch (error) {
     if (error instanceof FrontmatterError) return `frontmatter is invalid (${error.message})`;
     throw error;
@@ -1015,17 +1132,30 @@ var checkAtom = (path, seen, reachable) => {
   return problems;
 };
 var validateAtoms = (pluginRoot) => {
-  const dir = join4(pluginRoot, "atoms");
+  const dir = join5(pluginRoot, "atoms");
   const reachable = reachableNames(pluginRoot);
   const seen = /* @__PURE__ */ new Set();
   return listMarkdown(dir).flatMap(
-    (name) => checkAtom(join4(dir, name), seen, reachable).map((problem) => `atoms/${name}: ${problem}`)
+    (name) => checkAtom(join5(dir, name), seen, reachable).map((problem) => `atoms/${name}: ${problem}`)
   );
 };
+var selectAtoms = (atoms, file, delivered) => {
+  return atoms.filter((atom) => atom.paths !== void 0 && !delivered.includes(atom.name) && matchGlob(file, atom.paths)).sort((left, right) => left.name.localeCompare(right.name)).slice(0, MAX_ATOMS_PER_EVENT);
+};
 var readAtomBody = (atom) => {
-  const text = readFileSync5(atom.file, "utf8");
-  const body = parseFrontmatter(text)?.body ?? text.replace(/\r\n/g, "\n");
+  const text2 = readFileSync5(atom.file, "utf8");
+  const body = parseFrontmatter(text2)?.body ?? text2.replace(/\r\n/g, "\n");
   return body.replace(/^\n+/, "").replace(/\s+$/, "");
+};
+var formatAtomDelivery = (atom, file) => {
+  return `jig: atom ${atom.name} applies to ${file}:
+${readAtomBody(atom)}`;
+};
+var formatSessionAtoms = (atoms, pluginRoot) => {
+  if (atoms.length === 0) return "";
+  const root = toSlash(pluginRoot);
+  const lines = atoms.slice(-MAX_SESSION_ATOMS).map((atom) => `- ${atom.name} (${root}/atoms/${atom.name}.md): ${atom.description}`);
+  return ["jig: atoms active in this session (read the ones your task touches):", ...lines].join("\n");
 };
 var BUILD_FLAGS = /* @__PURE__ */ new Set(["--atoms-only", "--check"]);
 var runBuild = (args) => {
@@ -1070,7 +1200,7 @@ var runAtom = (args) => {
 
 // src/dash/dash.ts
 import { mkdirSync as mkdirSync5, readFileSync as readFileSync6 } from "node:fs";
-import { dirname as dirname4, join as join5 } from "node:path";
+import { dirname as dirname4, join as join6 } from "node:path";
 
 // src/dash/template.html
 var template_default = "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<meta http-equiv=\"refresh\" content=\"30\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n<title>jig run</title>\n<style>\n*{box-sizing:border-box}\nh1,h2,p,ol,ul{margin:0}\nol,ul{padding:0;list-style:none}\na:focus-visible,button:focus-visible{outline:3px solid currentColor;outline-offset:2px;border-radius:2px}\n@media (prefers-reduced-motion:reduce){*{animation:none!important}}\nbody{--bg:#141B26;--ink:#E6EAF0;--muted:#8A96A8;--go:#2FB38A;--now:#4C8DFF;--stop:#F0564A;--wait:#465264;--sign:#FFC72C;--sign-ink:#14213D;--rule:#2A3444;\n  margin:0;min-height:100vh;background:var(--bg);color:var(--ink);font:15px/1.45 system-ui,-apple-system,'Segoe UI',sans-serif}\nbody.light{--bg:#EEF1F4;--ink:#14213D;--muted:#5B6678;--go:#1F8A70;--now:#2F6FEB;--stop:#E03E2F;--wait:#B8C2CC;--rule:#14213D}\na{color:var(--now)}\n.wrap{padding:24px 32px}\n.head{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap;padding-bottom:14px;border-bottom:2px solid var(--rule)}\n.head h1{font-size:22px;line-height:1.2;font-weight:700;letter-spacing:-.01em}\n.sub{margin-top:3px;color:var(--muted);font-size:14px}\n.pos{font-size:17px;font-weight:500;color:var(--muted);display:flex;gap:14px;align-items:center}\n.pos b{color:var(--ink);font-weight:700}\n.theme{background:none;border:1px solid var(--rule);color:var(--muted);border-radius:6px;padding:2px 8px;font:inherit;font-size:14px;cursor:pointer}\n.body{display:grid;grid-template-columns:minmax(0,1fr) 400px;gap:32px;margin-top:18px;align-items:start}\n.line{width:fit-content;max-width:100%;margin:0 auto}\n.line li{display:grid;grid-template-columns:46px 28px minmax(0,1fr);min-height:36px}\n.line time{font-size:13px;color:var(--muted);padding-top:1px;font-variant-numeric:tabular-nums}\n.st{position:relative}\n.st::before{content:\"\";position:absolute;left:11px;top:6px;bottom:-6px;width:6px;background:var(--c)}\n.line li:last-child .st::before{display:none}\n.st i{position:absolute;left:5px;top:1px;width:18px;height:18px;border-radius:50%;background:var(--bg);border:5px solid var(--c);z-index:1}\n.s-done{--c:var(--go)}\n.s-done .nm{color:var(--muted)}\n.s-todo{--c:var(--wait)}\n.s-todo .st::before{background:repeating-linear-gradient(var(--wait) 0 8px,transparent 8px 14px)}\n.s-blocked{--c:var(--stop)}\n.s-blocked .st i{background:var(--stop)}\n.s-blocked .st i::after{content:\"\";position:absolute;left:1px;right:1px;top:50%;height:3px;margin-top:-1.5px;background:#fff}\n.s-active{--c:var(--now)}\n.s-active .st i{left:1px;top:-3px;width:26px;height:26px;border-width:7px;animation:pulse 1.6s ease-out 1}\n@keyframes pulse{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--now) 60%,transparent)}100%{box-shadow:0 0 0 14px transparent}}\n.nm{padding:0 0 9px 8px}\n.nm b{font-weight:600}\n.nm small{display:block;font-size:13px;color:var(--muted)}\n.s-blocked small,.stale small{color:var(--stop);font-weight:500}\n.here{display:inline-block;margin-left:6px;padding:0 7px;border-radius:4px;background:var(--now);color:#fff;font-size:12px;font-weight:600;vertical-align:1px}\n.signs{display:flex;gap:16px;margin-top:16px;overflow-x:auto;scroll-snap-type:x mandatory;padding-bottom:6px;scrollbar-color:var(--wait) transparent}\n.sign{flex:0 0 min(320px,85%);scroll-snap-align:start;background:var(--sign);color:var(--sign-ink);padding:14px 16px;border-radius:6px}\n.sign h2{font-size:14px;font-weight:700}\n.sign p{margin-top:6px;font-size:15px;line-height:1.4;font-weight:500}\n.sign .def{margin-top:10px;padding-top:8px;border-top:2px solid var(--sign-ink);font-size:14px}\n.sign .when{margin-top:4px;font-size:12px}\naside h2,.decided h2{font-size:14px;font-weight:700}\naside{position:sticky;top:16px;max-height:calc(100vh - 32px);overflow-y:auto;padding-right:6px;scrollbar-color:var(--wait) transparent}\naside section+section{margin-top:20px}\naside .list li{padding:8px 0;margin:0;border-bottom:1px solid color-mix(in srgb,var(--muted) 22%,transparent);overflow-wrap:anywhere}\n.decided{margin-top:28px}\n.decided ol{margin-top:10px;max-width:110ch}\n.decided li{display:grid;grid-template-columns:46px 28px minmax(0,1fr);padding-bottom:14px;position:relative}\n.decided li::before{content:\"\";grid-column:2;justify-self:center;width:10px;height:10px;margin-top:6px;border-radius:50%;border:2px solid var(--muted);background:var(--bg);z-index:1}\n.decided li::after{content:\"\";position:absolute;left:59px;top:10px;bottom:-4px;width:2px;background:color-mix(in srgb,var(--muted) 35%,transparent)}\n.decided li:last-child::after{display:none}\n.decided li.reverted::before{border-color:var(--stop);background:var(--stop)}\n.decided li.reverted b{text-decoration:line-through;text-decoration-color:var(--stop)}\n.decided time{grid-row:1;grid-column:1;font-size:13px;color:var(--muted);padding-top:1px;font-variant-numeric:tabular-nums}\n.decided .txt{padding-left:8px;line-height:1.55;color:var(--muted)}\n.decided .txt b{display:block;color:var(--ink);font-weight:600}\n.decided .tag{display:inline-block;margin-left:6px;padding:0 6px;border-radius:4px;background:var(--stop);color:#fff;font-size:12px;font-weight:600}\n.decided dl{margin:2px 0 0;display:grid;grid-template-columns:auto 1fr;gap:0 8px;font-size:14px}\n.decided dt{color:var(--ink);font-weight:500}\n.decided dd{margin:0;overflow-wrap:anywhere}\n.closed li{display:grid;grid-template-columns:20px 1fr;gap:8px;margin-top:7px}\n.closed li::before{content:\"\";width:16px;height:16px;margin-top:2px;border-radius:50%;background:var(--stop) linear-gradient(#fff,#fff) center/10px 3px no-repeat}\n.closed small{display:block;color:var(--muted);font-size:13px}\n.list li{margin-top:6px;display:grid;grid-template-columns:42px 1fr;gap:6px;font-size:14px;line-height:1.4}\n.list time{color:var(--muted);font-size:13px;font-variant-numeric:tabular-nums}\n.list small{display:block;color:var(--muted);font-size:13px}\n@media (max-width:900px){.body{grid-template-columns:1fr}aside{position:static;max-height:none}}\n</style>\n</head>\n<body>\n<div id=\"app\"></div>\n<script type=\"application/json\" id=\"run\">\n{\"v\":1,\"title\":\"\",\"branch\":\"\",\"createdAt\":\"\",\"updatedAt\":\"\",\"steps\":[],\"decisions\":[],\"results\":[],\"asks\":[]}\n</script>\n<script>\nconst R = JSON.parse(document.getElementById('run').textContent);\nconst STALE_MS = 15 * 60e3;\nconst esc = s => String(s ?? '').replace(/[&<>\"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;'}[c]));\nconst pad = n => String(n).padStart(2, '0');\nconst hm = t => {\n  const d = new Date(t);\n  return Number.isNaN(d.getTime()) ? '' : `${pad(d.getHours())}:${pad(d.getMinutes())}`;\n};\nconst ago = t => {\n  const m = Math.round((Date.now() - new Date(t)) / 60e3);\n  return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.floor(m / 60)} h ${m % 60} min ago` : `${Math.floor(m / 1440)} d ago`;\n};\nconst steps = R.steps.map(s => ({...s, stale: s.status === 'active' && Date.now() - new Date(R.updatedAt) > STALE_MS}));\nconst stuck = steps.filter(s => s.status === 'blocked' || s.stale);\nconst done = steps.filter(s => s.status === 'done').length;\nconst current = steps.find(s => s.status === 'active');\nconst openAsks = R.asks.filter(a => a.answer === undefined);\nconst answered = R.asks.filter(a => a.answer !== undefined);\nconst link = d => d.href ? `<a href=\"${esc(d.href)}\">${esc(d.title)}</a>` : esc(d.title);\nconst why = s => s.stale ? `no news since ${hm(R.updatedAt)}, ${ago(R.updatedAt)}` : `waits for ${esc(s.waitsFor)}`;\nconst newest = (items, key) => [...items].sort((a, b) => (b[key] || '').localeCompare(a[key] || ''));\nconst headline = t => {\n  const m = String(t).match(/^(.{1,160}?[.:?])\\s+([\\s\\S]+)$/);\n  return m ? `<b>${esc(m[1])}</b>${esc(m[2])}` : `<b>${esc(t)}</b>`;\n};\nconst details = d => [['why', d.why], ['evidence', d.evidence]].filter(([, v]) => v).map(([k, v]) => `<dt>${k}</dt><dd>${esc(v)}</dd>`).join('');\nconst decision = d => {\n  const isReverted = d.result === 'reverted';\n  const extra = details(d);\n  return `<li class=\"${isReverted ? 'reverted' : ''}\"><time>${hm(d.at)}</time><div class=\"txt\">${headline(d.text)}${isReverted ? '<span class=\"tag\">reverted</span>' : ''}${extra ? `<dl>${extra}</dl>` : ''}</div></li>`;\n};\n\ndocument.body.classList.toggle('light', localStorage.getItem('jig-dash-theme') === 'light');\ndocument.title = R.title || 'jig run';\ndocument.getElementById('app').innerHTML = `<div class=\"wrap\">\n  <header class=\"head\"><div><h1>${esc(R.title)}</h1><p class=\"sub\">Branch ${esc(R.branch)}, updated at ${hm(R.updatedAt)}, ${ago(R.updatedAt)}</p></div>\n    <p class=\"pos\"><span>${current ? `Step <b>${current.n}</b> of ${steps.length}` : `Done <b>${done}</b> of ${steps.length}`}</span>\n    <button class=\"theme\" aria-label=\"Light or dark theme\">&#9680;</button></p></header>\n  <div class=\"body\"><div>\n    <ol class=\"line\" aria-label=\"Steps\">${steps.map(s => `<li class=\"s-${s.status}${s.stale ? ' stale' : ''}\">\n      <time>${s.status === 'todo' ? '' : hm(s.at)}</time><span class=\"st\"><i></i></span>\n      <div class=\"nm\"><b>${s.n}. ${esc(s.title)}</b>${s === current ? '<span class=\"here\">now here</span>' : ''}\n        ${s.status === 'blocked' || s.stale ? `<small>${why(s)}</small>` : s === current ? `<small>since ${hm(s.at)}</small>` : ''}</div></li>`).join('')}</ol>\n    ${openAsks.length ? `<div class=\"signs\">${openAsks.map(q => `<section class=\"sign\"><h2>Your decision needed (#${q.n})</h2><p>${esc(q.question)}</p>\n      <p class=\"def\">Going with the default meanwhile: <b>${esc(q.default)}</b></p><p class=\"when\">Asked at ${hm(q.askedAt)}, ${ago(q.askedAt)}</p></section>`).join('')}</div>` : ''}\n    ${R.decisions.length ? `<section class=\"decided\"><h2>Decisions</h2><ol>${newest(R.decisions, 'at').map(decision).join('')}</ol></section>` : ''}</div>\n    <aside>\n      ${stuck.length ? `<section><h2>Stuck</h2><ul class=\"closed\">${stuck.map(s => `<li><div>${s.n}. ${esc(s.title)}<small>${why(s)}</small></div></li>`).join('')}</ul></section>` : ''}\n      ${R.results.length ? `<section><h2>Results</h2><ul class=\"list\">${newest(R.results, 'at').map(d => `<li><time>${hm(d.at)}</time><span>${link(d)}</span></li>`).join('')}</ul></section>` : ''}\n      ${answered.length ? `<section><h2>Answered</h2><ul class=\"list\">${newest(answered, 'answeredAt').map(a => `<li><time>${hm(a.answeredAt)}</time><span>${esc(a.question)}<small>${esc(a.answer)}</small></span></li>`).join('')}</ul></section>` : ''}\n    </aside>\n  </div>\n</div>`;\ndocument.querySelector('.theme').onclick = () => {\n  const isLight = document.body.classList.toggle('light');\n  localStorage.setItem('jig-dash-theme', isLight ? 'light' : 'dark');\n};\n</script>\n</body>\n</html>\n";
@@ -1083,6 +1213,7 @@ var RUN_BLOCK = /(<script type="application\/json" id="run">)([\s\S]*?)(<\/scrip
 var DECISION_FLAGS = /* @__PURE__ */ new Set(["--why", "--evidence", "--result"]);
 var DECISION_RESULTS = /* @__PURE__ */ new Set(["kept", "reverted"]);
 var PLAIN_STATUSES = /* @__PURE__ */ new Set(["active", "done", "todo"]);
+var CURRENT_STEP_ORDER = ["active", "blocked", "todo"];
 var DashFailure = class extends Error {
   constructor(code, message) {
     super(message);
@@ -1098,8 +1229,8 @@ var branchDirName = (projectRoot) => {
 };
 var runLocation = (projectRoot) => {
   const branch = branchDirName(projectRoot);
-  const dir = join5(jigPaths(projectRoot).runs, branch);
-  return { branch, data: join5(dir, "run.json"), page: join5(dir, "index.html") };
+  const dir = join6(jigPaths(projectRoot).runs, branch);
+  return { branch, data: join6(dir, "run.json"), page: join6(dir, "index.html") };
 };
 var isRun = (value) => {
   if (typeof value !== "object" || value === null) return false;
@@ -1107,16 +1238,36 @@ var isRun = (value) => {
   return candidate.v === 1 && typeof candidate.updatedAt === "string" && Array.isArray(candidate.steps);
 };
 var readRun = (path) => {
-  let text;
+  let text2;
   try {
-    text = readFileSync6(path, "utf8");
+    text2 = readFileSync6(path, "utf8");
   } catch {
     return void 0;
   }
-  const value = JSON.parse(text);
+  const value = JSON.parse(text2);
   return isRun(value) ? value : void 0;
 };
 var isActive = (run2, now) => now.getTime() - Date.parse(run2.updatedAt) < ACTIVE_RUN_MAX_AGE_MS;
+var readActiveRun = (projectRoot, now = /* @__PURE__ */ new Date()) => {
+  const location = runLocation(projectRoot);
+  const run2 = readRun(location.data);
+  if (run2 === void 0 || !isActive(run2, now)) return void 0;
+  return { run: run2, page: toSlash(location.page) };
+};
+var currentStep = (run2) => {
+  for (const status of CURRENT_STEP_ORDER) {
+    const step = run2.steps.find((candidate) => candidate.status === status);
+    if (step) return step;
+  }
+  return run2.steps.at(-1);
+};
+var activeRunContext = (projectRoot, now = /* @__PURE__ */ new Date()) => {
+  const active = readActiveRun(projectRoot, now);
+  if (active === void 0) return void 0;
+  const step = currentStep(active.run);
+  const stepPart = step ? `step ${step.n} "${step.title}"` : "no steps";
+  return `jig: flow run "${active.run.title}", ${stepPart}, dashboard ${active.page}`;
+};
 var renderPage = (run2) => {
   const json = JSON.stringify(run2, null, 2).replace(/</g, "\\u003c");
   return template_default.replace(RUN_BLOCK, (_match, open, _body, close) => `${open}
@@ -1134,9 +1285,9 @@ var required2 = (value, what) => {
   return value;
 };
 var parseNumber = (value, what) => {
-  const text = required2(value, what);
-  const n = Number(text);
-  if (!Number.isInteger(n) || n < 1) throw new DashFailure(EXIT_NOT_MET, `${what} must be a positive integer, got ${text}`);
+  const text2 = required2(value, what);
+  const n = Number(text2);
+  if (!Number.isInteger(n) || n < 1) throw new DashFailure(EXIT_NOT_MET, `${what} must be a positive integer, got ${text2}`);
   return n;
 };
 var stepAt = (run2, n) => {
@@ -1172,7 +1323,7 @@ var parseDecisionFlags = (args) => {
   }
   return flags;
 };
-var addDecision = (run2, [text, ...rest], at) => {
+var addDecision = (run2, [text2, ...rest], at) => {
   const flags = parseDecisionFlags(rest);
   const why = flags.get("--why");
   const evidence = flags.get("--evidence");
@@ -1180,7 +1331,7 @@ var addDecision = (run2, [text, ...rest], at) => {
   if (result !== void 0 && !DECISION_RESULTS.has(result)) throw usage(`--result must be kept or reverted, got ${result}`);
   run2.decisions.push({
     n: nextNumber(run2.decisions),
-    text: required2(text, "decision text"),
+    text: required2(text2, "decision text"),
     ...why === void 0 ? {} : { why },
     ...evidence === void 0 ? {} : { evidence },
     ...result === void 0 ? {} : { result },
@@ -1199,12 +1350,12 @@ var addAsk = (run2, [question, fallback], at) => {
 };
 var answerAsk = (run2, [nText, answer], at) => {
   const n = parseNumber(nText, "question number");
-  const text = required2(answer, "answer");
+  const text2 = required2(answer, "answer");
   const ask = run2.asks.find((candidate) => candidate.n === n && candidate.answer === void 0);
   if (ask === void 0) throw new DashFailure(EXIT_NOT_MET, `no open question ${n}`);
-  ask.answer = text;
+  ask.answer = text2;
   ask.answeredAt = at;
-  run2.decisions.push({ n: nextNumber(run2.decisions), text: `${ask.question} ${text}`, at });
+  run2.decisions.push({ n: nextNumber(run2.decisions), text: `${ask.question} ${text2}`, at });
   return "ok";
 };
 var MUTATIONS = /* @__PURE__ */ new Map([
@@ -1277,14 +1428,28 @@ var runDash = (args) => {
 
 // src/doctor.ts
 import { existsSync as existsSync4, readFileSync as readFileSync8 } from "node:fs";
-import { join as join7 } from "node:path";
+import { join as join8 } from "node:path";
 
 // src/core/journal.ts
 import { appendFileSync, mkdirSync as mkdirSync6, readdirSync as readdirSync4, readFileSync as readFileSync7, rmSync as rmSync3, statSync as statSync4 } from "node:fs";
-import { join as join6 } from "node:path";
+import { join as join7 } from "node:path";
+var JOURNAL_MAX_AGE_DAYS = 30;
 var JOURNAL_MAX_BYTES = 50 * 1024 * 1024;
+var JOURNAL_MESSAGE_MAX = 300;
 var DAY_MS = 24 * 60 * 60 * 1e3;
 var JOURNAL_FILE = /^(\d{4}-\d{2}-\d{2})\.jsonl$/;
+var truncate = (text2) => text2.length <= JOURNAL_MESSAGE_MAX ? text2 : `${text2.slice(0, JOURNAL_MESSAGE_MAX - 1)}\u2026`;
+var appendJournal = (projectRoot, entry) => {
+  const record = { v: 1, ...entry, ts: entry.ts ?? (/* @__PURE__ */ new Date()).toISOString() };
+  if (record.message !== void 0) {
+    record.message = truncate(record.message);
+  }
+  const dir = jigPaths(projectRoot).journal;
+  mkdirSync6(dir, { recursive: true });
+  appendFileSync(join7(dir, `${record.ts.slice(0, 10)}.jsonl`), `${JSON.stringify(record)}
+`);
+  return record;
+};
 var listJournalFiles = (projectRoot) => {
   const dir = jigPaths(projectRoot).journal;
   let names;
@@ -1297,12 +1462,33 @@ var listJournalFiles = (projectRoot) => {
   for (const name of names.sort()) {
     const day = JOURNAL_FILE.exec(name)?.[1];
     if (day === void 0) continue;
-    const path = join6(dir, name);
+    const path = join7(dir, name);
     files.push({ name, path, day, size: statSync4(path).size });
   }
   return files;
 };
 var dayOf = (ms) => new Date(ms).toISOString().slice(0, 10);
+var rotateJournal = (projectRoot, now = Date.now()) => {
+  const oldestKept = dayOf(now - JOURNAL_MAX_AGE_DAYS * DAY_MS);
+  const removed = [];
+  const kept = [];
+  for (const file of listJournalFiles(projectRoot)) {
+    if (file.day >= oldestKept) {
+      kept.push(file);
+      continue;
+    }
+    rmSync3(file.path, { force: true });
+    removed.push(file.name);
+  }
+  let total = kept.reduce((sum, file) => sum + file.size, 0);
+  for (const file of kept) {
+    if (total <= JOURNAL_MAX_BYTES) break;
+    rmSync3(file.path, { force: true });
+    removed.push(file.name);
+    total -= file.size;
+  }
+  return removed;
+};
 var parseRecord = (line) => {
   try {
     const value = JSON.parse(line);
@@ -1354,9 +1540,9 @@ var formatDenyBlock = () => {
   const pairs = PROTECTED_FOR_DENY.map((path) => `      "Edit(${path})", "Write(${path})"`);
   return ["{", '  "permissions": {', '    "deny": [', pairs.join(",\n"), "    ]", "  }", "}"].join("\n");
 };
-var ok = (text) => ({ status: "ok", text });
-var warn = (text) => ({ status: "warn", text });
-var fail2 = (text) => ({ status: "fail", text });
+var ok = (text2) => ({ status: "ok", text: text2 });
+var warn = (text2) => ({ status: "warn", text: text2 });
+var fail2 = (text2) => ({ status: "fail", text: text2 });
 var checkNode = () => {
   const version2 = process.versions.node;
   const major = Number(version2.split(".")[0]);
@@ -1368,7 +1554,7 @@ var checkConfig = (projectRoot) => {
   const { error } = loadConfig(projectRoot);
   return error === void 0 ? ok(`config: ${path} valid`) : fail2(`config: ${path} invalid: ${error}`);
 };
-var firstExisting = (projectRoot, names) => names.map((name) => join7(projectRoot, name)).find((path) => existsSync4(path));
+var firstExisting = (projectRoot, names) => names.map((name) => join8(projectRoot, name)).find((path) => existsSync4(path));
 var checkTool = (projectRoot, tools, spec) => {
   const found = tools[spec.key];
   if (found !== void 0) {
@@ -1391,7 +1577,7 @@ var readDenyList = (path) => {
   return Array.isArray(deny) ? deny.filter((entry) => typeof entry === "string") : [];
 };
 var checkDeny = (projectRoot) => {
-  const path = join7(projectRoot, ".claude", "settings.json");
+  const path = join8(projectRoot, ".claude", "settings.json");
   let deny = [];
   if (existsSync4(path)) {
     try {
@@ -1403,8 +1589,8 @@ var checkDeny = (projectRoot) => {
   }
   const missing = RECOMMENDED_DENY.filter((entry) => !deny.includes(entry));
   if (missing.length === 0) return ok(`deny: ${path} has the recommended block`);
-  const text = `deny: ${path} misses ${missing.length} of ${RECOMMENDED_DENY.length} rules (${missing.join(", ")}), add the recommended block:`;
-  return { ...warn(text), block: formatDenyBlock() };
+  const text2 = `deny: ${path} misses ${missing.length} of ${RECOMMENDED_DENY.length} rules, add the recommended block:`;
+  return { ...warn(text2), block: formatDenyBlock() };
 };
 var checkAtomPaths = (projectRoot, pluginRoot) => {
   const files = gitLsFiles(projectRoot);
@@ -1424,8 +1610,8 @@ var checkAtomPaths = (projectRoot, pluginRoot) => {
 var checkJournal = (projectRoot) => {
   const files = listJournalFiles(projectRoot);
   const bytes = files.reduce((total, file) => total + file.size, 0);
-  const text = `journal: ${(bytes / BYTES_PER_MB).toFixed(1)} MB in ${files.length} files`;
-  return bytes > JOURNAL_MAX_BYTES ? warn(`${text}, above ${JOURNAL_MAX_BYTES / BYTES_PER_MB} MB`) : ok(text);
+  const text2 = `journal: ${(bytes / BYTES_PER_MB).toFixed(1)} MB in ${files.length} files`;
+  return bytes > JOURNAL_MAX_BYTES ? warn(`${text2}, above ${JOURNAL_MAX_BYTES / BYTES_PER_MB} MB`) : ok(text2);
 };
 var checkLock = (path) => {
   if (!existsSync4(path)) return ok(`lock: ${path} free`);
@@ -1457,49 +1643,1296 @@ var runDoctor = (args) => {
     ...checkAtomPaths(projectRoot, pluginRoot),
     checkJournal(projectRoot),
     checkLock(paths.heavyLock),
-    checkLock(join7(paths.cache, "slot.lock"))
+    checkLock(join8(paths.cache, "slot.lock"))
   ];
   process.stdout.write(`${checks.map(formatCheck).join("\n")}
 `);
   return checks.some((check) => check.status === "fail") ? 1 : 0;
 };
 
+// src/hook/dispatch.ts
+import { readFileSync as readFileSync10 } from "node:fs";
+import { join as join12 } from "node:path";
+
+// src/adapters/claude.ts
+import { readFileSync as readFileSync9 } from "node:fs";
+import { isAbsolute as isAbsolute3, resolve as resolve3 } from "node:path";
+var SESSION_SOURCES = ["startup", "resume", "clear", "compact", "fork"];
+var HOOK_EVENT_NAMES = {
+  "session-start": "SessionStart",
+  prompt: "UserPromptSubmit",
+  "pre-edit": "PreToolUse",
+  "pre-bash": "PreToolUse",
+  "post-edit": "PostToolUse",
+  "post-read": "PostToolUse",
+  "post-bash": "PostToolUse",
+  "post-agent": "PostToolUse",
+  "subagent-start": "SubagentStart",
+  stop: "Stop"
+};
+var isObject2 = (value) => typeof value === "object" && value !== null && !Array.isArray(value);
+var text = (object, key) => {
+  const value = object[key];
+  return typeof value === "string" ? value : void 0;
+};
+var readCurrent = (absolutePath) => {
+  try {
+    return readFileSync9(absolutePath, "utf8");
+  } catch {
+    return "";
+  }
+};
+var multiEditPairs = (input) => {
+  const edits = input["edits"];
+  if (!Array.isArray(edits)) return void 0;
+  const pairs = [];
+  for (const edit of edits) {
+    if (!isObject2(edit)) return void 0;
+    const before = text(edit, "old_string");
+    const after = text(edit, "new_string");
+    if (before === void 0 || after === void 0) return void 0;
+    pairs.push({ before, after });
+  }
+  return pairs;
+};
+var preEditEvent = (toolName, input, paths) => {
+  const rawFile = toolName === "NotebookEdit" ? text(input, "notebook_path") : text(input, "file_path");
+  if (rawFile === void 0) return void 0;
+  const absolute = isAbsolute3(rawFile) ? rawFile : resolve3(paths.cwd, rawFile);
+  const file = toProjectPath(paths.projectRoot, absolute);
+  if (toolName === "Edit") {
+    const before = text(input, "old_string");
+    const after = text(input, "new_string");
+    if (before === void 0 || after === void 0) return void 0;
+    return { kind: "pre-edit", file, edits: [{ before, after }] };
+  }
+  if (toolName === "MultiEdit") {
+    const edits = multiEditPairs(input);
+    return edits === void 0 ? void 0 : { kind: "pre-edit", file, edits };
+  }
+  if (toolName === "Write") {
+    const content = text(input, "content");
+    if (content === void 0) return void 0;
+    return { kind: "pre-edit", file, edits: [{ before: readCurrent(absolute), after: content }], wholeFile: content };
+  }
+  if (toolName === "NotebookEdit") {
+    return { kind: "pre-edit", file, edits: [{ before: "", after: text(input, "new_source") ?? "" }] };
+  }
+  return void 0;
+};
+var toolFile = (input, paths) => {
+  const rawFile = text(input, "file_path") ?? text(input, "notebook_path");
+  return rawFile === void 0 ? void 0 : toProjectPath(paths.projectRoot, rawFile, paths.cwd);
+};
+var isBashSuccess = (response) => {
+  if (!isObject2(response)) return true;
+  const exitCode = response["exit_code"] ?? response["exitCode"];
+  const hasFailedExit = typeof exitCode === "number" && exitCode !== 0;
+  return response["interrupted"] !== true && response["is_error"] !== true && !hasFailedExit;
+};
+var toEvent = (name, input, paths) => {
+  const toolName = text(input, "tool_name");
+  const toolInput = isObject2(input["tool_input"]) ? input["tool_input"] : {};
+  switch (name) {
+    case "session-start": {
+      const source = SESSION_SOURCES.find((candidate) => candidate === input["source"]) ?? "startup";
+      return { kind: "session-start", source };
+    }
+    case "user-prompt-submit":
+      return { kind: "prompt" };
+    case "pre-edit":
+      return preEditEvent(toolName, toolInput, paths);
+    case "pre-bash": {
+      const command = text(toolInput, "command");
+      return command === void 0 ? void 0 : { kind: "pre-bash", command };
+    }
+    case "post-edit":
+    case "post-read": {
+      const file = toolFile(toolInput, paths);
+      return file === void 0 ? void 0 : { kind: name, file };
+    }
+    case "post-bash": {
+      const command = text(toolInput, "command");
+      return command === void 0 ? void 0 : { kind: "post-bash", command, ok: isBashSuccess(input["tool_response"]) };
+    }
+    case "post-agent":
+      return { kind: "post-agent", prompt: text(toolInput, "prompt") ?? "" };
+    case "subagent-start": {
+      const agentId = text(input, "agent_id");
+      if (agentId === void 0) return void 0;
+      return { kind: "subagent-start", agentId, agentType: text(input, "agent_type") ?? "" };
+    }
+    case "stop":
+      return { kind: "stop", stopHookActive: input["stop_hook_active"] === true };
+    default:
+      return void 0;
+  }
+};
+var parseJson = (raw) => {
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return void 0;
+  }
+};
+var parseHookInput = (name, raw, env = process.env) => {
+  const input = parseJson(raw);
+  if (!isObject2(input)) return void 0;
+  const sessionId = text(input, "session_id");
+  if (sessionId === void 0) return void 0;
+  const cwd = resolve3(text(input, "cwd") ?? process.cwd());
+  const projectRoot = resolveProjectRoot(cwd, env);
+  const event = toEvent(name, input, { projectRoot, cwd });
+  if (event === void 0) return void 0;
+  const agentId = text(input, "agent_id");
+  const base = agentId === void 0 ? { sessionId, projectRoot, cwd } : { sessionId, agentId, projectRoot, cwd };
+  return { event, base };
+};
+var formatOutcome = (kind, outcome) => {
+  const hookEventName = HOOK_EVENT_NAMES[kind];
+  switch (outcome.type) {
+    case "none":
+      return "";
+    case "deny":
+      return JSON.stringify({
+        hookSpecificOutput: { hookEventName, permissionDecision: "deny", permissionDecisionReason: outcome.reason }
+      });
+    case "context":
+      return JSON.stringify({ hookSpecificOutput: { hookEventName, additionalContext: outcome.text } });
+    case "block":
+      return JSON.stringify({ decision: "block", reason: outcome.reason });
+  }
+};
+
+// src/core/snapshot.ts
+import { statSync as statSync5 } from "node:fs";
+import { join as join9 } from "node:path";
+var stampOf = (absolutePath) => {
+  try {
+    const stat = statSync5(absolutePath);
+    return stat.isFile() ? { mtimeMs: stat.mtimeMs, size: stat.size } : void 0;
+  } catch {
+    return void 0;
+  }
+};
+var isInsideProject = (path) => path !== "" && !path.startsWith("../") && path !== "..";
+var changedFiles = (projectRoot) => {
+  const top = gitToplevel(projectRoot);
+  if (top === void 0) return [];
+  const entries = gitStatus(top) ?? [];
+  return entries.map((entry) => toProjectPath(projectRoot, join9(top, entry.path))).filter(isInsideProject);
+};
+var takeSnapshot = (projectRoot) => {
+  const snapshot = {};
+  for (const path of changedFiles(projectRoot)) {
+    const stamp = stampOf(join9(projectRoot, path));
+    if (stamp !== void 0) {
+      snapshot[path] = stamp;
+    }
+  }
+  return snapshot;
+};
+
+// src/rules/comments.ts
+import { join as join10 } from "node:path";
+
+// src/rules/lexer.ts
+var SCRIPT_EXTENSION = /\.(?:ts|tsx|mts|cts|js|jsx|mjs|cjs)$/i;
+var VUE_EXTENSION = /\.vue$/i;
+var REGEX_KEYWORDS = /* @__PURE__ */ new Set(["return", "typeof", "case", "do", "else"]);
+var DIVISION_AFTER = /* @__PURE__ */ new Set([")", "]"]);
+var IDENTIFIER_START = /[A-Za-z_$\u0080-￿]/;
+var IDENTIFIER_PART = /[\w$\u0080-￿]/;
+var DIGIT = /\d/;
+var NUMBER_PART = /[\w.]/;
+var WHITESPACE = /\s/;
+var SCRIPT_BLOCK = /(<script\b[^>]*>)([\s\S]*?)<\/script\s*>/gi;
+var STYLE_BLOCK = /<style\b[^>]*>[\s\S]*?<\/style\s*>/gi;
+var HTML_COMMENT = /<!--[\s\S]*?-->/g;
+var SFC_TAG = /<(?:script|template|style)\b/i;
+var countNewlines = (text2, from, to) => {
+  let count = 0;
+  for (let index = from; index < to; index++) {
+    if (text2[index] === "\n") {
+      count++;
+    }
+  }
+  return count;
+};
+var JsLexer = class {
+  constructor(source, end, start, firstLine2) {
+    this.source = source;
+    this.end = end;
+    this.index = start;
+    this.line = firstLine2;
+  }
+  source;
+  end;
+  index = 0;
+  line;
+  isRegexAllowed = true;
+  isInTemplate = false;
+  templateDepths = [];
+  comments = [];
+  run() {
+    while (this.index < this.end) {
+      if (this.isInTemplate) {
+        this.scanTemplate();
+        continue;
+      }
+      this.scanCode();
+    }
+    return this.comments;
+  }
+  at(offset = 0) {
+    const position = this.index + offset;
+    return position < this.end ? this.source[position] ?? "" : "";
+  }
+  advance() {
+    if (this.source[this.index] === "\n") {
+      this.line++;
+    }
+    this.index++;
+  }
+  scanCode() {
+    const char = this.at();
+    if (WHITESPACE.test(char)) {
+      this.advance();
+      return;
+    }
+    if (char === "/") {
+      this.scanSlash();
+      return;
+    }
+    if (char === '"' || char === "'") {
+      this.scanString(char);
+      return;
+    }
+    if (char === "`") {
+      this.index++;
+      this.isInTemplate = true;
+      return;
+    }
+    if (IDENTIFIER_START.test(char)) {
+      this.scanWord();
+      return;
+    }
+    if (DIGIT.test(char)) {
+      this.scanNumber();
+      return;
+    }
+    this.scanPunctuator(char);
+  }
+  scanPunctuator(char) {
+    this.index++;
+    this.isRegexAllowed = !DIVISION_AFTER.has(char);
+    const top = this.templateDepths.length - 1;
+    const depth = this.templateDepths[top];
+    if (depth === void 0) return;
+    if (char === "{") {
+      this.templateDepths[top] = depth + 1;
+      return;
+    }
+    if (char !== "}") return;
+    if (depth > 0) {
+      this.templateDepths[top] = depth - 1;
+      return;
+    }
+    this.templateDepths.pop();
+    this.isInTemplate = true;
+  }
+  scanWord() {
+    const start = this.index;
+    while (this.index < this.end && IDENTIFIER_PART.test(this.at())) {
+      this.index++;
+    }
+    this.isRegexAllowed = REGEX_KEYWORDS.has(this.source.slice(start, this.index));
+  }
+  scanNumber() {
+    while (this.index < this.end && NUMBER_PART.test(this.at())) {
+      this.index++;
+    }
+    this.isRegexAllowed = false;
+  }
+  scanString(quote) {
+    this.index++;
+    while (this.index < this.end) {
+      const char = this.at();
+      if (char === "\\") {
+        this.index++;
+        this.advance();
+        continue;
+      }
+      if (char === quote || char === "\n") break;
+      this.index++;
+    }
+    if (this.at() === quote) {
+      this.index++;
+    }
+    this.isRegexAllowed = false;
+  }
+  scanTemplate() {
+    while (this.index < this.end) {
+      const char = this.at();
+      if (char === "\\") {
+        this.index++;
+        this.advance();
+        continue;
+      }
+      if (char === "`") {
+        this.index++;
+        this.isInTemplate = false;
+        this.isRegexAllowed = false;
+        return;
+      }
+      if (char === "$" && this.at(1) === "{") {
+        this.index += 2;
+        this.templateDepths.push(0);
+        this.isInTemplate = false;
+        this.isRegexAllowed = true;
+        return;
+      }
+      this.advance();
+    }
+  }
+  scanSlash() {
+    const next = this.at(1);
+    if (next === "/") {
+      this.scanLineComment();
+      return;
+    }
+    if (next === "*") {
+      this.scanBlockComment();
+      return;
+    }
+    if (this.isRegexAllowed && this.scanRegex()) return;
+    this.index++;
+    this.isRegexAllowed = true;
+  }
+  scanLineComment() {
+    const start = this.index;
+    while (this.index < this.end && this.at() !== "\n") {
+      this.index++;
+    }
+    const text2 = this.source.slice(start, this.index).replace(/\r$/, "");
+    this.comments.push({ text: text2, line: this.line, kind: "line", end: this.index });
+  }
+  scanBlockComment() {
+    const start = this.index;
+    const line = this.line;
+    const close = this.source.indexOf("*/", start + 2);
+    const stop2 = close === -1 || close + 2 > this.end ? this.end : close + 2;
+    this.line += countNewlines(this.source, start, stop2);
+    this.index = stop2;
+    this.comments.push({ text: this.source.slice(start, stop2), line, kind: "block", end: stop2 });
+  }
+  scanRegex() {
+    let position = this.index + 1;
+    let isInClass = false;
+    while (position < this.end) {
+      const char = this.source[position];
+      if (char === "\n") return false;
+      if (char === "\\") {
+        position += 2;
+        continue;
+      }
+      if (char === "[") {
+        isInClass = true;
+      } else if (char === "]") {
+        isInClass = false;
+      } else if (char === "/" && !isInClass) {
+        break;
+      }
+      position++;
+    }
+    if (position >= this.end) return false;
+    position++;
+    while (position < this.end && IDENTIFIER_PART.test(this.source[position] ?? "")) {
+      position++;
+    }
+    this.index = position;
+    this.isRegexAllowed = false;
+    return true;
+  }
+};
+var skipShebang = (source) => {
+  if (!source.startsWith("#!")) return 0;
+  const newline = source.indexOf("\n");
+  return newline === -1 ? source.length : newline;
+};
+var lexJs = (source) => new JsLexer(source, source.length, skipShebang(source), 1).run();
+var lineAt = (source, offset) => countNewlines(source, 0, offset) + 1;
+var isInside = (offset, ranges) => ranges.some((range) => offset >= range.start && offset < range.end);
+var lexVue = (source) => {
+  const comments = SFC_TAG.test(source) ? [] : lexJs(source);
+  const skipped = [];
+  for (const match of source.matchAll(SCRIPT_BLOCK)) {
+    const start = match.index + (match[1]?.length ?? 0);
+    const end = start + (match[2]?.length ?? 0);
+    comments.push(...new JsLexer(source, end, start, lineAt(source, start)).run());
+    skipped.push({ start: match.index, end: match.index + match[0].length });
+  }
+  for (const match of source.matchAll(STYLE_BLOCK)) {
+    skipped.push({ start: match.index, end: match.index + match[0].length });
+  }
+  for (const match of source.matchAll(HTML_COMMENT)) {
+    if (isInside(match.index, skipped)) continue;
+    const end = match.index + match[0].length;
+    comments.push({ text: match[0], line: lineAt(source, match.index), kind: "block", end });
+  }
+  return comments.sort((left, right) => left.end - right.end);
+};
+var lexComments = (file, source) => {
+  if (SCRIPT_EXTENSION.test(file)) return lexJs(source);
+  if (VUE_EXTENSION.test(file)) return lexVue(source);
+  return void 0;
+};
+
+// src/rules/rule.ts
+var fileLine = (edit, fragmentLine) => fragmentLine + (edit.line ?? 1) - 1;
+var activeSeverity = (config, rule) => {
+  const severity = config.rules[rule];
+  return severity === "off" ? void 0 : severity;
+};
+var jigFinding = (rule, severity, hit) => ({
+  tool: "jig",
+  rule,
+  severity,
+  ...hit
+});
+
+// src/rules/comments.ts
+var RULE = "jig/comments";
+var LICENSE_HEADER_LINES = 15;
+var LICENSE = /SPDX-License-Identifier|copyright|license/i;
+var TICKET_TODO = /^\s*(?:\/\/+|\/\*+|\*)?\s*TODO\((?:[A-Z][A-Z0-9]+-\d+|#\d+)\):\s*\S/;
+var EXTERNAL_LINK = /https?:\/\//;
+var TOOL_DIRECTIVES = [
+  /^\s*\/\/\/\s*<reference\b/,
+  /@stratum-purity\s+\d/,
+  /@vite-ignore/,
+  /webpack[A-Z]\w*\s*:/,
+  /[@#]__PURE__/
+];
+var DECORATOR_NAME = /^@[\w$.]+/;
+var EXPORT_KEYWORD = /^export\b/;
+var LEADING_WHITESPACE = /^\s+/;
+var normalize = (text2) => text2.replace(/\s+/g, " ").trim();
+var skipParentheses = (source, start) => {
+  let depth = 0;
+  for (let index = start; index < source.length; index++) {
+    const char = source[index];
+    if (char === "(") {
+      depth++;
+    } else if (char === ")") {
+      depth--;
+      if (depth === 0) return index + 1;
+    }
+  }
+  return source.length;
+};
+var isFollowedByExport = (source, end) => {
+  let rest = source.slice(end);
+  for (; ; ) {
+    rest = rest.replace(LEADING_WHITESPACE, "");
+    const decorator = DECORATOR_NAME.exec(rest);
+    if (decorator === null) return EXPORT_KEYWORD.test(rest);
+    rest = rest.slice(decorator[0].length);
+    if (rest.startsWith("(")) {
+      rest = rest.slice(skipParentheses(rest, 0));
+    }
+  }
+};
+var isAllowed = (comment, source) => {
+  const { text: text2 } = comment;
+  const isLicense = comment.line <= LICENSE_HEADER_LINES && LICENSE.test(text2);
+  const isPublicJsDoc = comment.kind === "block" && text2.startsWith("/**") && isFollowedByExport(source, comment.end);
+  return isLicense || TICKET_TODO.test(text2) || isPublicJsDoc || EXTERNAL_LINK.test(text2) || TOOL_DIRECTIVES.some((directive) => directive.test(text2));
+};
+var countExisting = (file, edits) => {
+  const counts = /* @__PURE__ */ new Map();
+  for (const edit of edits) {
+    for (const comment of lexComments(file, edit.before) ?? []) {
+      const key = normalize(comment.text);
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+  }
+  return counts;
+};
+var checkComments = (file, edits, config) => {
+  const severity = activeSeverity(config, RULE);
+  if (severity === void 0) return [];
+  if (lexComments(file, "") === void 0) return [];
+  const existing = countExisting(file, edits);
+  const atom = toSlash(join10(resolvePluginRoot(), "atoms", "comments.md"));
+  const findings = [];
+  for (const edit of edits) {
+    for (const comment of lexComments(file, edit.after) ?? []) {
+      const key = normalize(comment.text);
+      const remaining = existing.get(key) ?? 0;
+      if (remaining > 0) {
+        existing.set(key, remaining - 1);
+        continue;
+      }
+      const line = fileLine(edit, comment.line);
+      if (isAllowed({ ...comment, line }, edit.after)) continue;
+      const message = `${RULE}: new comment at ${file}:${line} is not allowed. Allowed: license header, TODO(<TICKET-1>), JSDoc on an export, an external constraint with a link, a tool directive. Remove it and express the intent in code (atom comments: ${atom}).`;
+      findings.push(jigFinding(RULE, severity, { file, line, message }));
+    }
+  }
+  return findings;
+};
+
+// src/rules/no-verify.ts
+import { createHash as createHash2 } from "node:crypto";
+import { join as join11 } from "node:path";
+
+// src/rules/shell.ts
+var SEGMENT_BREAKS = /* @__PURE__ */ new Set([";", "&", "|", "\n", "(", ")"]);
+var BLANK = /\s/;
+var FD_NUMBER = /^\d+$/;
+var FD_TARGET = /[\d-]/;
+var ShellTokenizer = class {
+  constructor(command) {
+    this.command = command;
+  }
+  command;
+  index = 0;
+  token = "";
+  hasToken = false;
+  isTokenQuoted = false;
+  isRedirectNext = false;
+  segment = { words: [], redirects: [] };
+  segments = [];
+  run() {
+    while (this.index < this.command.length) {
+      this.step(this.command[this.index] ?? "");
+    }
+    this.endSegment();
+    return this.segments;
+  }
+  step(char) {
+    if (char === '"' || char === "'") {
+      this.scanQuoted(char);
+      return;
+    }
+    if (char === ">" || char === "&" && this.command[this.index + 1] === ">") {
+      this.scanRedirect();
+      return;
+    }
+    this.index++;
+    if (SEGMENT_BREAKS.has(char)) {
+      this.endSegment();
+      return;
+    }
+    if (BLANK.test(char) || char === "<") {
+      this.endToken();
+      return;
+    }
+    this.token += char;
+    this.hasToken = true;
+  }
+  scanQuoted(quote) {
+    this.index++;
+    this.hasToken = true;
+    this.isTokenQuoted = true;
+    while (this.index < this.command.length && this.command[this.index] !== quote) {
+      const isEscape = quote === '"' && this.command[this.index] === "\\" && this.index + 1 < this.command.length;
+      if (isEscape) {
+        this.index++;
+      }
+      this.token += this.command[this.index];
+      this.index++;
+    }
+    this.index++;
+  }
+  scanRedirect() {
+    const isFdPrefix = this.hasToken && !this.isTokenQuoted && FD_NUMBER.test(this.token);
+    if (isFdPrefix) {
+      this.resetToken();
+    } else {
+      this.endToken();
+    }
+    if (this.command[this.index] === "&") {
+      this.index++;
+    }
+    while (this.command[this.index] === ">") {
+      this.index++;
+    }
+    if (this.command[this.index] !== "&") {
+      this.isRedirectNext = true;
+      return;
+    }
+    this.index++;
+    while (FD_TARGET.test(this.command[this.index] ?? "")) {
+      this.index++;
+    }
+  }
+  resetToken() {
+    this.token = "";
+    this.hasToken = false;
+    this.isTokenQuoted = false;
+  }
+  endToken() {
+    if (this.hasToken) {
+      const target = this.isRedirectNext ? this.segment.redirects : this.segment.words;
+      target.push(this.token);
+      this.isRedirectNext = false;
+    }
+    this.resetToken();
+  }
+  endSegment() {
+    this.endToken();
+    this.isRedirectNext = false;
+    const isEmpty = this.segment.words.length === 0 && this.segment.redirects.length === 0;
+    if (!isEmpty) {
+      this.segments.push(this.segment);
+    }
+    this.segment = { words: [], redirects: [] };
+  }
+};
+var splitShell = (command) => new ShellTokenizer(command).run();
+
+// src/rules/no-verify.ts
+var RULE2 = "jig/no-verify";
+var ALLOWANCE_MS = 10 * 60 * 1e3;
+var SESSION_ENV = "CLAUDE_CODE_SESSION_ID";
+var HUSKY_OFF = /^(?:\$env:)?(?:HUSKY=0|HUSKY_SKIP_HOOKS=1)$/;
+var GIT_BINARY = /(?:^|[/\\])git(?:\.exe)?$/i;
+var HOOKS_PATH_KEY = /^core\.hookspath(?:=|$)/i;
+var COMMIT_ARGUMENT_OPTIONS = /* @__PURE__ */ new Set(["m", "F", "C", "c", "t"]);
+var SHORT_CLUSTER = /^-[A-Za-z]+$/;
+var ANSI = /\x1b\[[0-9;]*[A-Za-z]/g;
+var OUTPUT_TOKEN = /[^\s'"`()<>,;[\]{}]+/g;
+var LOCATION_SUFFIX = /(?::\d+)+:?$|[:.]+$/;
+var isNoVerifyCluster = (token) => {
+  if (!SHORT_CLUSTER.test(token)) return false;
+  for (const flag of token.slice(1)) {
+    if (flag === "n") return true;
+    if (COMMIT_ARGUMENT_OPTIONS.has(flag)) return false;
+  }
+  return false;
+};
+var takesValue = (token) => SHORT_CLUSTER.test(token) && COMMIT_ARGUMENT_OPTIONS.has(token.slice(-1)) && !isNoVerifyCluster(token);
+var commitSkipsHooks = (args) => {
+  for (let index = 0; index < args.length; index++) {
+    const arg = args[index] ?? "";
+    if (arg === "--") return false;
+    if (arg === "--no-verify" || isNoVerifyCluster(arg)) return true;
+    if (takesValue(arg)) {
+      index++;
+    }
+  }
+  return false;
+};
+var gitBypass = (tokens) => {
+  let index = 0;
+  while (index < tokens.length) {
+    const token = tokens[index] ?? "";
+    if (token === "-c" || token === "-C") {
+      const value = tokens[index + 1] ?? "";
+      if (token === "-c" && HOOKS_PATH_KEY.test(value)) return "other";
+      index += 2;
+      continue;
+    }
+    if (token.startsWith("-")) {
+      index++;
+      continue;
+    }
+    break;
+  }
+  const subcommand = tokens[index];
+  const args = tokens.slice(index + 1);
+  if (subcommand === "config" && args.some((arg) => HOOKS_PATH_KEY.test(arg))) return "other";
+  if (subcommand === "push" && args.includes("--no-verify")) return "other";
+  if (subcommand === "commit" && commitSkipsHooks(args)) return "commit";
+  return void 0;
+};
+var segmentBypass = (tokens) => {
+  if (tokens.some((token) => HUSKY_OFF.test(token))) return "other";
+  let result;
+  tokens.forEach((token, index) => {
+    if (result === "other" || !GIT_BINARY.test(token)) return;
+    result = gitBypass(tokens.slice(index + 1)) ?? result;
+  });
+  return result;
+};
+var detectBypass = (command) => {
+  let result;
+  for (const segment of splitShell(command)) {
+    const bypass = segmentBypass(segment.words);
+    if (bypass === "other") return bypass;
+    result = bypass ?? result;
+  }
+  return result;
+};
+var stagedHash = (files) => createHash2("sha256").update([...files].sort().join("\n")).digest("hex");
+var consumeAllowance = (projectRoot, sessionId, now) => {
+  const state = readState(projectRoot, sessionId);
+  const allowance = state?.noVerifyAllowance;
+  if (state === void 0 || allowance === void 0) return false;
+  const isValid = !allowance.used && allowance.until > now && allowance.stagedHash === stagedHash(gitStagedFiles(projectRoot));
+  if (!isValid) return false;
+  state.noVerifyAllowance = { ...allowance, used: true };
+  writeState(projectRoot, state);
+  return true;
+};
+var jigCommand = () => toSlash(join11(resolvePluginRoot(), "bin", "jig.mjs"));
+var checkNoVerify = (command, ctx) => {
+  const severity = activeSeverity(ctx.config, RULE2);
+  if (severity === void 0) return void 0;
+  const bypass = detectBypass(command);
+  if (bypass === void 0) return void 0;
+  if (bypass === "commit" && consumeAllowance(ctx.projectRoot, ctx.sessionId, Date.now())) return void 0;
+  const message = `${RULE2}: commits keep their hooks. If the pre-commit fails only on files outside your change, run: node ${jigCommand()} allow-no-verify`;
+  return jigFinding(RULE2, severity, { file: "", line: 1, message });
+};
+var findRepoPaths = (output, projectRoot, tracked) => {
+  const root = `${toSlash(projectRoot).toLowerCase()}/`;
+  const found = /* @__PURE__ */ new Set();
+  for (const [raw] of toSlash(output.replace(ANSI, "")).matchAll(OUTPUT_TOKEN)) {
+    let candidate = raw.replace(LOCATION_SUFFIX, "").replace(/^\.\//, "");
+    if (candidate.toLowerCase().startsWith(root)) {
+      candidate = candidate.slice(root.length);
+    }
+    if (tracked.has(candidate)) {
+      found.add(candidate);
+    }
+  }
+  return [...found].sort();
+};
+var print = (text2) => {
+  process.stdout.write(`${text2}
+`);
+};
+var recordAllowed = (projectRoot, sessionId, paths) => {
+  try {
+    appendJournal(projectRoot, { session: sessionId, agent: MAIN_AGENT, kind: "no-verify-allowed", rule: RULE2, message: paths.join(", ") });
+  } catch (error) {
+    process.stderr.write(`jig: journal write failed (${error instanceof Error ? error.message : String(error)})
+`);
+  }
+};
+var runAllowNoVerify = () => {
+  const projectRoot = resolveProjectRoot(process.cwd());
+  const sessionId = process.env[SESSION_ENV];
+  if (!sessionId) {
+    print(`jig: ${SESSION_ENV} is not set; run allow-no-verify from the agent session`);
+    return 1;
+  }
+  const state = readState(projectRoot, sessionId);
+  if (state === void 0) {
+    print(`jig: no jig state for session ${sessionId}`);
+    return 1;
+  }
+  const staged = gitStagedFiles(projectRoot);
+  if (staged.length === 0) {
+    print("jig: nothing staged");
+    return 1;
+  }
+  const hook = git(["hook", "run", "pre-commit"], projectRoot);
+  if (hook.ok) {
+    print("jig: pre-commit passes; commit without --no-verify");
+    return 1;
+  }
+  const paths = findRepoPaths(`${hook.stdout}
+${hook.stderr}`, projectRoot, new Set(gitLsFiles(projectRoot)));
+  const stagedSet = new Set(staged);
+  const failedStaged = paths.filter((path) => stagedSet.has(path));
+  if (paths.length === 0 || failedStaged.length > 0) {
+    const listed = failedStaged.length > 0 ? failedStaged.join(", ") : "no repository paths in the pre-commit output";
+    print(`jig: pre-commit fails on your staged files, fix them: ${listed}`);
+    return 1;
+  }
+  state.noVerifyAllowance = { stagedHash: stagedHash(staged), until: Date.now() + ALLOWANCE_MS, used: false };
+  writeState(projectRoot, state);
+  recordAllowed(projectRoot, sessionId, paths);
+  print(`jig: --no-verify allowed for one commit within 10 minutes; pre-commit fails only outside your change: ${paths.join(", ")}`);
+  return 0;
+};
+
+// src/rules/protected.ts
+var RULE3 = "jig/protected-paths";
+var PROTECTED_GLOBS = [
+  ".jig/config.jsonc",
+  ".jig/config.json",
+  "eslint.config.*",
+  ".eslintrc",
+  ".eslintrc.*",
+  ".oxlintrc.json",
+  "oxlint.json",
+  "oxlintrc.json",
+  "tsconfig*.json",
+  "**/tsconfig*.json",
+  "jsconfig*.json",
+  "stratum.config.jsonc",
+  "**/*stratum*baseline*",
+  ".betterer.results",
+  ".gitlab-ci.yml",
+  ".gitlab/**",
+  ".github/workflows/**",
+  ".husky/**",
+  "lefthook.yml",
+  "lefthook.yaml",
+  ".lintstagedrc",
+  ".lintstagedrc.*",
+  "lint-staged.config.*",
+  ".claude/settings.json"
+];
+var ASSIGNMENT = /^[A-Za-z_]\w*=/;
+var IN_PLACE_FLAG = /^-[A-Za-z]*i|^--in-place/;
+var DESTINATION_FLAG = /^-dest/i;
+var COMMAND_DIR = /^.*[/\\]/;
+var EXE_SUFFIX = /\.exe$/;
+var operands = (args) => args.filter((arg) => !arg.startsWith("-"));
+var lastOperand = (args) => operands(args).slice(-1);
+var inPlaceOperands = (args) => args.some((arg) => IN_PLACE_FLAG.test(arg)) ? operands(args) : [];
+var gitTargets = (args) => {
+  const subcommand = operands(args)[0];
+  const rest = args.slice(args.indexOf(subcommand ?? "") + 1);
+  if (subcommand === "restore") return operands(rest);
+  if (subcommand !== "checkout" || !rest.includes("--")) return [];
+  return rest.slice(rest.indexOf("--") + 1);
+};
+var copyItemTarget = (args) => {
+  const flag = args.findIndex((arg) => DESTINATION_FLAG.test(arg));
+  return flag === -1 ? lastOperand(args) : args.slice(flag + 1, flag + 2);
+};
+var WRITERS = {
+  rm: operands,
+  del: operands,
+  truncate: operands,
+  mv: operands,
+  tee: operands,
+  cp: lastOperand,
+  sed: inPlaceOperands,
+  perl: inPlaceOperands,
+  git: gitTargets,
+  "set-content": operands,
+  "add-content": operands,
+  "out-file": operands,
+  "remove-item": operands,
+  "move-item": operands,
+  "copy-item": copyItemTarget
+};
+var NULL_TARGETS = /* @__PURE__ */ new Set(["/dev/null", "$null"]);
+var isProtected = createMatcher(PROTECTED_GLOBS);
+var writeTargets = (words) => {
+  const start = words.findIndex((word) => !ASSIGNMENT.test(word));
+  const name = (words[start] ?? "").replace(COMMAND_DIR, "").replace(EXE_SUFFIX, "").toLowerCase();
+  const pick = Object.hasOwn(WRITERS, name) ? WRITERS[name] : void 0;
+  return pick === void 0 ? [] : pick(words.slice(start + 1));
+};
+var denial = (path) => `${RULE3}: ${path} configures the checks and is protected. Do not change it; tell the user what change you need and why.`;
+var pathSuffixes = (token) => {
+  const parts = toSlash(token).replace(/^\.\//, "").split("/");
+  return parts.map((_, index) => parts.slice(index).join("/")).filter(Boolean);
+};
+var protectedSuffix = (target) => NULL_TARGETS.has(target) ? void 0 : pathSuffixes(target).find((suffix) => isProtected(suffix));
+var checkProtectedPath = (file, config) => {
+  const severity = activeSeverity(config, RULE3);
+  if (severity === void 0 || !isProtected(file)) return void 0;
+  return jigFinding(RULE3, severity, { file, line: 1, message: denial(file) });
+};
+var checkShellWrite = (command, config) => {
+  const severity = activeSeverity(config, RULE3);
+  if (severity === void 0) return void 0;
+  for (const segment of splitShell(command)) {
+    for (const target of [...segment.redirects, ...writeTargets(segment.words)]) {
+      const path = protectedSuffix(target);
+      if (path !== void 0) return jigFinding(RULE3, severity, { file: path, line: 1, message: denial(path) });
+    }
+  }
+  return void 0;
+};
+
+// src/rules/suppressions.ts
+var RULE4 = "jig/suppressions";
+var DIRECTIVES = [
+  /\beslint-disable(?:-next-line|-line)?\b/,
+  /\boxlint-disable(?:-next-line|-line)?\b/,
+  /\bbiome-ignore\b/,
+  /@ts-(?:ignore|expect-error|nocheck)\b/,
+  /\bstratum-ignore\b/
+];
+var LINE_BREAK = /\r?\n/;
+var findDirective = (line) => {
+  for (const directive of DIRECTIVES) {
+    const match = directive.exec(line);
+    if (match !== null) return match[0];
+  }
+  return void 0;
+};
+var checkSuppressions = (file, edits, config) => {
+  const severity = activeSeverity(config, RULE4);
+  if (severity === void 0) return [];
+  const existing = new Set(edits.flatMap((edit) => edit.before.split(LINE_BREAK).map((line) => line.trim())));
+  const findings = [];
+  for (const edit of edits) {
+    edit.after.split(LINE_BREAK).forEach((text2, index) => {
+      if (existing.has(text2.trim())) return;
+      const directive = findDirective(text2);
+      if (directive === void 0) return;
+      const line = fileLine(edit, index + 1);
+      const message = `${RULE4}: "${directive}" at ${file}:${line} silences a check. Fix the cause instead; only a human adds suppressions.`;
+      findings.push(jigFinding(RULE4, severity, { file, line, message }));
+    });
+  }
+  return findings;
+};
+
+// src/tools/finding.ts
+var POST_EDIT_LINE_LIMIT = 15;
+var formatFinding = (finding) => `${finding.file}:${finding.line} ${finding.rule} \u2192 ${finding.fix ?? finding.message}`;
+var formatDenial = (finding) => finding.message;
+var collapseFindings = (findings) => {
+  const groups = /* @__PURE__ */ new Map();
+  for (const finding of findings) {
+    const key = `${finding.rule}\0${finding.file}`;
+    const group = groups.get(key);
+    if (group === void 0) {
+      groups.set(key, { first: finding, count: 1 });
+      continue;
+    }
+    group.count++;
+    if (finding.line < group.first.line) {
+      group.first = finding;
+    }
+  }
+  return [...groups.values()].map(
+    ({ first, count }) => count === 1 ? formatFinding(first) : `${formatFinding(first)} (\xD7${count})`
+  );
+};
+var truncationLine = (hidden, pluginRoot) => `\u2026 ${hidden} more (run: node ${toSlash(pluginRoot)}/bin/jig.mjs check stop)`;
+var limitLines = (lines, limit, pluginRoot) => {
+  if (lines.length <= limit) return [...lines];
+  const kept = lines.slice(0, limit - 1);
+  return [...kept, truncationLine(lines.length - kept.length, pluginRoot)];
+};
+
+// src/hook/dispatch.ts
+var NONE = { type: "none" };
+var SUBAGENT_ATOM_LIMIT = 10;
+var TEST_REVIEWER_MARKER = "jig-role: test-reviewer";
+var GUARDED_KINDS = /* @__PURE__ */ new Set(["pre-edit", "pre-bash"]);
+var errorMessage = (error) => error instanceof Error ? error.message : String(error);
+var journal = (ctx, entry) => {
+  try {
+    const turn = ctx.turn ?? readState(ctx.projectRoot, ctx.sessionId)?.turn;
+    appendJournal(ctx.projectRoot, { session: ctx.sessionId, agent: ctx.agent, ...entry, ...turn === void 0 ? {} : { turn } });
+  } catch {
+    return;
+  }
+};
+var journalFailure = (ctx, error) => {
+  journal(ctx, { kind: "hook-failure", tool: "jig", message: errorMessage(error) });
+};
+var guardFailure = (ctx, error) => {
+  journalFailure(ctx, error);
+  const root = toSlash(ctx.pluginRoot);
+  return {
+    type: "deny",
+    reason: `jig: guard failed (${errorMessage(error)}); the action is blocked. Run "node ${root}/bin/jig.mjs doctor" and report it`
+  };
+};
+var trackTurn = (ctx, state) => {
+  ctx.turn = state.turn;
+  return state;
+};
+var openSession = (ctx) => trackTurn(ctx, readState(ctx.projectRoot, ctx.sessionId) ?? createSessionState(ctx.sessionId, takeSnapshot(ctx.projectRoot)));
+var deliverAtoms = (ctx, state, file) => {
+  const plan = loadPlan(ctx.projectRoot, ctx.pluginRoot);
+  const delivered = state.delivered[ctx.agent] ?? [];
+  const atoms = selectAtoms(plan.atoms, file, delivered);
+  const names = [];
+  const texts = [];
+  for (const atom of atoms) {
+    try {
+      texts.push(formatAtomDelivery(atom, file));
+      names.push(atom.name);
+    } catch (error) {
+      journalFailure(ctx, error);
+    }
+  }
+  if (names.length === 0) return [];
+  state.delivered[ctx.agent] = [...delivered, ...names];
+  if (ctx.agent === MAIN_AGENT) {
+    state.sessionAtoms = [...state.sessionAtoms.filter((name) => !names.includes(name)), ...names];
+  }
+  for (const name of names) {
+    journal(ctx, { kind: "atom", tool: "jig", rule: name, file });
+  }
+  return texts;
+};
+var contextOf = (parts) => parts.length === 0 ? NONE : { type: "context", text: parts.join("\n") };
+var compactRunLine = (ctx, now) => {
+  try {
+    return activeRunContext(ctx.projectRoot, new Date(now));
+  } catch (error) {
+    journalFailure(ctx, error);
+    return void 0;
+  }
+};
+var sessionStart = (event, ctx) => {
+  const now = Date.now();
+  ensureJigDir(ctx.projectRoot);
+  const plan = loadPlan(ctx.projectRoot, ctx.pluginRoot);
+  pruneStates(ctx.projectRoot, now);
+  rotateJournal(ctx.projectRoot, now);
+  const snapshot = takeSnapshot(ctx.projectRoot);
+  const state = readState(ctx.projectRoot, ctx.sessionId) ?? createSessionState(ctx.sessionId, snapshot);
+  resetSnapshot(state, snapshot);
+  trackTurn(ctx, state);
+  const parts = [];
+  if (event.source === "compact") {
+    state.delivered[MAIN_AGENT] = [];
+    const runLine = compactRunLine(ctx, now);
+    if (runLine !== void 0) {
+      parts.push(runLine);
+    }
+  }
+  writeState(ctx.projectRoot, state);
+  if (plan.config.error !== void 0) {
+    parts.push(`jig: .jig/config.jsonc is invalid (${plan.config.error}); defaults are used`);
+  }
+  return contextOf(parts);
+};
+var prompt = (ctx) => {
+  const state = openSession(ctx);
+  resetSnapshot(state, takeSnapshot(ctx.projectRoot));
+  state.turn += 1;
+  ctx.turn = state.turn;
+  writeState(ctx.projectRoot, state);
+  return NONE;
+};
+var runOpenCheck = (ctx, check) => {
+  try {
+    return [check() ?? []].flat();
+  } catch (error) {
+    journalFailure(ctx, error);
+    return [];
+  }
+};
+var settleFindings = (ctx, findings) => {
+  const denial2 = findings.find((finding) => finding.severity === "error");
+  if (denial2 !== void 0) {
+    journal(ctx, { kind: "deny", tool: "jig", rule: denial2.rule, file: denial2.file, line: denial2.line, message: denial2.message });
+    return { type: "deny", reason: formatDenial(denial2) };
+  }
+  if (findings.length === 0) return NONE;
+  for (const finding of findings) {
+    journal(ctx, { kind: "finding", tool: "jig", rule: finding.rule, file: finding.file, line: finding.line, message: finding.message });
+  }
+  try {
+    const state = openSession(ctx);
+    state.pendingWarnings = [...state.pendingWarnings, ...collapseFindings(findings)];
+    writeState(ctx.projectRoot, state);
+  } catch (error) {
+    journalFailure(ctx, error);
+  }
+  return NONE;
+};
+var runChecks = (ctx, guard, openChecks) => {
+  let guarded;
+  try {
+    guarded = [guard() ?? []].flat();
+  } catch (error) {
+    return guardFailure(ctx, error);
+  }
+  const findings = [...guarded];
+  for (const check of openChecks) {
+    if (findings.some((finding) => finding.severity === "error")) break;
+    findings.push(...runOpenCheck(ctx, check));
+  }
+  return settleFindings(ctx, findings);
+};
+var readCurrent2 = (path) => {
+  try {
+    return readFileSync10(path, "utf8");
+  } catch {
+    return "";
+  }
+};
+var locateEdits = (event, projectRoot) => {
+  if (event.wholeFile !== void 0) return event.edits.map((edit) => ({ ...edit, line: 1 }));
+  const current = readCurrent2(join12(projectRoot, event.file));
+  return event.edits.map((edit) => {
+    const at = edit.before === "" ? -1 : current.indexOf(edit.before);
+    return at === -1 ? edit : { ...edit, line: current.slice(0, at).split("\n").length };
+  });
+};
+var preEdit = (event, ctx) => {
+  let config;
+  const guard = () => {
+    config = loadConfig(ctx.projectRoot);
+    return checkProtectedPath(event.file, config);
+  };
+  const withConfig2 = (check) => () => config === void 0 ? [] : check(config);
+  const edits = locateEdits(event, ctx.projectRoot);
+  return runChecks(ctx, guard, [
+    withConfig2((loaded) => checkSuppressions(event.file, edits, loaded)),
+    withConfig2((loaded) => checkComments(event.file, edits, loaded))
+  ]);
+};
+var preBash = (event, ctx) => {
+  let config;
+  const guard = () => {
+    config = loadConfig(ctx.projectRoot);
+    return checkNoVerify(event.command, { projectRoot: ctx.projectRoot, sessionId: ctx.sessionId, config });
+  };
+  const shellWrite = () => config === void 0 ? void 0 : checkShellWrite(event.command, config);
+  return runChecks(ctx, guard, [shellWrite]);
+};
+var testChecklist = (pluginRoot) => [
+  `jig: before you continue with this test (atom tests: ${toSlash(pluginRoot)}/atoms/tests.md):`,
+  "1. Break the implementation in your head: does this test fail? If not, it is useless.",
+  "2. It checks behavior through the public API, not internals or mocks.",
+  "3. It does not duplicate an existing test of this unit.",
+  "4. Trivial code (a getter, a re-export, a wrapper) gets no test."
+].join("\n");
+var postEdit = (event, ctx) => {
+  const now = Date.now();
+  const state = openSession(ctx);
+  state.edits.push({ path: event.file, at: now, agent: ctx.agent });
+  const parts = [];
+  if (isTestFile(event.file)) {
+    state.lastTestEditAt = now;
+    if (!state.testChecklistShown) {
+      state.testChecklistShown = true;
+      parts.push(testChecklist(ctx.pluginRoot));
+    }
+  }
+  if (isRuntimeVisible(event.file)) {
+    state.lastRuntimeEditAt = now;
+  }
+  const toolFindings = [];
+  const toolLines = collapseFindings(toolFindings);
+  const findingLines = [...toolLines, ...state.pendingWarnings];
+  const shown = limitLines(findingLines, POST_EDIT_LINE_LIMIT, ctx.pluginRoot);
+  const isTruncated = shown.length < findingLines.length;
+  const toolShownCount = isTruncated ? Math.min(toolLines.length, POST_EDIT_LINE_LIMIT - 1) : toolLines.length;
+  parts.push(...shown.slice(0, toolShownCount));
+  parts.push(...deliverAtoms(ctx, state, event.file));
+  parts.push(...shown.slice(toolShownCount));
+  state.pendingWarnings = [];
+  writeState(ctx.projectRoot, state);
+  return contextOf(parts);
+};
+var postRead = (event, ctx) => {
+  const state = openSession(ctx);
+  const parts = deliverAtoms(ctx, state, event.file);
+  if (parts.length === 0) return NONE;
+  writeState(ctx.projectRoot, state);
+  return contextOf(parts);
+};
+var postBash = (event, ctx) => {
+  const isVerify = event.ok && AGENT_VIEW_VERIFY_COMMAND.test(event.command);
+  if (!isVerify) return NONE;
+  const state = openSession(ctx);
+  state.verifyAt = Date.now();
+  writeState(ctx.projectRoot, state);
+  return NONE;
+};
+var postAgent = (event, ctx) => {
+  if (!event.prompt.includes(TEST_REVIEWER_MARKER)) return NONE;
+  const state = openSession(ctx);
+  state.testReviewAt = Date.now();
+  writeState(ctx.projectRoot, state);
+  return NONE;
+};
+var subagentStart = (ctx) => {
+  const state = readState(ctx.projectRoot, ctx.sessionId);
+  if (state === void 0 || state.sessionAtoms.length === 0) return NONE;
+  const plan = loadPlan(ctx.projectRoot, ctx.pluginRoot);
+  const recent = state.sessionAtoms.slice(-SUBAGENT_ATOM_LIMIT);
+  const atoms = recent.map((name) => plan.atoms.find((atom) => atom.name === name)).filter((atom) => atom !== void 0);
+  if (atoms.length === 0) return NONE;
+  return { type: "context", text: formatSessionAtoms(atoms, ctx.pluginRoot) };
+};
+var stop = () => NONE;
+var route = (event, ctx) => {
+  switch (event.kind) {
+    case "session-start":
+      return sessionStart(event, ctx);
+    case "prompt":
+      return prompt(ctx);
+    case "pre-edit":
+      return preEdit(event, ctx);
+    case "pre-bash":
+      return preBash(event, ctx);
+    case "post-edit":
+      return postEdit(event, ctx);
+    case "post-read":
+      return postRead(event, ctx);
+    case "post-bash":
+      return postBash(event, ctx);
+    case "post-agent":
+      return postAgent(event, ctx);
+    case "subagent-start":
+      return subagentStart({ ...ctx, agent: event.agentId });
+    case "stop":
+      return stop();
+  }
+};
+var dispatch2 = async (event, base, pluginRoot = resolvePluginRoot()) => {
+  const ctx = { ...base, pluginRoot, agent: base.agentId ?? MAIN_AGENT };
+  try {
+    return await route(event, ctx);
+  } catch (error) {
+    if (GUARDED_KINDS.has(event.kind)) return guardFailure(ctx, error);
+    journalFailure(ctx, error);
+    return NONE;
+  }
+};
+var handleHook = async (name, raw, env = process.env) => {
+  let parsed;
+  try {
+    parsed = parseHookInput(name, raw, env);
+  } catch {
+    return "";
+  }
+  if (parsed === void 0) return "";
+  const outcome = await dispatch2(parsed.event, parsed.base, resolvePluginRoot(env));
+  return formatOutcome(parsed.event.kind, outcome);
+};
+var readStdin = async () => {
+  const chunks = [];
+  for await (const chunk of process.stdin) {
+    chunks.push(typeof chunk === "string" ? Buffer.from(chunk) : chunk);
+  }
+  return Buffer.concat(chunks).toString("utf8");
+};
+var runHook = async (args) => {
+  try {
+    const output = await handleHook(args[0] ?? "", await readStdin());
+    if (output !== "") {
+      process.stdout.write(output);
+    }
+  } catch {
+    return 0;
+  }
+  return 0;
+};
+
 // src/loop/loop.ts
 import { mkdirSync as mkdirSync7, writeFileSync as writeFileSync4 } from "node:fs";
-import { join as join8 } from "node:path";
+import { join as join13 } from "node:path";
 var DEFAULT_DAYS = 7;
 var DAY_MS2 = 24 * 60 * 60 * 1e3;
-var MIN_RECORDS = 2;
 var MIN_TURNS = 2;
 var MAX_EXAMPLES = 3;
 var SINGLE_RECORD_KINDS = /* @__PURE__ */ new Set(["gate-giveup", "gate-unresolved", "hook-failure", "tool-failure"]);
-var DISTINCT_TURN_KINDS = /* @__PURE__ */ new Set(["deny", "finding"]);
-var TURN_CLOSING_KINDS = /* @__PURE__ */ new Set(["gate-pass", "gate-skipped", "gate-unresolved", "gate-giveup"]);
+var DISTINCT_TURN_KINDS = /* @__PURE__ */ new Set(["deny", "finding", "gate-block"]);
 var byTime = (left, right) => Date.parse(left.ts) - Date.parse(right.ts);
-var assignTurns = (records) => {
-  const closedTurns = /* @__PURE__ */ new Map();
-  const turns = /* @__PURE__ */ new Map();
-  for (const record of records) {
-    const actor = `${record.session}\0${record.agent}`;
-    const index = closedTurns.get(actor) ?? 0;
-    turns.set(record, `${actor}\0${index}`);
-    if (TURN_CLOSING_KINDS.has(record.kind)) {
-      closedTurns.set(actor, index + 1);
-    }
-  }
-  return turns;
-};
+var turnKey = (record, index) => record.turn === void 0 ? `record:${index}` : JSON.stringify([record.session, record.turn]);
 var isCandidate = (group) => {
   if (SINGLE_RECORD_KINDS.has(group.kind)) return true;
-  if (DISTINCT_TURN_KINDS.has(group.kind)) return group.turns.size >= MIN_TURNS;
-  return group.records.length >= MIN_RECORDS;
+  return DISTINCT_TURN_KINDS.has(group.kind) && group.turns.size >= MIN_TURNS;
 };
 var compareCandidates = (left, right) => right.count - left.count || left.kind.localeCompare(right.kind) || (left.rule ?? "").localeCompare(right.rule ?? "") || (left.file ?? "").localeCompare(right.file ?? "");
 var findCandidates = (records) => {
-  const sorted = [...records].sort(byTime);
-  const turns = assignTurns(sorted);
   const groups = /* @__PURE__ */ new Map();
-  for (const record of sorted) {
+  for (const [index, record] of [...records].sort(byTime).entries()) {
     const key = JSON.stringify([record.kind, record.rule ?? null, record.file ?? null]);
     let group = groups.get(key);
     if (group === void 0) {
@@ -1513,7 +2946,7 @@ var findCandidates = (records) => {
       groups.set(key, group);
     }
     group.records.push(record);
-    group.turns.add(turns.get(record) ?? "");
+    group.turns.add(turnKey(record, index));
   }
   return [...groups.values()].filter(isCandidate).map((group) => ({
     kind: group.kind,
@@ -1523,7 +2956,7 @@ var findCandidates = (records) => {
     examples: group.records.slice(0, MAX_EXAMPLES)
   })).sort(compareCandidates);
 };
-var cell = (text) => text.replace(/\r?\n/g, " ").replace(/\|/g, "\\|");
+var cell = (text2) => text2.replace(/\r?\n/g, " ").replace(/\|/g, "\\|");
 var formatLocation = (record) => {
   if (record.file === void 0) return void 0;
   return record.line === void 0 ? record.file : `${record.file}:${record.line}`;
@@ -1533,19 +2966,36 @@ var formatExample = (record) => {
   const parts = [location === void 0 ? void 0 : `\`${location}\``, record.ts, record.message];
   return cell(parts.filter((part) => part !== void 0).join(" "));
 };
-var formatCandidates = (candidates, from, to, days) => {
-  const header = [
-    "# jig loop candidates",
-    "",
-    `Window: ${from.toISOString()} .. ${to.toISOString()} (${days} days)`,
-    ""
-  ];
-  if (candidates.length === 0) return [...header, "No candidates.", ""].join("\n");
+var formatCandidateTable = (candidates) => {
+  if (candidates.length === 0) return ["No candidates."];
   const rows = candidates.map(
     (candidate) => `| ${candidate.kind} | ${cell(candidate.rule ?? "")} | ${candidate.count} | ${candidate.examples.map(formatExample).join("<br>")} |`
   );
-  return [...header, "| Signal | Rule | Count | Examples |", "| --- | --- | --- | --- |", ...rows, ""].join("\n");
+  return ["| Signal | Rule | Count | Examples |", "| --- | --- | --- | --- |", ...rows];
 };
+var formatCounts = (records) => {
+  const counts = /* @__PURE__ */ new Map();
+  for (const record of records) {
+    counts.set(record.kind, (counts.get(record.kind) ?? 0) + 1);
+  }
+  if (counts.size === 0) return ["No records."];
+  const rows = [...counts].sort(([left], [right]) => left.localeCompare(right)).map(([kind, count]) => `| ${kind} | ${count} |`);
+  return ["| Kind | Count |", "| --- | --- |", ...rows];
+};
+var formatCandidates = (records, from, to, days) => [
+  "# jig loop candidates",
+  "",
+  `Window: ${from.toISOString()} .. ${to.toISOString()} (${days} days)`,
+  "",
+  "## Candidates",
+  "",
+  ...formatCandidateTable(findCandidates(records)),
+  "",
+  "## Counts",
+  "",
+  ...formatCounts(records),
+  ""
+].join("\n");
 var parseDays = (args) => {
   if (args.length === 0) return DEFAULT_DAYS;
   const [flag, value, ...rest] = args;
@@ -1561,11 +3011,11 @@ var runLoop = (args) => {
   const projectRoot = resolveProjectRoot(process.cwd());
   const to = /* @__PURE__ */ new Date();
   const from = new Date(to.getTime() - days * DAY_MS2);
-  const candidates = findCandidates(readJournal(projectRoot, from.getTime()));
-  const dir = join8(ensureJigDir(projectRoot).runs, "_loop", to.toISOString().slice(0, 10));
+  const records = readJournal(projectRoot, from.getTime());
+  const dir = join13(ensureJigDir(projectRoot).runs, "_loop", to.toISOString().slice(0, 10));
   mkdirSync7(dir, { recursive: true });
-  const path = join8(dir, "candidates.md");
-  writeFileSync4(path, formatCandidates(candidates, from, to, days));
+  const path = join13(dir, "candidates.md");
+  writeFileSync4(path, formatCandidates(records, from, to, days));
   process.stdout.write(`${path}
 `);
   return 0;
@@ -1573,8 +3023,8 @@ var runLoop = (args) => {
 
 // src/slot/slot.ts
 import { spawnSync as spawnSync2 } from "node:child_process";
-import { cpSync, existsSync as existsSync5, mkdirSync as mkdirSync8, readdirSync as readdirSync5, readFileSync as readFileSync9, rmSync as rmSync4, writeFileSync as writeFileSync5 } from "node:fs";
-import { basename as basename3, dirname as dirname5, isAbsolute as isAbsolute3, join as join9, relative as relative3, resolve as resolve3 } from "node:path";
+import { cpSync, existsSync as existsSync5, mkdirSync as mkdirSync8, readdirSync as readdirSync5, readFileSync as readFileSync11, rmSync as rmSync4, writeFileSync as writeFileSync5 } from "node:fs";
+import { basename as basename3, dirname as dirname5, isAbsolute as isAbsolute4, join as join14, relative as relative3, resolve as resolve4 } from "node:path";
 import { parseArgs } from "node:util";
 var SLOT_LOCK = "slot.lock";
 var AGENT_VIEW_CONFIG2 = "agent-view.config.json";
@@ -1588,11 +3038,11 @@ var fail3 = (message, code) => {
 `);
   return code;
 };
-var print = (text) => {
-  process.stdout.write(`${text}
+var print2 = (text2) => {
+  process.stdout.write(`${text2}
 `);
 };
-var escapeRegExp = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+var escapeRegExp = (text2) => text2.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 var parseWorktreeList = (porcelain) => {
   const worktrees = [];
   for (const block of porcelain.split(/\r?\n\r?\n/)) {
@@ -1601,7 +3051,7 @@ var parseWorktreeList = (porcelain) => {
     if (pathLine === void 0) continue;
     const branchLine = lines.find((line) => line.startsWith("branch "));
     const worktree = {
-      path: resolve3(pathLine.slice("worktree ".length)),
+      path: resolve4(pathLine.slice("worktree ".length)),
       isPrunable: lines.some((line) => line === "prunable" || line.startsWith("prunable "))
     };
     if (branchLine !== void 0) {
@@ -1639,12 +3089,12 @@ var lowestFreeSlot = (slots) => {
 var slotDirName = (repo, slot, slug) => slug === void 0 ? `${repo}-s${slot}` : `${repo}-s${slot}-${slug}`;
 var slotPorts = (config, slot) => Object.fromEntries(Object.entries(config.ports ?? {}).map(([key, port]) => [key, port.base + slot * port.step]));
 var slotCdpPort = (config, slot) => config.cdp === void 0 ? void 0 : config.cdp.base + slot * config.cdp.step;
-var setEnvValue = (text, key, value) => {
-  const eol = text.includes("\r\n") ? "\r\n" : "\n";
+var setEnvValue = (text2, key, value) => {
+  const eol = text2.includes("\r\n") ? "\r\n" : "\n";
   const line = new RegExp(`^([ \\t]*(?:export[ \\t]+)?)${escapeRegExp(key)}[ \\t]*=.*$`, "gm");
-  if (line.test(text)) return text.replace(line, (_match, prefix) => `${prefix}${key}=${value}`);
-  const separator = text === "" || text.endsWith("\n") ? "" : eol;
-  return `${text}${separator}${key}=${value}${eol}`;
+  if (line.test(text2)) return text2.replace(line, (_match, prefix) => `${prefix}${key}=${value}`);
+  const separator = text2 === "" || text2.endsWith("\n") ? "" : eol;
+  return `${text2}${separator}${key}=${value}${eol}`;
 };
 var agentViewConfig = (base, config, cdpPort) => {
   const result = { ...base, port: cdpPort };
@@ -1680,7 +3130,7 @@ var loadContext = () => {
 var formatDuplicates = (duplicates) => [...duplicates].map(([slot, group]) => `s${slot}: ${group.map((worktree) => toSlash(worktree.path)).join(", ")}`).join("; ");
 var isTracked = (dir, file) => git(["ls-files", "--error-unmatch", "--", file], dir).ok;
 var writeLocalFile = (dir, file, content) => {
-  const path = join9(dir, file);
+  const path = join14(dir, file);
   mkdirSync8(dirname5(path), { recursive: true });
   writeFileSync5(path, content);
   if (isTracked(dir, file)) {
@@ -1688,15 +3138,15 @@ var writeLocalFile = (dir, file, content) => {
   }
 };
 var insideDir = (dir, file) => {
-  const path = resolve3(dir, file);
+  const path = resolve4(dir, file);
   const rel = relative3(dir, path);
-  if (rel === "" || rel.startsWith("..") || isAbsolute3(rel)) throw new Error(`path ${file} leaves the slot dir`);
+  if (rel === "" || rel.startsWith("..") || isAbsolute4(rel)) throw new Error(`path ${file} leaves the slot dir`);
   return path;
 };
 var copyFromMain = (mainRoot, dir, copyFiles) => {
   const rootEnvFiles = readdirSync5(mainRoot, { withFileTypes: true }).filter((entry) => entry.isFile() && ENV_FILE.test(entry.name)).map((entry) => entry.name);
   for (const file of /* @__PURE__ */ new Set([...rootEnvFiles, ...copyFiles])) {
-    const source = join9(mainRoot, file);
+    const source = join14(mainRoot, file);
     if (!existsSync5(source)) {
       process.stderr.write(`jig: copyFiles ${file} is missing in ${toSlash(mainRoot)}
 `);
@@ -1708,29 +3158,29 @@ var copyFromMain = (mainRoot, dir, copyFiles) => {
 var writePorts = (dir, slots, slot) => {
   for (const [key, port] of Object.entries(slots.ports ?? {})) {
     const path = insideDir(dir, port.target);
-    const text = existsSync5(path) ? readFileSync9(path, "utf8") : "";
-    writeLocalFile(dir, port.target, setEnvValue(text, key, String(port.base + slot * port.step)));
+    const text2 = existsSync5(path) ? readFileSync11(path, "utf8") : "";
+    writeLocalFile(dir, port.target, setEnvValue(text2, key, String(port.base + slot * port.step)));
   }
 };
 var readJsonObject = (path) => {
   if (!existsSync5(path)) return {};
-  const value = parseJsonc(readFileSync9(path, "utf8"));
-  const isObject2 = typeof value === "object" && value !== null && !Array.isArray(value);
-  return isObject2 ? value : {};
+  const value = parseJsonc(readFileSync11(path, "utf8"));
+  const isObject3 = typeof value === "object" && value !== null && !Array.isArray(value);
+  return isObject3 ? value : {};
 };
 var writeAgentView = (mainRoot, dir, slots, cdpPort) => {
-  const own = join9(dir, AGENT_VIEW_CONFIG2);
-  const base = readJsonObject(existsSync5(own) ? own : join9(mainRoot, AGENT_VIEW_CONFIG2));
+  const own = join14(dir, AGENT_VIEW_CONFIG2);
+  const base = readJsonObject(existsSync5(own) ? own : join14(mainRoot, AGENT_VIEW_CONFIG2));
   writeLocalFile(dir, AGENT_VIEW_CONFIG2, `${JSON.stringify(agentViewConfig(base, slots, cdpPort), null, 2)}
 `);
 };
 var branchExists = (cwd, branch) => git(["show-ref", "--verify", "--quiet", `refs/heads/${branch}`], cwd).ok;
 var worktreeAddArgs = (cwd, dir, branch) => {
-  if (branch === void 0) return ["worktree", "add", dir];
+  if (branch === void 0) return ["worktree", "add", "--detach", dir];
   return branchExists(cwd, branch) ? ["worktree", "add", dir, branch] : ["worktree", "add", dir, "-b", branch];
 };
 var reserveSlot = async (context, slots, options) => {
-  const lock = await acquireLock(join9(ensureJigDir(context.mainRoot).cache, SLOT_LOCK));
+  const lock = await acquireLock(join14(ensureJigDir(context.mainRoot).cache, SLOT_LOCK));
   if (lock === void 0) return fail3("slot new is running elsewhere, retry", 1);
   try {
     git(["worktree", "prune"], context.projectRoot);
@@ -1743,7 +3193,7 @@ var reserveSlot = async (context, slots, options) => {
 `);
     }
     const slot = lowestFreeSlot(taken);
-    const dir = resolve3(context.mainRoot, slots.worktreesDir, slotDirName(context.repo, slot, options.slug));
+    const dir = resolve4(context.mainRoot, slots.worktreesDir, slotDirName(context.repo, slot, options.slug));
     const added = git(worktreeAddArgs(context.projectRoot, dir, options.branch), context.projectRoot);
     if (!added.ok) return fail3(`git worktree add failed: ${added.stderr.trim()}`, 2);
     return { slot, dir };
@@ -1778,7 +3228,7 @@ var slotNew = async (args) => {
     const status = runInstall(slots.install, dir);
     if (status !== 0) return fail3(`install failed (exit ${status}) in slot ${slot} ${toSlash(dir)}`, 1);
   }
-  print(`slot ${slot} ${toSlash(dir)} ports ${formatPorts(slotPorts(slots, slot))} cdp ${cdpPort ?? NO_VALUE}`);
+  print2(`slot ${slot} ${toSlash(dir)} ports ${formatPorts(slotPorts(slots, slot))} cdp ${cdpPort ?? NO_VALUE}`);
   return 0;
 };
 var slotLs = (args) => {
@@ -1792,11 +3242,11 @@ var slotLs = (args) => {
     cdp: context.slots === void 0 ? null : slotCdpPort(context.slots, worktree.slot) ?? null
   }));
   if (values.json === true) {
-    print(JSON.stringify(rows, null, 2));
+    print2(JSON.stringify(rows, null, 2));
     return 0;
   }
   for (const row of rows) {
-    print(`s${row.slot}  ${row.path}  ${row.branch ?? "(detached)"}  ports ${formatPorts(row.ports)}  cdp ${row.cdp ?? NO_VALUE}`);
+    print2(`s${row.slot}  ${row.path}  ${row.branch ?? "(detached)"}  ports ${formatPorts(row.ports)}  cdp ${row.cdp ?? NO_VALUE}`);
   }
   return 0;
 };
@@ -1822,7 +3272,7 @@ var slotRm = (args) => {
   }
   const removed = git(["worktree", "remove", "--force", worktree.path], context.projectRoot);
   if (!removed.ok) return fail3(`git worktree remove failed: ${removed.stderr.trim()}`, 1);
-  print(`removed ${toSlash(worktree.path)}`);
+  print2(`removed ${toSlash(worktree.path)}`);
   return 0;
 };
 var runJson = (bin, args, cwd) => {
@@ -1870,11 +3320,12 @@ var slotSweep = (args) => {
     branch: worktree.branch ?? null
   }));
   if (values.json === true) {
-    print(JSON.stringify(rows, null, 2));
+    print2(JSON.stringify(rows, null, 2));
     return 0;
   }
   for (const row of rows) {
-    print(`${row.bucket}  ${row.path}  ${row.branch ?? "(detached)"}`);
+    const slot = row.slot === null ? "" : `  slot ${row.slot}`;
+    print2(`${row.bucket}  ${row.path}  ${row.branch ?? "(detached)"}${slot}`);
   }
   return 0;
 };
@@ -1900,11 +3351,13 @@ var runVersion = () => {
   return 0;
 };
 var commands = /* @__PURE__ */ new Map([
+  ["hook", runHook],
   ["build", runBuild],
   ["atom", runAtom],
   ["slot", runSlot],
   ["dash", runDash],
   ["loop", runLoop],
+  ["allow-no-verify", runAllowNoVerify],
   ["doctor", runDoctor],
   ["version", runVersion]
 ]);

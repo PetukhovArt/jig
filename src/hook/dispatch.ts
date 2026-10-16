@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { formatOutcome, parseHookInput } from '../adapters/claude'
 import { formatAtomDelivery, formatSessionAtoms, selectAtoms } from '../atoms/atoms'
 import { loadConfig, type JigConfig } from '../core/config'
@@ -18,6 +20,7 @@ import {
 import { checkComments } from '../rules/comments'
 import { checkNoVerify } from '../rules/no-verify'
 import { checkProtectedPath, checkShellWrite } from '../rules/protected'
+import type { Edit } from '../rules/rule'
 import { checkSuppressions } from '../rules/suppressions'
 import {
   collapseFindings,
@@ -223,6 +226,23 @@ const runChecks = (ctx: HookContext, guard: Check, openChecks: readonly Check[])
   return settleFindings(ctx, findings)
 }
 
+const readCurrent = (path: string): string => {
+  try {
+    return readFileSync(path, 'utf8')
+  } catch {
+    return ''
+  }
+}
+
+const locateEdits = (event: EventOf<'pre-edit'>, projectRoot: string): Edit[] => {
+  if (event.wholeFile !== undefined) return event.edits.map((edit) => ({ ...edit, line: 1 }))
+  const current = readCurrent(join(projectRoot, event.file))
+  return event.edits.map((edit) => {
+    const at = edit.before === '' ? -1 : current.indexOf(edit.before)
+    return at === -1 ? edit : { ...edit, line: current.slice(0, at).split('\n').length }
+  })
+}
+
 const preEdit = (event: EventOf<'pre-edit'>, ctx: HookContext): Outcome => {
   let config: JigConfig | undefined
   const guard: Check = () => {
@@ -230,9 +250,10 @@ const preEdit = (event: EventOf<'pre-edit'>, ctx: HookContext): Outcome => {
     return checkProtectedPath(event.file, config)
   }
   const withConfig = (check: (loaded: JigConfig) => Finding[]): Check => () => (config === undefined ? [] : check(config))
+  const edits = locateEdits(event, ctx.projectRoot)
   return runChecks(ctx, guard, [
-    withConfig((loaded) => checkSuppressions(event.file, event.edits, loaded)),
-    withConfig((loaded) => checkComments(event.file, event.edits, loaded)),
+    withConfig((loaded) => checkSuppressions(event.file, edits, loaded)),
+    withConfig((loaded) => checkComments(event.file, edits, loaded)),
   ])
 }
 

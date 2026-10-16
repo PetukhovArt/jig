@@ -164,6 +164,24 @@ describe('guards fail closed', () => {
     await expect(handleHook('pre-bash', bashInput('echo hi > out.txt'), env())).resolves.toBe('')
   })
 
+  it('passes the file line where the edited text starts to the open checks', async () => {
+    const file = join(project, 'src', 'a.ts')
+    mkdirSync(dirname(file), { recursive: true })
+    writeFileSync(file, 'x\nx\nx\nconst marker = 1\n')
+    const input = JSON.stringify({
+      session_id: 's-guard',
+      cwd: project,
+      hook_event_name: 'PreToolUse',
+      tool_name: 'Edit',
+      tool_input: { file_path: file, old_string: 'const marker = 1', new_string: 'const marker = 2' },
+    })
+
+    await handleHook('pre-edit', input, env())
+
+    expect(vi.mocked(checkComments).mock.calls[0]?.[1]).toEqual([{ before: 'const marker = 1', after: 'const marker = 2', line: 4 }])
+    expect(vi.mocked(checkSuppressions).mock.calls[0]?.[1]?.[0]?.line).toBe(4)
+  })
+
   it('denies with the rule text when a guard finds an error', async () => {
     const message = 'jig/protected-paths: tsconfig.json configures the checks and is protected.'
     vi.mocked(checkProtectedPath).mockReturnValue({

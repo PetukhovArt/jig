@@ -1,0 +1,21 @@
+echo x > tsconfig.json
+echo x>>.husky/pre-commit
+node gen.mjs 2>&1 > eslint.config.mjs
+echo x | tee -a .eslintrc.json
+echo x | tee tsconfig.app.json
+rm .github/workflows/ci.yml
+del .oxlintrc.json
+truncate -s 0 lefthook.yml
+mv tsconfig.json tsconfig.old.json
+mv /tmp/x .lintstagedrc
+cp /tmp/x .jig/config.jsonc
+sed -i s/a/b/ .eslintrc.json
+perl -pi -e s/a/b/ eslint.config.mjs
+git checkout -- tsconfig.app.json
+git restore .husky/pre-commit
+Set-Content -Path eslint.config.mjs -Value x
+Add-Content .gitlab-ci.yml x
+"x" | Out-File -FilePath tsconfig.json
+Remove-Item .claude/settings.json
+Move-Item tsconfig.json tsconfig.bak
+Copy-Item /tmp/x -Destination stratum.config.jsonc
