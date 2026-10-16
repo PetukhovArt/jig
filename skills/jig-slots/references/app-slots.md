@@ -181,7 +181,7 @@ Applies to **every** detached launch typed into the Bash tool on Windows (`dev`,
 | `cmd /c start "title" cmd /c …` | quotes stripped → `start title …` | dialog `Windows cannot find 'title'` |
 | `cmd /c "X:\a\b.cmd"` | `\a\b` → `ab` (bash eats `\` inside double quotes) | `'X:ab.cmd' is not recognized` |
 
-**Do not fix this with escaping.** Write two `.cmd` files with the Write tool (or a quoted heredoc, `<<'EOF'`; `printf` and `node -e` read `\f`, `\U`, `\u` in Windows paths as escapes) into the scratch dir `%TEMP%\claude-slots\<repo>-s<N>\` (`<scratch>`), outside the worktree:
+**Do not fix this with escaping.** Write two `.cmd` files with the Write tool (or a quoted heredoc, `<<'EOF'`; `printf` and `node -e` read `\f`, `\U`, `\u` in Windows paths as escapes) into the scratch dir `%TEMP%\jig-slots\<repo>-s<N>\` (`<scratch>`), outside the worktree:
 
 ```cmd
 :: <scratch>\slot-dev-run.cmd

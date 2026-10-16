@@ -16,11 +16,11 @@ The slot is encoded in the worktree directory name (`<repo>-s<N>-<slug>`), with 
 
 **Prune is not optional.** A worktree whose dir was deleted by hand stays in `git worktree list` as `prunable`: its slot then reads as occupied forever and the count drifts upward with every manual cleanup. If an entry is still listed as `prunable` after `git worktree prune`, report it rather than reusing its N.
 
-Run `slot new` from one place at a time: two agents creating slots concurrently can pick the same N. Create the slots first, then hand each agent its path.
-
 ## Guardrails
 
 - One worktree = one slot = one task. Don't reuse a slot dir for a different branch; remove it and create a new one.
+- **The branch does not carry the slot number**: `feat/x`, not `s3/x`. Branches go to the remote and into merge requests; N is machine-local and reused, so a removed and re-created slot would leave the branch name lying. The slot stays visible in the dir name and in `agent-view.config.json`.
+- **Remove a slot only with `jig slot rm`.** Deleting its dir or its row in another tool frees N while the slot's ports stay held by its detached processes.
 - `slot new` prints the path, the slot number and the ports. Each agent works only inside its own path.
 - `jig slot ls` shows the live slots, their ports and branches.
 - When an agent is done: `jig slot rm <N>` (it refuses while the worktree has tracked changes, unless `--force`). The branch stays; delete it only if the user asks.
