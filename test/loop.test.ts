@@ -16,10 +16,9 @@ const record = (fields: Partial<JournalRecord> & Pick<JournalRecord, 'kind'>): J
   ts: new Date((clock += 1000)).toISOString(),
   session: 's1',
   agent: 'main',
+  turn: 1,
   ...fields,
 })
-
-const stop = (): JournalRecord => record({ kind: 'gate-pass' })
 
 const writeJournal = (records: JournalRecord[]): void => {
   const dir = join(projectRoot, '.jig', 'journal')
@@ -38,11 +37,15 @@ const loop = (records: JournalRecord[], args: string[] = []): string => {
   return readFileSync(path, 'utf8')
 }
 
-const rows = (text: string): string[][] =>
-  text
+const tableRows = (text: string, section: string): string[][] =>
+  (text.split(`## ${section}\n`)[1] ?? '')
+    .split('\n## ')[0]!
     .split('\n')
-    .filter((line) => line.startsWith('| ') && !line.startsWith('| Signal') && !line.startsWith('| ---'))
+    .filter((line) => line.startsWith('| ') && !line.startsWith('| ---'))
+    .slice(1)
     .map((line) => line.split(' | ').map((cell) => cell.replace(/^\| | \|$/g, '')))
+
+const rows = (text: string): string[][] => tableRows(text, 'Candidates')
 
 const signals = (records: JournalRecord[]): string[] => rows(loop(records)).map(([kind, rule, count]) => `${kind} ${rule} ${count}`)
 
@@ -58,22 +61,36 @@ afterEach(() => {
 })
 
 describe('jig loop', () => {
-  it('ignores deny and finding repeated within one turn', () => {
+  it('ignores deny, finding and gate-block repeated within one turn', () => {
     const deny = { kind: 'deny', rule: 'jig/comments', file: 'src/a.ts' } as const
     const finding = { kind: 'finding', rule: 'no-unused-vars', file: 'src/b.ts' } as const
-    expect(signals([record(deny), record(deny), record(finding), record(finding), stop()])).toEqual([])
+    const block = { kind: 'gate-block', rule: 'gate/tsc', file: 'src/c.ts' } as const
+    expect(signals([deny, deny, finding, finding, block, block].map((fields) => record(fields)))).toEqual([])
   })
 
-  it('takes deny and finding repeated in two turns', () => {
+  it('takes deny, finding and gate-block repeated in two turns', () => {
     const deny = { kind: 'deny', rule: 'jig/comments', file: 'src/a.ts' } as const
     const finding = { kind: 'finding', rule: 'no-unused-vars', file: 'src/b.ts' } as const
-    const records = [record(deny), stop(), record(deny), record({ ...finding, session: 's2' }), record(finding)]
-    expect(signals(records)).toEqual(['deny jig/comments 2', 'finding no-unused-vars 2'])
+    const block = { kind: 'gate-block', rule: 'gate/tsc', file: 'src/c.ts' } as const
+    const records = [
+      record(deny),
+      record({ ...deny, turn: 2 }),
+      record(finding),
+      record({ ...finding, session: 's2' }),
+      record(block),
+      record({ ...block, turn: 3 }),
+    ]
+    expect(signals(records)).toEqual(['deny jig/comments 2', 'finding no-unused-vars 2', 'gate-block gate/tsc 2'])
   })
 
   it('counts a subagent turn apart from the main agent turn', () => {
     const deny = { kind: 'deny', rule: 'jig/protected-paths', file: '.husky/pre-commit' } as const
     expect(signals([record(deny), record({ ...deny, agent: 'agent-7' })])).toEqual(['deny jig/protected-paths 2'])
+  })
+
+  it('treats each record without a turn as its own turn', () => {
+    const { turn: _turn, ...deny } = record({ kind: 'deny', rule: 'jig/comments', file: 'src/a.ts' })
+    expect(signals([deny, { ...deny }])).toEqual(['deny jig/comments 2'])
   })
 
   it('takes failures and gate give-ups from a single record', () => {
@@ -91,19 +108,23 @@ describe('jig loop', () => {
     ])
   })
 
-  it('needs two records of the same rule and file for other kinds', () => {
-    const records = [
-      record({ kind: 'gate-block', rule: 'gate/tsc', file: 'src/a.ts' }),
-      record({ kind: 'gate-block', rule: 'gate/tsc', file: 'src/b.ts' }),
-      record({ kind: 'skip-verify' }),
-      record({ kind: 'skip-verify' }),
-    ]
-    expect(signals(records)).toEqual(['skip-verify  2'])
+  it('keeps kinds that are not problem signals out of candidates and in the counts', () => {
+    const kinds = ['gate-pass', 'gate-skipped', 'atom', 'no-verify-allowed', 'skip-verify'] as const
+    const records = kinds.flatMap((kind) => [1, 2].map((turn) => record({ kind, rule: 'r', turn })))
+    const text = loop(records)
+    expect(rows(text)).toEqual([])
+    expect(tableRows(text, 'Counts')).toEqual([
+      ['atom', '2'],
+      ['gate-pass', '2'],
+      ['gate-skipped', '2'],
+      ['no-verify-allowed', '2'],
+      ['skip-verify', '2'],
+    ])
   })
 
   it('lists at most three examples with file:line, oldest first', () => {
     const deny = { kind: 'deny', rule: 'jig/comments', file: 'src/a.ts' } as const
-    const records = [1, 2, 3, 4].flatMap((line) => [record({ ...deny, line }), stop()])
+    const records = [1, 2, 3, 4].map((line) => record({ ...deny, line, turn: line }))
     const [row] = rows(loop(records.reverse()))
     expect(row?.[2]).toBe('4')
     expect(row?.[3]?.match(/`src\/a\.ts:\d`/g)).toEqual(['`src/a.ts:1`', '`src/a.ts:2`', '`src/a.ts:3`'])

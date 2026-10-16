@@ -123,7 +123,7 @@ const checkDeny = (projectRoot: string): Check => {
   }
   const missing = RECOMMENDED_DENY.filter((entry) => !deny.includes(entry))
   if (missing.length === 0) return ok(`deny: ${path} has the recommended block`)
-  const text = `deny: ${path} misses ${missing.length} of ${RECOMMENDED_DENY.length} rules (${missing.join(', ')}), add the recommended block:`
+  const text = `deny: ${path} misses ${missing.length} of ${RECOMMENDED_DENY.length} rules, add the recommended block:`
   return { ...warn(text), block: formatDenyBlock() }
 }
 

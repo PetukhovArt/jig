@@ -15,13 +15,11 @@ interface Candidate {
 
 const DEFAULT_DAYS = 7
 const DAY_MS = 24 * 60 * 60 * 1000
-const MIN_RECORDS = 2
 const MIN_TURNS = 2
 const MAX_EXAMPLES = 3
 
 const SINGLE_RECORD_KINDS: ReadonlySet<JournalKind> = new Set(['gate-giveup', 'gate-unresolved', 'hook-failure', 'tool-failure'])
-const DISTINCT_TURN_KINDS: ReadonlySet<JournalKind> = new Set(['deny', 'finding'])
-const TURN_CLOSING_KINDS: ReadonlySet<JournalKind> = new Set(['gate-pass', 'gate-skipped', 'gate-unresolved', 'gate-giveup'])
+const DISTINCT_TURN_KINDS: ReadonlySet<JournalKind> = new Set(['deny', 'finding', 'gate-block'])
 
 interface Group {
   kind: JournalKind
@@ -33,24 +31,12 @@ interface Group {
 
 const byTime = (left: JournalRecord, right: JournalRecord): number => Date.parse(left.ts) - Date.parse(right.ts)
 
-const assignTurns = (records: readonly JournalRecord[]): Map<JournalRecord, string> => {
-  const closedTurns = new Map<string, number>()
-  const turns = new Map<JournalRecord, string>()
-  for (const record of records) {
-    const actor = `${record.session}\0${record.agent}`
-    const index = closedTurns.get(actor) ?? 0
-    turns.set(record, `${actor}\0${index}`)
-    if (TURN_CLOSING_KINDS.has(record.kind)) {
-      closedTurns.set(actor, index + 1)
-    }
-  }
-  return turns
-}
+const turnKey = (record: JournalRecord, index: number): string =>
+  record.turn === undefined ? `record:${index}` : JSON.stringify([record.session, record.agent, record.turn])
 
 const isCandidate = (group: Group): boolean => {
   if (SINGLE_RECORD_KINDS.has(group.kind)) return true
-  if (DISTINCT_TURN_KINDS.has(group.kind)) return group.turns.size >= MIN_TURNS
-  return group.records.length >= MIN_RECORDS
+  return DISTINCT_TURN_KINDS.has(group.kind) && group.turns.size >= MIN_TURNS
 }
 
 const compareCandidates = (left: Candidate, right: Candidate): number =>
@@ -60,10 +46,8 @@ const compareCandidates = (left: Candidate, right: Candidate): number =>
   (left.file ?? '').localeCompare(right.file ?? '')
 
 const findCandidates = (records: readonly JournalRecord[]): Candidate[] => {
-  const sorted = [...records].sort(byTime)
-  const turns = assignTurns(sorted)
   const groups = new Map<string, Group>()
-  for (const record of sorted) {
+  for (const [index, record] of [...records].sort(byTime).entries()) {
     const key = JSON.stringify([record.kind, record.rule ?? null, record.file ?? null])
     let group = groups.get(key)
     if (group === undefined) {
@@ -77,7 +61,7 @@ const findCandidates = (records: readonly JournalRecord[]): Candidate[] => {
       groups.set(key, group)
     }
     group.records.push(record)
-    group.turns.add(turns.get(record) ?? '')
+    group.turns.add(turnKey(record, index))
   }
   return [...groups.values()]
     .filter(isCandidate)
@@ -104,20 +88,40 @@ const formatExample = (record: JournalRecord): string => {
   return cell(parts.filter((part) => part !== undefined).join(' '))
 }
 
-const formatCandidates = (candidates: readonly Candidate[], from: Date, to: Date, days: number): string => {
-  const header = [
-    '# jig loop candidates',
-    '',
-    `Window: ${from.toISOString()} .. ${to.toISOString()} (${days} days)`,
-    '',
-  ]
-  if (candidates.length === 0) return [...header, 'No candidates.', ''].join('\n')
+const formatCandidateTable = (candidates: readonly Candidate[]): string[] => {
+  if (candidates.length === 0) return ['No candidates.']
   const rows = candidates.map(
     (candidate) =>
       `| ${candidate.kind} | ${cell(candidate.rule ?? '')} | ${candidate.count} | ${candidate.examples.map(formatExample).join('<br>')} |`,
   )
-  return [...header, '| Signal | Rule | Count | Examples |', '| --- | --- | --- | --- |', ...rows, ''].join('\n')
+  return ['| Signal | Rule | Count | Examples |', '| --- | --- | --- | --- |', ...rows]
 }
+
+const formatCounts = (records: readonly JournalRecord[]): string[] => {
+  const counts = new Map<JournalKind, number>()
+  for (const record of records) {
+    counts.set(record.kind, (counts.get(record.kind) ?? 0) + 1)
+  }
+  if (counts.size === 0) return ['No records.']
+  const rows = [...counts].sort(([left], [right]) => left.localeCompare(right)).map(([kind, count]) => `| ${kind} | ${count} |`)
+  return ['| Kind | Count |', '| --- | --- |', ...rows]
+}
+
+const formatCandidates = (records: readonly JournalRecord[], from: Date, to: Date, days: number): string =>
+  [
+    '# jig loop candidates',
+    '',
+    `Window: ${from.toISOString()} .. ${to.toISOString()} (${days} days)`,
+    '',
+    '## Candidates',
+    '',
+    ...formatCandidateTable(findCandidates(records)),
+    '',
+    '## Counts',
+    '',
+    ...formatCounts(records),
+    '',
+  ].join('\n')
 
 const parseDays = (args: readonly string[]): number => {
   if (args.length === 0) return DEFAULT_DAYS
@@ -135,11 +139,11 @@ export const runLoop: Command = (args) => {
   const projectRoot = resolveProjectRoot(process.cwd())
   const to = new Date()
   const from = new Date(to.getTime() - days * DAY_MS)
-  const candidates = findCandidates(readJournal(projectRoot, from.getTime()))
+  const records = readJournal(projectRoot, from.getTime())
   const dir = join(ensureJigDir(projectRoot).runs, '_loop', to.toISOString().slice(0, 10))
   mkdirSync(dir, { recursive: true })
   const path = join(dir, 'candidates.md')
-  writeFileSync(path, formatCandidates(candidates, from, to, days))
+  writeFileSync(path, formatCandidates(records, from, to, days))
   process.stdout.write(`${path}\n`)
   return 0
 }
