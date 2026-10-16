@@ -1,0 +1,5 @@
+interface:
+  display_name: "jig-explain"
+  short_description: "Explain the current topic visually"
+policy:
+  allow_implicit_invocation: false

@@ -1,0 +1,5 @@
+interface:
+  display_name: "jig"
+  short_description: "Run a task through a jig flow"
+policy:
+  allow_implicit_invocation: false

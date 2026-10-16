@@ -1,0 +1,3 @@
+interface:
+  display_name: "jig-slots"
+  short_description: "Give a task its own worktree slot with offset ports"
