@@ -23,6 +23,7 @@ export interface JournalRecord {
   ts: string
   session: string
   agent: string
+  turn?: number
   kind: JournalKind
   rule?: string
   tool?: JournalTool

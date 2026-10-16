@@ -25,6 +25,7 @@ export interface NoVerifyAllowance {
 export interface SessionState {
   v: 1
   sessionId: string
+  turn: number
   createdAt: string
   updatedAt: string
   snapshot: Snapshot
@@ -59,6 +60,7 @@ export const createSessionState = (sessionId: string, snapshot: Snapshot, now: D
   return {
     v: 1,
     sessionId,
+    turn: 0,
     createdAt: iso,
     updatedAt: iso,
     snapshot,
@@ -91,7 +93,8 @@ export const readState = (projectRoot: string, sessionId: string): SessionState 
   }
   try {
     const value: unknown = JSON.parse(text)
-    return isSessionState(value) ? value : undefined
+    if (!isSessionState(value)) return undefined
+    return typeof value.turn === 'number' ? value : { ...value, turn: 0 }
   } catch {
     return undefined
   }
