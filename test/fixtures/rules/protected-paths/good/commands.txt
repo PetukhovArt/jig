@@ -13,3 +13,6 @@ sed -n 1p tsconfig.json
 rm -rf dist && cat tsconfig.json
 git checkout main
 git restore src/a.ts
+cp tsconfig.json /tmp/tsconfig.json
+echo x > /opt/other/.husky/pre-commit
+rm ../other/tsconfig.json

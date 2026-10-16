@@ -1,6 +1,7 @@
+import { isAbsolute, posix } from 'node:path'
 import type { JigConfig } from '../core/config'
 import { createMatcher } from '../core/glob'
-import { toSlash } from '../core/paths'
+import { toProjectPath, toSlash } from '../core/paths'
 import type { Finding } from '../tools/finding'
 import { activeSeverity, jigFinding } from './rule'
 import { splitShell } from './shell'
@@ -98,21 +99,39 @@ const pathSuffixes = (token: string): string[] => {
   return parts.map((_, index) => parts.slice(index).join('/')).filter(Boolean)
 }
 
-const protectedSuffix = (target: string): string | undefined =>
-  NULL_TARGETS.has(target) ? undefined : pathSuffixes(target).find((suffix) => isProtected(suffix))
+export interface ShellContext {
+  projectRoot: string
+  cwd: string
+}
 
-export const checkProtectedPath =(file: string, config: JigConfig): Finding | undefined => {
+const protectedSuffix = (target: string): string | undefined =>
+  pathSuffixes(target).find((suffix) => isProtected(suffix))
+
+const insideProject = (path: string): string | undefined => {
+  const normalized = posix.normalize(toSlash(path))
+  const isOutside = normalized === '..' || normalized.startsWith('../') || isAbsolute(normalized)
+  return isOutside ? undefined : normalized.replace(/^\.\//, '')
+}
+
+const protectedInProject = (target: string, ctx: ShellContext): string | undefined => {
+  const path = insideProject(toProjectPath(ctx.projectRoot, target, ctx.cwd))
+  return path !== undefined && isProtected(path) ? path : undefined
+}
+
+export const checkProtectedPath = (file: string, config: JigConfig): Finding | undefined => {
   const severity = activeSeverity(config, RULE)
-  if (severity === undefined || !isProtected(file)) return undefined
+  const path = insideProject(file)
+  if (severity === undefined || path === undefined || !isProtected(path)) return undefined
   return jigFinding(RULE, severity, { file, line: 1, message: denial(file) })
 }
 
-export const checkShellWrite = (command: string, config: JigConfig): Finding | undefined => {
+export const checkShellWrite = (command: string, config: JigConfig, ctx?: ShellContext): Finding | undefined => {
   const severity = activeSeverity(config, RULE)
   if (severity === undefined) return undefined
   for (const segment of splitShell(command)) {
     for (const target of [...segment.redirects, ...writeTargets(segment.words)]) {
-      const path = protectedSuffix(target)
+      if (NULL_TARGETS.has(target)) continue
+      const path = ctx === undefined ? protectedSuffix(target) : protectedInProject(target, ctx)
       if (path !== undefined) return jigFinding(RULE, severity, { file: path, line: 1, message: denial(path) })
     }
   }

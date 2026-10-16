@@ -52,7 +52,9 @@ const casesOf = (kind: Kind): Record<string, Case[]> => ({
   'jig/suppressions': editCases('suppressions', kind, checkSuppressions),
   'jig/protected-paths': [
     ...lineCases('protected-paths', kind, 'edits.txt', (file) => count(checkProtectedPath(file, config))),
-    ...lineCases('protected-paths', kind, 'commands.txt', (command) => count(checkShellWrite(command, config))),
+    ...lineCases('protected-paths', kind, 'commands.txt', (command) =>
+      count(checkShellWrite(command, config, { projectRoot: sandbox, cwd: sandbox })),
+    ),
   ],
   'jig/no-verify': lineCases('no-verify', kind, 'commands.txt', (command) =>
     count(checkNoVerify(command, { projectRoot: sandbox, sessionId: 'rules-test', config })),
@@ -93,6 +95,12 @@ describe('rule texts', () => {
     expect(checkProtectedPath('tsconfig.json', config)?.message).toBe(
       'jig/protected-paths: tsconfig.json configures the checks and is protected. Do not change it; tell the user what change you need and why.',
     )
+  })
+
+  it('resolves a shell path from the command cwd against the project root', () => {
+    const ctx = { projectRoot: sandbox, cwd: join(sandbox, 'src') }
+    expect(checkShellWrite('rm ../tsconfig.json', config, ctx)?.file).toBe('tsconfig.json')
+    expect(checkShellWrite(`rm ${join(sandbox, '..', 'tsconfig.json')}`, config, ctx)).toBeUndefined()
   })
 
   it('points to allow-no-verify', () => {

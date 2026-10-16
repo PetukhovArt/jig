@@ -19,3 +19,4 @@ Add-Content .gitlab-ci.yml x
 Remove-Item .claude/settings.json
 Move-Item tsconfig.json tsconfig.bak
 Copy-Item /tmp/x -Destination stratum.config.jsonc
+echo x > src/../tsconfig.json

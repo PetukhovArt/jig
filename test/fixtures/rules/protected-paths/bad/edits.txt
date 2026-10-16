@@ -5,3 +5,4 @@ eslint.config.mjs
 .husky/pre-commit
 packages/web/tsconfig.json
 .claude/settings.json
+./tsconfig.json

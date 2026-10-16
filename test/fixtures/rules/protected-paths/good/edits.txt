@@ -1,3 +1,4 @@
 src/tsconfig-utils.ts
 src/eslint.ts
 docs/husky.md
+../other/tsconfig.json
