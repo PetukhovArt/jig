@@ -3,6 +3,7 @@ import { runAtom, runBuild } from '../atoms/atoms'
 import { runDash } from '../dash/dash'
 import { runDoctor } from '../doctor'
 import { runLoop } from '../loop/loop'
+import { runSlot } from '../slot/slot'
 
 type Command = (args: string[]) => number | Promise<number>
 
@@ -17,6 +18,7 @@ const runVersion: Command = () => {
 const commands = new Map<string, Command>([
   ['build', runBuild],
   ['atom', runAtom],
+  ['slot', runSlot],
   ['dash', runDash],
   ['loop', runLoop],
   ['doctor', runDoctor],

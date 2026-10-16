@@ -604,7 +604,9 @@ var loadConfig = (projectRoot) => {
 // src/core/proc.ts
 import { existsSync as existsSync3, mkdirSync as mkdirSync2, readFileSync as readFileSync2, realpathSync, rmSync, statSync, writeFileSync as writeFileSync2 } from "node:fs";
 import { basename, delimiter, dirname as dirname2, extname, isAbsolute as isAbsolute2, join as join2, relative as relative2, resolve as resolve2 } from "node:path";
+var LOCK_WAIT_MS = 15e3;
 var LOCK_STALE_MS = 5 * 60 * 1e3;
+var LOCK_POLL_MS = 200;
 var MAX_OUTPUT_BYTES = 32 * 1024 * 1024;
 var readPackageJson = (path) => {
   try {
@@ -740,6 +742,31 @@ var isLockAbandoned = (path, now = Date.now()) => {
   if (info !== void 0) return now - info.at > LOCK_STALE_MS || !isAlive(info.pid);
   const age = lockFileAge(path, now);
   return age !== void 0 && age > LOCK_STALE_MS;
+};
+var tryCreateLock = (path) => {
+  try {
+    writeFileSync2(path, JSON.stringify({ pid: process.pid, at: Date.now() }), { flag: "wx" });
+    return true;
+  } catch (error) {
+    if (error.code === "EEXIST") return false;
+    throw error;
+  }
+};
+var sleep = (ms) => new Promise((done) => setTimeout(done, ms));
+var acquireLock = async (path, waitMs = LOCK_WAIT_MS) => {
+  mkdirSync2(dirname2(path), { recursive: true });
+  const deadline = Date.now() + waitMs;
+  for (; ; ) {
+    if (tryCreateLock(path)) {
+      return { path, release: () => rmSync(path, { force: true }) };
+    }
+    if (isLockAbandoned(path)) {
+      rmSync(path, { force: true });
+      continue;
+    }
+    if (Date.now() >= deadline) return void 0;
+    await sleep(LOCK_POLL_MS);
+  }
 };
 
 // src/core/state.ts
@@ -1544,6 +1571,326 @@ var runLoop = (args) => {
   return 0;
 };
 
+// src/slot/slot.ts
+import { spawnSync as spawnSync2 } from "node:child_process";
+import { cpSync, existsSync as existsSync5, mkdirSync as mkdirSync8, readdirSync as readdirSync5, readFileSync as readFileSync9, rmSync as rmSync4, writeFileSync as writeFileSync5 } from "node:fs";
+import { basename as basename3, dirname as dirname5, isAbsolute as isAbsolute3, join as join9, relative as relative3, resolve as resolve3 } from "node:path";
+import { parseArgs } from "node:util";
+var SLOT_LOCK = "slot.lock";
+var AGENT_VIEW_CONFIG2 = "agent-view.config.json";
+var RECENT_MS = 24 * 60 * 60 * 1e3;
+var MS_PER_SECOND = 1e3;
+var SLUG = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+var ENV_FILE = /^\.env/;
+var NO_VALUE = "none";
+var fail3 = (message, code) => {
+  process.stderr.write(`jig: ${message}
+`);
+  return code;
+};
+var print = (text) => {
+  process.stdout.write(`${text}
+`);
+};
+var escapeRegExp = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+var parseWorktreeList = (porcelain) => {
+  const worktrees = [];
+  for (const block of porcelain.split(/\r?\n\r?\n/)) {
+    const lines = block.split(/\r?\n/).filter(Boolean);
+    const pathLine = lines.find((line) => line.startsWith("worktree "));
+    if (pathLine === void 0) continue;
+    const branchLine = lines.find((line) => line.startsWith("branch "));
+    const worktree = {
+      path: resolve3(pathLine.slice("worktree ".length)),
+      isPrunable: lines.some((line) => line === "prunable" || line.startsWith("prunable "))
+    };
+    if (branchLine !== void 0) {
+      worktree.branch = branchLine.slice("branch ".length).replace(/^refs\/heads\//, "");
+    }
+    worktrees.push(worktree);
+  }
+  return worktrees;
+};
+var slotNumber = (dirName, repo) => {
+  const match = new RegExp(`^${escapeRegExp(repo)}-s(\\d+)(?:-|$)`).exec(dirName);
+  if (match?.[1] === void 0) return void 0;
+  const slot = Number(match[1]);
+  return slot >= 1 ? slot : void 0;
+};
+var slotWorktrees = (worktrees, repo) => worktrees.flatMap((worktree) => {
+  const slot = slotNumber(basename3(worktree.path), repo);
+  return slot === void 0 ? [] : [{ ...worktree, slot }];
+});
+var findDuplicates = (slots) => {
+  const bySlot = /* @__PURE__ */ new Map();
+  for (const slot of slots) {
+    bySlot.set(slot.slot, [...bySlot.get(slot.slot) ?? [], slot]);
+  }
+  return new Map([...bySlot].filter(([, group]) => group.length > 1));
+};
+var lowestFreeSlot = (slots) => {
+  const taken = new Set(slots.map((slot2) => slot2.slot));
+  let slot = 1;
+  while (taken.has(slot)) {
+    slot++;
+  }
+  return slot;
+};
+var slotDirName = (repo, slot, slug) => slug === void 0 ? `${repo}-s${slot}` : `${repo}-s${slot}-${slug}`;
+var slotPorts = (config, slot) => Object.fromEntries(Object.entries(config.ports ?? {}).map(([key, port]) => [key, port.base + slot * port.step]));
+var slotCdpPort = (config, slot) => config.cdp === void 0 ? void 0 : config.cdp.base + slot * config.cdp.step;
+var setEnvValue = (text, key, value) => {
+  const eol = text.includes("\r\n") ? "\r\n" : "\n";
+  const line = new RegExp(`^([ \\t]*(?:export[ \\t]+)?)${escapeRegExp(key)}[ \\t]*=.*$`, "gm");
+  if (line.test(text)) return text.replace(line, (_match, prefix) => `${prefix}${key}=${value}`);
+  const separator = text === "" || text.endsWith("\n") ? "" : eol;
+  return `${text}${separator}${key}=${value}${eol}`;
+};
+var agentViewConfig = (base, config, cdpPort) => {
+  const result = { ...base, port: cdpPort };
+  const runtime = config.verifyRuntime ?? config.runtime;
+  if (runtime !== void 0 && runtime !== "none") {
+    result["runtime"] = runtime;
+  }
+  if (result["launch"] === void 0 && config.dev !== void 0) {
+    result["launch"] = config.dev;
+  }
+  return result;
+};
+var formatPorts = (ports) => {
+  const entries = Object.entries(ports).map(([key, value]) => `${key}=${value}`);
+  return entries.length === 0 ? NO_VALUE : entries.join(" ");
+};
+var listWorktrees = (cwd) => {
+  const result = git(["worktree", "list", "--porcelain"], cwd);
+  if (!result.ok) throw new Error(`git worktree list failed: ${result.stderr.trim()}`);
+  return parseWorktreeList(result.stdout);
+};
+var loadContext = () => {
+  const projectRoot = resolveProjectRoot(process.cwd());
+  const config = loadConfig(projectRoot);
+  if (config.error !== void 0) throw new Error(`.jig/config.jsonc: ${config.error}`);
+  const mainRoot = listWorktrees(projectRoot)[0]?.path ?? projectRoot;
+  const context = { projectRoot, mainRoot, repo: basename3(mainRoot) };
+  if (config.slots !== void 0) {
+    context.slots = config.slots;
+  }
+  return context;
+};
+var formatDuplicates = (duplicates) => [...duplicates].map(([slot, group]) => `s${slot}: ${group.map((worktree) => toSlash(worktree.path)).join(", ")}`).join("; ");
+var isTracked = (dir, file) => git(["ls-files", "--error-unmatch", "--", file], dir).ok;
+var writeLocalFile = (dir, file, content) => {
+  const path = join9(dir, file);
+  mkdirSync8(dirname5(path), { recursive: true });
+  writeFileSync5(path, content);
+  if (isTracked(dir, file)) {
+    git(["update-index", "--skip-worktree", "--", file], dir);
+  }
+};
+var insideDir = (dir, file) => {
+  const path = resolve3(dir, file);
+  const rel = relative3(dir, path);
+  if (rel === "" || rel.startsWith("..") || isAbsolute3(rel)) throw new Error(`path ${file} leaves the slot dir`);
+  return path;
+};
+var copyFromMain = (mainRoot, dir, copyFiles) => {
+  const rootEnvFiles = readdirSync5(mainRoot, { withFileTypes: true }).filter((entry) => entry.isFile() && ENV_FILE.test(entry.name)).map((entry) => entry.name);
+  for (const file of /* @__PURE__ */ new Set([...rootEnvFiles, ...copyFiles])) {
+    const source = join9(mainRoot, file);
+    if (!existsSync5(source)) {
+      process.stderr.write(`jig: copyFiles ${file} is missing in ${toSlash(mainRoot)}
+`);
+      continue;
+    }
+    cpSync(source, insideDir(dir, file), { recursive: true });
+  }
+};
+var writePorts = (dir, slots, slot) => {
+  for (const [key, port] of Object.entries(slots.ports ?? {})) {
+    const path = insideDir(dir, port.target);
+    const text = existsSync5(path) ? readFileSync9(path, "utf8") : "";
+    writeLocalFile(dir, port.target, setEnvValue(text, key, String(port.base + slot * port.step)));
+  }
+};
+var readJsonObject = (path) => {
+  if (!existsSync5(path)) return {};
+  const value = parseJsonc(readFileSync9(path, "utf8"));
+  const isObject2 = typeof value === "object" && value !== null && !Array.isArray(value);
+  return isObject2 ? value : {};
+};
+var writeAgentView = (mainRoot, dir, slots, cdpPort) => {
+  const own = join9(dir, AGENT_VIEW_CONFIG2);
+  const base = readJsonObject(existsSync5(own) ? own : join9(mainRoot, AGENT_VIEW_CONFIG2));
+  writeLocalFile(dir, AGENT_VIEW_CONFIG2, `${JSON.stringify(agentViewConfig(base, slots, cdpPort), null, 2)}
+`);
+};
+var branchExists = (cwd, branch) => git(["show-ref", "--verify", "--quiet", `refs/heads/${branch}`], cwd).ok;
+var worktreeAddArgs = (cwd, dir, branch) => {
+  if (branch === void 0) return ["worktree", "add", dir];
+  return branchExists(cwd, branch) ? ["worktree", "add", dir, branch] : ["worktree", "add", dir, "-b", branch];
+};
+var reserveSlot = async (context, slots, options) => {
+  const lock = await acquireLock(join9(ensureJigDir(context.mainRoot).cache, SLOT_LOCK));
+  if (lock === void 0) return fail3("slot new is running elsewhere, retry", 1);
+  try {
+    git(["worktree", "prune"], context.projectRoot);
+    const worktrees = listWorktrees(context.projectRoot);
+    const taken = slotWorktrees(worktrees, context.repo);
+    const duplicates = findDuplicates(taken);
+    if (duplicates.size > 0) return fail3(`duplicate slot numbers: ${formatDuplicates(duplicates)}`, 1);
+    for (const prunable of taken.filter((worktree) => worktree.isPrunable)) {
+      process.stderr.write(`jig: s${prunable.slot} stays prunable after prune: ${toSlash(prunable.path)}
+`);
+    }
+    const slot = lowestFreeSlot(taken);
+    const dir = resolve3(context.mainRoot, slots.worktreesDir, slotDirName(context.repo, slot, options.slug));
+    const added = git(worktreeAddArgs(context.projectRoot, dir, options.branch), context.projectRoot);
+    if (!added.ok) return fail3(`git worktree add failed: ${added.stderr.trim()}`, 2);
+    return { slot, dir };
+  } finally {
+    lock.release();
+  }
+};
+var runInstall = (install, dir) => spawnSync2(install, { cwd: dir, shell: true, windowsHide: true, stdio: ["ignore", 2, 2] }).status;
+var slotNew = async (args) => {
+  const { values } = parseArgs({ args, options: { slug: { type: "string" }, branch: { type: "string" } }, strict: true });
+  const slug = values.slug;
+  if (slug !== void 0 && !SLUG.test(slug)) return fail3(`invalid --slug ${slug}: use letters, digits, ., _, -`, 2);
+  const context = loadContext();
+  const slots = context.slots;
+  if (slots === void 0) return fail3("no slots section in .jig/config.jsonc: a human fills it (see skill jig-slots)", 1);
+  const reserved = await reserveSlot(context, slots, {
+    ...slug === void 0 ? {} : { slug },
+    ...values.branch === void 0 ? {} : { branch: values.branch }
+  });
+  if (typeof reserved === "number") return reserved;
+  const { slot, dir } = reserved;
+  copyFromMain(context.mainRoot, dir, slots.copyFiles ?? []);
+  writePorts(dir, slots, slot);
+  const cdpPort = slotCdpPort(slots, slot);
+  if (cdpPort !== void 0) {
+    writeAgentView(context.mainRoot, dir, slots, cdpPort);
+  }
+  for (const cache of slots.clearCache ?? []) {
+    rmSync4(insideDir(dir, cache), { recursive: true, force: true });
+  }
+  if (slots.install !== void 0) {
+    const status = runInstall(slots.install, dir);
+    if (status !== 0) return fail3(`install failed (exit ${status}) in slot ${slot} ${toSlash(dir)}`, 1);
+  }
+  print(`slot ${slot} ${toSlash(dir)} ports ${formatPorts(slotPorts(slots, slot))} cdp ${cdpPort ?? NO_VALUE}`);
+  return 0;
+};
+var slotLs = (args) => {
+  const { values } = parseArgs({ args, options: { json: { type: "boolean" } }, strict: true });
+  const context = loadContext();
+  const rows = slotWorktrees(listWorktrees(context.projectRoot), context.repo).sort((left, right) => left.slot - right.slot).map((worktree) => ({
+    slot: worktree.slot,
+    path: toSlash(worktree.path),
+    branch: worktree.branch ?? null,
+    ports: context.slots === void 0 ? {} : slotPorts(context.slots, worktree.slot),
+    cdp: context.slots === void 0 ? null : slotCdpPort(context.slots, worktree.slot) ?? null
+  }));
+  if (values.json === true) {
+    print(JSON.stringify(rows, null, 2));
+    return 0;
+  }
+  for (const row of rows) {
+    print(`s${row.slot}  ${row.path}  ${row.branch ?? "(detached)"}  ports ${formatPorts(row.ports)}  cdp ${row.cdp ?? NO_VALUE}`);
+  }
+  return 0;
+};
+var slotRm = (args) => {
+  const { values, positionals } = parseArgs({
+    args,
+    options: { force: { type: "boolean" } },
+    allowPositionals: true,
+    strict: true
+  });
+  const slot = Number(positionals[0]?.replace(/^s/, ""));
+  if (positionals.length !== 1 || !Number.isInteger(slot) || slot < 1) return fail3("usage: slot rm <N> [--force]", 2);
+  const context = loadContext();
+  const matches = slotWorktrees(listWorktrees(context.projectRoot), context.repo).filter((worktree2) => worktree2.slot === slot);
+  const [worktree] = matches;
+  if (worktree === void 0) return fail3(`no slot ${slot}`, 1);
+  if (matches.length > 1) return fail3(`duplicate slot numbers: ${formatDuplicates(/* @__PURE__ */ new Map([[slot, matches]]))}`, 1);
+  const isForced = values.force === true;
+  const status = git(["status", "--porcelain=v1", "--untracked-files=no"], worktree.path);
+  const changes = status.stdout.split(/\r?\n/).filter(Boolean);
+  if (!isForced && changes.length > 0) {
+    return fail3(`slot ${slot} has tracked changes, commit them or pass --force: ${changes.map((line) => line.slice(3)).join(", ")}`, 1);
+  }
+  const removed = git(["worktree", "remove", "--force", worktree.path], context.projectRoot);
+  if (!removed.ok) return fail3(`git worktree remove failed: ${removed.stderr.trim()}`, 1);
+  print(`removed ${toSlash(worktree.path)}`);
+  return 0;
+};
+var runJson = (bin, args, cwd) => {
+  const result = spawnSync2(bin, args, { cwd, encoding: "utf8", windowsHide: true });
+  if (result.status !== 0) return void 0;
+  try {
+    return JSON.parse(result.stdout);
+  } catch {
+    return void 0;
+  }
+};
+var branchNames = (value, field) => {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => typeof item[field] === "string" ? [item[field]] : []);
+};
+var openMrBranches = (cwd) => {
+  const remote = git(["remote", "get-url", "origin"], cwd).stdout;
+  const isGithub = remote.includes("github.com");
+  const tool = isGithub ? findInPath("gh") : findInPath("glab");
+  if (tool === void 0) return /* @__PURE__ */ new Set();
+  const branches = isGithub ? branchNames(runJson(tool, ["pr", "list", "--state", "open", "--limit", "200", "--json", "headRefName"], cwd), "headRefName") : branchNames(runJson(tool, ["mr", "list", "--per-page", "100", "--output", "json"], cwd), "source_branch");
+  return new Set(branches);
+};
+var isRecent = (path, now) => {
+  const result = git(["log", "-1", "--format=%ct"], path);
+  const committedAt = Number(result.stdout.trim()) * MS_PER_SECOND;
+  return result.ok && now - committedAt < RECENT_MS;
+};
+var bucketOf = (worktree, openBranches, now) => {
+  const status = git(["status", "--porcelain=v1"], worktree.path);
+  if (status.stdout.trim() !== "") return "hold-wip";
+  if (worktree.branch !== void 0 && openBranches.has(worktree.branch)) return "hold-open-mr";
+  return isRecent(worktree.path, now) ? "recent" : "safe";
+};
+var slotSweep = (args) => {
+  const { values } = parseArgs({ args, options: { json: { type: "boolean" } }, strict: true });
+  const context = loadContext();
+  const worktrees = listWorktrees(context.projectRoot).filter((worktree) => worktree.path !== context.mainRoot);
+  const openBranches = openMrBranches(context.projectRoot);
+  const now = Date.now();
+  const rows = worktrees.map((worktree) => ({
+    bucket: bucketOf(worktree, openBranches, now),
+    slot: slotNumber(basename3(worktree.path), context.repo) ?? null,
+    path: toSlash(worktree.path),
+    branch: worktree.branch ?? null
+  }));
+  if (values.json === true) {
+    print(JSON.stringify(rows, null, 2));
+    return 0;
+  }
+  for (const row of rows) {
+    print(`${row.bucket}  ${row.path}  ${row.branch ?? "(detached)"}`);
+  }
+  return 0;
+};
+var subcommands = /* @__PURE__ */ new Map([
+  ["new", slotNew],
+  ["ls", slotLs],
+  ["rm", slotRm],
+  ["sweep", slotSweep]
+]);
+var runSlot = (args) => {
+  const [name, ...rest] = args;
+  const subcommand = name === void 0 ? void 0 : subcommands.get(name);
+  if (subcommand === void 0) return fail3(`usage: slot <${[...subcommands.keys()].join("|")}>`, 2);
+  return subcommand(rest);
+};
+
 // src/cli/main.ts
 var EXIT_FAILURE = 2;
 var MIN_NODE_MAJOR2 = 20;
@@ -1555,12 +1902,13 @@ var runVersion = () => {
 var commands = /* @__PURE__ */ new Map([
   ["build", runBuild],
   ["atom", runAtom],
+  ["slot", runSlot],
   ["dash", runDash],
   ["loop", runLoop],
   ["doctor", runDoctor],
   ["version", runVersion]
 ]);
-var fail3 = (message) => {
+var fail4 = (message) => {
   process.stderr.write(`jig: ${message}
 `);
   return EXIT_FAILURE;
@@ -1569,21 +1917,21 @@ var run = async (argv) => {
   const nodeVersion = process.versions.node;
   const nodeMajor = Number(nodeVersion.split(".")[0]);
   if (nodeMajor < MIN_NODE_MAJOR2) {
-    return fail3(`Node >= ${MIN_NODE_MAJOR2} required, found ${nodeVersion}`);
+    return fail4(`Node >= ${MIN_NODE_MAJOR2} required, found ${nodeVersion}`);
   }
   const [name, ...args] = argv;
   if (name === void 0) {
-    return fail3(`missing command, expected one of: ${[...commands.keys()].join(", ")}`);
+    return fail4(`missing command, expected one of: ${[...commands.keys()].join(", ")}`);
   }
   const command = commands.get(name);
   if (command === void 0) {
-    return fail3(`unknown command ${name}`);
+    return fail4(`unknown command ${name}`);
   }
   try {
     return await command(args);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    return fail3(message);
+    return fail4(message);
   }
 };
 process.exitCode = await run(process.argv.slice(2));
