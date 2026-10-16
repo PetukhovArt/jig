@@ -1,4 +1,5 @@
 import { version } from '../../package.json'
+import { runAtom, runBuild } from '../atoms/atoms'
 
 type Command = (args: string[]) => number | Promise<number>
 
@@ -11,6 +12,8 @@ const runVersion: Command = () => {
 }
 
 const commands = new Map<string, Command>([
+  ['build', runBuild],
+  ['atom', runAtom],
   ['version', runVersion],
 ])
 
