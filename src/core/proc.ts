@@ -1,7 +1,8 @@
 import { spawn } from 'node:child_process'
-import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { setPriority } from 'node:os'
-import { delimiter, dirname, extname, join, resolve } from 'node:path'
+import { basename, delimiter, dirname, extname, isAbsolute, join, relative, resolve } from 'node:path'
+import { gitToplevel } from './git'
 
 export const LOW_PRIORITY = 10
 export const LOCK_WAIT_MS = 15_000
@@ -41,13 +42,50 @@ const readPackageJson = (path: string): PackageJson | undefined => {
 
 const packageBinName = (pkg: string): string => pkg.split('/').pop() ?? pkg
 
-export const resolvePackageBin = (projectRoot: string, pkg: string, binName: string = packageBinName(pkg)): string[] | undefined => {
-  const packageDir = join(projectRoot, 'node_modules', ...pkg.split('/'))
+const isWithin = (parent: string, child: string): boolean => {
+  const path = relative(parent, child)
+  return path === '' || (!path.startsWith('..') && !isAbsolute(path))
+}
+
+const realPath = (path: string): string => {
+  try {
+    return realpathSync.native(path)
+  } catch {
+    return resolve(path)
+  }
+}
+
+const searchDirs = (projectRoot: string): string[] => {
+  const start = realPath(projectRoot)
+  const gitTop = gitToplevel(start)
+  const top = gitTop === undefined ? undefined : realPath(gitTop)
+  if (top === undefined || !isWithin(top, start)) return [start]
+  const dirs = [start]
+  let dir = start
+  while (relative(top, dir) !== '') {
+    const parent = dirname(dir)
+    if (parent === dir) break
+    dirs.push(parent)
+    dir = parent
+  }
+  return dirs
+}
+
+const packageBinIn = (dir: string, pkg: string, binName: string): string[] | undefined => {
+  const packageDir = join(dir, 'node_modules', ...pkg.split('/'))
   const manifest = readPackageJson(join(packageDir, 'package.json'))
   const bin = typeof manifest?.bin === 'string' ? manifest.bin : manifest?.bin?.[binName]
   if (bin === undefined) return undefined
   const script = resolve(packageDir, bin)
   return existsSync(script) ? [process.execPath, script] : undefined
+}
+
+export const resolvePackageBin = (projectRoot: string, pkg: string, binName: string = packageBinName(pkg)): string[] | undefined => {
+  for (const dir of searchDirs(projectRoot)) {
+    const bin = packageBinIn(dir, pkg, binName)
+    if (bin !== undefined) return bin
+  }
+  return undefined
 }
 
 const isFile = (path: string): boolean => {
@@ -73,13 +111,49 @@ export const findInPath = (name: string, env: NodeJS.ProcessEnv = process.env): 
   return undefined
 }
 
+const SHIM_EXTENSIONS = new Set(['.cmd', '.bat'])
+const SCRIPT_EXTENSIONS = new Set(['.js', '.mjs', '.cjs'])
+const SHIM_TARGET = /"%(?:~dp0|dp0%)\\([^"%]+)"/gi
+const NODE_EXECUTABLE = /^node(?:\.exe)?$/i
+
+const isShim = (path: string): boolean => SHIM_EXTENSIONS.has(extname(path).toLowerCase())
+
+const readText = (path: string): string | undefined => {
+  try {
+    return readFileSync(path, 'utf8')
+  } catch {
+    return undefined
+  }
+}
+
+export const resolveShimTarget = (shimPath: string): string[] | undefined => {
+  const text = readText(shimPath) ?? ''
+  const targets = [...text.matchAll(SHIM_TARGET)]
+    .map((match) => (match[1] ?? '').replace(/\\/g, '/'))
+    .filter((target) => !NODE_EXECUTABLE.test(basename(target)))
+  const target = targets.at(-1)
+  if (target === undefined) return undefined
+  const absolute = resolve(dirname(shimPath), target)
+  if (!isFile(absolute)) return undefined
+  const extension = extname(absolute).toLowerCase()
+  if (SCRIPT_EXTENSIONS.has(extension)) return [process.execPath, absolute]
+  return extension === '.exe' ? [absolute] : undefined
+}
+
 export const resolveBin = (projectRoot: string, pkgs: readonly string[], command: string): string[] | undefined => {
   for (const pkg of pkgs) {
     const bin = resolvePackageBin(projectRoot, pkg, command)
     if (bin !== undefined) return bin
   }
   const found = findInPath(command)
-  return found === undefined ? undefined : [found]
+  if (found === undefined) return undefined
+  return isShim(found) ? resolveShimTarget(found) : [found]
+}
+
+export const findUnresolvedShim = (name: string, env: NodeJS.ProcessEnv = process.env): string | undefined => {
+  const found = findInPath(name, env)
+  const isUnresolved = found !== undefined && isShim(found) && resolveShimTarget(found) === undefined
+  return isUnresolved ? found : undefined
 }
 
 const lowerPriority = (pid: number | undefined): void => {
