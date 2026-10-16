@@ -215,7 +215,7 @@ const branchExists = (cwd: string, branch: string): boolean =>
   git(['show-ref', '--verify', '--quiet', `refs/heads/${branch}`], cwd).ok
 
 const worktreeAddArgs = (cwd: string, dir: string, branch: string | undefined): string[] => {
-  if (branch === undefined) return ['worktree', 'add', dir]
+  if (branch === undefined) return ['worktree', 'add', '--detach', dir]
   return branchExists(cwd, branch) ? ['worktree', 'add', dir, branch] : ['worktree', 'add', dir, '-b', branch]
 }
 
@@ -395,7 +395,8 @@ const slotSweep = (args: string[]): number => {
     return 0
   }
   for (const row of rows) {
-    print(`${row.bucket}  ${row.path}  ${row.branch ?? '(detached)'}`)
+    const slot = row.slot === null ? '' : `  slot ${row.slot}`
+    print(`${row.bucket}  ${row.path}  ${row.branch ?? '(detached)'}${slot}`)
   }
   return 0
 }

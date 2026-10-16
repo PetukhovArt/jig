@@ -138,8 +138,9 @@ describe('slot commands in a temporary repository', () => {
     const listed = await runIn(['ls', '--json'])
     expect(JSON.parse(listed.stdout)).toMatchObject([
       { slot: 1, branch: 'feat/one', ports: { VITE_SERVER_PORT: 3010 }, cdp: 9901 },
-      { slot: 2, ports: { VITE_SERVER_PORT: 3020 }, cdp: 9902 },
+      { slot: 2, branch: null, ports: { VITE_SERVER_PORT: 3020 }, cdp: 9902 },
     ])
+    expect(sh(main, 'branch', '--format=%(refname:short)').split('\n').filter(Boolean).sort()).toEqual(['feat/one', 'main'])
 
     expect((await runIn(['rm', '1'])).code).toBe(0)
     const next = await runIn(['new', '--slug', 'again'])
@@ -152,6 +153,22 @@ describe('slot commands in a temporary repository', () => {
 
     expect((await runIn(['rm', '2'])).code).toBe(1)
     expect((await runIn(['rm', '2', '--force'])).code).toBe(0)
+  })
+
+  it('sweeps every worktree but main and ignores skip-worktree files of a slot', async () => {
+    const plain = join(root, 'worktrees', 'plain')
+    sh(main, 'worktree', 'add', '-q', plain, '-b', 'plain')
+    writeFileSync(join(plain, 'agent-view.config.json'), '{}\n')
+    const slotDir = toSlash(join(root, 'worktrees', `${REPO}-s1-again`))
+
+    const swept = await runIn(['sweep', '--json'])
+    const text = await runIn(['sweep'])
+
+    expect(JSON.parse(swept.stdout)).toEqual([
+      { bucket: 'recent', slot: 1, path: slotDir, branch: null },
+      { bucket: 'hold-wip', slot: null, path: toSlash(plain), branch: 'plain' },
+    ])
+    expect(text.stdout).toBe(`recent  ${slotDir}  (detached)  slot 1\nhold-wip  ${toSlash(plain)}  plain\n`)
   })
 
   it('refuses new when two worktrees share a slot number', async () => {
