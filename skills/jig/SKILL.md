@@ -11,7 +11,8 @@ Plugin root: `${CLAUDE_PLUGIN_ROOT}`. Below, `<root>` means this path.
 CLI: `node <root>/bin/jig.mjs <command>`. Atoms: `<root>/atoms/<name>.md`. Flows: `<root>/skills/jig/flows/<name>.md`. Role templates: `<root>/skills/jig/references/roles/<name>.md`. Atom index: `<root>/skills/jig/references/atoms.md`.
 
 ## Before the first step
-1. Read the atoms `evidence`, `autonomy`, `questions` and `context-window`. They hold for the whole task.
+1. Read these atoms; they hold for the whole task.
+   Atoms: evidence, autonomy, questions, context-window.
 2. Restate the task in one line each: the goal, the done check (something that can pass or fail), the proof you will show, what is already known, the constraints. Missing done check: propose one and continue with it.
 3. Pick the flow whose description fits. None fits: take the closest one and say in one line why.
 4. Read the flow file. Copy its numbered steps into the todo list verbatim, before any task-specific todos. A step you decide not to do stays in the list as `skip: <reason>`.
