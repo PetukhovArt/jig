@@ -5,93 +5,128 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>jig run</title>
 <style>
-*{box-sizing:border-box}
-[hidden]{display:none!important}
-h1,h2,p,ol,ul{margin:0}
-ol,ul{padding:0;list-style:none}
-a:focus-visible,button:focus-visible,.sign:focus-visible,textarea:focus-visible{outline:3px solid var(--now);outline-offset:2px;border-radius:4px}
-@media (prefers-reduced-motion:reduce){*{animation:none!important}}
-body{--bg:#141B26;--ink:#E6EAF0;--muted:#8A96A8;--go:#2FB38A;--now:#4C8DFF;--stop:#F0564A;--wait:#465264;--sign:#FFC72C;--sign-ink:#14213D;--rule:#2A3444;--panel:#1B2431;
-  margin:0;min-height:100vh;background:var(--bg);color:var(--ink);font:15px/1.45 system-ui,-apple-system,'Segoe UI',sans-serif;overflow-wrap:anywhere;-webkit-text-size-adjust:100%}
-body.light{--bg:#EEF1F4;--ink:#14213D;--muted:#5B6678;--go:#1F8A70;--now:#2F6FEB;--stop:#E03E2F;--wait:#B8C2CC;--rule:#14213D;--panel:#FFFFFF}
-a{color:var(--now)}
-button{font:inherit;cursor:pointer;min-height:44px;border-radius:6px}
-.wrap{max-width:1600px;margin:0 auto;padding:clamp(14px,3vw,32px)}
-.head{display:flex;justify-content:space-between;align-items:flex-end;gap:12px 20px;flex-wrap:wrap;padding-bottom:14px;border-bottom:2px solid var(--rule)}
-.head>div{min-width:0}
-.head h1{font-size:clamp(19px,1.2rem + .6vw,24px);line-height:1.2;font-weight:700;letter-spacing:-.01em}
-.sub{margin-top:3px;color:var(--muted);font-size:14px}
-.pos{font-size:17px;font-weight:500;color:var(--muted);display:flex;gap:12px;align-items:center;flex-wrap:wrap}
-.pos b{color:var(--ink);font-weight:700}
-.theme{min-width:44px;background:none;border:1px solid var(--rule);color:var(--muted);padding:0 10px;font-size:16px}
-.copy{border:0;padding:0 16px;background:var(--sign);color:var(--sign-ink);font-size:15px;font-weight:700}
-.copy:disabled{opacity:.45;cursor:default}
-.signs{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,320px),1fr));gap:14px;margin-top:18px}
-.sign{min-width:0;background:var(--sign);color:var(--sign-ink);padding:14px 16px;border-radius:6px;cursor:pointer}
-.sign h2{font-size:14px;font-weight:700}
-.sign p{margin-top:6px;font-size:15px;line-height:1.4;font-weight:500}
-.sign .def{margin-top:10px;padding-top:8px;border-top:2px solid var(--sign-ink);font-size:14px}
-.sign .when{margin-top:4px;font-size:12px}
-.sign .hint{margin-top:8px;font-size:13px;font-weight:600;text-decoration:underline;text-underline-offset:3px}
-.sign .draft{margin-top:10px;padding:8px 10px;border-radius:4px;background:color-mix(in srgb,var(--sign-ink) 10%,transparent);font-size:14px}
-.sign .draft .tag{display:inline-block;margin-right:6px;padding:0 6px;border-radius:4px;background:var(--sign-ink);color:var(--sign);font-size:12px;font-weight:700}
-.reply{display:block;width:100%;min-height:110px;margin-top:10px;padding:10px 12px;border:2px solid var(--sign-ink);border-radius:6px;background:#FFFDF4;color:#14213D;font-family:inherit;font-size:16px;line-height:1.4;resize:vertical}
-.decided{margin-top:22px}
-.decided h2,aside h2{font-size:14px;font-weight:700}
-.cards{margin-top:10px;display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,340px),1fr));gap:14px}
-.card{min-width:0;display:flex;flex-direction:column;gap:8px;padding:14px 16px;border:1px solid color-mix(in srgb,var(--muted) 30%,transparent);border-left:4px solid var(--go);border-radius:6px;background:var(--panel)}
-.card .top{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}
-.card .txt{font-size:clamp(16px,.9rem + .3vw,18px);line-height:1.35;font-weight:600}
-.card dl{margin:0;display:grid;grid-template-columns:auto minmax(0,1fr);gap:2px 8px;font-size:14px;color:var(--muted)}
-.card dt{color:var(--ink);font-weight:500}
-.card dd{margin:0;min-width:0}
-.card.reverted{opacity:.55;border-left-color:var(--stop)}
-.card.reverted .txt{text-decoration:line-through;text-decoration-color:var(--stop)}
-.card .tag{padding:0 6px;border-radius:4px;background:var(--stop);color:#fff;font-size:12px;font-weight:600}
-.body{display:grid;grid-template-columns:minmax(0,1fr) clamp(300px,28vw,440px);gap:clamp(20px,3vw,40px);margin-top:24px;align-items:start}
-.line{width:fit-content;max-width:100%;margin:0 auto}
-.line li{display:grid;grid-template-columns:52px 28px minmax(0,1fr);min-height:36px}
-.line time{font-size:13px;color:var(--muted);padding-top:1px;font-variant-numeric:tabular-nums}
-.st{position:relative}
-.st::before{content:"";position:absolute;left:11px;top:6px;bottom:-6px;width:6px;background:var(--c)}
-.line li:last-child .st::before{display:none}
-.st i{position:absolute;left:5px;top:1px;width:18px;height:18px;border-radius:50%;background:var(--bg);border:5px solid var(--c);z-index:1}
-.s-done{--c:var(--go)}
-.s-done .nm{color:var(--muted)}
-.s-todo{--c:var(--wait)}
-.s-todo .st::before{background:repeating-linear-gradient(var(--wait) 0 8px,transparent 8px 14px)}
-.s-blocked{--c:var(--stop)}
-.s-blocked .st i{background:var(--stop)}
-.s-blocked .st i::after{content:"";position:absolute;left:1px;right:1px;top:50%;height:3px;margin-top:-1.5px;background:#fff}
-.s-active{--c:var(--now)}
-.s-active .st i{left:1px;top:-3px;width:26px;height:26px;border-width:7px;animation:pulse 1.6s ease-out 1}
-@keyframes pulse{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--now) 60%,transparent)}100%{box-shadow:0 0 0 14px transparent}}
-.nm{min-width:0;padding:0 0 9px 8px}
-.nm b{font-weight:600}
-.nm small{display:block;font-size:13px;color:var(--muted)}
-.s-blocked small,.stale small{color:var(--stop);font-weight:500}
-.here{display:inline-block;margin-left:6px;padding:0 7px;border-radius:4px;background:var(--now);color:#fff;font-size:12px;font-weight:600;vertical-align:1px}
-aside{min-width:0;position:sticky;top:16px;max-height:calc(100vh - 32px);overflow-y:auto;padding-right:6px;scrollbar-color:var(--wait) transparent}
-aside section+section{margin-top:20px}
-.closed li{display:grid;grid-template-columns:20px minmax(0,1fr);gap:8px;margin-top:7px}
-.closed li::before{content:"";width:16px;height:16px;margin-top:2px;border-radius:50%;background:var(--stop) linear-gradient(#fff,#fff) center/10px 3px no-repeat}
-.closed small{display:block;color:var(--muted);font-size:13px}
-.list li{display:grid;grid-template-columns:48px minmax(0,1fr);gap:6px;padding:8px 0;font-size:14px;line-height:1.4;border-bottom:1px solid color-mix(in srgb,var(--muted) 22%,transparent)}
-.list time{color:var(--muted);font-size:13px;font-variant-numeric:tabular-nums}
-.list small{display:block;color:var(--muted);font-size:13px}
-@media (max-width:900px){
-  .body{grid-template-columns:minmax(0,1fr)}
-  aside{position:static;max-height:none;overflow:visible;padding-right:0}
-  .line{width:auto;margin:0}
+body {
+  --paper: #faf9f5; --card: #fff; --sunk: #f0eee6;
+  --ink: #141413; --ink-2: #3d3d3a; --ink-3: #73726c; --line: rgba(31,30,29,.15); --line-2: rgba(31,30,29,.08);
+  --accent: #c6613f; --accent-soft: #f6e7df; --green: #2c7a39; --green-soft: #e2efdf;
+  --red: #b3261e; --red-soft: #f7dfdc; --blue: #2a69b8; --blue-soft: #dde8f5; --float: 0 2px 8px rgba(0,0,0,.08);
+  --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; --serif: ui-serif, Georgia, "Times New Roman", serif; --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 }
-@media (max-width:480px){
-  .wrap{padding-bottom:92px}
-  .head{align-items:flex-start}
-  .line li{grid-template-columns:28px minmax(0,1fr);grid-template-areas:"st nm" "st tm"}
-  .line .st{grid-area:st}
-  .line .nm{grid-area:nm;padding-bottom:0}
-  .line time{grid-area:tm;padding:0 0 10px 8px;font-size:12px}
-  .copy{position:fixed;left:12px;right:12px;bottom:calc(12px + env(safe-area-inset-bottom));z-index:5;min-height:52px;box-shadow:0 6px 20px rgba(0,0,0,.35)}
+@media (prefers-color-scheme: dark) { body:not(.light) { color-scheme: dark;
+  --paper: #262624; --card: #30302e; --sunk: #1f1e1d;
+  --ink: #faf9f5; --ink-2: #c2c0b6; --ink-3: #9c9a92; --line: rgba(222,220,209,.15); --line-2: rgba(222,220,209,.08);
+  --accent: #d97757; --accent-soft: #46302a; --green: #6fb37a; --green-soft: #26372a;
+  --red: #e5776e; --red-soft: #432725; --blue: #7aa7e0; --blue-soft: #25313f; --float: 0 2px 8px rgba(0,0,0,.3);
+} }
+body.dark { color-scheme: dark;
+  --paper: #262624; --card: #30302e; --sunk: #1f1e1d;
+  --ink: #faf9f5; --ink-2: #c2c0b6; --ink-3: #9c9a92; --line: rgba(222,220,209,.15); --line-2: rgba(222,220,209,.08);
+  --accent: #d97757; --accent-soft: #46302a; --green: #6fb37a; --green-soft: #26372a;
+  --red: #e5776e; --red-soft: #432725; --blue: #7aa7e0; --blue-soft: #25313f; --float: 0 2px 8px rgba(0,0,0,.3);
+}
+:where(*) { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { margin: 0; min-height: 100vh; background: var(--paper); color: var(--ink); font: 430 16px/1.6 var(--sans); -webkit-text-size-adjust: 100%; overflow-x: clip; }
+h1, h2, p, ol { margin: 0; }
+ol { padding: 0; list-style: none; }
+h1 { font: 500 26px/1.15 var(--serif); margin-bottom: 8px; text-wrap: balance; overflow-wrap: anywhere; }
+h2 { font: 500 22px/1.25 var(--serif); margin-bottom: 12px; display: flex; align-items: baseline; gap: 10px; }
+a { color: var(--accent); text-underline-offset: 3px; }
+button { font: inherit; color: inherit; cursor: pointer; }
+a:focus-visible, button:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+time, .mono { font: 12px/1.5 var(--mono); color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.pill { display: inline-block; font: 550 12px/1 var(--sans); padding: 4px 8px; border-radius: 99px; background: var(--sunk); color: var(--ink-2); border: 1px solid var(--line); white-space: nowrap; }
+.pill.accent { background: var(--accent-soft); color: var(--accent); border-color: transparent; }
+.pill.green { background: var(--green-soft); color: var(--green); border-color: transparent; }
+.pill.red { background: var(--red-soft); color: var(--red); border-color: transparent; }
+.pill.here { background: var(--accent); color: #fff; border-color: transparent; margin-left: 6px; vertical-align: 1px; }
+
+.page { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 40px; max-width: 1180px; margin: 0 auto; padding: 32px 24px 120px; }
+.rail { position: sticky; top: 24px; align-self: start; max-height: calc(100vh - 48px); overflow: auto; }
+.meta { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: center; margin-bottom: 12px; }
+.live { display: inline-flex; gap: 6px; align-items: center; }
+.big { font: 500 44px/1 var(--serif); margin: 6px 0 10px; }
+.big small { font: 430 16px/1 var(--sans); color: var(--ink-3); }
+.seg { display: flex; gap: 3px; margin-bottom: 8px; }
+.seg i { flex: 1; height: 6px; border-radius: 3px; background: var(--line); }
+.seg i.done { background: var(--green); } .seg i.active { background: var(--accent); } .seg i.blocked, .seg i.stale { background: var(--red); }
+.steps-toggle { display: none; border: 0; background: none; padding: 4px 0; font-size: 13px; color: var(--ink-3); }
+.dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; flex: none; border: 1.5px solid var(--ink-3); background: var(--paper); }
+.dot.done { background: var(--green); border-color: var(--green); }
+.dot.active { background: var(--accent); border-color: var(--accent); box-shadow: 0 0 0 4px var(--accent-soft); }
+.dot.blocked, .dot.stale { background: var(--red); border-color: var(--red); }
+.line { position: relative; margin-top: 12px; }
+.line::before { content: ""; position: absolute; left: 4px; top: 10px; bottom: 10px; width: 2px; background: var(--line); }
+.line li { position: relative; display: flex; gap: 12px; align-items: flex-start; padding: 5px 0; font-size: 14px; line-height: 1.45; }
+.line li .dot { margin-top: 5px; }
+.line li > div { min-width: 0; overflow-wrap: anywhere; }
+.line li.done > div { color: var(--ink-3); }
+.line li.blocked > div, .line li.stale > div { color: var(--red); }
+.line li.active > div { font-weight: 600; }
+.line small { display: block; font-size: 12px; font-weight: 430; color: var(--ink-3); }
+.line li.blocked small, .line li.stale small { color: var(--red); }
+
+.inbox { margin-bottom: 32px; }
+.ask { padding: 16px; background: var(--card); border: 1px solid var(--accent); border-radius: 12px; margin-bottom: 14px; }
+.ask .k { font-size: 12px; font-weight: 550; color: var(--ink-3); margin-bottom: 8px; display: flex; gap: 8px; flex-wrap: wrap; }
+.ask .k b { color: var(--accent); font-weight: 550; }
+.ask .q { font-weight: 600; margin-bottom: 10px; overflow-wrap: anywhere; }
+.ask .def { padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); font-size: 15px; line-height: 1.4; margin-bottom: 8px; }
+.ask .def small { display: block; font-size: 13px; color: var(--ink-2); margin-top: 2px; }
+.reply { display: block; width: 100%; min-height: 72px; font: 15px/1.5 var(--sans); padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); color: var(--ink); resize: vertical; }
+.reply:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: transparent; }
+
+.chips { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 18px; position: sticky; top: 0; z-index: 4; background: var(--paper); padding: 10px 0; border-bottom: 1px solid var(--line-2); }
+.chips button { font-size: 13px; font-weight: 550; line-height: 1; padding: 7px 11px; border-radius: 99px; border: 1px solid var(--line); background: var(--card); color: var(--ink-2); }
+.chips button[aria-pressed="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.feed[data-f="d"] .ev:not(.d), .feed[data-f="r"] .ev:not(.r), .feed[data-f="s"] .ev:not(.s), .feed[data-f="a"] .ev:not(.a) { display: none; }
+.ev { display: grid; grid-template-columns: 48px 26px minmax(0, 1fr); gap: 0 10px; position: relative; }
+.ev::before { content: ""; position: absolute; left: 70px; top: 0; bottom: 0; width: 1px; background: var(--line); }
+.ev > time { padding-top: 14px; text-align: right; }
+.ev .ico { width: 26px; height: 26px; margin-top: 12px; border-radius: 50%; display: grid; place-items: center; font: 600 12px/1 var(--mono); position: relative; }
+.ev.d .ico { background: var(--blue-soft); color: var(--blue); }
+.ev.r .ico { background: var(--green-soft); color: var(--green); }
+.ev.a .ico { background: var(--accent-soft); color: var(--accent); }
+.ev.s .ico { background: var(--red-soft); color: var(--red); }
+.item { padding: 12px 14px; background: var(--card); border: 1px solid var(--line); border-radius: 12px; margin: 6px 0; min-width: 0; }
+.item .top { display: flex; gap: 8px; align-items: center; margin-bottom: 4px; }
+.item .top:empty { display: none; }
+.item .top time { display: none; }
+.item p { font-size: 15px; overflow-wrap: anywhere; }
+.item.reverted p { text-decoration: line-through; color: var(--ink-3); }
+.item details summary { cursor: pointer; font-size: 13px; color: var(--ink-3); margin-top: 6px; }
+.item dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 2px 14px; margin: 8px 0 0; font-size: 14px; }
+.item dt { font-size: 12px; line-height: 1.9; color: var(--ink-3); } .item dd { margin: 0; color: var(--ink-2); overflow-wrap: anywhere; }
+.empty { color: var(--ink-3); font-size: 14px; }
+
+.bar { position: fixed; z-index: 10; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom)); display: flex; gap: 8px; align-items: center; }
+.theme { width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--line); background: var(--card); box-shadow: var(--float); color: var(--ink-2); }
+.copy { font-size: 14px; font-weight: 550; line-height: 1; padding: 13px 16px; border-radius: 99px; border: 0; background: var(--ink); color: var(--paper); box-shadow: var(--float); }
+.copy:disabled { background: var(--sunk); color: var(--ink-3); border: 1px solid var(--line); cursor: default; }
+
+@media (max-width: 900px) {
+  .page { grid-template-columns: minmax(0, 1fr); gap: 0; padding: 0 16px 110px; }
+  .rail { position: sticky; top: 0; z-index: 6; max-height: none; overflow: visible; background: var(--paper); padding: 14px 0 6px; border-bottom: 1px solid var(--line); }
+  h1 { font-size: 20px; margin-bottom: 4px; }
+  .meta { margin-bottom: 4px; }
+  .big { font: 600 15px/1.4 var(--sans); margin: 0; } .big small { font-size: 13px; }
+  .seg { margin: 6px 0 2px; }
+  .steps-toggle { display: block; }
+  .rail:not(.open) .line { display: none; }
+  .rail.open .line { max-height: 45vh; overflow: auto; }
+  .chips { position: static; }
+  .feed { padding-top: 16px; }
+  .ev { grid-template-columns: 40px 22px minmax(0, 1fr); gap: 0 8px; }
+  .ev::before { left: 58px; }
+  .ev .ico { width: 22px; height: 22px; font-size: 11px; }
+}
+@media (max-width: 480px) {
+  .ev { grid-template-columns: 22px minmax(0, 1fr); }
+  .ev > time { display: none; }
+  .ev::before { left: 11px; }
+  .item .top time { display: inline; }
+  .bar { left: 16px; }
+  .copy { flex: 1; }
 }
 </style>
 </head>
@@ -109,34 +144,42 @@ const LABELS = {
   en: {
     locale: 'en-GB',
     run: 'jig run',
-    branch: 'Branch',
-    updated: 'updated at',
-    step: (n, total) => `Step <b>${n}</b> of ${total}`,
-    done: (n, total) => `Done <b>${n}</b> of ${total}`,
+    branch: 'branch',
+    live: ago => `live, ${ago}`,
+    quiet: ago => `no news ${ago}`,
+    stepsDone: total => `/ ${total} steps done`,
+    stepsToggle: (stuck, current) => [stuck && `${stuck} stuck`, current && `now step ${current}`].filter(Boolean).join(', ') || 'Steps',
     theme: 'Light or dark theme',
     steps: 'Steps',
     here: 'now here',
     since: 'since',
     waitsFor: 'waits for',
     stale: (at, ago) => `no news since ${at}, ${ago}`,
-    ask: n => `Your decision needed (#${n})`,
-    fallback: 'Going with the default meanwhile:',
-    asked: 'Asked at',
-    answerHint: 'Tap to write an answer',
+    waiting: 'Waiting for your answer',
+    ask: (i, total) => `Question ${i} of ${total}`,
+    asked: (n, at, ago) => `#${n} · asked at ${at}, ${ago}`,
+    fallback: 'The agent goes with this until you answer.',
     answerLabel: n => `Answer to question #${n}`,
-    draft: 'answer draft',
+    answerPlaceholder: 'Your own answer',
     copy: 'Copy answers',
     copied: n => `copied (${n})`,
     copyFailed: 'copy failed',
     answersFor: title => `Answers for run "${title}":`,
     answerItem: (n, question) => `#${n} ${question}`,
+    journal: 'Journal',
+    all: 'All',
     decisions: 'Decisions',
+    results: 'Results',
+    stuck: 'Stuck',
+    answered: 'Answers',
     why: 'why',
     evidence: 'evidence',
     reverted: 'reverted',
-    stuck: 'Stuck',
-    results: 'Results',
-    answered: 'Answered',
+    kept: 'kept',
+    result: 'result',
+    answer: 'answer',
+    stepStuck: 'step stuck',
+    nothing: 'Nothing yet.',
     justNow: 'just now',
     minAgo: m => `${m} min ago`,
     hoursAgo: (h, m) => `${h} h ${m} min ago`,
@@ -145,34 +188,42 @@ const LABELS = {
   ru: {
     locale: 'ru-RU',
     run: 'Прогон jig',
-    branch: 'Ветка',
-    updated: 'обновлено в',
-    step: (n, total) => `Шаг <b>${n}</b> из ${total}`,
-    done: (n, total) => `Готово <b>${n}</b> из ${total}`,
+    branch: 'ветка',
+    live: ago => `живой, ${ago}`,
+    quiet: ago => `нет вестей ${ago}`,
+    stepsDone: total => `/ ${total} шагов готово`,
+    stepsToggle: (stuck, current) => [stuck && `${stuck} стоят`, current && `сейчас шаг ${current}`].filter(Boolean).join(', ') || 'Шаги',
     theme: 'Светлая или тёмная тема',
     steps: 'Шаги',
     here: 'сейчас здесь',
     since: 'идёт с',
     waitsFor: 'ждёт',
     stale: (at, ago) => `нет вестей с ${at}, ${ago}`,
-    ask: n => `Нужно ваше решение (№${n})`,
-    fallback: 'Пока иду с вариантом:',
-    asked: 'Спросил в',
-    answerHint: 'Нажмите, чтобы написать ответ',
+    waiting: 'Ждут вашего ответа',
+    ask: (i, total) => `Вопрос ${i} из ${total}`,
+    asked: (n, at, ago) => `№${n} · спросил в ${at}, ${ago}`,
+    fallback: 'Агент идёт с этим вариантом, пока нет ответа.',
     answerLabel: n => `Ответ на вопрос №${n}`,
-    draft: 'черновик ответа',
+    answerPlaceholder: 'Свой ответ',
     copy: 'Скопировать ответы',
     copied: n => `скопировано (${n})`,
     copyFailed: 'не удалось скопировать',
     answersFor: title => `Ответы по прогону «${title}»:`,
     answerItem: (n, question) => `№${n} ${question}`,
+    journal: 'Журнал',
+    all: 'Всё',
     decisions: 'Решения',
+    results: 'Результаты',
+    stuck: 'Стоят',
+    answered: 'Ответы',
     why: 'почему',
     evidence: 'доказательство',
     reverted: 'отброшено',
-    stuck: 'Стоят',
-    results: 'Результаты',
-    answered: 'Отвечено',
+    kept: 'оставлено',
+    result: 'результат',
+    answer: 'ответ',
+    stepStuck: 'шаг стоит',
+    nothing: 'Пока пусто.',
     justNow: 'только что',
     minAgo: m => `${m} мин назад`,
     hoursAgo: (h, m) => `${h} ч ${m} мин назад`,
@@ -191,7 +242,8 @@ const ago = t => {
   const m = Math.round((Date.now() - new Date(t)) / 60e3);
   return m < 1 ? L.justNow : m < 60 ? L.minAgo(m) : m < 1440 ? L.hoursAgo(Math.floor(m / 60), m % 60) : L.daysAgo(Math.floor(m / 1440));
 };
-const steps = R.steps.map(s => ({...s, stale: s.status === 'active' && Date.now() - new Date(R.updatedAt) > STALE_MS}));
+const isQuiet = Date.now() - new Date(R.updatedAt) > STALE_MS;
+const steps = R.steps.map(s => ({...s, stale: s.status === 'active' && isQuiet}));
 const stuck = steps.filter(s => s.status === 'blocked' || s.stale);
 const done = steps.filter(s => s.status === 'done').length;
 const current = steps.find(s => s.status === 'active');
@@ -200,18 +252,33 @@ const answered = R.asks.filter(a => a.answer !== undefined);
 const link = d => d.href ? `<a href="${esc(d.href)}">${esc(d.title)}</a>` : esc(d.title);
 const why = s => s.stale ? L.stale(hm(R.updatedAt), ago(R.updatedAt)) : `${L.waitsFor} ${esc(s.waitsFor)}`;
 const newest = (items, key) => [...items].sort((a, b) => (b[key] || '').localeCompare(a[key] || '') || (b.n || 0) - (a.n || 0));
-const details = d => [[L.why, d.why], [L.evidence, d.evidence]].filter(([, v]) => v).map(([k, v]) => `<dt>${k}</dt><dd>${esc(v)}</dd>`).join('');
-const card = d => {
-  const isReverted = d.result === 'reverted';
-  const extra = details(d);
-  return `<li class="card${isReverted ? ' reverted' : ''}"><div class="top"><time>${hm(d.at)}</time>${isReverted ? `<span class="tag">${L.reverted}</span>` : ''}</div>
-    <p class="txt">${esc(d.text)}</p>${extra ? `<dl>${extra}</dl>` : ''}</li>`;
+const stepClass = s => s.stale ? 'stale' : s.status;
+
+const item = (at, tag, body, extraClass = '') => `<div class="item${extraClass}"><div class="top"><time>${hm(at)}</time>${tag}</div>${body}</div>`;
+const decisionItem = d => {
+  const extra = [[L.why, d.why], [L.evidence, d.evidence]].filter(([, v]) => v);
+  const tag = d.result === 'reverted' ? `<span class="pill red">${L.reverted}</span>` : d.result === 'kept' ? `<span class="pill green">${L.kept}</span>` : '';
+  const more = extra.length ? `<details><summary>${extra.map(([k]) => k).join(' · ')}</summary><dl>${extra.map(([k, v]) => `<dt>${k}</dt><dd>${esc(v)}</dd>`).join('')}</dl></details>` : '';
+  return item(d.at, tag, `<p>${esc(d.text)}</p>${more}`, d.result === 'reverted' ? ' reverted' : '');
 };
-const sign = q => `<section class="sign" data-n="${q.n}" tabindex="0"><h2>${L.ask(q.n)}</h2><p>${esc(q.question)}</p>
-  <p class="def">${L.fallback} <b>${esc(q.default)}</b></p><p class="when">${L.asked} ${hm(q.askedAt)}, ${ago(q.askedAt)}</p>
-  <p class="draft" hidden><span class="tag">${L.draft}</span><span class="first"></span></p>
-  <p class="hint">${L.answerHint}</p>
-  <textarea class="reply" hidden aria-label="${L.answerLabel(q.n)}"></textarea></section>`;
+const events = [
+  ...R.decisions.map(d => ({k: 'd', at: d.at, html: decisionItem(d)})),
+  ...R.results.map(r => ({k: 'r', at: r.at, html: item(r.at, `<span class="pill green">${L.result}</span>`, `<p>${link(r)}</p>`)})),
+  ...answered.map(a => ({k: 'a', at: a.answeredAt, html: item(a.answeredAt, `<span class="pill">${L.answer}</span>`, `<p>${esc(a.question)}</p><p class="mono">→ ${esc(a.answer)}</p>`)})),
+  ...stuck.map(s => ({k: 's', at: s.at, html: item(s.at, `<span class="pill red">${L.stepStuck}</span>`, `<p>${s.n}. ${esc(s.title)}</p><p class="mono">${why(s)}</p>`)})),
+];
+const ICON = {d: '◆', r: '✓', a: '?', s: '!'};
+const FILTERS = [['all', L.all, events.length], ['d', L.decisions, R.decisions.length], ['r', L.results, R.results.length], ['s', L.stuck, stuck.length], ['a', L.answered, answered.length]];
+const savedFilter = localStorage.getItem('jig-dash-filter');
+const filter = FILTERS.some(([k, , count]) => k === savedFilter && count) ? savedFilter : 'all';
+
+const askCard = (q, i) => `<section class="ask" data-n="${q.n}">
+  <div class="k"><b>${L.ask(i + 1, openAsks.length)}</b><span>${L.asked(q.n, hm(q.askedAt), ago(q.askedAt))}</span></div>
+  <p class="q">${esc(q.question)}</p>
+  <p class="def">${esc(q.default)}<small>${L.fallback}</small></p>
+  <textarea class="reply" rows="2" placeholder="${L.answerPlaceholder}" aria-label="${L.answerLabel(q.n)}"></textarea></section>`;
+const stepLine = s => `<li class="${stepClass(s)}"><i class="dot ${stepClass(s)}"></i><div>${s.n}. ${esc(s.title)}${s === current ? `<span class="pill here">${L.here}</span>` : ''}
+  ${s.status === 'blocked' || s.stale ? `<small>${why(s)}</small>` : s === current ? `<small>${L.since} ${hm(s.at)}</small>` : ''}</div></li>`;
 
 function draftKey(q) {
   return `jig-dash-answer:${location.pathname}:${q.n}:${q.askedAt}`;
@@ -238,27 +305,27 @@ const drafts = Object.fromEntries(openAsks.map(q => [q.n, readDraft(q)]));
 let hasUnsaved = false;
 
 document.documentElement.lang = lang;
-document.body.classList.toggle('light', localStorage.getItem('jig-dash-theme') === 'light');
+const theme = localStorage.getItem('jig-dash-theme');
+document.body.classList.toggle('light', theme === 'light');
+document.body.classList.toggle('dark', theme === 'dark');
 document.title = R.title || L.run;
-document.getElementById('app').innerHTML = `<div class="wrap">
-  <header class="head"><div><h1>${esc(R.title)}</h1><p class="sub">${L.branch} ${esc(R.branch)}, ${L.updated} ${hm(R.updatedAt)}, ${ago(R.updatedAt)}</p></div>
-    <div class="pos"><span>${current ? L.step(current.n, steps.length) : L.done(done, steps.length)}</span>
-    ${openAsks.length ? `<button class="copy" type="button">${L.copy}</button>` : ''}
-    <button class="theme" type="button" aria-label="${L.theme}">&#9680;</button></div></header>
-  ${openAsks.length ? `<div class="signs">${openAsks.map(sign).join('')}</div>` : ''}
-  ${R.decisions.length ? `<section class="decided"><h2>${L.decisions}</h2><ol class="cards">${newest(R.decisions, 'at').map(card).join('')}</ol></section>` : ''}
-  <div class="body"><div>
-    <ol class="line" aria-label="${L.steps}">${steps.map(s => `<li class="s-${s.status}${s.stale ? ' stale' : ''}">
-      <time>${s.status === 'todo' ? '' : hm(s.at)}</time><span class="st"><i></i></span>
-      <div class="nm"><b>${s.n}. ${esc(s.title)}</b>${s === current ? `<span class="here">${L.here}</span>` : ''}
-        ${s.status === 'blocked' || s.stale ? `<small>${why(s)}</small>` : s === current ? `<small>${L.since} ${hm(s.at)}</small>` : ''}</div></li>`).join('')}</ol></div>
-    <aside>
-      ${stuck.length ? `<section><h2>${L.stuck}</h2><ul class="closed">${stuck.map(s => `<li><div>${s.n}. ${esc(s.title)}<small>${why(s)}</small></div></li>`).join('')}</ul></section>` : ''}
-      ${R.results.length ? `<section><h2>${L.results}</h2><ul class="list">${newest(R.results, 'at').map(d => `<li><time>${hm(d.at)}</time><span>${link(d)}</span></li>`).join('')}</ul></section>` : ''}
-      ${answered.length ? `<section><h2>${L.answered}</h2><ul class="list">${newest(answered, 'answeredAt').map(a => `<li><time>${hm(a.answeredAt)}</time><span>${esc(a.question)}<small>${esc(a.answer)}</small></span></li>`).join('')}</ul></section>` : ''}
-    </aside>
-  </div>
-</div>`;
+document.getElementById('app').innerHTML = `<div class="page">
+  <aside class="rail">
+    <h1>${esc(R.title)}</h1>
+    <p class="meta mono"><span>${L.branch} ${esc(R.branch)}</span><span class="live"><i class="dot ${isQuiet ? 'blocked' : 'done'}"></i>${isQuiet ? L.quiet(ago(R.updatedAt)) : L.live(ago(R.updatedAt))}</span></p>
+    <p class="big">${done}<small> ${L.stepsDone(steps.length)}</small></p>
+    <div class="seg">${steps.map(s => `<i class="${stepClass(s)}" title="${s.n}. ${esc(s.title)}"></i>`).join('')}</div>
+    <button class="steps-toggle" type="button" aria-expanded="false">▸ ${L.stepsToggle(stuck.length, current?.n)}</button>
+    <ol class="line" aria-label="${L.steps}">${steps.map(stepLine).join('')}</ol>
+  </aside>
+  <main class="feed" data-f="${filter}">
+    ${openAsks.length ? `<section class="inbox"><h2>${L.waiting} <span class="pill accent">${openAsks.length}</span></h2>${openAsks.map(askCard).join('')}</section>` : ''}
+    <h2>${L.journal}</h2>
+    ${events.length ? `<div class="chips" role="toolbar">${FILTERS.filter(([, , count]) => count).map(([k, label, count]) => `<button type="button" data-f="${k}" aria-pressed="${filter === k}">${label} · ${count}</button>`).join('')}</div>
+    ${newest(events, 'at').map(e => `<div class="ev ${e.k}"><time>${hm(e.at)}</time><span class="ico">${ICON[e.k]}</span>${e.html}</div>`).join('')}` : `<p class="empty">${L.nothing}</p>`}
+  </main>
+</div>
+<div class="bar"><button class="theme" type="button" aria-label="${L.theme}">&#9680;</button>${openAsks.length ? `<button class="copy" type="button">${L.copy}</button>` : ''}</div>`;
 
 const copyButton = document.querySelector('.copy');
 const refreshCopy = () => {
@@ -283,32 +350,10 @@ const writeClipboard = async text => {
   }
 };
 
-for (const box of document.querySelectorAll('.sign')) {
+for (const box of document.querySelectorAll('.ask')) {
   const q = openAsks.find(a => String(a.n) === box.dataset.n);
   const reply = box.querySelector('.reply');
-  const draft = box.querySelector('.draft');
-  const hint = box.querySelector('.hint');
-  const showDraft = () => {
-    const first = drafts[q.n].trim().split('\n')[0];
-    const isEditing = !reply.hidden;
-    draft.hidden = isEditing || first === '';
-    hint.hidden = isEditing;
-    draft.querySelector('.first').textContent = first;
-  };
-  const open = () => {
-    if (!reply.hidden) return;
-    reply.hidden = false;
-    reply.value = drafts[q.n];
-    showDraft();
-    reply.focus();
-  };
-  box.addEventListener('click', open);
-  box.addEventListener('keydown', event => {
-    if (event.target === box && (event.key === 'Enter' || event.key === ' ')) {
-      event.preventDefault();
-      open();
-    }
-  });
+  reply.value = drafts[q.n];
   reply.addEventListener('input', () => {
     drafts[q.n] = reply.value;
     try {
@@ -320,13 +365,21 @@ for (const box of document.querySelectorAll('.sign')) {
     }
     refreshCopy();
   });
-  reply.addEventListener('blur', () => {
-    if (hasUnsaved) return;
-    reply.hidden = true;
-    showDraft();
-  });
-  showDraft();
 }
+
+for (const chip of document.querySelectorAll('.chips button')) {
+  chip.addEventListener('click', () => {
+    document.querySelector('.feed').dataset.f = chip.dataset.f;
+    for (const other of document.querySelectorAll('.chips button')) other.setAttribute('aria-pressed', String(other === chip));
+    localStorage.setItem('jig-dash-filter', chip.dataset.f);
+  });
+}
+
+document.querySelector('.steps-toggle').addEventListener('click', event => {
+  const isOpen = document.querySelector('.rail').classList.toggle('open');
+  event.currentTarget.setAttribute('aria-expanded', String(isOpen));
+  event.currentTarget.textContent = `${isOpen ? '▾' : '▸'} ${L.stepsToggle(stuck.length, current?.n)}`;
+});
 
 refreshCopy();
 copyButton?.addEventListener('click', async () => {
@@ -338,8 +391,11 @@ copyButton?.addEventListener('click', async () => {
 });
 
 document.querySelector('.theme').addEventListener('click', () => {
-  const isLight = document.body.classList.toggle('light');
-  localStorage.setItem('jig-dash-theme', isLight ? 'light' : 'dark');
+  const isDark = getComputedStyle(document.body).colorScheme === 'dark';
+  const next = isDark ? 'light' : 'dark';
+  document.body.classList.toggle('light', next === 'light');
+  document.body.classList.toggle('dark', next === 'dark');
+  localStorage.setItem('jig-dash-theme', next);
 });
 
 setInterval(() => {
