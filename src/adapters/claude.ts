@@ -2,13 +2,9 @@ import { readFileSync } from 'node:fs'
 import { isAbsolute, resolve } from 'node:path'
 import { resolveProjectRoot, toProjectPath } from '../core/paths'
 import type { EditPair, EventBase, JigEvent, Outcome, SessionSource } from '../hook/types'
+import type { AgentAdapter, ParsedHook } from './adapter'
 
 type Json = Record<string, unknown>
-
-export interface ParsedHook {
-  event: JigEvent
-  base: EventBase
-}
 
 const SESSION_SOURCES: readonly SessionSource[] = ['startup', 'resume', 'clear', 'compact', 'fork']
 
@@ -173,3 +169,5 @@ export const formatOutcome = (kind: JigEvent['kind'], outcome: Outcome): string 
       return JSON.stringify({ decision: 'block', reason: outcome.reason })
   }
 }
+
+export const claude: AgentAdapter = { name: 'claude', parseHookInput, formatOutcome }

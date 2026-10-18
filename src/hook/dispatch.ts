@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { formatOutcome, parseHookInput } from '../adapters/claude'
+import { resolveAdapter, type AgentAdapter } from '../adapters'
 import { formatAtomDelivery, formatSessionAtoms, selectAtoms } from '../atoms/atoms'
 import { loadConfig, type JigConfig } from '../core/config'
 import { activeRunContext } from '../dash/dash'
@@ -49,6 +49,7 @@ const NONE: Outcome = { type: 'none' }
 const SUBAGENT_ATOM_LIMIT = 10
 const TEST_REVIEWER_MARKER = 'jig-role: test-reviewer'
 const GUARDED_KINDS: ReadonlySet<JigEvent['kind']> = new Set(['pre-edit', 'pre-bash'])
+const AGENT_FLAG = '--agent'
 
 const errorMessage = (error: unknown): string => (error instanceof Error ? error.message : String(error))
 
@@ -382,16 +383,30 @@ export const dispatch = async (event: JigEvent, base: EventBase, pluginRoot: str
   }
 }
 
-export const handleHook = async (name: string, raw: string, env: NodeJS.ProcessEnv = process.env): Promise<string> => {
-  let parsed: ReturnType<typeof parseHookInput>
+export const handleHook = async (
+  name: string,
+  raw: string,
+  env: NodeJS.ProcessEnv = process.env,
+  adapter: AgentAdapter = resolveAdapter(),
+): Promise<string> => {
+  let parsed: ReturnType<AgentAdapter['parseHookInput']>
   try {
-    parsed = parseHookInput(name, raw, env)
+    parsed = adapter.parseHookInput(name, raw, env)
   } catch {
     return ''
   }
   if (parsed === undefined) return ''
   const outcome = await dispatch(parsed.event, parsed.base, resolvePluginRoot(env))
-  return formatOutcome(parsed.event.kind, outcome)
+  return adapter.formatOutcome(parsed.event.kind, outcome)
+}
+
+export const parseHookArgs = (args: readonly string[]): { name: string; adapter: AgentAdapter } => {
+  const at = args.indexOf(AGENT_FLAG)
+  if (at === -1) return { name: args[0] ?? '', adapter: resolveAdapter() }
+  const agent = args[at + 1]
+  if (agent === undefined) throw new Error(`${AGENT_FLAG} needs an agent name`)
+  const positional = args.filter((_, index) => index !== at && index !== at + 1)
+  return { name: positional[0] ?? '', adapter: resolveAdapter(agent) }
 }
 
 const readStdin = async (): Promise<string> => {
@@ -403,8 +418,9 @@ const readStdin = async (): Promise<string> => {
 }
 
 export const runHook: Command = async (args) => {
+  const { name, adapter } = parseHookArgs(args)
   try {
-    const output = await handleHook(args[0] ?? '', await readStdin())
+    const output = await handleHook(name, await readStdin(), process.env, adapter)
     if (output !== '') {
       process.stdout.write(output)
     }

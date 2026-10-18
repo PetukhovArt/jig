@@ -1,6 +1,5 @@
 import { createHash } from 'node:crypto'
 import type { RuleId } from '../core/config'
-import type { JournalEntry } from '../core/journal'
 import { ensureJigDir, jigPaths, resolvePluginRoot, resolveProjectRoot, toProjectPath, toSlash } from '../core/paths'
 import { isRuntimeVisible, isTestFile, loadPlan, type Plan } from '../core/plan'
 import { acquireLock, transferLock } from '../core/proc'
@@ -8,16 +7,14 @@ import { takeSnapshot, turnDiff, type TurnDiff } from '../core/snapshot'
 import { resetSnapshot, type SessionState } from '../core/state'
 import { addRunDecision, readActiveRun } from '../dash/dash'
 import type { Outcome } from '../hook/types'
-import { runEslint } from '../tools/eslint'
+import { TOOLS, type RegisteredTool } from '../tools'
 import { collapseFindings, formatFindings, POST_EDIT_LINE_LIMIT, STOP_LINE_LIMIT, type Finding } from '../tools/finding'
-import { runStratum } from '../tools/stratum'
-import { changedLines, isOnChangedLine, type ToolRun } from '../tools/tool'
-import { groupByTsconfig, runTypeCheck } from '../tools/tsc'
-import { applyLevel, checkEdit, isCodeFile, ruleLevel } from './edit'
+import type { JournalNote, StopToolInput, ToolRun } from '../tools/tool'
+import { applyLevel, checkEdit, ruleLevel } from './edit'
 
 type Command = (args: string[]) => number | Promise<number>
 
-export type JournalNote = Omit<JournalEntry, 'session' | 'agent'>
+export type { JournalNote } from '../tools/tool'
 
 export type GateTimes = Pick<SessionState, 'lastTestEditAt' | 'testReviewAt' | 'lastRuntimeEditAt' | 'verifyAt'>
 
@@ -56,9 +53,6 @@ export interface StopVerdict {
   notes: JournalNote[]
 }
 
-export const TYPES_TIMEOUT_MS = 60_000
-export const ESLINT_TIMEOUT_MS = 30_000
-export const STRATUM_TIMEOUT_MS = 15_000
 export const STOP_HARD_LIMIT_MS = 110_000
 export const MAX_CONSECUTIVE_BLOCKS = 3
 
@@ -83,67 +77,17 @@ const timed = async (rule: RuleId, body: () => Promise<{ runs: ToolRun[]; findin
 const createBudget = (startedAt: number) => (ownMs: number): number =>
   Math.max(0, Math.min(ownMs, startedAt + STOP_HARD_LIMIT_MS - Date.now()))
 
-type Budget = ReturnType<typeof createBudget>
-
 interface HeavyLock {
   path: string
   isTransferred: boolean
 }
 
-const onChangedLines = (projectRoot: string, findings: readonly Finding[]): Finding[] => {
-  if (findings.length === 0) return []
-  const lines = changedLines(projectRoot, [...new Set(findings.map((finding) => finding.file))])
-  return findings.filter((finding) => isOnChangedLine(lines.get(finding.file), finding.line))
-}
-
-const typesStep = (input: StopChecksInput, budget: Budget, lock: HeavyLock, notes: JournalNote[]): Promise<StopStep> =>
-  timed('gate/tsc', async () => {
-    const level = ruleLevel(input.plan, 'gate/tsc')
-    if (level === 'off') return { runs: [], findings: [] }
-    const { groups, skipped } = groupByTsconfig(input.projectRoot, input.diff.files)
-    for (const file of skipped) {
-      notes.push({ kind: 'gate-skipped', tool: 'jig', rule: 'gate/tsc', file, message: 'no tsconfig covers the file' })
-    }
-    const runs: ToolRun[] = []
-    for (const group of groups) {
-      const timeoutMs = budget(TYPES_TIMEOUT_MS)
-      if (timeoutMs === 0) break
-      const toolRun = await runTypeCheck(input.plan.tools, input.projectRoot, group, timeoutMs, lock.path)
-      if (toolRun === undefined) continue
-      runs.push(toolRun)
-      if (toolRun.detachedPid !== undefined) {
-        transferLock(lock.path, toolRun.detachedPid)
-        lock.isTransferred = true
-        break
-      }
-    }
-    const findings = onChangedLines(input.projectRoot, runs.flatMap((toolRun) => toolRun.findings))
+const toolStep = (tool: RegisteredTool, input: StopChecksInput, toolInput: StopToolInput): Promise<StopStep> =>
+  timed(tool.rule, async () => {
+    const level = ruleLevel(input.plan, tool.rule)
+    if (level === 'off' || tool.stop === undefined) return { runs: [], findings: [] }
+    const { runs, findings } = await tool.stop(input.plan.tools, toolInput)
     return { runs, findings: applyLevel(findings, level) }
-  })
-
-const eslintStep = (input: StopChecksInput, budget: Budget): Promise<StopStep> =>
-  timed('gate/eslint', async () => {
-    const level = ruleLevel(input.plan, 'gate/eslint')
-    const files = input.diff.files.filter(isCodeFile)
-    const timeoutMs = budget(ESLINT_TIMEOUT_MS)
-    const tool = input.plan.tools.eslint
-    const isSkipped = level === 'off' || files.length === 0 || timeoutMs === 0
-    if (isSkipped || tool === undefined) return { runs: [], findings: [] }
-    const toolRun = await runEslint(tool, input.projectRoot, files, timeoutMs)
-    const onChanged = onChangedLines(input.projectRoot, toolRun.findings.filter(isBlocking))
-    return { runs: [toolRun], findings: applyLevel(onChanged, level) }
-  })
-
-const stratumStep = (input: StopChecksInput, budget: Budget): Promise<StopStep> =>
-  timed('gate/stratum', async () => {
-    const level = ruleLevel(input.plan, 'gate/stratum')
-    const files = input.diff.files.filter(isCodeFile)
-    const timeoutMs = budget(STRATUM_TIMEOUT_MS)
-    const tool = input.plan.tools.stratum
-    const isSkipped = level === 'off' || files.length === 0 || timeoutMs === 0
-    if (isSkipped || tool === undefined) return { runs: [], findings: [] }
-    const toolRun = await runStratum(tool, input.projectRoot, files, timeoutMs)
-    return { runs: [toolRun], findings: applyLevel(toolRun.findings, level) }
   })
 
 const latestEdit = (diff: TurnDiff, files: readonly string[], recorded: number | undefined): number =>
@@ -213,11 +157,15 @@ export const runStopChecks = async (input: StopChecksInput): Promise<StopChecks>
     notes.push({ kind: 'gate-skipped', tool: 'jig', message: 'heavy checks lock is busy' })
   } else {
     const lock: HeavyLock = { path: acquired.path, isTransferred: false }
+    const transfer = (pid: number): void => {
+      transferLock(lock.path, pid)
+      lock.isTransferred = true
+    }
+    const toolInput: StopToolInput = { projectRoot: input.projectRoot, files: input.diff.files, budget, lock: { path: lock.path, transfer }, notes }
     try {
-      const heavySteps = [() => typesStep(input, budget, lock, notes), () => eslintStep(input, budget), () => stratumStep(input, budget)]
-      for (const step of heavySteps) {
+      for (const tool of TOOLS.filter((candidate) => candidate.stop !== undefined)) {
         if (isStopped()) break
-        steps.push(await step())
+        steps.push(await toolStep(tool, input, toolInput))
       }
     } finally {
       if (!lock.isTransferred) {

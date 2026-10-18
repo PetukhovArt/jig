@@ -1,7 +1,7 @@
 import { toSlash } from '../core/paths'
 
 export interface Finding {
-  tool: 'jig' | 'oxlint' | 'eslint' | 'tsc' | 'vue-tsc' | 'stratum'
+  tool: string
   rule: string
   severity: 'error' | 'warn'
   file: string

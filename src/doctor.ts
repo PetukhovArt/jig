@@ -5,19 +5,11 @@ import { gitLsFiles } from './core/git'
 import { JOURNAL_MAX_BYTES, listJournalFiles } from './core/journal'
 import { parseJsonc } from './core/jsonc'
 import { jigPaths, resolvePluginRoot, resolveProjectRoot } from './core/paths'
-import {
-  AGENT_VIEW_CONFIG,
-  ESLINT_CONFIGS,
-  OXLINT_CONFIGS,
-  STRATUM_CONFIG,
-  TSCONFIG,
-  detectTools,
-  readAtomIndex,
-  type PlanTools,
-} from './core/plan'
+import { detectTools, PLAN_BINARIES, readAtomIndex, type PlanTools } from './core/plan'
 import { createMatcher } from './core/glob'
 import { findUnresolvedShim, isLockAbandoned, readLock } from './core/proc'
 import { detectAgent, isUserMapped, loadUserConfig, resolveTiers, tierEntries } from './tiers/tiers'
+import type { ToolBinary } from './tools/tool'
 
 type Command = (args: string[]) => number | Promise<number>
 
@@ -29,25 +21,9 @@ interface Check {
   block?: string
 }
 
-interface ToolSpec {
-  key: keyof PlanTools
-  label: string
-  command: string
-  configs: readonly string[]
-}
-
 const MIN_NODE_MAJOR = 20
 const BYTES_PER_MB = 1024 * 1024
 const STATUS_WIDTH = 4
-
-const TOOLS: readonly ToolSpec[] = [
-  { key: 'oxlint', label: 'oxlint', command: 'oxlint', configs: OXLINT_CONFIGS },
-  { key: 'eslint', label: 'eslint', command: 'eslint', configs: ESLINT_CONFIGS },
-  { key: 'tsc', label: 'tsc', command: 'tsc', configs: [TSCONFIG] },
-  { key: 'vueTsc', label: 'vue-tsc', command: 'vue-tsc', configs: [] },
-  { key: 'stratum', label: 'stratum', command: 'stratum-lint', configs: [STRATUM_CONFIG] },
-  { key: 'agentView', label: 'agent-view', command: 'agent-view', configs: [AGENT_VIEW_CONFIG] },
-]
 
 const PROTECTED_FOR_DENY = [
   '.jig/config.jsonc',
@@ -98,7 +74,7 @@ const checkTiers = (): Check => {
 const firstExisting =(projectRoot: string, names: readonly string[]): string | undefined =>
   names.map((name) => join(projectRoot, name)).find((path) => existsSync(path))
 
-const checkTool = (projectRoot: string, tools: PlanTools, spec: ToolSpec): Check => {
+const checkTool = (projectRoot: string, tools: PlanTools, spec: ToolBinary): Check => {
   const found = tools[spec.key]
   if (found !== undefined) {
     const config = 'config' in found ? ` config ${found.config}` : ''
@@ -188,7 +164,7 @@ export const runDoctor: Command = (args) => {
     ok(`project: ${projectRoot}`),
     checkConfig(projectRoot),
     checkTiers(),
-    ...TOOLS.map((spec) => checkTool(projectRoot, tools, spec)),
+    ...PLAN_BINARIES.map((spec) => checkTool(projectRoot, tools, spec)),
     checkGitignore(projectRoot),
     checkDeny(projectRoot),
     ...checkAtomPaths(projectRoot, pluginRoot),

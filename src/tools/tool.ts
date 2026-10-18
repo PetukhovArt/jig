@@ -1,18 +1,74 @@
+import { extname } from 'node:path'
 import { git } from '../core/git'
+import type { JournalEntry } from '../core/journal'
 import { run } from '../core/proc'
 import type { Finding } from './finding'
 
-export type ToolName = Exclude<Finding['tool'], 'jig'>
-
 export interface ToolRun {
-  tool: ToolName
+  tool: string
   findings: Finding[]
   durationMs: number
   failure?: string
 }
 
+export interface ToolEntry {
+  bin: string[]
+  config?: string
+}
+
+export interface ToolWithConfig extends ToolEntry {
+  config: string
+}
+
+export type ToolBin = Pick<ToolEntry, 'bin'>
+
+export type PlanTools = Record<string, ToolEntry>
+
+export interface ToolBinary {
+  key: string
+  label: string
+  command: string
+  packages: readonly string[]
+  configs: readonly string[]
+  requiresConfig: boolean
+}
+
+export type JournalNote = Omit<JournalEntry, 'session' | 'agent'>
+
+export interface StopToolInput {
+  projectRoot: string
+  files: readonly string[]
+  budget: (ownMs: number) => number
+  lock: { path: string; transfer: (pid: number) => void }
+  notes: JournalNote[]
+}
+
+export interface ToolResult {
+  runs: ToolRun[]
+  findings: Finding[]
+}
+
+export interface ToolDefinition<N extends string = string> {
+  name: N
+  rule: `gate/${N}`
+  binaries: readonly ToolBinary[]
+  edit?: (tools: PlanTools, projectRoot: string, file: string, timeoutMs: number) => Promise<ToolRun | undefined>
+  stop?: (tools: PlanTools, input: StopToolInput) => Promise<ToolResult>
+}
+
+export const defineTool = <const N extends string>(definition: Omit<ToolDefinition<N>, 'rule'>): ToolDefinition<N> => ({
+  ...definition,
+  rule: `gate/${definition.name}`,
+})
+
+export const hasConfig = (entry: ToolEntry | undefined): entry is ToolWithConfig => entry?.config !== undefined
+
+export const CODE_EXTENSIONS: ReadonlySet<string> = new Set(['.ts', '.tsx', '.mts', '.cts', '.js', '.jsx', '.mjs', '.cjs', '.vue'])
+
+export const isCodeFile = (file: string): boolean => CODE_EXTENSIONS.has(extname(file))
+
 export interface ToolInvocation {
-  tool: ToolName
+  tool: string
   argv: string[]
   cwd: string
   timeoutMs: number
@@ -96,3 +152,9 @@ export const changedLines = (projectRoot: string, files: readonly string[]): Map
 
 export const isOnChangedLine = (lines: ChangedLines | undefined, line: number): boolean =>
   lines === 'all' || lines?.has(line) === true
+
+export const keepOnChangedLines = (projectRoot: string, findings: readonly Finding[]): Finding[] => {
+  if (findings.length === 0) return []
+  const lines = changedLines(projectRoot, [...new Set(findings.map((finding) => finding.file))])
+  return findings.filter((finding) => isOnChangedLine(lines.get(finding.file), finding.line))
+}

@@ -4,8 +4,8 @@
 var version = "0.1.0";
 
 // src/atoms/atoms.ts
-import { readdirSync as readdirSync3, readFileSync as readFileSync5 } from "node:fs";
-import { basename as basename2, join as join5 } from "node:path";
+import { readdirSync as readdirSync3, readFileSync as readFileSync8 } from "node:fs";
+import { basename as basename2, join as join6 } from "node:path";
 
 // src/core/frontmatter.ts
 var FrontmatterError = class extends Error {
@@ -370,266 +370,19 @@ var toProjectPath = (projectRoot, file, cwd = projectRoot) => {
 };
 
 // src/core/plan.ts
-import { createHash } from "node:crypto";
-import { mkdirSync as mkdirSync4, readdirSync as readdirSync2, readFileSync as readFileSync4, statSync as statSync3 } from "node:fs";
-import { dirname as dirname3, join as join4 } from "node:path";
+import { createHash as createHash2 } from "node:crypto";
+import { mkdirSync as mkdirSync6, readdirSync as readdirSync2, readFileSync as readFileSync7, statSync as statSync4 } from "node:fs";
+import { dirname as dirname5, join as join5 } from "node:path";
 
-// src/core/config.ts
-import { existsSync as existsSync2, readFileSync } from "node:fs";
+// src/tools/eslint.ts
+import { resolve as resolve3 } from "node:path";
 
-// src/core/jsonc.ts
-var BOM = "\uFEFF";
-var isWhitespace = (char) => char === " " || char === "	" || char === "\n" || char === "\r";
-var blank = (text2) => text2.replace(/[^\n]/g, " ");
-var skipString = (text2, start) => {
-  let index = start + 1;
-  while (index < text2.length) {
-    const char = text2[index];
-    if (char === "\\") {
-      index += 2;
-      continue;
-    }
-    if (char === '"') return index + 1;
-    index++;
-  }
-  return index;
-};
-var commentEnd = (text2, start) => {
-  const next = text2[start + 1];
-  if (next === "/") {
-    const newline = text2.indexOf("\n", start);
-    return newline === -1 ? text2.length : newline;
-  }
-  if (next === "*") {
-    const close = text2.indexOf("*/", start + 2);
-    if (close === -1) throw new SyntaxError("unterminated block comment");
-    return close + 2;
-  }
-  return void 0;
-};
-var stripComments = (text2) => {
-  let output = "";
-  let index = 0;
-  while (index < text2.length) {
-    const char = text2[index];
-    if (char === '"') {
-      const end2 = skipString(text2, index);
-      output += text2.slice(index, end2);
-      index = end2;
-      continue;
-    }
-    const end = char === "/" ? commentEnd(text2, index) : void 0;
-    if (end !== void 0) {
-      output += blank(text2.slice(index, end));
-      index = end;
-      continue;
-    }
-    output += char;
-    index++;
-  }
-  return output;
-};
-var stripTrailingCommas = (text2) => {
-  const chars = text2.split("");
-  let index = 0;
-  while (index < chars.length) {
-    const char = chars[index];
-    if (char === '"') {
-      index = skipString(text2, index);
-      continue;
-    }
-    if (char === ",") {
-      let next = index + 1;
-      while (isWhitespace(chars[next])) next++;
-      const isTrailing = chars[next] === "}" || chars[next] === "]";
-      if (isTrailing) {
-        chars[index] = " ";
-      }
-    }
-    index++;
-  }
-  return chars.join("");
-};
-var parseJsonc = (text2) => {
-  const source = text2.startsWith(BOM) ? text2.slice(1) : text2;
-  return JSON.parse(stripTrailingCommas(stripComments(source)));
-};
-
-// src/core/config.ts
-var SEVERITIES = ["off", "warn", "error"];
-var RULE_IDS = [
-  "jig/comments",
-  "jig/suppressions",
-  "jig/protected-paths",
-  "jig/no-verify",
-  "jig/test-review",
-  "jig/verify-fact",
-  "gate/oxlint",
-  "gate/stratum",
-  "gate/tsc",
-  "gate/eslint"
-];
-var DEFAULT_SEVERITY = "error";
-var RUNTIMES = ["electron", "tauri", "browser", "none"];
-var VERIFY_RUNTIMES = ["electron", "tauri", "browser"];
-var DEFAULT_PORT_TARGET = ".env";
-var MAX_PORT = 65535;
-var IDENTIFIER = /^[A-Za-z_$][\w$]*$/;
-var childPath = (path, key) => {
-  if (typeof key === "number") return `${path}[${key}]`;
-  return IDENTIFIER.test(key) ? `${path}.${key}` : `${path}[${JSON.stringify(key)}]`;
-};
-var isObject = (value) => typeof value === "object" && value !== null && !Array.isArray(value);
-var Validator = class {
-  errors = [];
-  report(path, problem) {
-    this.errors.push(`${path}: ${problem}`);
-    return void 0;
-  }
-  object(value, path, keys) {
-    if (!isObject(value)) return this.report(path, "expected an object");
-    if (keys === void 0) return value;
-    for (const key of Object.keys(value)) {
-      if (!keys.includes(key)) {
-        this.report(childPath(path, key), "unknown key");
-      }
-    }
-    return value;
-  }
-  string(value, path) {
-    return typeof value === "string" ? value : this.report(path, "expected a string");
-  }
-  oneOf(value, path, allowed) {
-    const isAllowed2 = typeof value === "string" && allowed.includes(value);
-    return isAllowed2 ? value : this.report(path, `expected one of ${allowed.join(", ")}`);
-  }
-  integer(value, path, min, max = Number.MAX_SAFE_INTEGER) {
-    const isInRange = Number.isInteger(value) && value >= min && value <= max;
-    if (isInRange) return value;
-    const range = max === Number.MAX_SAFE_INTEGER ? `>= ${min}` : `${min}..${max}`;
-    return this.report(path, `expected an integer ${range}`);
-  }
-  strings(value, path) {
-    if (!Array.isArray(value)) return this.report(path, "expected an array of strings");
-    const before = this.errors.length;
-    value.forEach((item, index) => this.string(item, childPath(path, index)));
-    return this.errors.length === before ? value : void 0;
-  }
-};
-var required = (validator, object, path, keys) => {
-  const missing = keys.filter((key) => !Object.hasOwn(object, key));
-  missing.forEach((key) => validator.report(childPath(path, key), "is required"));
-  return missing.length === 0;
-};
-var readRules = (validator, value) => {
-  const rules = defaultRules();
-  if (value === void 0) return rules;
-  const object = validator.object(value, "$.rules", RULE_IDS);
-  if (object === void 0) return rules;
-  for (const rule of RULE_IDS) {
-    if (!Object.hasOwn(object, rule)) continue;
-    const severity = validator.oneOf(object[rule], childPath("$.rules", rule), SEVERITIES);
-    if (severity !== void 0) {
-      rules[rule] = severity;
-    }
-  }
-  return rules;
-};
-var readStep = (validator, value, path, keys) => {
-  const object = validator.object(value, path, keys);
-  if (object === void 0 || !required(validator, object, path, ["base", "step"])) return void 0;
-  validator.integer(object["base"], childPath(path, "base"), 1, MAX_PORT);
-  validator.integer(object["step"], childPath(path, "step"), 1);
-  return object;
-};
-var readPorts = (validator, value, path) => {
-  const object = validator.object(value, path, void 0);
-  if (object === void 0) return void 0;
-  const ports = {};
-  for (const [key, entry] of Object.entries(object)) {
-    const portPath = childPath(path, key);
-    const port = readStep(validator, entry, portPath, ["base", "step", "target"]);
-    if (port === void 0) continue;
-    const target = port["target"] === void 0 ? DEFAULT_PORT_TARGET : validator.string(port["target"], childPath(portPath, "target"));
-    ports[key] = { base: port["base"], step: port["step"], target: target ?? DEFAULT_PORT_TARGET };
-  }
-  return ports;
-};
-var SLOT_KEYS = [
-  "worktreesDir",
-  "install",
-  "dev",
-  "runtime",
-  "verifyRuntime",
-  "linkedPackages",
-  "ports",
-  "cdp",
-  "instance",
-  "copyFiles",
-  "clearCache"
-];
-var readSlots = (validator, value) => {
-  const path = "$.slots";
-  const object = validator.object(value, path, SLOT_KEYS);
-  if (object === void 0 || !required(validator, object, path, ["worktreesDir"])) return void 0;
-  const at = (key) => childPath(path, key);
-  const slots = { worktreesDir: validator.string(object["worktreesDir"], at("worktreesDir")) ?? "" };
-  const readers = {
-    install: (raw) => validator.string(raw, at("install")),
-    dev: (raw) => validator.string(raw, at("dev")),
-    runtime: (raw) => validator.oneOf(raw, at("runtime"), RUNTIMES),
-    verifyRuntime: (raw) => validator.oneOf(raw, at("verifyRuntime"), VERIFY_RUNTIMES),
-    linkedPackages: (raw) => validator.strings(raw, at("linkedPackages")),
-    ports: (raw) => readPorts(validator, raw, at("ports")),
-    cdp: (raw) => readStep(validator, raw, at("cdp"), ["base", "step"]),
-    instance: (raw) => validator.object(raw, at("instance"), void 0),
-    copyFiles: (raw) => validator.strings(raw, at("copyFiles")),
-    clearCache: (raw) => validator.strings(raw, at("clearCache"))
-  };
-  for (const [key, read] of Object.entries(readers)) {
-    if (!Object.hasOwn(object, key)) continue;
-    const parsed = read(object[key]);
-    if (parsed !== void 0) {
-      Object.assign(slots, { [key]: parsed });
-    }
-  }
-  return slots;
-};
-var defaultRules = () => Object.fromEntries(RULE_IDS.map((rule) => [rule, DEFAULT_SEVERITY]));
-var defaultConfig = () => ({ rules: defaultRules() });
-var validateConfig = (value) => {
-  const validator = new Validator();
-  const root = validator.object(value, "$", ["$schema", "rules", "slots"]);
-  if (root === void 0) return { config: defaultConfig(), errors: validator.errors };
-  if (root["$schema"] !== void 0) {
-    validator.string(root["$schema"], "$.$schema");
-  }
-  const rules = readRules(validator, root["rules"]);
-  const slots = root["slots"] === void 0 ? void 0 : readSlots(validator, root["slots"]);
-  const config = slots === void 0 ? { rules } : { rules, slots };
-  return { config, errors: validator.errors };
-};
-var parseConfig = (text2) => {
-  let value;
-  try {
-    value = parseJsonc(text2);
-  } catch (error) {
-    const reason = error instanceof Error ? error.message : String(error);
-    return { ...defaultConfig(), error: `$: ${reason}` };
-  }
-  const { config, errors } = validateConfig(value);
-  if (errors.length > 0) return { ...defaultConfig(), error: errors.join("; ") };
-  return config;
-};
-var loadConfig = (projectRoot) => {
-  const { config } = jigPaths(projectRoot);
-  if (!existsSync2(config)) return defaultConfig();
-  return parseConfig(readFileSync(config, "utf8"));
-};
+// src/tools/tool.ts
+import { extname as extname2 } from "node:path";
 
 // src/core/proc.ts
 import { spawn } from "node:child_process";
-import { existsSync as existsSync3, mkdirSync as mkdirSync2, readFileSync as readFileSync2, realpathSync, rmSync, statSync, writeFileSync as writeFileSync2 } from "node:fs";
+import { existsSync as existsSync2, mkdirSync as mkdirSync2, readFileSync, realpathSync, rmSync, statSync, writeFileSync as writeFileSync2 } from "node:fs";
 import { setPriority } from "node:os";
 import { basename, delimiter, dirname as dirname2, extname, isAbsolute as isAbsolute2, join as join2, relative as relative2, resolve as resolve2 } from "node:path";
 var LOW_PRIORITY = 10;
@@ -640,7 +393,7 @@ var KILL_GRACE_MS = 1e3;
 var MAX_OUTPUT_BYTES = 32 * 1024 * 1024;
 var readPackageJson = (path) => {
   try {
-    return JSON.parse(readFileSync2(path, "utf8"));
+    return JSON.parse(readFileSync(path, "utf8"));
   } catch {
     return void 0;
   }
@@ -678,7 +431,7 @@ var packageBinIn = (dir, pkg, binName) => {
   const bin = typeof manifest?.bin === "string" ? manifest.bin : manifest?.bin?.[binName];
   if (bin === void 0) return void 0;
   const script = resolve2(packageDir, bin);
-  return existsSync3(script) ? [process.execPath, script] : void 0;
+  return existsSync2(script) ? [process.execPath, script] : void 0;
 };
 var resolvePackageBin = (projectRoot, pkg, binName = packageBinName(pkg)) => {
   for (const dir of searchDirs(projectRoot)) {
@@ -713,7 +466,7 @@ var NODE_EXECUTABLE = /^node(?:\.exe)?$/i;
 var isShim = (path) => SHIM_EXTENSIONS.has(extname(path).toLowerCase());
 var readText = (path) => {
   try {
-    return readFileSync2(path, "utf8");
+    return readFileSync(path, "utf8");
   } catch {
     return void 0;
   }
@@ -811,7 +564,7 @@ var isAlive = (pid) => {
 };
 var readLock = (path) => {
   try {
-    const value = JSON.parse(readFileSync2(path, "utf8"));
+    const value = JSON.parse(readFileSync(path, "utf8"));
     const isValid = typeof value.pid === "number" && typeof value.at === "number";
     return isValid ? { pid: value.pid, at: value.at } : void 0;
   } catch {
@@ -860,16 +613,771 @@ var acquireLock = async (path, waitMs = LOCK_WAIT_MS) => {
   }
 };
 
+// src/tools/tool.ts
+var defineTool = (definition) => ({
+  ...definition,
+  rule: `gate/${definition.name}`
+});
+var hasConfig = (entry) => entry?.config !== void 0;
+var CODE_EXTENSIONS = /* @__PURE__ */ new Set([".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs", ".vue"]);
+var isCodeFile = (file) => CODE_EXTENSIONS.has(extname2(file));
+var FAILURE_DETAIL_MAX = 200;
+var HUNK_HEADER = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/;
+var firstOutputLine = (text2) => text2.trim().split("\n")[0]?.slice(0, FAILURE_DETAIL_MAX) ?? "";
+var settleExit = (invocation, exited) => {
+  const { tool, okCodes, parse } = invocation;
+  const failed = (failure) => ({ tool, findings: [], durationMs: exited.durationMs, failure });
+  const isOkCode = exited.code !== null && okCodes.includes(exited.code);
+  if (!isOkCode) return failed(`exit ${exited.code}: ${firstOutputLine(exited.errorOutput || exited.output)}`);
+  try {
+    return { tool, findings: parse(exited.output), durationMs: exited.durationMs };
+  } catch (error) {
+    return failed(error instanceof Error ? error.message : String(error));
+  }
+};
+var runTool = async (invocation) => {
+  const { tool, argv, cwd, timeoutMs } = invocation;
+  const result = await run(argv, { cwd, timeoutMs });
+  if (result.timedOut) return { tool, findings: [], durationMs: result.durationMs, failure: `timeout after ${timeoutMs} ms` };
+  if (result.error !== void 0) return { tool, findings: [], durationMs: result.durationMs, failure: result.error };
+  return settleExit(invocation, { code: result.code, output: result.stdout, errorOutput: result.stderr, durationMs: result.durationMs });
+};
+var parseDiffLines = (diff) => {
+  const lines = /* @__PURE__ */ new Map();
+  let current;
+  for (const line of diff.split("\n")) {
+    if (line.startsWith("+++ ")) {
+      const path = line.slice(4).trimEnd();
+      current = path === "/dev/null" ? void 0 : /* @__PURE__ */ new Set();
+      if (current !== void 0) {
+        lines.set(path, current);
+      }
+      continue;
+    }
+    const hunk = HUNK_HEADER.exec(line);
+    if (hunk === null || current === void 0) continue;
+    const start = Number(hunk[1]);
+    const count = hunk[2] === void 0 ? 1 : Number(hunk[2]);
+    for (let at = start; at < start + count; at++) {
+      current.add(at);
+    }
+  }
+  return lines;
+};
+var changedLines = (projectRoot, files) => {
+  const result = /* @__PURE__ */ new Map();
+  if (files.length === 0) return result;
+  const listed = git(["ls-files", "-z", "--", ...files], projectRoot);
+  const tracked = new Set(listed.ok ? listed.stdout.split("\0").filter(Boolean) : []);
+  const diff = git(
+    ["-c", "core.quotePath=false", "diff", "--no-color", "--no-ext-diff", "--unified=0", "--relative", "--no-prefix", "HEAD", "--", ...files],
+    projectRoot
+  );
+  const diffLines = diff.ok ? parseDiffLines(diff.stdout) : /* @__PURE__ */ new Map();
+  for (const file of files) {
+    const isWholeFile = !diff.ok || !tracked.has(file);
+    result.set(file, isWholeFile ? "all" : diffLines.get(file) ?? /* @__PURE__ */ new Set());
+  }
+  return result;
+};
+var isOnChangedLine = (lines, line) => lines === "all" || lines?.has(line) === true;
+var keepOnChangedLines = (projectRoot, findings) => {
+  if (findings.length === 0) return [];
+  const lines = changedLines(projectRoot, [...new Set(findings.map((finding) => finding.file))]);
+  return findings.filter((finding) => isOnChangedLine(lines.get(finding.file), finding.line));
+};
+
+// src/tools/eslint.ts
+var ESLINT_CONFIGS = [
+  "eslint.config.js",
+  "eslint.config.mjs",
+  "eslint.config.cjs",
+  "eslint.config.ts",
+  "eslint.config.mts",
+  "eslint.config.cts",
+  ".eslintrc",
+  ".eslintrc.js",
+  ".eslintrc.cjs",
+  ".eslintrc.json",
+  ".eslintrc.yml",
+  ".eslintrc.yaml"
+];
+var ESLINT_TIMEOUT_MS = 3e4;
+var OK_CODES = [0, 1];
+var ERROR_SEVERITY = 2;
+var parseEslint = (stdout, projectRoot, cwd = projectRoot) => {
+  if (stdout.trim() === "") return [];
+  const results = JSON.parse(stdout);
+  return results.flatMap((result) => {
+    const file = toProjectPath(projectRoot, resolve3(cwd, result.filePath ?? ""));
+    return (result.messages ?? []).map((message) => ({
+      tool: "eslint",
+      rule: message.ruleId ?? "eslint",
+      severity: message.severity === ERROR_SEVERITY ? "error" : "warn",
+      file,
+      line: message.line ?? 1,
+      message: message.message ?? ""
+    }));
+  });
+};
+var runEslint = (tool, projectRoot, files, timeoutMs) => runTool({
+  tool: "eslint",
+  argv: [
+    ...tool.bin,
+    "--format",
+    "json",
+    "--cache",
+    "--cache-location",
+    `${toSlash(jigPaths(projectRoot).eslintCache)}/`,
+    "--no-warn-ignored",
+    ...files
+  ],
+  cwd: projectRoot,
+  timeoutMs,
+  okCodes: OK_CODES,
+  parse: (stdout) => parseEslint(stdout, projectRoot)
+});
+var eslintTool = defineTool({
+  name: "eslint",
+  binaries: [{ key: "eslint", label: "eslint", command: "eslint", packages: ["eslint"], configs: ESLINT_CONFIGS, requiresConfig: true }],
+  stop: async (tools, input) => {
+    const files = input.files.filter(isCodeFile);
+    const timeoutMs = input.budget(ESLINT_TIMEOUT_MS);
+    const entry = tools.eslint;
+    const isSkipped = files.length === 0 || timeoutMs === 0;
+    if (isSkipped || !hasConfig(entry)) return { runs: [], findings: [] };
+    const toolRun = await runEslint(entry, input.projectRoot, files, timeoutMs);
+    const errors = toolRun.findings.filter((finding) => finding.severity === "error");
+    return { runs: [toolRun], findings: keepOnChangedLines(input.projectRoot, errors) };
+  }
+});
+
+// src/tools/oxlint.ts
+import { readFileSync as readFileSync2 } from "node:fs";
+import { resolve as resolve4 } from "node:path";
+var OXLINT_CONFIGS = [".oxlintrc.json", "oxlint.json", "oxlintrc.json"];
+var OK_CODES2 = [0, 1];
+var lineAtOffset = (path, offset) => {
+  try {
+    return readFileSync2(path, "utf8").slice(0, offset).split("\n").length;
+  } catch {
+    return 1;
+  }
+};
+var startLine = (diagnostic, absolutePath) => {
+  const span = diagnostic.labels?.[0]?.span;
+  if (span?.line !== void 0) return span.line;
+  if (span?.offset !== void 0) return lineAtOffset(absolutePath, span.offset);
+  return 1;
+};
+var diagnosticsOf = (stdout) => {
+  if (stdout.trim() === "") return [];
+  const value = JSON.parse(stdout);
+  if (Array.isArray(value)) return value;
+  const diagnostics = value.diagnostics;
+  return Array.isArray(diagnostics) ? diagnostics : [];
+};
+var parseOxlint = (stdout, projectRoot, cwd = projectRoot) => diagnosticsOf(stdout).map((diagnostic) => {
+  const absolutePath = resolve4(cwd, diagnostic.filename ?? "");
+  return {
+    tool: "oxlint",
+    rule: diagnostic.ruleId ?? diagnostic.code ?? "oxlint",
+    severity: diagnostic.severity === "error" ? "error" : "warn",
+    file: toProjectPath(projectRoot, absolutePath),
+    line: startLine(diagnostic, absolutePath),
+    message: diagnostic.message ?? ""
+  };
+});
+var runOxlint = (tool, projectRoot, file, timeoutMs) => runTool({
+  tool: "oxlint",
+  argv: [...tool.bin, "--format", "json", "-c", tool.config, file],
+  cwd: projectRoot,
+  timeoutMs,
+  okCodes: OK_CODES2,
+  parse: (stdout) => parseOxlint(stdout, projectRoot)
+});
+var oxlintTool = defineTool({
+  name: "oxlint",
+  binaries: [{ key: "oxlint", label: "oxlint", command: "oxlint", packages: ["oxlint"], configs: OXLINT_CONFIGS, requiresConfig: true }],
+  edit: async (tools, projectRoot, file, timeoutMs) => {
+    const entry = tools.oxlint;
+    if (!hasConfig(entry)) return void 0;
+    const result = await runOxlint(entry, projectRoot, file, timeoutMs);
+    const errors = result.findings.filter((finding) => finding.severity === "error");
+    if (errors.length === 0) return { ...result, findings: [] };
+    const lines = changedLines(projectRoot, [file]).get(file);
+    return { ...result, findings: errors.filter((finding) => isOnChangedLine(lines, finding.line)) };
+  }
+});
+
+// src/tools/stratum.ts
+var STRATUM_CONFIG = "stratum.config.jsonc";
+var STRATUM_TIMEOUT_MS = 15e3;
+var CONTRACT_VERSION = 1;
+var OK_CODES3 = [0, 1, 3];
+var SEVERITIES = { error: "error", warning: "warn" };
+var toFinding = (record) => {
+  const severity = SEVERITIES[record.severity ?? ""];
+  const isUsable = record.v === CONTRACT_VERSION && severity !== void 0 && record.rule !== void 0 && record.file !== void 0;
+  if (!isUsable) return void 0;
+  return {
+    tool: "stratum",
+    rule: record.rule,
+    severity,
+    file: record.file,
+    line: record.line ?? 1,
+    message: record.message ?? "",
+    ...record.fix ? { fix: record.fix } : {}
+  };
+};
+var parseStratum = (stdout) => stdout.split("\n").filter((line) => line.trim() !== "").map((line) => toFinding(JSON.parse(line))).filter((finding) => finding !== void 0);
+var runStratum = (tool, projectRoot, files, timeoutMs) => runTool({
+  tool: "stratum",
+  argv: [...tool.bin, "--format", "jsonl", "--config", tool.config, "--files", ...files],
+  cwd: projectRoot,
+  timeoutMs,
+  okCodes: OK_CODES3,
+  parse: parseStratum
+});
+var stratumTool = defineTool({
+  name: "stratum",
+  binaries: [
+    {
+      key: "stratum",
+      label: "stratum",
+      command: "stratum-lint",
+      packages: ["@petukhovart/stratum-lint"],
+      configs: [STRATUM_CONFIG],
+      requiresConfig: true
+    }
+  ],
+  edit: async (tools, projectRoot, file, timeoutMs) => {
+    const entry = tools.stratum;
+    if (!hasConfig(entry)) return void 0;
+    return runStratum(entry, projectRoot, [file], timeoutMs);
+  },
+  stop: async (tools, input) => {
+    const files = input.files.filter(isCodeFile);
+    const timeoutMs = input.budget(STRATUM_TIMEOUT_MS);
+    const entry = tools.stratum;
+    const isSkipped = files.length === 0 || timeoutMs === 0;
+    if (isSkipped || !hasConfig(entry)) return { runs: [], findings: [] };
+    const toolRun = await runStratum(entry, input.projectRoot, files, timeoutMs);
+    return { runs: [toolRun], findings: toolRun.findings };
+  }
+});
+
+// src/tools/tsc.ts
+import { createHash } from "node:crypto";
+import { mkdirSync as mkdirSync4, readFileSync as readFileSync4, statSync as statSync2, writeFileSync as writeFileSync3 } from "node:fs";
+import { dirname as dirname4, extname as extname3, join as join3, relative as relative3, resolve as resolve5 } from "node:path";
+
+// src/core/jsonc.ts
+var BOM = "\uFEFF";
+var isWhitespace = (char) => char === " " || char === "	" || char === "\n" || char === "\r";
+var blank = (text2) => text2.replace(/[^\n]/g, " ");
+var skipString = (text2, start) => {
+  let index = start + 1;
+  while (index < text2.length) {
+    const char = text2[index];
+    if (char === "\\") {
+      index += 2;
+      continue;
+    }
+    if (char === '"') return index + 1;
+    index++;
+  }
+  return index;
+};
+var commentEnd = (text2, start) => {
+  const next = text2[start + 1];
+  if (next === "/") {
+    const newline = text2.indexOf("\n", start);
+    return newline === -1 ? text2.length : newline;
+  }
+  if (next === "*") {
+    const close = text2.indexOf("*/", start + 2);
+    if (close === -1) throw new SyntaxError("unterminated block comment");
+    return close + 2;
+  }
+  return void 0;
+};
+var stripComments = (text2) => {
+  let output = "";
+  let index = 0;
+  while (index < text2.length) {
+    const char = text2[index];
+    if (char === '"') {
+      const end2 = skipString(text2, index);
+      output += text2.slice(index, end2);
+      index = end2;
+      continue;
+    }
+    const end = char === "/" ? commentEnd(text2, index) : void 0;
+    if (end !== void 0) {
+      output += blank(text2.slice(index, end));
+      index = end;
+      continue;
+    }
+    output += char;
+    index++;
+  }
+  return output;
+};
+var stripTrailingCommas = (text2) => {
+  const chars = text2.split("");
+  let index = 0;
+  while (index < chars.length) {
+    const char = chars[index];
+    if (char === '"') {
+      index = skipString(text2, index);
+      continue;
+    }
+    if (char === ",") {
+      let next = index + 1;
+      while (isWhitespace(chars[next])) next++;
+      const isTrailing = chars[next] === "}" || chars[next] === "]";
+      if (isTrailing) {
+        chars[index] = " ";
+      }
+    }
+    index++;
+  }
+  return chars.join("");
+};
+var parseJsonc = (text2) => {
+  const source = text2.startsWith(BOM) ? text2.slice(1) : text2;
+  return JSON.parse(stripTrailingCommas(stripComments(source)));
+};
+
+// src/tools/detach.ts
+import { spawn as spawn2 } from "node:child_process";
+import { mkdirSync as mkdirSync3, readFileSync as readFileSync3 } from "node:fs";
+import { setPriority as setPriority2 } from "node:os";
+import { dirname as dirname3 } from "node:path";
+var WRAPPER = [
+  "const { spawn } = require('node:child_process')",
+  "const { closeSync, openSync, readFileSync, rmSync } = require('node:fs')",
+  "const { setPriority } = require('node:os')",
+  "const [lockPath, outputPath, priority, command, ...args] = process.argv.slice(1)",
+  "const output = openSync(outputPath, 'w')",
+  "const child = spawn(command, args, { stdio: ['ignore', output, output], windowsHide: true })",
+  "try { setPriority(child.pid, Number(priority)) } catch {}",
+  "const releaseOwnLock = () => {",
+  "  try { if (JSON.parse(readFileSync(lockPath, 'utf8')).pid === process.pid) rmSync(lockPath, { force: true }) } catch {}",
+  "}",
+  "const finish = (code) => { closeSync(output); releaseOwnLock(); process.exit(code ?? 1) }",
+  "child.on('error', () => finish(1))",
+  "child.on('exit', (code) => finish(code))"
+].join("\n");
+var readOutput = (path) => {
+  try {
+    return readFileSync3(path, "utf8");
+  } catch {
+    return "";
+  }
+};
+var lowerPriority2 = (pid) => {
+  if (pid === void 0) return;
+  try {
+    setPriority2(pid, LOW_PRIORITY);
+  } catch {
+    return;
+  }
+};
+var runDetachable = (invocation) => {
+  const { tool, argv, cwd, timeoutMs, outputPath, lockPath } = invocation;
+  mkdirSync3(dirname3(outputPath), { recursive: true });
+  const startedAt = Date.now();
+  const elapsed = () => Date.now() - startedAt;
+  return new Promise((resolveRun) => {
+    let isSettled = false;
+    const settle = (result) => {
+      if (isSettled) return;
+      isSettled = true;
+      clearTimeout(timer);
+      resolveRun(result);
+    };
+    const child = spawn2(process.execPath, ["-e", WRAPPER, lockPath ?? "", outputPath, String(LOW_PRIORITY), ...argv], {
+      cwd,
+      detached: true,
+      stdio: "ignore",
+      windowsHide: true
+    });
+    lowerPriority2(child.pid);
+    const timer = setTimeout(() => {
+      child.unref();
+      const pid = child.pid;
+      settle({
+        tool,
+        findings: [],
+        durationMs: elapsed(),
+        failure: `timeout after ${timeoutMs} ms, detached (pid ${pid}) to finish the incremental cache`,
+        ...pid === void 0 ? {} : { detachedPid: pid }
+      });
+    }, timeoutMs);
+    child.on("error", (error) => settle({ tool, findings: [], durationMs: elapsed(), failure: error.message }));
+    child.on("exit", (code) => {
+      const output = readOutput(outputPath);
+      settle(settleExit(invocation, { code, output, errorOutput: output, durationMs: elapsed() }));
+    });
+  });
+};
+
+// src/tools/tsc.ts
+var TYPED_EXTENSIONS = /* @__PURE__ */ new Set([".ts", ".tsx", ".mts", ".cts", ".vue"]);
+var TSCONFIG = "tsconfig.json";
+var TYPES_TIMEOUT_MS = 6e4;
+var OK_CODES4 = [0, 1, 2];
+var HASH_LENGTH = 12;
+var TSC_ERROR = /^(.+)\((\d+),(\d+)\): error (TS\d+): (.*)$/;
+var GLOBAL_ERROR = /error TS\d+: .*/;
+var WILDCARD = /[*?]/;
+var DEFAULT_INCLUDE = ["**/*"];
+var isTypedFile = (file) => TYPED_EXTENSIONS.has(extname3(file)) && !file.endsWith(".d.ts");
+var isFile2 = (path) => {
+  try {
+    return statSync2(path).isFile();
+  } catch {
+    return false;
+  }
+};
+var readTsconfig = (path) => {
+  const value = parseJsonc(readFileSync4(path, "utf8"));
+  return typeof value === "object" && value !== null ? value : {};
+};
+var stringsOf = (value) => Array.isArray(value) ? value.filter((item) => typeof item === "string") : void 0;
+var findNearestTsconfig = (projectRoot, file) => {
+  const top = resolve5(projectRoot);
+  let dir = dirname4(resolve5(projectRoot, file));
+  for (; ; ) {
+    const candidate = join3(dir, TSCONFIG);
+    if (isFile2(candidate)) return candidate;
+    const isTop = relative3(top, dir) === "";
+    const parent = dirname4(dir);
+    if (isTop || parent === dir) return void 0;
+    dir = parent;
+  }
+};
+var toIncludeGlob = (pattern) => {
+  const clean = toSlash(pattern).replace(/^\.\//, "").replace(/\/$/, "");
+  const lastSegment = clean.split("/").pop() ?? "";
+  const isDirectory = !WILDCARD.test(clean) && !lastSegment.includes(".");
+  return isDirectory ? `${clean}/**/*` : clean;
+};
+var covers = (configPath, absoluteFile) => {
+  const config = readTsconfig(configPath);
+  const path = toSlash(relative3(dirname4(configPath), absoluteFile));
+  const files = stringsOf(config.files) ?? [];
+  if (files.some((entry) => toSlash(entry).replace(/^\.\//, "") === path)) return true;
+  const include = stringsOf(config.include) ?? (config.files === void 0 ? DEFAULT_INCLUDE : []);
+  return include.length > 0 && matchGlob(path, include.map(toIncludeGlob));
+};
+var referencePath = (fromConfig, reference) => {
+  const path = reference?.path;
+  if (typeof path !== "string") return void 0;
+  const target = resolve5(dirname4(fromConfig), path);
+  return isFile2(target) ? target : join3(target, TSCONFIG);
+};
+var isSolutionConfig = (config) => Array.isArray(config.files) && config.files.length === 0 && Array.isArray(config.references);
+var selectTsconfig = (configPath, absoluteFile) => {
+  const config = readTsconfig(configPath);
+  if (!isSolutionConfig(config)) return configPath;
+  for (const reference of config.references) {
+    const target = referencePath(configPath, reference);
+    if (target !== void 0 && isFile2(target) && covers(target, absoluteFile)) return target;
+  }
+  return void 0;
+};
+var groupByTsconfig = (projectRoot, files) => {
+  const byConfig = /* @__PURE__ */ new Map();
+  const skipped = [];
+  for (const file of files.filter(isTypedFile)) {
+    const nearest = findNearestTsconfig(projectRoot, file);
+    const selected = nearest === void 0 ? void 0 : selectTsconfig(nearest, resolve5(projectRoot, file));
+    if (selected === void 0) {
+      skipped.push(file);
+      continue;
+    }
+    byConfig.set(selected, [...byConfig.get(selected) ?? [], file]);
+  }
+  return { groups: [...byConfig].map(([config, groupFiles]) => ({ config, files: groupFiles })), skipped };
+};
+var tsconfigHash = (configPath) => createHash("sha1").update(configPath).digest("hex").slice(0, HASH_LENGTH);
+var closureConfig = (projectRoot, group) => {
+  const configDir = toSlash(dirname4(group.config));
+  const hash = tsconfigHash(group.config);
+  return {
+    extends: toSlash(group.config),
+    files: group.files.map((file) => toSlash(resolve5(projectRoot, file))),
+    include: [`${configDir}/*.d.ts`, `${configDir}/src/**/*.d.ts`],
+    compilerOptions: {
+      noEmit: true,
+      incremental: true,
+      composite: false,
+      tsBuildInfoFile: `${toSlash(jigPaths(projectRoot).tscCache)}/${hash}.tsbuildinfo`
+    }
+  };
+};
+var writeClosureConfig = (projectRoot, group) => {
+  const dir = jigPaths(projectRoot).tscCache;
+  mkdirSync4(dir, { recursive: true });
+  const path = join3(dir, `tsconfig.${tsconfigHash(group.config)}.json`);
+  writeFileSync3(path, `${JSON.stringify(closureConfig(projectRoot, group), null, 2)}
+`);
+  return path;
+};
+var pathKey = (path) => process.platform === "win32" ? path.toLowerCase() : path;
+var parseTscOutput = (stdout, tool, projectRoot, cwd = projectRoot) => stdout.split("\n").map((line) => TSC_ERROR.exec(line.trimEnd())).filter((match) => match !== null).map(([, file = "", line = "1", , code = "", message = ""]) => ({
+  tool,
+  rule: code,
+  severity: "error",
+  file: toProjectPath(projectRoot, resolve5(cwd, file)),
+  line: Number(line),
+  message
+}));
+var keepGroupFindings = (findings, files) => {
+  const keys = new Set(files.map(pathKey));
+  return findings.filter((finding) => keys.has(pathKey(finding.file)));
+};
+var checkerFor = (checkers, group) => {
+  const hasVue = group.files.some((file) => file.endsWith(".vue"));
+  if (hasVue && checkers.vueTsc !== void 0) return { tool: "vue-tsc", bin: checkers.vueTsc.bin, files: group.files };
+  if (checkers.tsc === void 0) return void 0;
+  const files = group.files.filter((file) => !file.endsWith(".vue"));
+  return files.length === 0 ? void 0 : { tool: "tsc", bin: checkers.tsc.bin, files };
+};
+var runTypeCheck = async (checkers, projectRoot, group, timeoutMs, lockPath) => {
+  const checker = checkerFor(checkers, group);
+  if (checker === void 0) return void 0;
+  const config = writeClosureConfig(projectRoot, { config: group.config, files: checker.files });
+  const argv = checker.tool === "vue-tsc" ? [...checker.bin, "--noEmit", "-p", config] : [...checker.bin, "-p", config, "--pretty", "false"];
+  return runDetachable({
+    tool: checker.tool,
+    argv,
+    cwd: projectRoot,
+    timeoutMs,
+    outputPath: join3(jigPaths(projectRoot).tscCache, `${tsconfigHash(group.config)}.out`),
+    ...lockPath === void 0 ? {} : { lockPath },
+    okCodes: OK_CODES4,
+    parse: (stdout) => {
+      const findings = parseTscOutput(stdout, checker.tool, projectRoot);
+      const globalError = findings.length === 0 ? GLOBAL_ERROR.exec(stdout)?.[0] : void 0;
+      if (globalError !== void 0) throw new Error(globalError);
+      return keepGroupFindings(findings, checker.files);
+    }
+  });
+};
+var tscTool = defineTool({
+  name: "tsc",
+  binaries: [
+    { key: "tsc", label: "tsc", command: "tsc", packages: ["typescript"], configs: [TSCONFIG], requiresConfig: false },
+    { key: "vueTsc", label: "vue-tsc", command: "vue-tsc", packages: ["vue-tsc"], configs: [], requiresConfig: false }
+  ],
+  stop: async (tools, input) => {
+    const { groups, skipped } = groupByTsconfig(input.projectRoot, input.files);
+    for (const file of skipped) {
+      input.notes.push({ kind: "gate-skipped", tool: "jig", rule: "gate/tsc", file, message: "no tsconfig covers the file" });
+    }
+    const runs = [];
+    for (const group of groups) {
+      const timeoutMs = input.budget(TYPES_TIMEOUT_MS);
+      if (timeoutMs === 0) break;
+      const toolRun = await runTypeCheck(tools, input.projectRoot, group, timeoutMs, input.lock.path);
+      if (toolRun === void 0) continue;
+      runs.push(toolRun);
+      if (toolRun.detachedPid !== void 0) {
+        input.lock.transfer(toolRun.detachedPid);
+        break;
+      }
+    }
+    return { runs, findings: keepOnChangedLines(input.projectRoot, runs.flatMap((toolRun) => toolRun.findings)) };
+  }
+});
+
+// src/tools/index.ts
+var TOOLS = [oxlintTool, tscTool, eslintTool, stratumTool];
+
+// src/core/config.ts
+import { existsSync as existsSync3, readFileSync as readFileSync5 } from "node:fs";
+var SEVERITIES2 = ["off", "warn", "error"];
+var JIG_RULE_IDS = [
+  "jig/comments",
+  "jig/suppressions",
+  "jig/protected-paths",
+  "jig/no-verify",
+  "jig/test-review",
+  "jig/verify-fact"
+];
+var RULE_IDS = [...JIG_RULE_IDS, ...TOOLS.map((tool) => tool.rule)];
+var DEFAULT_SEVERITY = "error";
+var RUNTIMES = ["electron", "tauri", "browser", "none"];
+var VERIFY_RUNTIMES = ["electron", "tauri", "browser"];
+var DEFAULT_PORT_TARGET = ".env";
+var MAX_PORT = 65535;
+var IDENTIFIER = /^[A-Za-z_$][\w$]*$/;
+var childPath = (path, key) => {
+  if (typeof key === "number") return `${path}[${key}]`;
+  return IDENTIFIER.test(key) ? `${path}.${key}` : `${path}[${JSON.stringify(key)}]`;
+};
+var isObject = (value) => typeof value === "object" && value !== null && !Array.isArray(value);
+var Validator = class {
+  errors = [];
+  report(path, problem) {
+    this.errors.push(`${path}: ${problem}`);
+    return void 0;
+  }
+  object(value, path, keys) {
+    if (!isObject(value)) return this.report(path, "expected an object");
+    if (keys === void 0) return value;
+    for (const key of Object.keys(value)) {
+      if (!keys.includes(key)) {
+        this.report(childPath(path, key), "unknown key");
+      }
+    }
+    return value;
+  }
+  string(value, path) {
+    return typeof value === "string" ? value : this.report(path, "expected a string");
+  }
+  oneOf(value, path, allowed) {
+    const isAllowed2 = typeof value === "string" && allowed.includes(value);
+    return isAllowed2 ? value : this.report(path, `expected one of ${allowed.join(", ")}`);
+  }
+  integer(value, path, min, max = Number.MAX_SAFE_INTEGER) {
+    const isInRange = Number.isInteger(value) && value >= min && value <= max;
+    if (isInRange) return value;
+    const range = max === Number.MAX_SAFE_INTEGER ? `>= ${min}` : `${min}..${max}`;
+    return this.report(path, `expected an integer ${range}`);
+  }
+  strings(value, path) {
+    if (!Array.isArray(value)) return this.report(path, "expected an array of strings");
+    const before = this.errors.length;
+    value.forEach((item, index) => this.string(item, childPath(path, index)));
+    return this.errors.length === before ? value : void 0;
+  }
+};
+var required = (validator, object, path, keys) => {
+  const missing = keys.filter((key) => !Object.hasOwn(object, key));
+  missing.forEach((key) => validator.report(childPath(path, key), "is required"));
+  return missing.length === 0;
+};
+var readRules = (validator, value) => {
+  const rules = defaultRules();
+  if (value === void 0) return rules;
+  const object = validator.object(value, "$.rules", RULE_IDS);
+  if (object === void 0) return rules;
+  for (const rule of RULE_IDS) {
+    if (!Object.hasOwn(object, rule)) continue;
+    const severity = validator.oneOf(object[rule], childPath("$.rules", rule), SEVERITIES2);
+    if (severity !== void 0) {
+      rules[rule] = severity;
+    }
+  }
+  return rules;
+};
+var readStep = (validator, value, path, keys) => {
+  const object = validator.object(value, path, keys);
+  if (object === void 0 || !required(validator, object, path, ["base", "step"])) return void 0;
+  validator.integer(object["base"], childPath(path, "base"), 1, MAX_PORT);
+  validator.integer(object["step"], childPath(path, "step"), 1);
+  return object;
+};
+var readPorts = (validator, value, path) => {
+  const object = validator.object(value, path, void 0);
+  if (object === void 0) return void 0;
+  const ports = {};
+  for (const [key, entry] of Object.entries(object)) {
+    const portPath = childPath(path, key);
+    const port = readStep(validator, entry, portPath, ["base", "step", "target"]);
+    if (port === void 0) continue;
+    const target = port["target"] === void 0 ? DEFAULT_PORT_TARGET : validator.string(port["target"], childPath(portPath, "target"));
+    ports[key] = { base: port["base"], step: port["step"], target: target ?? DEFAULT_PORT_TARGET };
+  }
+  return ports;
+};
+var SLOT_KEYS = [
+  "worktreesDir",
+  "install",
+  "dev",
+  "runtime",
+  "verifyRuntime",
+  "linkedPackages",
+  "ports",
+  "cdp",
+  "instance",
+  "copyFiles",
+  "clearCache"
+];
+var readSlots = (validator, value) => {
+  const path = "$.slots";
+  const object = validator.object(value, path, SLOT_KEYS);
+  if (object === void 0 || !required(validator, object, path, ["worktreesDir"])) return void 0;
+  const at = (key) => childPath(path, key);
+  const slots = { worktreesDir: validator.string(object["worktreesDir"], at("worktreesDir")) ?? "" };
+  const readers = {
+    install: (raw) => validator.string(raw, at("install")),
+    dev: (raw) => validator.string(raw, at("dev")),
+    runtime: (raw) => validator.oneOf(raw, at("runtime"), RUNTIMES),
+    verifyRuntime: (raw) => validator.oneOf(raw, at("verifyRuntime"), VERIFY_RUNTIMES),
+    linkedPackages: (raw) => validator.strings(raw, at("linkedPackages")),
+    ports: (raw) => readPorts(validator, raw, at("ports")),
+    cdp: (raw) => readStep(validator, raw, at("cdp"), ["base", "step"]),
+    instance: (raw) => validator.object(raw, at("instance"), void 0),
+    copyFiles: (raw) => validator.strings(raw, at("copyFiles")),
+    clearCache: (raw) => validator.strings(raw, at("clearCache"))
+  };
+  for (const [key, read] of Object.entries(readers)) {
+    if (!Object.hasOwn(object, key)) continue;
+    const parsed = read(object[key]);
+    if (parsed !== void 0) {
+      Object.assign(slots, { [key]: parsed });
+    }
+  }
+  return slots;
+};
+var defaultRules = () => Object.fromEntries(RULE_IDS.map((rule) => [rule, DEFAULT_SEVERITY]));
+var defaultConfig = () => ({ rules: defaultRules() });
+var validateConfig = (value) => {
+  const validator = new Validator();
+  const root = validator.object(value, "$", ["$schema", "rules", "slots"]);
+  if (root === void 0) return { config: defaultConfig(), errors: validator.errors };
+  if (root["$schema"] !== void 0) {
+    validator.string(root["$schema"], "$.$schema");
+  }
+  const rules = readRules(validator, root["rules"]);
+  const slots = root["slots"] === void 0 ? void 0 : readSlots(validator, root["slots"]);
+  const config = slots === void 0 ? { rules } : { rules, slots };
+  return { config, errors: validator.errors };
+};
+var parseConfig = (text2) => {
+  let value;
+  try {
+    value = parseJsonc(text2);
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    return { ...defaultConfig(), error: `$: ${reason}` };
+  }
+  const { config, errors } = validateConfig(value);
+  if (errors.length > 0) return { ...defaultConfig(), error: errors.join("; ") };
+  return config;
+};
+var loadConfig = (projectRoot) => {
+  const { config } = jigPaths(projectRoot);
+  if (!existsSync3(config)) return defaultConfig();
+  return parseConfig(readFileSync5(config, "utf8"));
+};
+
 // src/core/state.ts
-import { mkdirSync as mkdirSync3, readdirSync, readFileSync as readFileSync3, renameSync, rmSync as rmSync2, statSync as statSync2, writeFileSync as writeFileSync3 } from "node:fs";
-import { join as join3 } from "node:path";
+import { mkdirSync as mkdirSync5, readdirSync, readFileSync as readFileSync6, renameSync, rmSync as rmSync2, statSync as statSync3, writeFileSync as writeFileSync4 } from "node:fs";
+import { join as join4 } from "node:path";
 var MAIN_AGENT = "main";
 var STATE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1e3;
 var RENAME_ATTEMPTS = 20;
 var RENAME_RETRY_CODES = /* @__PURE__ */ new Set(["EPERM", "EACCES", "EBUSY"]);
 var tmpCounter = 0;
 var sessionFileName = (sessionId) => `${sessionId.replace(/[^A-Za-z0-9._-]/g, "_")}.json`;
-var sessionStatePath = (projectRoot, sessionId) => join3(jigPaths(projectRoot).sessions, sessionFileName(sessionId));
+var sessionStatePath = (projectRoot, sessionId) => join4(jigPaths(projectRoot).sessions, sessionFileName(sessionId));
 var createSessionState = (sessionId, snapshot, now = /* @__PURE__ */ new Date()) => {
   const iso = now.toISOString();
   return {
@@ -899,7 +1407,7 @@ var isSessionState = (value) => {
 var readState = (projectRoot, sessionId) => {
   let text2;
   try {
-    text2 = readFileSync3(sessionStatePath(projectRoot, sessionId), "utf8");
+    text2 = readFileSync6(sessionStatePath(projectRoot, sessionId), "utf8");
   } catch {
     return void 0;
   }
@@ -929,12 +1437,12 @@ var renameWithRetry = (from, to) => {
 var writeFileAtomic = (path, text2) => {
   tmpCounter++;
   const tmp = `${path}.${process.pid}-${tmpCounter}.tmp`;
-  writeFileSync3(tmp, text2);
+  writeFileSync4(tmp, text2);
   renameWithRetry(tmp, path);
 };
 var writeState = (projectRoot, state, now = /* @__PURE__ */ new Date()) => {
   const path = sessionStatePath(projectRoot, state.sessionId);
-  mkdirSync3(jigPaths(projectRoot).sessions, { recursive: true });
+  mkdirSync5(jigPaths(projectRoot).sessions, { recursive: true });
   state.updatedAt = now.toISOString();
   writeFileAtomic(path, JSON.stringify(state));
 };
@@ -948,9 +1456,9 @@ var pruneStates = (projectRoot, now = Date.now(), maxAgeMs = STATE_MAX_AGE_MS) =
   }
   const removed = [];
   for (const name of names) {
-    const path = join3(dir, name);
+    const path = join4(dir, name);
     try {
-      if (now - statSync2(path).mtimeMs <= maxAgeMs) continue;
+      if (now - statSync3(path).mtimeMs <= maxAgeMs) continue;
       rmSync2(path, { force: true });
       removed.push(name);
     } catch {
@@ -961,24 +1469,16 @@ var pruneStates = (projectRoot, now = Date.now(), maxAgeMs = STATE_MAX_AGE_MS) =
 };
 
 // src/core/plan.ts
-var OXLINT_CONFIGS = [".oxlintrc.json", "oxlint.json", "oxlintrc.json"];
-var ESLINT_CONFIGS = [
-  "eslint.config.js",
-  "eslint.config.mjs",
-  "eslint.config.cjs",
-  "eslint.config.ts",
-  "eslint.config.mts",
-  "eslint.config.cts",
-  ".eslintrc",
-  ".eslintrc.js",
-  ".eslintrc.cjs",
-  ".eslintrc.json",
-  ".eslintrc.yml",
-  ".eslintrc.yaml"
-];
-var STRATUM_CONFIG = "stratum.config.jsonc";
 var AGENT_VIEW_CONFIG = "agent-view.config.json";
-var TSCONFIG = "tsconfig.json";
+var AGENT_VIEW_BINARY = {
+  key: "agentView",
+  label: "agent-view",
+  command: "agent-view",
+  packages: ["@petukhovart/agent-view"],
+  configs: [AGENT_VIEW_CONFIG],
+  requiresConfig: true
+};
+var PLAN_BINARIES = [...TOOLS.flatMap((tool) => tool.binaries), AGENT_VIEW_BINARY];
 var TEST_FILE_GLOBS = ["**/*.{test,spec}.{ts,tsx,js,jsx,mts,cts,mjs,cjs}", "**/__tests__/**"];
 var RUNTIME_VISIBLE_GLOBS = ["**/*.{vue,tsx,jsx,svelte,html,css,scss,less}"];
 var AGENT_VIEW_VERIFY_COMMAND = /(?:^|[\s;&|])(?:npx\s+)?agent-view\s+(?:act\s+replay|dom|screenshot|snap|click|fill|wait|eval|drag|key|upload)\b/;
@@ -986,11 +1486,7 @@ var isTestFile = createMatcher(TEST_FILE_GLOBS);
 var matchesRuntimeGlob = createMatcher(RUNTIME_VISIBLE_GLOBS);
 var isRuntimeVisible = (path) => matchesRuntimeGlob(path) && !isTestFile(path);
 var HASHED_INPUTS = [
-  ...OXLINT_CONFIGS,
-  ...ESLINT_CONFIGS,
-  STRATUM_CONFIG,
-  AGENT_VIEW_CONFIG,
-  TSCONFIG,
+  ...new Set(PLAN_BINARIES.flatMap((binary) => binary.configs)),
   "package.json",
   "package-lock.json",
   "pnpm-lock.yaml",
@@ -1000,45 +1496,39 @@ var HASHED_INPUTS = [
 ];
 var fileStamp = (path) => {
   try {
-    const stat = statSync3(path);
+    const stat = statSync4(path);
     return `${stat.mtimeMs}:${stat.size}`;
   } catch {
     return "missing";
   }
 };
-var isFile2 = (path) => fileStamp(path) !== "missing";
+var isFile3 = (path) => fileStamp(path) !== "missing";
 var planInputsHash = (projectRoot, pluginRoot) => {
-  const lines = [`version:${version}`, `plugin:${pluginRoot}`, ...HASHED_INPUTS.map((name) => `${name}:${fileStamp(join4(projectRoot, name))}`)];
-  return createHash("sha1").update(lines.join("\n")).digest("hex");
+  const lines = [`version:${version}`, `plugin:${pluginRoot}`, ...HASHED_INPUTS.map((name) => `${name}:${fileStamp(join5(projectRoot, name))}`)];
+  return createHash2("sha1").update(lines.join("\n")).digest("hex");
 };
-var findConfig = (projectRoot, names) => names.map((name) => join4(projectRoot, name)).find(isFile2);
-var withConfig = (config, bin) => config !== void 0 && bin !== void 0 ? { bin, config } : void 0;
+var findConfig = (projectRoot, names) => names.map((name) => join5(projectRoot, name)).find(isFile3);
+var detectBinary = (projectRoot, binary) => {
+  const bin = resolveBin(projectRoot, binary.packages, binary.command);
+  if (bin === void 0) return void 0;
+  if (!binary.requiresConfig) return { bin };
+  const config = findConfig(projectRoot, binary.configs);
+  return config === void 0 ? void 0 : { bin, config };
+};
 var detectTools = (projectRoot) => {
-  const oxlint = withConfig(findConfig(projectRoot, OXLINT_CONFIGS), resolveBin(projectRoot, ["oxlint"], "oxlint"));
-  const eslint = withConfig(findConfig(projectRoot, ESLINT_CONFIGS), resolveBin(projectRoot, ["eslint"], "eslint"));
-  const tsc = resolveBin(projectRoot, ["typescript"], "tsc");
-  const vueTsc = resolveBin(projectRoot, ["vue-tsc"], "vue-tsc");
-  const stratum = withConfig(
-    findConfig(projectRoot, [STRATUM_CONFIG]),
-    resolveBin(projectRoot, ["@petukhovart/stratum-lint"], "stratum-lint")
-  );
-  const agentView = withConfig(
-    findConfig(projectRoot, [AGENT_VIEW_CONFIG]),
-    resolveBin(projectRoot, ["@petukhovart/agent-view"], "agent-view")
-  );
-  return {
-    ...oxlint && { oxlint },
-    ...eslint && { eslint },
-    ...tsc && { tsc: { bin: tsc } },
-    ...vueTsc && { vueTsc: { bin: vueTsc } },
-    ...stratum && { stratum },
-    ...agentView && { agentView }
-  };
+  const tools = {};
+  for (const binary of PLAN_BINARIES) {
+    const entry = detectBinary(projectRoot, binary);
+    if (entry !== void 0) {
+      tools[binary.key] = entry;
+    }
+  }
+  return tools;
 };
 var toPlanAtom = (file) => {
   let data;
   try {
-    data = parseFrontmatter(readFileSync4(file, "utf8"))?.data ?? {};
+    data = parseFrontmatter(readFileSync7(file, "utf8"))?.data ?? {};
   } catch {
     return void 0;
   }
@@ -1052,14 +1542,14 @@ var toPlanAtom = (file) => {
   return atom;
 };
 var readAtomIndex = (pluginRoot) => {
-  const dir = join4(pluginRoot, "atoms");
+  const dir = join5(pluginRoot, "atoms");
   let names;
   try {
     names = readdirSync2(dir);
   } catch {
     return [];
   }
-  return names.filter((name) => name.endsWith(".md")).sort().map((name) => toPlanAtom(join4(dir, name))).filter((atom) => atom !== void 0);
+  return names.filter((name) => name.endsWith(".md")).sort().map((name) => toPlanAtom(join5(dir, name))).filter((atom) => atom !== void 0);
 };
 var buildPlan = (projectRoot, pluginRoot, now = /* @__PURE__ */ new Date()) => ({
   v: 1,
@@ -1072,7 +1562,7 @@ var buildPlan = (projectRoot, pluginRoot, now = /* @__PURE__ */ new Date()) => (
 });
 var readPlan = (projectRoot) => {
   try {
-    const value = JSON.parse(readFileSync4(jigPaths(projectRoot).plan, "utf8"));
+    const value = JSON.parse(readFileSync7(jigPaths(projectRoot).plan, "utf8"));
     return value.v === 1 && typeof value.inputsHash === "string" ? value : void 0;
   } catch {
     return void 0;
@@ -1080,7 +1570,7 @@ var readPlan = (projectRoot) => {
 };
 var writePlan = (projectRoot, plan) => {
   const path = jigPaths(projectRoot).plan;
-  mkdirSync4(dirname3(path), { recursive: true });
+  mkdirSync6(dirname5(path), { recursive: true });
   writeFileAtomic(path, `${JSON.stringify(plan, null, 2)}
 `);
 };
@@ -1110,17 +1600,17 @@ var listMarkdown = (dir) => {
 };
 var readText2 = (path) => {
   try {
-    return readFileSync5(path, "utf8");
+    return readFileSync8(path, "utf8");
   } catch {
     return "";
   }
 };
 var reachableNames = (pluginRoot) => {
-  const skillDir = join5(pluginRoot, "skills", "jig");
-  const flowsDir = join5(skillDir, "flows");
+  const skillDir = join6(pluginRoot, "skills", "jig");
+  const flowsDir = join6(skillDir, "flows");
   const texts = [
-    readText2(join5(skillDir, "SKILL.md")),
-    ...listMarkdown(flowsDir).map((name) => readText2(join5(flowsDir, name)))
+    readText2(join6(skillDir, "SKILL.md")),
+    ...listMarkdown(flowsDir).map((name) => readText2(join6(flowsDir, name)))
   ].map((text2) => text2.replace(/\r\n/g, "\n"));
   const names = /* @__PURE__ */ new Set();
   for (const text2 of texts) {
@@ -1201,18 +1691,18 @@ var checkAtom = (path, seen, reachable) => {
   return problems;
 };
 var validateAtoms = (pluginRoot) => {
-  const dir = join5(pluginRoot, "atoms");
+  const dir = join6(pluginRoot, "atoms");
   const reachable = reachableNames(pluginRoot);
   const seen = /* @__PURE__ */ new Set();
   return listMarkdown(dir).flatMap(
-    (name) => checkAtom(join5(dir, name), seen, reachable).map((problem) => `atoms/${name}: ${problem}`)
+    (name) => checkAtom(join6(dir, name), seen, reachable).map((problem) => `atoms/${name}: ${problem}`)
   );
 };
 var selectAtoms = (atoms, file, delivered) => {
   return atoms.filter((atom) => atom.paths !== void 0 && !delivered.includes(atom.name) && matchGlob(file, atom.paths)).sort((left, right) => left.name.localeCompare(right.name)).slice(0, MAX_ATOMS_PER_EVENT);
 };
 var readAtomBody = (atom) => {
-  const text2 = readFileSync5(atom.file, "utf8");
+  const text2 = readFileSync8(atom.file, "utf8");
   const body = parseFrontmatter(text2)?.body ?? text2.replace(/\r\n/g, "\n");
   return body.replace(/^\n+/, "").replace(/\s+$/, "");
 };
@@ -1268,8 +1758,8 @@ var runAtom = (args) => {
 };
 
 // src/dash/dash.ts
-import { mkdirSync as mkdirSync5, readFileSync as readFileSync6 } from "node:fs";
-import { dirname as dirname4, join as join6 } from "node:path";
+import { mkdirSync as mkdirSync7, readFileSync as readFileSync9 } from "node:fs";
+import { dirname as dirname6, join as join7 } from "node:path";
 
 // src/dash/template.html
 var template_default = "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n<title>jig run</title>\n<style>\nbody {\n  --paper: #faf9f5; --card: #fff; --sunk: #f0eee6;\n  --ink: #141413; --ink-2: #3d3d3a; --ink-3: #73726c; --line: rgba(31,30,29,.15); --line-2: rgba(31,30,29,.08);\n  --accent: #c6613f; --accent-soft: #f6e7df; --green: #2c7a39; --green-soft: #e2efdf;\n  --red: #b3261e; --red-soft: #f7dfdc; --blue: #2a69b8; --blue-soft: #dde8f5; --float: 0 2px 8px rgba(0,0,0,.08);\n  --sans: ui-sans-serif, system-ui, -apple-system, \"Segoe UI\", Roboto, sans-serif; --serif: ui-serif, Georgia, \"Times New Roman\", serif; --mono: ui-monospace, \"SF Mono\", Menlo, Consolas, monospace;\n}\n@media (prefers-color-scheme: dark) { body:not(.light) { color-scheme: dark;\n  --paper: #262624; --card: #30302e; --sunk: #1f1e1d;\n  --ink: #faf9f5; --ink-2: #c2c0b6; --ink-3: #9c9a92; --line: rgba(222,220,209,.15); --line-2: rgba(222,220,209,.08);\n  --accent: #d97757; --accent-soft: #46302a; --green: #6fb37a; --green-soft: #26372a;\n  --red: #e5776e; --red-soft: #432725; --blue: #7aa7e0; --blue-soft: #25313f; --float: 0 2px 8px rgba(0,0,0,.3);\n} }\nbody.dark { color-scheme: dark;\n  --paper: #262624; --card: #30302e; --sunk: #1f1e1d;\n  --ink: #faf9f5; --ink-2: #c2c0b6; --ink-3: #9c9a92; --line: rgba(222,220,209,.15); --line-2: rgba(222,220,209,.08);\n  --accent: #d97757; --accent-soft: #46302a; --green: #6fb37a; --green-soft: #26372a;\n  --red: #e5776e; --red-soft: #432725; --blue: #7aa7e0; --blue-soft: #25313f; --float: 0 2px 8px rgba(0,0,0,.3);\n}\n:where(*) { box-sizing: border-box; }\n[hidden] { display: none !important; }\nbody { margin: 0; min-height: 100vh; background: var(--paper); color: var(--ink); font: 430 16px/1.6 var(--sans); -webkit-text-size-adjust: 100%; overflow-x: clip; }\nh1, h2, p, ol { margin: 0; }\nol { padding: 0; list-style: none; }\nh1 { font: 500 26px/1.15 var(--serif); margin-bottom: 8px; text-wrap: balance; overflow-wrap: anywhere; }\nh2 { font: 500 22px/1.25 var(--serif); margin-bottom: 12px; display: flex; align-items: baseline; gap: 10px; }\na { color: var(--accent); text-underline-offset: 3px; }\nbutton { font: inherit; color: inherit; cursor: pointer; }\na:focus-visible, button:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }\ntime, .mono { font: 12px/1.5 var(--mono); color: var(--ink-3); font-variant-numeric: tabular-nums; }\n.pill { display: inline-block; font: 550 12px/1 var(--sans); padding: 4px 8px; border-radius: 99px; background: var(--sunk); color: var(--ink-2); border: 1px solid var(--line); white-space: nowrap; }\n.pill.accent { background: var(--accent-soft); color: var(--accent); border-color: transparent; }\n.pill.green { background: var(--green-soft); color: var(--green); border-color: transparent; }\n.pill.red { background: var(--red-soft); color: var(--red); border-color: transparent; }\n.pill.here { background: var(--accent); color: #fff; border-color: transparent; margin-left: 6px; vertical-align: 1px; }\n\n.page { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 40px; max-width: 1180px; margin: 0 auto; padding: 32px 24px 120px; }\n.rail { position: sticky; top: 24px; align-self: start; max-height: calc(100vh - 48px); overflow: auto; }\n.meta { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: center; margin-bottom: 12px; }\n.live { display: inline-flex; gap: 6px; align-items: center; }\n.big { font: 500 44px/1 var(--serif); margin: 6px 0 10px; }\n.big small { font: 430 16px/1 var(--sans); color: var(--ink-3); }\n.seg { display: flex; gap: 3px; margin-bottom: 8px; }\n.seg i { flex: 1; height: 6px; border-radius: 3px; background: var(--line); }\n.seg i.done { background: var(--green); } .seg i.active { background: var(--accent); } .seg i.blocked, .seg i.stale { background: var(--red); }\n.steps-toggle { display: none; border: 0; background: none; padding: 4px 0; font-size: 13px; color: var(--ink-3); }\n.dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; flex: none; border: 1.5px solid var(--ink-3); background: var(--paper); }\n.dot.done { background: var(--green); border-color: var(--green); }\n.dot.active { background: var(--accent); border-color: var(--accent); box-shadow: 0 0 0 4px var(--accent-soft); }\n.dot.blocked, .dot.stale { background: var(--red); border-color: var(--red); }\n.line { position: relative; margin-top: 12px; }\n.line::before { content: \"\"; position: absolute; left: 4px; top: 10px; bottom: 10px; width: 2px; background: var(--line); }\n.line li { position: relative; display: flex; gap: 12px; align-items: flex-start; padding: 5px 0; font-size: 14px; line-height: 1.45; }\n.line li .dot { margin-top: 5px; }\n.line li > div { min-width: 0; overflow-wrap: anywhere; }\n.line li.done > div { color: var(--ink-3); }\n.line li.blocked > div, .line li.stale > div { color: var(--red); }\n.line li.active > div { font-weight: 600; }\n.line small { display: block; font-size: 12px; font-weight: 430; color: var(--ink-3); }\n.line li.blocked small, .line li.stale small { color: var(--red); }\n\n.inbox { margin-bottom: 32px; }\n.ask { padding: 16px; background: var(--card); border: 1px solid var(--accent); border-radius: 12px; margin-bottom: 14px; }\n.ask .k { font-size: 12px; font-weight: 550; color: var(--ink-3); margin-bottom: 8px; display: flex; gap: 8px; flex-wrap: wrap; }\n.ask .k b { color: var(--accent); font-weight: 550; }\n.ask .q { font-weight: 600; margin-bottom: 10px; overflow-wrap: anywhere; }\n.ask .def { padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); font-size: 15px; line-height: 1.4; margin-bottom: 8px; }\n.ask .def small { display: block; font-size: 13px; color: var(--ink-2); margin-top: 2px; }\n.reply { display: block; width: 100%; min-height: 72px; font: 15px/1.5 var(--sans); padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); color: var(--ink); resize: vertical; }\n.reply:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: transparent; }\n\n.chips { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 18px; position: sticky; top: 0; z-index: 4; background: var(--paper); padding: 10px 0; border-bottom: 1px solid var(--line-2); }\n.chips button { font-size: 13px; font-weight: 550; line-height: 1; padding: 7px 11px; border-radius: 99px; border: 1px solid var(--line); background: var(--card); color: var(--ink-2); }\n.chips button[aria-pressed=\"true\"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }\n.feed[data-f=\"d\"] .ev:not(.d), .feed[data-f=\"r\"] .ev:not(.r), .feed[data-f=\"s\"] .ev:not(.s), .feed[data-f=\"a\"] .ev:not(.a) { display: none; }\n.ev { display: grid; grid-template-columns: 48px 26px minmax(0, 1fr); gap: 0 10px; position: relative; }\n.ev::before { content: \"\"; position: absolute; left: 70px; top: 0; bottom: 0; width: 1px; background: var(--line); }\n.ev > time { padding-top: 14px; text-align: right; }\n.ev .ico { width: 26px; height: 26px; margin-top: 12px; border-radius: 50%; display: grid; place-items: center; font: 600 12px/1 var(--mono); position: relative; }\n.ev.d .ico { background: var(--blue-soft); color: var(--blue); }\n.ev.r .ico { background: var(--green-soft); color: var(--green); }\n.ev.a .ico { background: var(--accent-soft); color: var(--accent); }\n.ev.s .ico { background: var(--red-soft); color: var(--red); }\n.item { padding: 12px 14px; background: var(--card); border: 1px solid var(--line); border-radius: 12px; margin: 6px 0; min-width: 0; }\n.item .top { display: flex; gap: 8px; align-items: center; margin-bottom: 4px; }\n.item .top:empty { display: none; }\n.item .top time { display: none; }\n.item p { font-size: 15px; overflow-wrap: anywhere; }\n.item.reverted p { text-decoration: line-through; color: var(--ink-3); }\n.item details summary { cursor: pointer; font-size: 13px; color: var(--ink-3); margin-top: 6px; }\n.item dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 2px 14px; margin: 8px 0 0; font-size: 14px; }\n.item dt { font-size: 12px; line-height: 1.9; color: var(--ink-3); } .item dd { margin: 0; color: var(--ink-2); overflow-wrap: anywhere; }\n.empty { color: var(--ink-3); font-size: 14px; }\n\n.bar { position: fixed; z-index: 10; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom)); display: flex; gap: 8px; align-items: center; }\n.theme { width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--line); background: var(--card); box-shadow: var(--float); color: var(--ink-2); }\n.copy { font-size: 14px; font-weight: 550; line-height: 1; padding: 13px 16px; border-radius: 99px; border: 0; background: var(--ink); color: var(--paper); box-shadow: var(--float); }\n.copy:disabled { background: var(--sunk); color: var(--ink-3); border: 1px solid var(--line); cursor: default; }\n\n@media (max-width: 900px) {\n  .page { grid-template-columns: minmax(0, 1fr); gap: 0; padding: 0 16px 110px; }\n  .rail { position: sticky; top: 0; z-index: 6; max-height: none; overflow: visible; background: var(--paper); padding: 14px 0 6px; border-bottom: 1px solid var(--line); }\n  h1 { font-size: 20px; margin-bottom: 4px; }\n  .meta { margin-bottom: 4px; }\n  .big { font: 600 15px/1.4 var(--sans); margin: 0; } .big small { font-size: 13px; }\n  .seg { margin: 6px 0 2px; }\n  .steps-toggle { display: block; }\n  .rail:not(.open) .line { display: none; }\n  .rail.open .line { max-height: 45vh; overflow: auto; }\n  .chips { position: static; }\n  .feed { padding-top: 16px; }\n  .ev { grid-template-columns: 40px 22px minmax(0, 1fr); gap: 0 8px; }\n  .ev::before { left: 58px; }\n  .ev .ico { width: 22px; height: 22px; font-size: 11px; }\n}\n@media (max-width: 480px) {\n  .ev { grid-template-columns: 22px minmax(0, 1fr); }\n  .ev > time { display: none; }\n  .ev::before { left: 11px; }\n  .item .top time { display: inline; }\n  .bar { left: 16px; }\n  .copy { flex: 1; }\n}\n</style>\n</head>\n<body>\n<div id=\"app\"></div>\n<script type=\"application/json\" id=\"run\">\n{\"v\":1,\"title\":\"\",\"lang\":\"en\",\"branch\":\"\",\"createdAt\":\"\",\"updatedAt\":\"\",\"steps\":[],\"decisions\":[],\"results\":[],\"asks\":[]}\n</script>\n<script>\nconst R = JSON.parse(document.getElementById('run').textContent);\nconst STALE_MS = 15 * 60e3;\nconst REFRESH_MS = 30e3;\nconst COPIED_MS = 2500;\nconst LABELS = {\n  en: {\n    locale: 'en-GB',\n    run: 'jig run',\n    branch: 'branch',\n    live: ago => `live, ${ago}`,\n    quiet: ago => `no news ${ago}`,\n    stepsDone: total => `/ ${total} steps done`,\n    stepsToggle: (stuck, current) => [stuck && `${stuck} stuck`, current && `now step ${current}`].filter(Boolean).join(', ') || 'Steps',\n    theme: 'Light or dark theme',\n    steps: 'Steps',\n    here: 'now here',\n    since: 'since',\n    waitsFor: 'waits for',\n    stale: (at, ago) => `no news since ${at}, ${ago}`,\n    waiting: 'Waiting for your answer',\n    ask: (i, total) => `Question ${i} of ${total}`,\n    asked: (n, at, ago) => `#${n} \xB7 asked at ${at}, ${ago}`,\n    fallback: 'The agent goes with this until you answer.',\n    answerLabel: n => `Answer to question #${n}`,\n    answerPlaceholder: 'Your own answer',\n    copy: 'Copy answers',\n    copied: n => `copied (${n})`,\n    copyFailed: 'copy failed',\n    answersFor: title => `Answers for run \"${title}\":`,\n    answerItem: (n, question) => `#${n} ${question}`,\n    journal: 'Journal',\n    all: 'All',\n    decisions: 'Decisions',\n    results: 'Results',\n    stuck: 'Stuck',\n    answered: 'Answers',\n    why: 'why',\n    evidence: 'evidence',\n    reverted: 'reverted',\n    kept: 'kept',\n    result: 'result',\n    answer: 'answer',\n    stepStuck: 'step stuck',\n    nothing: 'Nothing yet.',\n    justNow: 'just now',\n    minAgo: m => `${m} min ago`,\n    hoursAgo: (h, m) => `${h} h ${m} min ago`,\n    daysAgo: d => `${d} d ago`,\n  },\n  ru: {\n    locale: 'ru-RU',\n    run: '\u041F\u0440\u043E\u0433\u043E\u043D jig',\n    branch: '\u0432\u0435\u0442\u043A\u0430',\n    live: ago => `\u0436\u0438\u0432\u043E\u0439, ${ago}`,\n    quiet: ago => `\u043D\u0435\u0442 \u0432\u0435\u0441\u0442\u0435\u0439 ${ago}`,\n    stepsDone: total => `/ ${total} \u0448\u0430\u0433\u043E\u0432 \u0433\u043E\u0442\u043E\u0432\u043E`,\n    stepsToggle: (stuck, current) => [stuck && `${stuck} \u0441\u0442\u043E\u044F\u0442`, current && `\u0441\u0435\u0439\u0447\u0430\u0441 \u0448\u0430\u0433 ${current}`].filter(Boolean).join(', ') || '\u0428\u0430\u0433\u0438',\n    theme: '\u0421\u0432\u0435\u0442\u043B\u0430\u044F \u0438\u043B\u0438 \u0442\u0451\u043C\u043D\u0430\u044F \u0442\u0435\u043C\u0430',\n    steps: '\u0428\u0430\u0433\u0438',\n    here: '\u0441\u0435\u0439\u0447\u0430\u0441 \u0437\u0434\u0435\u0441\u044C',\n    since: '\u0438\u0434\u0451\u0442 \u0441',\n    waitsFor: '\u0436\u0434\u0451\u0442',\n    stale: (at, ago) => `\u043D\u0435\u0442 \u0432\u0435\u0441\u0442\u0435\u0439 \u0441 ${at}, ${ago}`,\n    waiting: '\u0416\u0434\u0443\u0442 \u0432\u0430\u0448\u0435\u0433\u043E \u043E\u0442\u0432\u0435\u0442\u0430',\n    ask: (i, total) => `\u0412\u043E\u043F\u0440\u043E\u0441 ${i} \u0438\u0437 ${total}`,\n    asked: (n, at, ago) => `\u2116${n} \xB7 \u0441\u043F\u0440\u043E\u0441\u0438\u043B \u0432 ${at}, ${ago}`,\n    fallback: '\u0410\u0433\u0435\u043D\u0442 \u0438\u0434\u0451\u0442 \u0441 \u044D\u0442\u0438\u043C \u0432\u0430\u0440\u0438\u0430\u043D\u0442\u043E\u043C, \u043F\u043E\u043A\u0430 \u043D\u0435\u0442 \u043E\u0442\u0432\u0435\u0442\u0430.',\n    answerLabel: n => `\u041E\u0442\u0432\u0435\u0442 \u043D\u0430 \u0432\u043E\u043F\u0440\u043E\u0441 \u2116${n}`,\n    answerPlaceholder: '\u0421\u0432\u043E\u0439 \u043E\u0442\u0432\u0435\u0442',\n    copy: '\u0421\u043A\u043E\u043F\u0438\u0440\u043E\u0432\u0430\u0442\u044C \u043E\u0442\u0432\u0435\u0442\u044B',\n    copied: n => `\u0441\u043A\u043E\u043F\u0438\u0440\u043E\u0432\u0430\u043D\u043E (${n})`,\n    copyFailed: '\u043D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u0441\u043A\u043E\u043F\u0438\u0440\u043E\u0432\u0430\u0442\u044C',\n    answersFor: title => `\u041E\u0442\u0432\u0435\u0442\u044B \u043F\u043E \u043F\u0440\u043E\u0433\u043E\u043D\u0443 \xAB${title}\xBB:`,\n    answerItem: (n, question) => `\u2116${n} ${question}`,\n    journal: '\u0416\u0443\u0440\u043D\u0430\u043B',\n    all: '\u0412\u0441\u0451',\n    decisions: '\u0420\u0435\u0448\u0435\u043D\u0438\u044F',\n    results: '\u0420\u0435\u0437\u0443\u043B\u044C\u0442\u0430\u0442\u044B',\n    stuck: '\u0421\u0442\u043E\u044F\u0442',\n    answered: '\u041E\u0442\u0432\u0435\u0442\u044B',\n    why: '\u043F\u043E\u0447\u0435\u043C\u0443',\n    evidence: '\u0434\u043E\u043A\u0430\u0437\u0430\u0442\u0435\u043B\u044C\u0441\u0442\u0432\u043E',\n    reverted: '\u043E\u0442\u0431\u0440\u043E\u0448\u0435\u043D\u043E',\n    kept: '\u043E\u0441\u0442\u0430\u0432\u043B\u0435\u043D\u043E',\n    result: '\u0440\u0435\u0437\u0443\u043B\u044C\u0442\u0430\u0442',\n    answer: '\u043E\u0442\u0432\u0435\u0442',\n    stepStuck: '\u0448\u0430\u0433 \u0441\u0442\u043E\u0438\u0442',\n    nothing: '\u041F\u043E\u043A\u0430 \u043F\u0443\u0441\u0442\u043E.',\n    justNow: '\u0442\u043E\u043B\u044C\u043A\u043E \u0447\u0442\u043E',\n    minAgo: m => `${m} \u043C\u0438\u043D \u043D\u0430\u0437\u0430\u0434`,\n    hoursAgo: (h, m) => `${h} \u0447 ${m} \u043C\u0438\u043D \u043D\u0430\u0437\u0430\u0434`,\n    daysAgo: d => `${d} \u0434\u043D \u043D\u0430\u0437\u0430\u0434`,\n  },\n};\nconst lang = Object.hasOwn(LABELS, R.lang) ? R.lang : 'en';\nconst L = LABELS[lang];\nconst esc = s => String(s ?? '').replace(/[&<>\"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;'}[c]));\nconst hm = t => {\n  const d = new Date(t);\n  return Number.isNaN(d.getTime()) ? '' : d.toLocaleString(L.locale, {hour: '2-digit', minute: '2-digit'});\n};\nconst ago = t => {\n  const m = Math.round((Date.now() - new Date(t)) / 60e3);\n  return m < 1 ? L.justNow : m < 60 ? L.minAgo(m) : m < 1440 ? L.hoursAgo(Math.floor(m / 60), m % 60) : L.daysAgo(Math.floor(m / 1440));\n};\nconst isQuiet = Date.now() - new Date(R.updatedAt) > STALE_MS;\nconst steps = R.steps.map(s => ({...s, stale: s.status === 'active' && isQuiet}));\nconst stuck = steps.filter(s => s.status === 'blocked' || s.stale);\nconst done = steps.filter(s => s.status === 'done').length;\nconst current = steps.find(s => s.status === 'active');\nconst openAsks = R.asks.filter(a => a.answer === undefined);\nconst answered = R.asks.filter(a => a.answer !== undefined);\nconst link = d => d.href ? `<a href=\"${esc(d.href)}\">${esc(d.title)}</a>` : esc(d.title);\nconst why = s => s.stale ? L.stale(hm(R.updatedAt), ago(R.updatedAt)) : `${L.waitsFor} ${esc(s.waitsFor)}`;\nconst newest = (items, key) => [...items].sort((a, b) => (b[key] || '').localeCompare(a[key] || '') || (b.n || 0) - (a.n || 0));\nconst stepClass = s => s.stale ? 'stale' : s.status;\n\nconst item = (at, tag, body, extraClass = '') => `<div class=\"item${extraClass}\"><div class=\"top\"><time>${hm(at)}</time>${tag}</div>${body}</div>`;\nconst decisionItem = d => {\n  const extra = [[L.why, d.why], [L.evidence, d.evidence]].filter(([, v]) => v);\n  const tag = d.result === 'reverted' ? `<span class=\"pill red\">${L.reverted}</span>` : d.result === 'kept' ? `<span class=\"pill green\">${L.kept}</span>` : '';\n  const more = extra.length ? `<details><summary>${extra.map(([k]) => k).join(' \xB7 ')}</summary><dl>${extra.map(([k, v]) => `<dt>${k}</dt><dd>${esc(v)}</dd>`).join('')}</dl></details>` : '';\n  return item(d.at, tag, `<p>${esc(d.text)}</p>${more}`, d.result === 'reverted' ? ' reverted' : '');\n};\nconst events = [\n  ...R.decisions.map(d => ({k: 'd', at: d.at, html: decisionItem(d)})),\n  ...R.results.map(r => ({k: 'r', at: r.at, html: item(r.at, `<span class=\"pill green\">${L.result}</span>`, `<p>${link(r)}</p>`)})),\n  ...answered.map(a => ({k: 'a', at: a.answeredAt, html: item(a.answeredAt, `<span class=\"pill\">${L.answer}</span>`, `<p>${esc(a.question)}</p><p class=\"mono\">\u2192 ${esc(a.answer)}</p>`)})),\n  ...stuck.map(s => ({k: 's', at: s.at, html: item(s.at, `<span class=\"pill red\">${L.stepStuck}</span>`, `<p>${s.n}. ${esc(s.title)}</p><p class=\"mono\">${why(s)}</p>`)})),\n];\nconst ICON = {d: '\u25C6', r: '\u2713', a: '?', s: '!'};\nconst FILTERS = [['all', L.all, events.length], ['d', L.decisions, R.decisions.length], ['r', L.results, R.results.length], ['s', L.stuck, stuck.length], ['a', L.answered, answered.length]];\nconst savedFilter = localStorage.getItem('jig-dash-filter');\nconst filter = FILTERS.some(([k, , count]) => k === savedFilter && count) ? savedFilter : 'all';\n\nconst askCard = (q, i) => `<section class=\"ask\" data-n=\"${q.n}\">\n  <div class=\"k\"><b>${L.ask(i + 1, openAsks.length)}</b><span>${L.asked(q.n, hm(q.askedAt), ago(q.askedAt))}</span></div>\n  <p class=\"q\">${esc(q.question)}</p>\n  <p class=\"def\">${esc(q.default)}<small>${L.fallback}</small></p>\n  <textarea class=\"reply\" rows=\"2\" placeholder=\"${L.answerPlaceholder}\" aria-label=\"${L.answerLabel(q.n)}\"></textarea></section>`;\nconst stepLine = s => `<li class=\"${stepClass(s)}\"><i class=\"dot ${stepClass(s)}\"></i><div>${s.n}. ${esc(s.title)}${s === current ? `<span class=\"pill here\">${L.here}</span>` : ''}\n  ${s.status === 'blocked' || s.stale ? `<small>${why(s)}</small>` : s === current ? `<small>${L.since} ${hm(s.at)}</small>` : ''}</div></li>`;\n\nfunction draftKey(q) {\n  return `jig-dash-answer:${location.pathname}:${q.n}:${q.askedAt}`;\n}\n\nfunction answersText(drafts) {\n  const items = openAsks\n    .map(q => ({q, answer: String(drafts[q.n] ?? '').trim()}))\n    .filter(item => item.answer !== '')\n    .sort((a, b) => a.q.n - b.q.n)\n    .map(({q, answer}) => `${L.answerItem(q.n, q.question)}\\n\u2192 ${answer}`);\n  return {count: items.length, text: items.length ? `${L.answersFor(R.title)}\\n${items.join('\\n\\n')}` : ''};\n}\n\nconst readDraft = q => {\n  try {\n    return localStorage.getItem(draftKey(q)) ?? '';\n  } catch {\n    return '';\n  }\n};\n\nconst drafts = Object.fromEntries(openAsks.map(q => [q.n, readDraft(q)]));\nlet hasUnsaved = false;\n\ndocument.documentElement.lang = lang;\nconst theme = localStorage.getItem('jig-dash-theme');\ndocument.body.classList.toggle('light', theme === 'light');\ndocument.body.classList.toggle('dark', theme === 'dark');\ndocument.title = R.title || L.run;\ndocument.getElementById('app').innerHTML = `<div class=\"page\">\n  <aside class=\"rail\">\n    <h1>${esc(R.title)}</h1>\n    <p class=\"meta mono\"><span>${L.branch} ${esc(R.branch)}</span><span class=\"live\"><i class=\"dot ${isQuiet ? 'blocked' : 'done'}\"></i>${isQuiet ? L.quiet(ago(R.updatedAt)) : L.live(ago(R.updatedAt))}</span></p>\n    <p class=\"big\">${done}<small> ${L.stepsDone(steps.length)}</small></p>\n    <div class=\"seg\">${steps.map(s => `<i class=\"${stepClass(s)}\" title=\"${s.n}. ${esc(s.title)}\"></i>`).join('')}</div>\n    <button class=\"steps-toggle\" type=\"button\" aria-expanded=\"false\">\u25B8 ${L.stepsToggle(stuck.length, current?.n)}</button>\n    <ol class=\"line\" aria-label=\"${L.steps}\">${steps.map(stepLine).join('')}</ol>\n  </aside>\n  <main class=\"feed\" data-f=\"${filter}\">\n    ${openAsks.length ? `<section class=\"inbox\"><h2>${L.waiting} <span class=\"pill accent\">${openAsks.length}</span></h2>${openAsks.map(askCard).join('')}</section>` : ''}\n    <h2>${L.journal}</h2>\n    ${events.length ? `<div class=\"chips\" role=\"toolbar\">${FILTERS.filter(([, , count]) => count).map(([k, label, count]) => `<button type=\"button\" data-f=\"${k}\" aria-pressed=\"${filter === k}\">${label} \xB7 ${count}</button>`).join('')}</div>\n    ${newest(events, 'at').map(e => `<div class=\"ev ${e.k}\"><time>${hm(e.at)}</time><span class=\"ico\">${ICON[e.k]}</span>${e.html}</div>`).join('')}` : `<p class=\"empty\">${L.nothing}</p>`}\n  </main>\n</div>\n<div class=\"bar\"><button class=\"theme\" type=\"button\" aria-label=\"${L.theme}\">&#9680;</button>${openAsks.length ? `<button class=\"copy\" type=\"button\">${L.copy}</button>` : ''}</div>`;\n\nconst copyButton = document.querySelector('.copy');\nconst refreshCopy = () => {\n  if (copyButton) copyButton.disabled = answersText(drafts).count === 0;\n};\n\nconst writeClipboard = async text => {\n  try {\n    await navigator.clipboard.writeText(text);\n    return true;\n  } catch {\n    const area = document.createElement('textarea');\n    area.value = text;\n    area.setAttribute('readonly', '');\n    area.style.position = 'fixed';\n    area.style.opacity = '0';\n    document.body.append(area);\n    area.select();\n    const isCopied = document.execCommand('copy');\n    area.remove();\n    return isCopied;\n  }\n};\n\nfor (const box of document.querySelectorAll('.ask')) {\n  const q = openAsks.find(a => String(a.n) === box.dataset.n);\n  const reply = box.querySelector('.reply');\n  reply.value = drafts[q.n];\n  reply.addEventListener('input', () => {\n    drafts[q.n] = reply.value;\n    try {\n      if (reply.value.trim() === '') localStorage.removeItem(draftKey(q));\n      else localStorage.setItem(draftKey(q), reply.value);\n      hasUnsaved = false;\n    } catch {\n      hasUnsaved = true;\n    }\n    refreshCopy();\n  });\n}\n\nfor (const chip of document.querySelectorAll('.chips button')) {\n  chip.addEventListener('click', () => {\n    document.querySelector('.feed').dataset.f = chip.dataset.f;\n    for (const other of document.querySelectorAll('.chips button')) other.setAttribute('aria-pressed', String(other === chip));\n    localStorage.setItem('jig-dash-filter', chip.dataset.f);\n  });\n}\n\ndocument.querySelector('.steps-toggle').addEventListener('click', event => {\n  const isOpen = document.querySelector('.rail').classList.toggle('open');\n  event.currentTarget.setAttribute('aria-expanded', String(isOpen));\n  event.currentTarget.textContent = `${isOpen ? '\u25BE' : '\u25B8'} ${L.stepsToggle(stuck.length, current?.n)}`;\n});\n\nrefreshCopy();\ncopyButton?.addEventListener('click', async () => {\n  const {text, count} = answersText(drafts);\n  if (count === 0) return;\n  const isCopied = await writeClipboard(text);\n  copyButton.textContent = isCopied ? L.copied(count) : L.copyFailed;\n  setTimeout(() => { copyButton.textContent = L.copy; }, COPIED_MS);\n});\n\ndocument.querySelector('.theme').addEventListener('click', () => {\n  const isDark = getComputedStyle(document.body).colorScheme === 'dark';\n  const next = isDark ? 'light' : 'dark';\n  document.body.classList.toggle('light', next === 'light');\n  document.body.classList.toggle('dark', next === 'dark');\n  localStorage.setItem('jig-dash-theme', next);\n});\n\nsetInterval(() => {\n  const isTyping = document.activeElement?.classList?.contains('reply');\n  if (!isTyping && !hasUnsaved) location.reload();\n}, REFRESH_MS);\n</script>\n</body>\n</html>\n";
@@ -1300,8 +1790,8 @@ var branchDirName = (projectRoot) => {
 };
 var runLocation = (projectRoot) => {
   const branch = branchDirName(projectRoot);
-  const dir = join6(jigPaths(projectRoot).runs, branch);
-  return { branch, data: join6(dir, "run.json"), page: join6(dir, "index.html") };
+  const dir = join7(jigPaths(projectRoot).runs, branch);
+  return { branch, data: join7(dir, "run.json"), page: join7(dir, "index.html") };
 };
 var isRun = (value) => {
   if (typeof value !== "object" || value === null) return false;
@@ -1311,7 +1801,7 @@ var isRun = (value) => {
 var readRun = (path) => {
   let text2;
   try {
-    text2 = readFileSync6(path, "utf8");
+    text2 = readFileSync9(path, "utf8");
   } catch {
     return void 0;
   }
@@ -1346,7 +1836,7 @@ ${json}
 ${close}`);
 };
 var saveRun = (location, run3) => {
-  mkdirSync5(dirname4(location.data), { recursive: true });
+  mkdirSync7(dirname6(location.data), { recursive: true });
   writeFileAtomic(location.data, `${JSON.stringify(run3, null, 2)}
 `);
   writeFileAtomic(location.page, renderPage(run3));
@@ -1517,12 +2007,12 @@ var runDash = (args) => {
 };
 
 // src/doctor.ts
-import { existsSync as existsSync5, readFileSync as readFileSync9 } from "node:fs";
-import { join as join9 } from "node:path";
+import { existsSync as existsSync5, readFileSync as readFileSync12 } from "node:fs";
+import { join as join10 } from "node:path";
 
 // src/core/journal.ts
-import { appendFileSync, mkdirSync as mkdirSync6, readdirSync as readdirSync4, readFileSync as readFileSync7, rmSync as rmSync3, statSync as statSync4 } from "node:fs";
-import { join as join7 } from "node:path";
+import { appendFileSync, mkdirSync as mkdirSync8, readdirSync as readdirSync4, readFileSync as readFileSync10, rmSync as rmSync3, statSync as statSync5 } from "node:fs";
+import { join as join8 } from "node:path";
 var JOURNAL_MAX_AGE_DAYS = 30;
 var JOURNAL_MAX_BYTES = 50 * 1024 * 1024;
 var JOURNAL_MESSAGE_MAX = 300;
@@ -1535,8 +2025,8 @@ var appendJournal = (projectRoot, entry) => {
     record.message = truncate(record.message);
   }
   const dir = jigPaths(projectRoot).journal;
-  mkdirSync6(dir, { recursive: true });
-  appendFileSync(join7(dir, `${record.ts.slice(0, 10)}.jsonl`), `${JSON.stringify(record)}
+  mkdirSync8(dir, { recursive: true });
+  appendFileSync(join8(dir, `${record.ts.slice(0, 10)}.jsonl`), `${JSON.stringify(record)}
 `);
   return record;
 };
@@ -1552,8 +2042,8 @@ var listJournalFiles = (projectRoot) => {
   for (const name of names.sort()) {
     const day = JOURNAL_FILE.exec(name)?.[1];
     if (day === void 0) continue;
-    const path = join7(dir, name);
-    files.push({ name, path, day, size: statSync4(path).size });
+    const path = join8(dir, name);
+    files.push({ name, path, day, size: statSync5(path).size });
   }
   return files;
 };
@@ -1593,7 +2083,7 @@ var readJournal = (projectRoot, sinceMs = 0) => {
   const records = [];
   for (const file of listJournalFiles(projectRoot)) {
     if (file.day < sinceDay) continue;
-    for (const line of readFileSync7(file.path, "utf8").split("\n")) {
+    for (const line of readFileSync10(file.path, "utf8").split("\n")) {
       const record = line.trim() === "" ? void 0 : parseRecord(line);
       if (record !== void 0 && Date.parse(record.ts) >= sinceMs) {
         records.push(record);
@@ -1604,9 +2094,9 @@ var readJournal = (projectRoot, sinceMs = 0) => {
 };
 
 // src/tiers/tiers.ts
-import { existsSync as existsSync4, readFileSync as readFileSync8 } from "node:fs";
+import { existsSync as existsSync4, readFileSync as readFileSync11 } from "node:fs";
 import { homedir } from "node:os";
-import { join as join8 } from "node:path";
+import { join as join9 } from "node:path";
 import { parseArgs } from "node:util";
 var TIERS = ["deep", "standard", "fast"];
 var UNKNOWN_AGENT = "unknown";
@@ -1690,10 +2180,10 @@ var parseUserConfig = (text2) => {
 };
 var loadUserConfig = (env = process.env) => {
   const override = env[USER_CONFIG_ENV];
-  const path = override || join8(homedir(), ".jig", "config.jsonc");
+  const path = override || join9(homedir(), ".jig", "config.jsonc");
   const label = override || DEFAULT_LABEL;
   if (!existsSync4(path)) return { path, label, config: emptyUserConfig() };
-  return { path, label, ...parseUserConfig(readFileSync8(path, "utf8")) };
+  return { path, label, ...parseUserConfig(readFileSync11(path, "utf8")) };
 };
 var detectAgent = (flag, env = process.env) => {
   if (flag) return flag;
@@ -1734,14 +2224,6 @@ var runTiers = (args) => {
 var MIN_NODE_MAJOR = 20;
 var BYTES_PER_MB = 1024 * 1024;
 var STATUS_WIDTH = 4;
-var TOOLS = [
-  { key: "oxlint", label: "oxlint", command: "oxlint", configs: OXLINT_CONFIGS },
-  { key: "eslint", label: "eslint", command: "eslint", configs: ESLINT_CONFIGS },
-  { key: "tsc", label: "tsc", command: "tsc", configs: [TSCONFIG] },
-  { key: "vueTsc", label: "vue-tsc", command: "vue-tsc", configs: [] },
-  { key: "stratum", label: "stratum", command: "stratum-lint", configs: [STRATUM_CONFIG] },
-  { key: "agentView", label: "agent-view", command: "agent-view", configs: [AGENT_VIEW_CONFIG] }
-];
 var PROTECTED_FOR_DENY = [
   ".jig/config.jsonc",
   "eslint.config.*",
@@ -1781,7 +2263,7 @@ var checkTiers = () => {
   const pairs = tierEntries(tiers).map(([tier, models]) => `${tier}=${models.join(",")}`);
   return ok(`tiers: ${agent} ${pairs.join(" ")} (${source})`);
 };
-var firstExisting = (projectRoot, names) => names.map((name) => join9(projectRoot, name)).find((path) => existsSync5(path));
+var firstExisting = (projectRoot, names) => names.map((name) => join10(projectRoot, name)).find((path) => existsSync5(path));
 var checkTool = (projectRoot, tools, spec) => {
   const found = tools[spec.key];
   if (found !== void 0) {
@@ -1799,12 +2281,12 @@ var checkGitignore = (projectRoot) => {
   return existsSync5(path) ? ok(`gitignore: ${path}`) : warn(`gitignore: ${path} missing, jig creates it on first run`);
 };
 var readDenyList = (path) => {
-  const settings = parseJsonc(readFileSync9(path, "utf8"));
+  const settings = parseJsonc(readFileSync12(path, "utf8"));
   const deny = settings?.permissions?.deny;
   return Array.isArray(deny) ? deny.filter((entry) => typeof entry === "string") : [];
 };
 var checkDeny = (projectRoot) => {
-  const path = join9(projectRoot, ".claude", "settings.json");
+  const path = join10(projectRoot, ".claude", "settings.json");
   let deny = [];
   if (existsSync5(path)) {
     try {
@@ -1865,13 +2347,13 @@ var runDoctor = (args) => {
     ok(`project: ${projectRoot}`),
     checkConfig(projectRoot),
     checkTiers(),
-    ...TOOLS.map((spec) => checkTool(projectRoot, tools, spec)),
+    ...PLAN_BINARIES.map((spec) => checkTool(projectRoot, tools, spec)),
     checkGitignore(projectRoot),
     checkDeny(projectRoot),
     ...checkAtomPaths(projectRoot, pluginRoot),
     checkJournal(projectRoot),
     checkLock(paths.heavyLock),
-    checkLock(join9(paths.cache, "slot.lock"))
+    checkLock(join10(paths.cache, "slot.lock"))
   ];
   process.stdout.write(`${checks.map(formatCheck).join("\n")}
 `);
@@ -1882,12 +2364,12 @@ var runDoctor = (args) => {
 import { createHash as createHash4 } from "node:crypto";
 
 // src/core/snapshot.ts
-import { createHash as createHash2 } from "node:crypto";
-import { statSync as statSync5 } from "node:fs";
-import { join as join10 } from "node:path";
+import { createHash as createHash3 } from "node:crypto";
+import { statSync as statSync6 } from "node:fs";
+import { join as join11 } from "node:path";
 var stampOf = (absolutePath) => {
   try {
-    const stat = statSync5(absolutePath);
+    const stat = statSync6(absolutePath);
     return stat.isFile() ? { mtimeMs: stat.mtimeMs, size: stat.size } : void 0;
   } catch {
     return void 0;
@@ -1898,12 +2380,12 @@ var changedFiles = (projectRoot) => {
   const top = gitToplevel(projectRoot);
   if (top === void 0) return [];
   const entries = gitStatus(top) ?? [];
-  return entries.map((entry) => toProjectPath(projectRoot, join10(top, entry.path))).filter(isInsideProject);
+  return entries.map((entry) => toProjectPath(projectRoot, join11(top, entry.path))).filter(isInsideProject);
 };
 var takeSnapshot = (projectRoot) => {
   const snapshot = {};
   for (const path of changedFiles(projectRoot)) {
-    const stamp = stampOf(join10(projectRoot, path));
+    const stamp = stampOf(join11(projectRoot, path));
     if (stamp !== void 0) {
       snapshot[path] = stamp;
     }
@@ -1913,127 +2395,25 @@ var takeSnapshot = (projectRoot) => {
 var isSameStamp = (left, right) => left !== void 0 && left.mtimeMs === right.mtimeMs && left.size === right.size;
 var diffFingerprint = (stamps) => {
   const lines = Object.keys(stamps).sort().map((path) => `${path}:${stamps[path]?.mtimeMs}:${stamps[path]?.size}`);
-  return createHash2("sha1").update(lines.join("\n")).digest("hex");
+  return createHash3("sha1").update(lines.join("\n")).digest("hex");
 };
 var turnDiff = (projectRoot, snapshot, edits) => {
   const stamps = {};
   for (const { path } of edits) {
-    const stamp = stampOf(join10(projectRoot, path));
+    const stamp = stampOf(join11(projectRoot, path));
     if (stamp !== void 0) {
       stamps[path] = stamp;
     }
   }
   for (const path of changedFiles(projectRoot)) {
     if (Object.hasOwn(stamps, path)) continue;
-    const stamp = stampOf(join10(projectRoot, path));
+    const stamp = stampOf(join11(projectRoot, path));
     if (stamp === void 0 || isSameStamp(snapshot[path], stamp)) continue;
     stamps[path] = stamp;
   }
   const files = Object.keys(stamps).sort();
   return { files, stamps, fingerprint: diffFingerprint(stamps) };
 };
-
-// src/tools/eslint.ts
-import { resolve as resolve3 } from "node:path";
-
-// src/tools/tool.ts
-var FAILURE_DETAIL_MAX = 200;
-var HUNK_HEADER = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/;
-var firstOutputLine = (text2) => text2.trim().split("\n")[0]?.slice(0, FAILURE_DETAIL_MAX) ?? "";
-var settleExit = (invocation, exited) => {
-  const { tool, okCodes, parse } = invocation;
-  const failed = (failure) => ({ tool, findings: [], durationMs: exited.durationMs, failure });
-  const isOkCode = exited.code !== null && okCodes.includes(exited.code);
-  if (!isOkCode) return failed(`exit ${exited.code}: ${firstOutputLine(exited.errorOutput || exited.output)}`);
-  try {
-    return { tool, findings: parse(exited.output), durationMs: exited.durationMs };
-  } catch (error) {
-    return failed(error instanceof Error ? error.message : String(error));
-  }
-};
-var runTool = async (invocation) => {
-  const { tool, argv, cwd, timeoutMs } = invocation;
-  const result = await run(argv, { cwd, timeoutMs });
-  if (result.timedOut) return { tool, findings: [], durationMs: result.durationMs, failure: `timeout after ${timeoutMs} ms` };
-  if (result.error !== void 0) return { tool, findings: [], durationMs: result.durationMs, failure: result.error };
-  return settleExit(invocation, { code: result.code, output: result.stdout, errorOutput: result.stderr, durationMs: result.durationMs });
-};
-var parseDiffLines = (diff) => {
-  const lines = /* @__PURE__ */ new Map();
-  let current;
-  for (const line of diff.split("\n")) {
-    if (line.startsWith("+++ ")) {
-      const path = line.slice(4).trimEnd();
-      current = path === "/dev/null" ? void 0 : /* @__PURE__ */ new Set();
-      if (current !== void 0) {
-        lines.set(path, current);
-      }
-      continue;
-    }
-    const hunk = HUNK_HEADER.exec(line);
-    if (hunk === null || current === void 0) continue;
-    const start = Number(hunk[1]);
-    const count = hunk[2] === void 0 ? 1 : Number(hunk[2]);
-    for (let at = start; at < start + count; at++) {
-      current.add(at);
-    }
-  }
-  return lines;
-};
-var changedLines = (projectRoot, files) => {
-  const result = /* @__PURE__ */ new Map();
-  if (files.length === 0) return result;
-  const listed = git(["ls-files", "-z", "--", ...files], projectRoot);
-  const tracked = new Set(listed.ok ? listed.stdout.split("\0").filter(Boolean) : []);
-  const diff = git(
-    ["-c", "core.quotePath=false", "diff", "--no-color", "--no-ext-diff", "--unified=0", "--relative", "--no-prefix", "HEAD", "--", ...files],
-    projectRoot
-  );
-  const diffLines = diff.ok ? parseDiffLines(diff.stdout) : /* @__PURE__ */ new Map();
-  for (const file of files) {
-    const isWholeFile = !diff.ok || !tracked.has(file);
-    result.set(file, isWholeFile ? "all" : diffLines.get(file) ?? /* @__PURE__ */ new Set());
-  }
-  return result;
-};
-var isOnChangedLine = (lines, line) => lines === "all" || lines?.has(line) === true;
-
-// src/tools/eslint.ts
-var ESLINT_EXTENSIONS = /* @__PURE__ */ new Set([".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs", ".vue"]);
-var OK_CODES = [0, 1];
-var ERROR_SEVERITY = 2;
-var parseEslint = (stdout, projectRoot, cwd = projectRoot) => {
-  if (stdout.trim() === "") return [];
-  const results = JSON.parse(stdout);
-  return results.flatMap((result) => {
-    const file = toProjectPath(projectRoot, resolve3(cwd, result.filePath ?? ""));
-    return (result.messages ?? []).map((message) => ({
-      tool: "eslint",
-      rule: message.ruleId ?? "eslint",
-      severity: message.severity === ERROR_SEVERITY ? "error" : "warn",
-      file,
-      line: message.line ?? 1,
-      message: message.message ?? ""
-    }));
-  });
-};
-var runEslint = (tool, projectRoot, files, timeoutMs) => runTool({
-  tool: "eslint",
-  argv: [
-    ...tool.bin,
-    "--format",
-    "json",
-    "--cache",
-    "--cache-location",
-    `${toSlash(jigPaths(projectRoot).eslintCache)}/`,
-    "--no-warn-ignored",
-    ...files
-  ],
-  cwd: projectRoot,
-  timeoutMs,
-  okCodes: OK_CODES,
-  parse: (stdout) => parseEslint(stdout, projectRoot)
-});
 
 // src/tools/finding.ts
 var POST_EDIT_LINE_LIMIT = 15;
@@ -2066,338 +2446,27 @@ var limitLines = (lines, limit, pluginRoot) => {
 };
 var formatFindings = (findings, limit, pluginRoot) => limitLines(collapseFindings(findings), limit, pluginRoot);
 
-// src/tools/stratum.ts
-var CONTRACT_VERSION = 1;
-var OK_CODES2 = [0, 1, 3];
-var SEVERITIES2 = { error: "error", warning: "warn" };
-var toFinding = (record) => {
-  const severity = SEVERITIES2[record.severity ?? ""];
-  const isUsable = record.v === CONTRACT_VERSION && severity !== void 0 && record.rule !== void 0 && record.file !== void 0;
-  if (!isUsable) return void 0;
-  return {
-    tool: "stratum",
-    rule: record.rule,
-    severity,
-    file: record.file,
-    line: record.line ?? 1,
-    message: record.message ?? "",
-    ...record.fix ? { fix: record.fix } : {}
-  };
-};
-var parseStratum = (stdout) => stdout.split("\n").filter((line) => line.trim() !== "").map((line) => toFinding(JSON.parse(line))).filter((finding) => finding !== void 0);
-var runStratum = (tool, projectRoot, files, timeoutMs) => runTool({
-  tool: "stratum",
-  argv: [...tool.bin, "--format", "jsonl", "--config", tool.config, "--files", ...files],
-  cwd: projectRoot,
-  timeoutMs,
-  okCodes: OK_CODES2,
-  parse: parseStratum
-});
-
-// src/tools/tsc.ts
-import { createHash as createHash3 } from "node:crypto";
-import { mkdirSync as mkdirSync8, readFileSync as readFileSync11, statSync as statSync6, writeFileSync as writeFileSync4 } from "node:fs";
-import { dirname as dirname6, extname as extname2, join as join11, relative as relative3, resolve as resolve4 } from "node:path";
-
-// src/tools/detach.ts
-import { spawn as spawn2 } from "node:child_process";
-import { mkdirSync as mkdirSync7, readFileSync as readFileSync10 } from "node:fs";
-import { setPriority as setPriority2 } from "node:os";
-import { dirname as dirname5 } from "node:path";
-var WRAPPER = [
-  "const { spawn } = require('node:child_process')",
-  "const { closeSync, openSync, readFileSync, rmSync } = require('node:fs')",
-  "const { setPriority } = require('node:os')",
-  "const [lockPath, outputPath, priority, command, ...args] = process.argv.slice(1)",
-  "const output = openSync(outputPath, 'w')",
-  "const child = spawn(command, args, { stdio: ['ignore', output, output], windowsHide: true })",
-  "try { setPriority(child.pid, Number(priority)) } catch {}",
-  "const releaseOwnLock = () => {",
-  "  try { if (JSON.parse(readFileSync(lockPath, 'utf8')).pid === process.pid) rmSync(lockPath, { force: true }) } catch {}",
-  "}",
-  "const finish = (code) => { closeSync(output); releaseOwnLock(); process.exit(code ?? 1) }",
-  "child.on('error', () => finish(1))",
-  "child.on('exit', (code) => finish(code))"
-].join("\n");
-var readOutput = (path) => {
-  try {
-    return readFileSync10(path, "utf8");
-  } catch {
-    return "";
-  }
-};
-var lowerPriority2 = (pid) => {
-  if (pid === void 0) return;
-  try {
-    setPriority2(pid, LOW_PRIORITY);
-  } catch {
-    return;
-  }
-};
-var runDetachable = (invocation) => {
-  const { tool, argv, cwd, timeoutMs, outputPath, lockPath } = invocation;
-  mkdirSync7(dirname5(outputPath), { recursive: true });
-  const startedAt = Date.now();
-  const elapsed = () => Date.now() - startedAt;
-  return new Promise((resolveRun) => {
-    let isSettled = false;
-    const settle = (result) => {
-      if (isSettled) return;
-      isSettled = true;
-      clearTimeout(timer);
-      resolveRun(result);
-    };
-    const child = spawn2(process.execPath, ["-e", WRAPPER, lockPath ?? "", outputPath, String(LOW_PRIORITY), ...argv], {
-      cwd,
-      detached: true,
-      stdio: "ignore",
-      windowsHide: true
-    });
-    lowerPriority2(child.pid);
-    const timer = setTimeout(() => {
-      child.unref();
-      const pid = child.pid;
-      settle({
-        tool,
-        findings: [],
-        durationMs: elapsed(),
-        failure: `timeout after ${timeoutMs} ms, detached (pid ${pid}) to finish the incremental cache`,
-        ...pid === void 0 ? {} : { detachedPid: pid }
-      });
-    }, timeoutMs);
-    child.on("error", (error) => settle({ tool, findings: [], durationMs: elapsed(), failure: error.message }));
-    child.on("exit", (code) => {
-      const output = readOutput(outputPath);
-      settle(settleExit(invocation, { code, output, errorOutput: output, durationMs: elapsed() }));
-    });
-  });
-};
-
-// src/tools/tsc.ts
-var TYPED_EXTENSIONS = /* @__PURE__ */ new Set([".ts", ".tsx", ".mts", ".cts", ".vue"]);
-var OK_CODES3 = [0, 1, 2];
-var HASH_LENGTH = 12;
-var TSC_ERROR = /^(.+)\((\d+),(\d+)\): error (TS\d+): (.*)$/;
-var GLOBAL_ERROR = /error TS\d+: .*/;
-var WILDCARD = /[*?]/;
-var DEFAULT_INCLUDE = ["**/*"];
-var isTypedFile = (file) => TYPED_EXTENSIONS.has(extname2(file)) && !file.endsWith(".d.ts");
-var isFile3 = (path) => {
-  try {
-    return statSync6(path).isFile();
-  } catch {
-    return false;
-  }
-};
-var readTsconfig = (path) => {
-  const value = parseJsonc(readFileSync11(path, "utf8"));
-  return typeof value === "object" && value !== null ? value : {};
-};
-var stringsOf = (value) => Array.isArray(value) ? value.filter((item) => typeof item === "string") : void 0;
-var findNearestTsconfig = (projectRoot, file) => {
-  const top = resolve4(projectRoot);
-  let dir = dirname6(resolve4(projectRoot, file));
-  for (; ; ) {
-    const candidate = join11(dir, TSCONFIG);
-    if (isFile3(candidate)) return candidate;
-    const isTop = relative3(top, dir) === "";
-    const parent = dirname6(dir);
-    if (isTop || parent === dir) return void 0;
-    dir = parent;
-  }
-};
-var toIncludeGlob = (pattern) => {
-  const clean = toSlash(pattern).replace(/^\.\//, "").replace(/\/$/, "");
-  const lastSegment = clean.split("/").pop() ?? "";
-  const isDirectory = !WILDCARD.test(clean) && !lastSegment.includes(".");
-  return isDirectory ? `${clean}/**/*` : clean;
-};
-var covers = (configPath, absoluteFile) => {
-  const config = readTsconfig(configPath);
-  const path = toSlash(relative3(dirname6(configPath), absoluteFile));
-  const files = stringsOf(config.files) ?? [];
-  if (files.some((entry) => toSlash(entry).replace(/^\.\//, "") === path)) return true;
-  const include = stringsOf(config.include) ?? (config.files === void 0 ? DEFAULT_INCLUDE : []);
-  return include.length > 0 && matchGlob(path, include.map(toIncludeGlob));
-};
-var referencePath = (fromConfig, reference) => {
-  const path = reference?.path;
-  if (typeof path !== "string") return void 0;
-  const target = resolve4(dirname6(fromConfig), path);
-  return isFile3(target) ? target : join11(target, TSCONFIG);
-};
-var isSolutionConfig = (config) => Array.isArray(config.files) && config.files.length === 0 && Array.isArray(config.references);
-var selectTsconfig = (configPath, absoluteFile) => {
-  const config = readTsconfig(configPath);
-  if (!isSolutionConfig(config)) return configPath;
-  for (const reference of config.references) {
-    const target = referencePath(configPath, reference);
-    if (target !== void 0 && isFile3(target) && covers(target, absoluteFile)) return target;
-  }
-  return void 0;
-};
-var groupByTsconfig = (projectRoot, files) => {
-  const byConfig = /* @__PURE__ */ new Map();
-  const skipped = [];
-  for (const file of files.filter(isTypedFile)) {
-    const nearest = findNearestTsconfig(projectRoot, file);
-    const selected = nearest === void 0 ? void 0 : selectTsconfig(nearest, resolve4(projectRoot, file));
-    if (selected === void 0) {
-      skipped.push(file);
-      continue;
-    }
-    byConfig.set(selected, [...byConfig.get(selected) ?? [], file]);
-  }
-  return { groups: [...byConfig].map(([config, groupFiles]) => ({ config, files: groupFiles })), skipped };
-};
-var tsconfigHash = (configPath) => createHash3("sha1").update(configPath).digest("hex").slice(0, HASH_LENGTH);
-var closureConfig = (projectRoot, group) => {
-  const configDir = toSlash(dirname6(group.config));
-  const hash = tsconfigHash(group.config);
-  return {
-    extends: toSlash(group.config),
-    files: group.files.map((file) => toSlash(resolve4(projectRoot, file))),
-    include: [`${configDir}/*.d.ts`, `${configDir}/src/**/*.d.ts`],
-    compilerOptions: {
-      noEmit: true,
-      incremental: true,
-      composite: false,
-      tsBuildInfoFile: `${toSlash(jigPaths(projectRoot).tscCache)}/${hash}.tsbuildinfo`
-    }
-  };
-};
-var writeClosureConfig = (projectRoot, group) => {
-  const dir = jigPaths(projectRoot).tscCache;
-  mkdirSync8(dir, { recursive: true });
-  const path = join11(dir, `tsconfig.${tsconfigHash(group.config)}.json`);
-  writeFileSync4(path, `${JSON.stringify(closureConfig(projectRoot, group), null, 2)}
-`);
-  return path;
-};
-var pathKey = (path) => process.platform === "win32" ? path.toLowerCase() : path;
-var parseTscOutput = (stdout, tool, projectRoot, cwd = projectRoot) => stdout.split("\n").map((line) => TSC_ERROR.exec(line.trimEnd())).filter((match) => match !== null).map(([, file = "", line = "1", , code = "", message = ""]) => ({
-  tool,
-  rule: code,
-  severity: "error",
-  file: toProjectPath(projectRoot, resolve4(cwd, file)),
-  line: Number(line),
-  message
-}));
-var keepGroupFindings = (findings, files) => {
-  const keys = new Set(files.map(pathKey));
-  return findings.filter((finding) => keys.has(pathKey(finding.file)));
-};
-var checkerFor = (checkers, group) => {
-  const hasVue = group.files.some((file) => file.endsWith(".vue"));
-  if (hasVue && checkers.vueTsc !== void 0) return { tool: "vue-tsc", bin: checkers.vueTsc.bin, files: group.files };
-  if (checkers.tsc === void 0) return void 0;
-  const files = group.files.filter((file) => !file.endsWith(".vue"));
-  return files.length === 0 ? void 0 : { tool: "tsc", bin: checkers.tsc.bin, files };
-};
-var runTypeCheck = async (checkers, projectRoot, group, timeoutMs, lockPath) => {
-  const checker = checkerFor(checkers, group);
-  if (checker === void 0) return void 0;
-  const config = writeClosureConfig(projectRoot, { config: group.config, files: checker.files });
-  const argv = checker.tool === "vue-tsc" ? [...checker.bin, "--noEmit", "-p", config] : [...checker.bin, "-p", config, "--pretty", "false"];
-  return runDetachable({
-    tool: checker.tool,
-    argv,
-    cwd: projectRoot,
-    timeoutMs,
-    outputPath: join11(jigPaths(projectRoot).tscCache, `${tsconfigHash(group.config)}.out`),
-    ...lockPath === void 0 ? {} : { lockPath },
-    okCodes: OK_CODES3,
-    parse: (stdout) => {
-      const findings = parseTscOutput(stdout, checker.tool, projectRoot);
-      const globalError = findings.length === 0 ? GLOBAL_ERROR.exec(stdout)?.[0] : void 0;
-      if (globalError !== void 0) throw new Error(globalError);
-      return keepGroupFindings(findings, checker.files);
-    }
-  });
-};
-
-// src/gates/edit.ts
-import { extname as extname3 } from "node:path";
-
-// src/tools/oxlint.ts
-import { readFileSync as readFileSync12 } from "node:fs";
-import { resolve as resolve5 } from "node:path";
-var OK_CODES4 = [0, 1];
-var lineAtOffset = (path, offset) => {
-  try {
-    return readFileSync12(path, "utf8").slice(0, offset).split("\n").length;
-  } catch {
-    return 1;
-  }
-};
-var startLine = (diagnostic, absolutePath) => {
-  const span = diagnostic.labels?.[0]?.span;
-  if (span?.line !== void 0) return span.line;
-  if (span?.offset !== void 0) return lineAtOffset(absolutePath, span.offset);
-  return 1;
-};
-var diagnosticsOf = (stdout) => {
-  if (stdout.trim() === "") return [];
-  const value = JSON.parse(stdout);
-  if (Array.isArray(value)) return value;
-  const diagnostics = value.diagnostics;
-  return Array.isArray(diagnostics) ? diagnostics : [];
-};
-var parseOxlint = (stdout, projectRoot, cwd = projectRoot) => diagnosticsOf(stdout).map((diagnostic) => {
-  const absolutePath = resolve5(cwd, diagnostic.filename ?? "");
-  return {
-    tool: "oxlint",
-    rule: diagnostic.ruleId ?? diagnostic.code ?? "oxlint",
-    severity: diagnostic.severity === "error" ? "error" : "warn",
-    file: toProjectPath(projectRoot, absolutePath),
-    line: startLine(diagnostic, absolutePath),
-    message: diagnostic.message ?? ""
-  };
-});
-var runOxlint = (tool, projectRoot, file, timeoutMs) => runTool({
-  tool: "oxlint",
-  argv: [...tool.bin, "--format", "json", "-c", tool.config, file],
-  cwd: projectRoot,
-  timeoutMs,
-  okCodes: OK_CODES4,
-  parse: (stdout) => parseOxlint(stdout, projectRoot)
-});
-
 // src/gates/edit.ts
 var EDIT_TOOL_TIMEOUT_MS = 5e3;
-var isCodeFile = (file) => ESLINT_EXTENSIONS.has(extname3(file));
 var ruleLevel = (plan, rule) => plan.config.rules[rule] ?? "error";
 var applyLevel = (findings, level) => {
   if (level === "off") return [];
   if (level === "error") return [...findings];
   return findings.map((finding) => ({ ...finding, severity: "warn" }));
 };
-var withFindings = (toolRun, findings) => ({ ...toolRun, findings });
-var oxlintRun = async (plan, projectRoot, file) => {
-  const level = ruleLevel(plan, "gate/oxlint");
-  if (plan.tools.oxlint === void 0 || level === "off") return void 0;
-  const result = await runOxlint(plan.tools.oxlint, projectRoot, file, EDIT_TOOL_TIMEOUT_MS);
-  const errors = result.findings.filter((finding) => finding.severity === "error");
-  if (errors.length === 0) return withFindings(result, []);
-  const lines = changedLines(projectRoot, [file]).get(file);
-  return withFindings(result, applyLevel(errors.filter((finding) => isOnChangedLine(lines, finding.line)), level));
-};
-var stratumRun = async (plan, projectRoot, file) => {
-  const level = ruleLevel(plan, "gate/stratum");
-  if (plan.tools.stratum === void 0 || level === "off") return void 0;
-  const result = await runStratum(plan.tools.stratum, projectRoot, [file], EDIT_TOOL_TIMEOUT_MS);
-  return withFindings(result, applyLevel(result.findings, level));
+var editRun = async (tool, plan, projectRoot, file) => {
+  const level = ruleLevel(plan, tool.rule);
+  if (tool.edit === void 0 || level === "off") return void 0;
+  const result = await tool.edit(plan.tools, projectRoot, file, EDIT_TOOL_TIMEOUT_MS);
+  return result === void 0 ? void 0 : { ...result, findings: applyLevel(result.findings, level) };
 };
 var checkEdit = async (plan, projectRoot, file) => {
   if (!isCodeFile(file)) return [];
-  const runs = await Promise.all([oxlintRun(plan, projectRoot, file), stratumRun(plan, projectRoot, file)]);
+  const runs = await Promise.all(TOOLS.map((tool) => editRun(tool, plan, projectRoot, file)));
   return runs.filter((toolRun) => toolRun !== void 0);
 };
 
 // src/gates/stop.ts
-var TYPES_TIMEOUT_MS = 6e4;
-var ESLINT_TIMEOUT_MS = 3e4;
-var STRATUM_TIMEOUT_MS = 15e3;
 var STOP_HARD_LIMIT_MS = 11e4;
 var MAX_CONSECUTIVE_BLOCKS = 3;
 var EXIT_FINDINGS = 1;
@@ -2412,54 +2481,11 @@ var timed = async (rule, body) => {
   return { rule, runs, findings, durationMs: Date.now() - startedAt };
 };
 var createBudget = (startedAt) => (ownMs) => Math.max(0, Math.min(ownMs, startedAt + STOP_HARD_LIMIT_MS - Date.now()));
-var onChangedLines = (projectRoot, findings) => {
-  if (findings.length === 0) return [];
-  const lines = changedLines(projectRoot, [...new Set(findings.map((finding) => finding.file))]);
-  return findings.filter((finding) => isOnChangedLine(lines.get(finding.file), finding.line));
-};
-var typesStep = (input, budget, lock, notes) => timed("gate/tsc", async () => {
-  const level = ruleLevel(input.plan, "gate/tsc");
-  if (level === "off") return { runs: [], findings: [] };
-  const { groups, skipped } = groupByTsconfig(input.projectRoot, input.diff.files);
-  for (const file of skipped) {
-    notes.push({ kind: "gate-skipped", tool: "jig", rule: "gate/tsc", file, message: "no tsconfig covers the file" });
-  }
-  const runs = [];
-  for (const group of groups) {
-    const timeoutMs = budget(TYPES_TIMEOUT_MS);
-    if (timeoutMs === 0) break;
-    const toolRun = await runTypeCheck(input.plan.tools, input.projectRoot, group, timeoutMs, lock.path);
-    if (toolRun === void 0) continue;
-    runs.push(toolRun);
-    if (toolRun.detachedPid !== void 0) {
-      transferLock(lock.path, toolRun.detachedPid);
-      lock.isTransferred = true;
-      break;
-    }
-  }
-  const findings = onChangedLines(input.projectRoot, runs.flatMap((toolRun) => toolRun.findings));
+var toolStep = (tool, input, toolInput) => timed(tool.rule, async () => {
+  const level = ruleLevel(input.plan, tool.rule);
+  if (level === "off" || tool.stop === void 0) return { runs: [], findings: [] };
+  const { runs, findings } = await tool.stop(input.plan.tools, toolInput);
   return { runs, findings: applyLevel(findings, level) };
-});
-var eslintStep = (input, budget) => timed("gate/eslint", async () => {
-  const level = ruleLevel(input.plan, "gate/eslint");
-  const files = input.diff.files.filter(isCodeFile);
-  const timeoutMs = budget(ESLINT_TIMEOUT_MS);
-  const tool = input.plan.tools.eslint;
-  const isSkipped = level === "off" || files.length === 0 || timeoutMs === 0;
-  if (isSkipped || tool === void 0) return { runs: [], findings: [] };
-  const toolRun = await runEslint(tool, input.projectRoot, files, timeoutMs);
-  const onChanged = onChangedLines(input.projectRoot, toolRun.findings.filter(isBlocking));
-  return { runs: [toolRun], findings: applyLevel(onChanged, level) };
-});
-var stratumStep = (input, budget) => timed("gate/stratum", async () => {
-  const level = ruleLevel(input.plan, "gate/stratum");
-  const files = input.diff.files.filter(isCodeFile);
-  const timeoutMs = budget(STRATUM_TIMEOUT_MS);
-  const tool = input.plan.tools.stratum;
-  const isSkipped = level === "off" || files.length === 0 || timeoutMs === 0;
-  if (isSkipped || tool === void 0) return { runs: [], findings: [] };
-  const toolRun = await runStratum(tool, input.projectRoot, files, timeoutMs);
-  return { runs: [toolRun], findings: applyLevel(toolRun.findings, level) };
 });
 var latestEdit = (diff, files, recorded) => Math.max(recorded ?? 0, ...files.map((file) => diff.stamps[file]?.mtimeMs ?? 0));
 var jigFinding = (rule, file, message) => ({
@@ -2516,11 +2542,15 @@ var runStopChecks = async (input) => {
     notes.push({ kind: "gate-skipped", tool: "jig", message: "heavy checks lock is busy" });
   } else {
     const lock = { path: acquired.path, isTransferred: false };
+    const transfer = (pid) => {
+      transferLock(lock.path, pid);
+      lock.isTransferred = true;
+    };
+    const toolInput = { projectRoot: input.projectRoot, files: input.diff.files, budget, lock: { path: lock.path, transfer }, notes };
     try {
-      const heavySteps = [() => typesStep(input, budget, lock, notes), () => eslintStep(input, budget), () => stratumStep(input, budget)];
-      for (const step of heavySteps) {
+      for (const tool of TOOLS.filter((candidate) => candidate.stop !== void 0)) {
         if (isStopped()) break;
-        steps.push(await step());
+        steps.push(await toolStep(tool, input, toolInput));
       }
     } finally {
       if (!lock.isTransferred) {
@@ -2793,6 +2823,16 @@ var formatOutcome = (kind, outcome) => {
     case "block":
       return JSON.stringify({ decision: "block", reason: outcome.reason });
   }
+};
+var claude = { name: "claude", parseHookInput, formatOutcome };
+
+// src/adapters/index.ts
+var ADAPTERS = { claude };
+var DEFAULT_AGENT = "claude";
+var resolveAdapter = (name = DEFAULT_AGENT) => {
+  const adapter = Object.hasOwn(ADAPTERS, name) ? ADAPTERS[name] : void 0;
+  if (adapter === void 0) throw new Error(`unknown agent ${name}, expected one of: ${Object.keys(ADAPTERS).join(", ")}`);
+  return adapter;
 };
 
 // src/rules/comments.ts
@@ -3649,6 +3689,7 @@ var NONE2 = { type: "none" };
 var SUBAGENT_ATOM_LIMIT = 10;
 var TEST_REVIEWER_MARKER = "jig-role: test-reviewer";
 var GUARDED_KINDS = /* @__PURE__ */ new Set(["pre-edit", "pre-bash"]);
+var AGENT_FLAG = "--agent";
 var errorMessage = (error) => error instanceof Error ? error.message : String(error);
 var journal = (ctx, entry) => {
   try {
@@ -3803,11 +3844,11 @@ var preEdit = (event, ctx) => {
     config = loadConfig(ctx.projectRoot);
     return checkProtectedPath(event.file, config);
   };
-  const withConfig2 = (check) => () => config === void 0 ? [] : check(config);
+  const withConfig = (check) => () => config === void 0 ? [] : check(config);
   const edits = locateEdits(event, ctx.projectRoot);
   return runChecks(ctx, guard, [
-    withConfig2((loaded) => checkSuppressions(event.file, edits, loaded)),
-    withConfig2((loaded) => checkComments(event.file, edits, loaded))
+    withConfig((loaded) => checkSuppressions(event.file, edits, loaded)),
+    withConfig((loaded) => checkComments(event.file, edits, loaded))
   ]);
 };
 var preBash = (event, ctx) => {
@@ -3946,16 +3987,24 @@ var dispatch2 = async (event, base, pluginRoot = resolvePluginRoot()) => {
     return NONE2;
   }
 };
-var handleHook = async (name, raw, env = process.env) => {
+var handleHook = async (name, raw, env = process.env, adapter = resolveAdapter()) => {
   let parsed;
   try {
-    parsed = parseHookInput(name, raw, env);
+    parsed = adapter.parseHookInput(name, raw, env);
   } catch {
     return "";
   }
   if (parsed === void 0) return "";
   const outcome = await dispatch2(parsed.event, parsed.base, resolvePluginRoot(env));
-  return formatOutcome(parsed.event.kind, outcome);
+  return adapter.formatOutcome(parsed.event.kind, outcome);
+};
+var parseHookArgs = (args) => {
+  const at = args.indexOf(AGENT_FLAG);
+  if (at === -1) return { name: args[0] ?? "", adapter: resolveAdapter() };
+  const agent = args[at + 1];
+  if (agent === void 0) throw new Error(`${AGENT_FLAG} needs an agent name`);
+  const positional = args.filter((_, index) => index !== at && index !== at + 1);
+  return { name: positional[0] ?? "", adapter: resolveAdapter(agent) };
 };
 var readStdin = async () => {
   const chunks = [];
@@ -3965,8 +4014,9 @@ var readStdin = async () => {
   return Buffer.concat(chunks).toString("utf8");
 };
 var runHook = async (args) => {
+  const { name, adapter } = parseHookArgs(args);
   try {
-    const output = await handleHook(args[0] ?? "", await readStdin());
+    const output = await handleHook(name, await readStdin(), process.env, adapter);
     if (output !== "") {
       process.stdout.write(output);
     }

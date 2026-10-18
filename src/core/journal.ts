@@ -16,7 +16,7 @@ export type JournalKind =
   | 'no-verify-allowed'
   | 'skip-verify'
 
-export type JournalTool = 'jig' | 'oxlint' | 'eslint' | 'tsc' | 'vue-tsc' | 'stratum' | 'agent-view'
+export type JournalTool = string
 
 export interface JournalRecord {
   v: 1

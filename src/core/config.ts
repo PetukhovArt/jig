@@ -1,23 +1,22 @@
 import { existsSync, readFileSync } from 'node:fs'
+import { TOOLS, type GateRuleId } from '../tools'
 import { parseJsonc } from './jsonc'
 import { jigPaths } from './paths'
 
 export const SEVERITIES = ['off', 'warn', 'error'] as const
 export type Severity = (typeof SEVERITIES)[number]
 
-export const RULE_IDS = [
+export const JIG_RULE_IDS = [
   'jig/comments',
   'jig/suppressions',
   'jig/protected-paths',
   'jig/no-verify',
   'jig/test-review',
   'jig/verify-fact',
-  'gate/oxlint',
-  'gate/stratum',
-  'gate/tsc',
-  'gate/eslint',
 ] as const
-export type RuleId = (typeof RULE_IDS)[number]
+export type RuleId = (typeof JIG_RULE_IDS)[number] | GateRuleId
+
+export const RULE_IDS: readonly RuleId[] = [...JIG_RULE_IDS, ...TOOLS.map((tool) => tool.rule)]
 
 export const DEFAULT_SEVERITY: Severity = 'error'
 

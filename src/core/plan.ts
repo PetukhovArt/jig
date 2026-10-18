@@ -2,6 +2,8 @@ import { createHash } from 'node:crypto'
 import { mkdirSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { version as pluginVersion } from '../../package.json'
+import { TOOLS } from '../tools'
+import type { PlanTools, ToolBinary, ToolEntry } from '../tools/tool'
 import { loadConfig, type LoadedConfig } from './config'
 import { parseFrontmatter } from './frontmatter'
 import { createMatcher } from './glob'
@@ -9,23 +11,7 @@ import { jigPaths } from './paths'
 import { resolveBin } from './proc'
 import { writeFileAtomic } from './state'
 
-export interface ToolWithConfig {
-  bin: string[]
-  config: string
-}
-
-export interface ToolBin {
-  bin: string[]
-}
-
-export interface PlanTools {
-  oxlint?: ToolWithConfig
-  eslint?: ToolWithConfig
-  tsc?: ToolBin
-  vueTsc?: ToolBin
-  stratum?: ToolWithConfig
-  agentView?: ToolWithConfig
-}
+export type { PlanTools, ToolBin, ToolEntry, ToolWithConfig } from '../tools/tool'
 
 export interface PlanAtom {
   name: string
@@ -44,24 +30,18 @@ export interface Plan {
   atoms: PlanAtom[]
 }
 
-export const OXLINT_CONFIGS = ['.oxlintrc.json', 'oxlint.json', 'oxlintrc.json'] as const
-export const ESLINT_CONFIGS = [
-  'eslint.config.js',
-  'eslint.config.mjs',
-  'eslint.config.cjs',
-  'eslint.config.ts',
-  'eslint.config.mts',
-  'eslint.config.cts',
-  '.eslintrc',
-  '.eslintrc.js',
-  '.eslintrc.cjs',
-  '.eslintrc.json',
-  '.eslintrc.yml',
-  '.eslintrc.yaml',
-] as const
-export const STRATUM_CONFIG = 'stratum.config.jsonc'
 export const AGENT_VIEW_CONFIG = 'agent-view.config.json'
-export const TSCONFIG = 'tsconfig.json'
+
+export const AGENT_VIEW_BINARY: ToolBinary = {
+  key: 'agentView',
+  label: 'agent-view',
+  command: 'agent-view',
+  packages: ['@petukhovart/agent-view'],
+  configs: [AGENT_VIEW_CONFIG],
+  requiresConfig: true,
+}
+
+export const PLAN_BINARIES: readonly ToolBinary[] = [...TOOLS.flatMap((tool) => tool.binaries), AGENT_VIEW_BINARY]
 
 export const TEST_FILE_GLOBS = ['**/*.{test,spec}.{ts,tsx,js,jsx,mts,cts,mjs,cjs}', '**/__tests__/**'] as const
 export const RUNTIME_VISIBLE_GLOBS = ['**/*.{vue,tsx,jsx,svelte,html,css,scss,less}'] as const
@@ -75,11 +55,7 @@ const matchesRuntimeGlob = createMatcher(RUNTIME_VISIBLE_GLOBS)
 export const isRuntimeVisible = (path: string): boolean => matchesRuntimeGlob(path) && !isTestFile(path)
 
 const HASHED_INPUTS = [
-  ...OXLINT_CONFIGS,
-  ...ESLINT_CONFIGS,
-  STRATUM_CONFIG,
-  AGENT_VIEW_CONFIG,
-  TSCONFIG,
+  ...new Set(PLAN_BINARIES.flatMap((binary) => binary.configs)),
   'package.json',
   'package-lock.json',
   'pnpm-lock.yaml',
@@ -107,30 +83,23 @@ export const planInputsHash = (projectRoot: string, pluginRoot: string): string 
 const findConfig = (projectRoot: string, names: readonly string[]): string | undefined =>
   names.map((name) => join(projectRoot, name)).find(isFile)
 
-const withConfig = (config: string | undefined, bin: string[] | undefined): ToolWithConfig | undefined =>
-  config !== undefined && bin !== undefined ? { bin, config } : undefined
+export const detectBinary = (projectRoot: string, binary: ToolBinary): ToolEntry | undefined => {
+  const bin = resolveBin(projectRoot, binary.packages, binary.command)
+  if (bin === undefined) return undefined
+  if (!binary.requiresConfig) return { bin }
+  const config = findConfig(projectRoot, binary.configs)
+  return config === undefined ? undefined : { bin, config }
+}
 
 export const detectTools = (projectRoot: string): PlanTools => {
-  const oxlint = withConfig(findConfig(projectRoot, OXLINT_CONFIGS), resolveBin(projectRoot, ['oxlint'], 'oxlint'))
-  const eslint = withConfig(findConfig(projectRoot, ESLINT_CONFIGS), resolveBin(projectRoot, ['eslint'], 'eslint'))
-  const tsc = resolveBin(projectRoot, ['typescript'], 'tsc')
-  const vueTsc = resolveBin(projectRoot, ['vue-tsc'], 'vue-tsc')
-  const stratum = withConfig(
-    findConfig(projectRoot, [STRATUM_CONFIG]),
-    resolveBin(projectRoot, ['@petukhovart/stratum-lint'], 'stratum-lint'),
-  )
-  const agentView = withConfig(
-    findConfig(projectRoot, [AGENT_VIEW_CONFIG]),
-    resolveBin(projectRoot, ['@petukhovart/agent-view'], 'agent-view'),
-  )
-  return {
-    ...(oxlint && { oxlint }),
-    ...(eslint && { eslint }),
-    ...(tsc && { tsc: { bin: tsc } }),
-    ...(vueTsc && { vueTsc: { bin: vueTsc } }),
-    ...(stratum && { stratum }),
-    ...(agentView && { agentView }),
+  const tools: PlanTools = {}
+  for (const binary of PLAN_BINARIES) {
+    const entry = detectBinary(projectRoot, binary)
+    if (entry !== undefined) {
+      tools[binary.key] = entry
+    }
   }
+  return tools
 }
 
 const toPlanAtom = (file: string): PlanAtom | undefined => {

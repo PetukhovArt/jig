@@ -1,6 +1,5 @@
-import type { ToolWithConfig } from '../core/plan'
 import type { Finding } from './finding'
-import { runTool, type ToolRun } from './tool'
+import { defineTool, hasConfig, isCodeFile, runTool, type ToolRun, type ToolWithConfig } from './tool'
 
 interface StratumRecord {
   v?: number
@@ -11,6 +10,9 @@ interface StratumRecord {
   message?: string
   fix?: string
 }
+
+export const STRATUM_CONFIG = 'stratum.config.jsonc'
+export const STRATUM_TIMEOUT_MS = 15_000
 
 const CONTRACT_VERSION = 1
 const OK_CODES = [0, 1, 3]
@@ -47,3 +49,31 @@ export const runStratum = (tool: ToolWithConfig, projectRoot: string, files: rea
     okCodes: OK_CODES,
     parse: parseStratum,
   })
+
+export const stratumTool = defineTool({
+  name: 'stratum',
+  binaries: [
+    {
+      key: 'stratum',
+      label: 'stratum',
+      command: 'stratum-lint',
+      packages: ['@petukhovart/stratum-lint'],
+      configs: [STRATUM_CONFIG],
+      requiresConfig: true,
+    },
+  ],
+  edit: async (tools, projectRoot, file, timeoutMs) => {
+    const entry = tools.stratum
+    if (!hasConfig(entry)) return undefined
+    return runStratum(entry, projectRoot, [file], timeoutMs)
+  },
+  stop: async (tools, input) => {
+    const files = input.files.filter(isCodeFile)
+    const timeoutMs = input.budget(STRATUM_TIMEOUT_MS)
+    const entry = tools.stratum
+    const isSkipped = files.length === 0 || timeoutMs === 0
+    if (isSkipped || !hasConfig(entry)) return { runs: [], findings: [] }
+    const toolRun = await runStratum(entry, input.projectRoot, files, timeoutMs)
+    return { runs: [toolRun], findings: toolRun.findings }
+  },
+})

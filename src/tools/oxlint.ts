@@ -1,9 +1,8 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import type { ToolWithConfig } from '../core/plan'
 import { toProjectPath } from '../core/paths'
 import type { Finding } from './finding'
-import { runTool, type ToolRun } from './tool'
+import { changedLines, defineTool, hasConfig, isOnChangedLine, runTool, type ToolRun, type ToolWithConfig } from './tool'
 
 interface OxlintSpan {
   offset?: number
@@ -18,6 +17,8 @@ interface OxlintDiagnostic {
   filename?: string
   labels?: { span?: OxlintSpan }[]
 }
+
+export const OXLINT_CONFIGS = ['.oxlintrc.json', 'oxlint.json', 'oxlintrc.json'] as const
 
 const OK_CODES = [0, 1]
 
@@ -66,3 +67,17 @@ export const runOxlint = (tool: ToolWithConfig, projectRoot: string, file: strin
     okCodes: OK_CODES,
     parse: (stdout) => parseOxlint(stdout, projectRoot),
   })
+
+export const oxlintTool = defineTool({
+  name: 'oxlint',
+  binaries: [{ key: 'oxlint', label: 'oxlint', command: 'oxlint', packages: ['oxlint'], configs: OXLINT_CONFIGS, requiresConfig: true }],
+  edit: async (tools, projectRoot, file, timeoutMs) => {
+    const entry = tools.oxlint
+    if (!hasConfig(entry)) return undefined
+    const result = await runOxlint(entry, projectRoot, file, timeoutMs)
+    const errors = result.findings.filter((finding) => finding.severity === 'error')
+    if (errors.length === 0) return { ...result, findings: [] }
+    const lines = changedLines(projectRoot, [file]).get(file)
+    return { ...result, findings: errors.filter((finding) => isOnChangedLine(lines, finding.line)) }
+  },
+})

@@ -4,10 +4,9 @@ import { dirname, extname, join, relative, resolve } from 'node:path'
 import { matchGlob } from '../core/glob'
 import { parseJsonc } from '../core/jsonc'
 import { jigPaths, toProjectPath, toSlash } from '../core/paths'
-import type { ToolBin } from '../core/plan'
-import { TSCONFIG } from '../core/plan'
 import type { Finding } from './finding'
 import { runDetachable, type DetachableRun } from './detach'
+import { defineTool, keepOnChangedLines, type ToolBin, type ToolRun } from './tool'
 
 interface TsconfigShape {
   files?: unknown
@@ -31,6 +30,8 @@ export interface TypeCheckers {
 }
 
 export const TYPED_EXTENSIONS: ReadonlySet<string> = new Set(['.ts', '.tsx', '.mts', '.cts', '.vue'])
+export const TSCONFIG = 'tsconfig.json'
+export const TYPES_TIMEOUT_MS = 60_000
 
 const OK_CODES = [0, 1, 2]
 const HASH_LENGTH = 12
@@ -209,3 +210,30 @@ export const runTypeCheck = async (
     },
   })
 }
+
+export const tscTool = defineTool({
+  name: 'tsc',
+  binaries: [
+    { key: 'tsc', label: 'tsc', command: 'tsc', packages: ['typescript'], configs: [TSCONFIG], requiresConfig: false },
+    { key: 'vueTsc', label: 'vue-tsc', command: 'vue-tsc', packages: ['vue-tsc'], configs: [], requiresConfig: false },
+  ],
+  stop: async (tools, input) => {
+    const { groups, skipped } = groupByTsconfig(input.projectRoot, input.files)
+    for (const file of skipped) {
+      input.notes.push({ kind: 'gate-skipped', tool: 'jig', rule: 'gate/tsc', file, message: 'no tsconfig covers the file' })
+    }
+    const runs: ToolRun[] = []
+    for (const group of groups) {
+      const timeoutMs = input.budget(TYPES_TIMEOUT_MS)
+      if (timeoutMs === 0) break
+      const toolRun = await runTypeCheck(tools, input.projectRoot, group, timeoutMs, input.lock.path)
+      if (toolRun === undefined) continue
+      runs.push(toolRun)
+      if (toolRun.detachedPid !== undefined) {
+        input.lock.transfer(toolRun.detachedPid)
+        break
+      }
+    }
+    return { runs, findings: keepOnChangedLines(input.projectRoot, runs.flatMap((toolRun) => toolRun.findings)) }
+  },
+})
