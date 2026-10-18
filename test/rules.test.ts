@@ -114,6 +114,25 @@ describe('rule texts', () => {
     expect(checkSuppressions('src/a.ts', [edit], config)[0]?.line).toBe(11)
   })
 
+  describe('edit fragment with the file prefix', () => {
+    const prefix = 'import type { Id } from "./id"\n\nexport interface User {\n  id: Id\n'
+    const member = { before: '  name: string\n', after: '  /** Display name, 1..64 chars. */\n  name: string\n' }
+
+    it('allows JSDoc on a member of an exported interface', () => {
+      expect(checkComments('src/user.ts', [{ ...member, prefix }], config)).toEqual([])
+    })
+
+    it('refuses the same member without the prefix', () => {
+      expect(checkComments('src/user.ts', [member], config)).toHaveLength(1)
+    })
+
+    it('refuses JSDoc in a function body and reports the file line', () => {
+      const body = 'export function run(): number {\n  const a = 1\n'
+      const edit = { before: '  return a\n', after: '  /** the result */\n  return a\n', prefix: body }
+      expect(checkComments('src/run.ts', [edit], config).map((finding) => finding.line)).toEqual([3])
+    })
+  })
+
   it('stays silent when the rule is off', () => {
     const off = { rules: { ...config.rules, 'jig/comments': 'off' as const, 'jig/protected-paths': 'off' as const } }
     expect(checkComments('src/a.ts', [{ before: '', after: '// x\n' }], off)).toEqual([])

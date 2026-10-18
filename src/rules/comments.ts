@@ -89,7 +89,25 @@ const countExisting = (file: string, edits: Edit[]): Map<string, number> => {
   return counts
 }
 
-export const checkComments = (file: string, edits: Edit[], config: JigConfig): Finding[] => {
+interface LocatedComment {
+  comment: Comment
+  line: number
+  source: string
+}
+
+const addedComments = (file: string, edit: Edit): LocatedComment[] => {
+  if (edit.prefix === undefined) {
+    const located = (comment: Comment): LocatedComment => ({ comment, line: fileLine(edit, comment.line), source: edit.after })
+    return (lexComments(file, edit.after) ?? []).map(located)
+  }
+  const { prefix } = edit
+  const source = prefix + edit.after
+  return (lexComments(file, source) ?? [])
+    .filter((comment) => comment.start >= prefix.length)
+    .map((comment) => ({ comment, line: comment.line, source }))
+}
+
+export const checkComments =(file: string, edits: Edit[], config: JigConfig): Finding[] => {
   const severity = activeSeverity(config, RULE)
   if (severity === undefined) return []
   if (lexComments(file, '') === undefined) return []
@@ -97,15 +115,14 @@ export const checkComments = (file: string, edits: Edit[], config: JigConfig): F
   const atom = toSlash(join(resolvePluginRoot(), 'atoms', 'comments.md'))
   const findings: Finding[] = []
   for (const edit of edits) {
-    for (const comment of lexComments(file, edit.after) ?? []) {
+    for (const { comment, line, source } of addedComments(file, edit)) {
       const key = normalize(comment.text)
       const remaining = existing.get(key) ?? 0
       if (remaining > 0) {
         existing.set(key, remaining - 1)
         continue
       }
-      const line = fileLine(edit, comment.line)
-      if (isAllowed({ ...comment, line }, edit.after)) continue
+      if (isAllowed({ ...comment, line }, source)) continue
       const message = `${RULE}: new comment at ${file}:${line} is not allowed. Allowed: license header, TODO(<TICKET-1>), JSDoc on an export, an external constraint with a link, a tool directive. Remove it and express the intent in code (atom comments: ${atom}).`
       findings.push(jigFinding(RULE, severity, { file, line, message }))
     }

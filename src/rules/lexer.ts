@@ -4,6 +4,7 @@ export interface Comment {
   text: string
   line: number
   kind: CommentKind
+  start: number
   end: number
   isExportMember: boolean
 }
@@ -282,7 +283,7 @@ class JsLexer {
       this.index++
     }
     const text = this.source.slice(start, this.index).replace(/\r$/, '')
-    this.comments.push({ text, line: this.line, kind: 'line', end: this.index, isExportMember: this.isExportMember() })
+    this.comments.push({ text, line: this.line, kind: 'line', start, end: this.index, isExportMember: this.isExportMember() })
   }
 
   private scanBlockComment(): void {
@@ -293,7 +294,7 @@ class JsLexer {
     this.line += countNewlines(this.source, start, stop)
     this.index = stop
     const text = this.source.slice(start, stop)
-    this.comments.push({ text, line, kind: 'block', end: stop, isExportMember: this.isExportMember() })
+    this.comments.push({ text, line, kind: 'block', start, end: stop, isExportMember: this.isExportMember() })
   }
 
   private scanRegex(): boolean {
@@ -360,7 +361,7 @@ export const lexVue = (source: string): Comment[] => {
   for (const match of source.matchAll(HTML_COMMENT)) {
     if (isInside(match.index, skipped)) continue
     const end = match.index + match[0].length
-    comments.push({ text: match[0], line: lineAt(source, match.index), kind: 'block', end, isExportMember: false })
+    comments.push({ text: match[0], line: lineAt(source, match.index), kind: 'block', start: match.index, end, isExportMember: false })
   }
   return comments.sort((left, right) => left.end - right.end)
 }
