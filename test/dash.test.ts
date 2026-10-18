@@ -2,6 +2,7 @@ import { execFileSync } from 'node:child_process'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { runInNewContext } from 'node:vm'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { activeRunContext, runDash } from '../src/dash/dash'
 
@@ -24,6 +25,22 @@ const dash = async (minute: number, ...args: string[]): Promise<number> => {
 
 const runDir = (): string => join(root, '.jig', 'runs', 'feat_dash-x')
 const readRunJson = (): unknown => JSON.parse(readFileSync(join(runDir(), 'run.json'), 'utf8'))
+
+const drawPage = (page: string): { lang: string; html: string } => {
+  const data = /<script type="application\/json" id="run">([\s\S]*?)<\/script>/.exec(page)?.[1] ?? ''
+  const script = /<script>([\s\S]*?)<\/script>/.exec(page)?.[1] ?? ''
+  const app = { innerHTML: '' }
+  const htmlElement = { lang: '' }
+  const document = {
+    title: '',
+    documentElement: htmlElement,
+    body: { classList: { toggle: () => false } },
+    getElementById: (id: string) => (id === 'run' ? { textContent: data } : app),
+    querySelector: () => ({}),
+  }
+  runInNewContext(script, { document, localStorage: { getItem: () => null } })
+  return { lang: htmlElement.lang, html: app.innerHTML }
+}
 
 beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), 'jig-dash-'))
@@ -90,6 +107,18 @@ describe('jig dash', () => {
     const page = readFileSync(join(runDir(), 'index.html'), 'utf8')
     const block = /<script type="application\/json" id="run">([\s\S]*?)<\/script>/.exec(page)
     expect(JSON.parse(block?.[1] ?? '')).toEqual(readRunJson())
+  })
+
+  it.each([
+    { title: 'Выпустить дашборд', lang: 'ru', label: 'сейчас здесь', foreign: 'now here' },
+    { title: 'Ship dash', lang: 'en', label: 'now here', foreign: 'сейчас здесь' },
+  ])('draws $lang labels for the run title "$title"', async ({ title, lang, label, foreign }) => {
+    await dash(0, 'init', title, 'Plan')
+
+    const drawn = drawPage(readFileSync(join(runDir(), 'index.html'), 'utf8'))
+    expect(drawn.lang).toBe(lang)
+    expect(drawn.html).toContain(label)
+    expect(drawn.html).not.toContain(foreign)
   })
 
   it('keeps an existing run when init repeats the same title and steps', async () => {
