@@ -1,9 +1,11 @@
-import { readdirSync, readFileSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { basename, join } from 'node:path'
-import { FrontmatterError, parseFrontmatter, type Frontmatter, type FrontmatterValue } from '../core/frontmatter'
+import { parseFrontmatter, type FrontmatterValue } from '../core/frontmatter'
 import { matchGlob } from '../core/glob'
 import { ensureJigDir, resolvePluginRoot, resolveProjectRoot, toSlash } from '../core/paths'
 import { buildPlan, readAtomIndex, writePlan, type PlanAtom } from '../core/plan'
+import { listMarkdown, parseMarkdownFile, readText } from './markdown'
+import { validateSkillDocs } from './skill-docs'
 
 type Command = (args: string[]) => number | Promise<number>
 
@@ -15,24 +17,6 @@ const MAX_BODY_LINES = 35
 const MAX_ATOMS_PER_EVENT = 3
 const MAX_SESSION_ATOMS = 10
 const ATOMS_LINE = /^\s*Atoms:(.*)$/gm
-
-const listMarkdown = (dir: string): string[] => {
-  try {
-    return readdirSync(dir)
-      .filter((name) => name.endsWith('.md'))
-      .sort()
-  } catch {
-    return []
-  }
-}
-
-const readText = (path: string): string => {
-  try {
-    return readFileSync(path, 'utf8')
-  } catch {
-    return ''
-  }
-}
 
 const reachableNames = (pluginRoot: string): Set<string> => {
   const skillDir = join(pluginRoot, 'skills', 'jig')
@@ -94,18 +78,9 @@ const checkDescription = (description: FrontmatterValue | undefined): string[] =
   return problems
 }
 
-const parseAtomFile = (text: string): Frontmatter | string => {
-  try {
-    return parseFrontmatter(text) ?? 'frontmatter is missing'
-  } catch (error) {
-    if (error instanceof FrontmatterError) return `frontmatter is invalid (${error.message})`
-    throw error
-  }
-}
-
 const checkAtom = (path: string, seen: Set<string>, reachable: Set<string>): string[] => {
   const fileName = basename(path, '.md')
-  const parsed = parseAtomFile(readText(path))
+  const parsed = parseMarkdownFile(readText(path))
   if (typeof parsed === 'string') return [parsed]
   const { data, body } = parsed
   const unknownKeys = Object.keys(data).filter((key) => !ALLOWED_KEYS.has(key))
@@ -171,7 +146,7 @@ export const runBuild: Command = (args) => {
     return 2
   }
   const pluginRoot = resolvePluginRoot()
-  const errors = validateAtoms(pluginRoot)
+  const errors = [...validateAtoms(pluginRoot), ...validateSkillDocs(pluginRoot)]
   if (errors.length > 0) {
     process.stdout.write(`${errors.join('\n')}\n`)
     return 1

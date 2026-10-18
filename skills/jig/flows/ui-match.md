@@ -1,3 +1,7 @@
+---
+name: ui-match
+description: "make UI match a reference: a design (Figma, an image) or an existing implementation."
+---
 # ui-match
 
 **You own matching the UI to a reference. The reference is the spec. You do not touch it.**

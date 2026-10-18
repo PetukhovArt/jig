@@ -1,3 +1,7 @@
+---
+name: session-pause
+description: "stop cleanly with a resume point."
+---
 # session-pause
 
 **You own a clean stop. Leave a checkpoint a cold-start agent can resume from.**

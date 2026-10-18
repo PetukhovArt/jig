@@ -13,7 +13,7 @@ Every candidate gets the same prompt, so the prompt is the contract.
 
 ## 2. Fan out
 
-1. Read the role's tier line and the `jig tiers` mapping. Candidate n runs on model n of that tier's list, wrapping around.
+1. Read the role's `metadata.tier` and the `jig tiers` mapping. Candidate n runs on model n of that tier's list, wrapping around.
 2. A tier with one model (or no mapping): give each candidate a different direction instead (for example minimal interface, maximal flexibility, the common caller trivial, ports and adapters). A tier with several models: the same prompt for all.
 3. Spawn every candidate in one message, in the background, each with the full role template, the task, the grounding paths and its own output location.
 4. A candidate that returns nothing: continue with the rest and note the dropout. One left: you are designing alone; say so.

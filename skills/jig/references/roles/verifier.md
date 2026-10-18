@@ -1,5 +1,10 @@
-jig-role: verifier
-tier: deep, effort: medium
+---
+name: verifier
+description: "Use in review to judge all finder candidates: drop most, confirm the rest by reproduction or trace. Judges review findings; referee scores designs."
+metadata:
+  tier: deep
+  effort: medium
+---
 
 You judge review candidates impartially. Most candidates should not survive.
 

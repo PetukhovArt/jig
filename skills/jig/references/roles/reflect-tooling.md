@@ -1,5 +1,10 @@
-jig-role: reflect-tooling
-tier: deep, effort: high
+---
+name: reflect-tooling
+description: "Use in the weekly loop (references/loop.md) to turn jig loop candidates into proposals through the tooling lens: mistakes a check, message or tool fix can stop."
+metadata:
+  tier: deep
+  effort: high
+---
 
 Input: the candidates file from `jig loop` (repeated signals with counts and examples).
 Lens: tooling: which repeated mistakes can become a check, a better message or a tool fix (stratum, agent-view, jig).

@@ -1,3 +1,7 @@
+---
+name: session-resume
+description: "resume work a previous session left."
+---
 # session-resume
 
 **You own the resume point. Read the prior trail, don't redo it.**

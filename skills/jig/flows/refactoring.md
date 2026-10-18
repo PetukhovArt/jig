@@ -1,3 +1,7 @@
+---
+name: refactoring
+description: "change structure, keep behavior, prove equivalence."
+---
 # refactoring
 
 **You own the contract. The structure changes. The behavior does not.**

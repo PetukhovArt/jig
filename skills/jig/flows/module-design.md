@@ -1,3 +1,7 @@
+---
+name: module-design
+description: "ground, sketch two shapes in parallel, pick by depth, implement against the sketch."
+---
 # module-design
 
 **You own the shape. Ground, sketch twice, implement against the sketch.**

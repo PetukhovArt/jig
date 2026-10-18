@@ -1,3 +1,7 @@
+---
+name: perf
+description: "measure, explain the limiter, fix, measure again."
+---
 # perf
 
 **You own the measurement story. Plan, review, verify the numbers.**

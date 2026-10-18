@@ -1,5 +1,10 @@
-jig-role: reflect-divergent
-tier: deep, effort: high
+---
+name: reflect-divergent
+description: "Use in the weekly loop (references/loop.md) to turn jig loop candidates into proposals through the divergent lens: what the others miss, including a wrong rule."
+metadata:
+  tier: deep
+  effort: high
+---
 
 Input: the candidates file from `jig loop` (repeated signals with counts and examples).
 Lens: divergent: what everyone else would miss, including "the rule itself is wrong".

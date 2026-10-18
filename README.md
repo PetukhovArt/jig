@@ -58,7 +58,9 @@ A runtime check maps each changed file to the proof kinds it needs: `behavior` (
 
 Without `/jig`, only the hooks and path-matched atoms run, and a small task goes in one shot. `/jig <task>` (fallback `/jig:jig`) is invoked by the user only. It restates the task with a done check, picks a flow, copies the flow's steps into the todo list and opens a run page with `jig dash init`.
 
-Flows (`skills/jig/flows/`): `investigation`, `bug-fix`, `feature`, `module-design`, `refactoring`, `perf`, `prototype`, `ui-match`, `review`, `bug-bash`, `mr-watching`, `afk-mode`, `session-resume`, `session-pause`. Every code-changing flow ends with the shared `mr` step. Subagent roles are templates in `skills/jig/references/roles/`; each template names a model tier, and `jig tiers` maps it to the agent's models (built-in for Claude Code, overridable in `~/.jig/config.jsonc`).
+Flows (`skills/jig/flows/`): `investigation`, `bug-fix`, `feature`, `module-design`, `refactoring`, `perf`, `prototype`, `ui-match`, `review`, `bug-bash`, `mr-watching`, `afk-mode`, `session-resume`, `session-pause`. Every code-changing flow ends with the shared `mr` step. Subagent roles are templates in `skills/jig/references/roles/`; each template names a model tier and an effort (`metadata.tier`, `metadata.effort`), and `jig tiers` maps the tier to the agent's models (built-in for Claude Code, overridable in `~/.jig/config.jsonc`).
+
+Flows and role templates carry frontmatter, `name` and a one-line `description`, so an agent sees what each is for without opening it. `npm run build` generates the flow list in `skills/jig/SKILL.md` and the role index `skills/jig/references/roles.md` from it, next to the atom index `skills/jig/references/atoms.md`; `jig build` rejects a role or flow mention that names no file and a role no flow or reference spawns.
 
 Other skills: `jig-slots` (model or user), `jig-explain` and `jig-video` (user only).
 
@@ -106,7 +108,7 @@ Run as `node <plugin root>/bin/jig.mjs <command>`.
 | Command | What it does |
 | --- | --- |
 | `check edit <file>` / `check stop` | findings for one file / the end-of-turn gate against HEAD |
-| `build [--atoms-only] [--check]` | validates atoms; without `--atoms-only`, writes the tool plan to `.jig/cache/plan.json` |
+| `build [--atoms-only] [--check]` | validates atoms, role templates and flows; without `--atoms-only`, writes the tool plan to `.jig/cache/plan.json` |
 | `atom <name>` | prints an atom |
 | `slot new [--slug <s>] [--branch <b>]` | creates a worktree slot with offset ports and its own `agent-view.config.json` |
 | `slot ls [--json]` | slots and their ports |

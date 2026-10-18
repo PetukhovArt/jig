@@ -1,4 +1,6 @@
-export type FrontmatterValue = string | string[]
+export type FrontmatterMap = Readonly<Record<string, string>>
+
+export type FrontmatterValue = string | string[] | FrontmatterMap
 
 export interface Frontmatter {
   data: Record<string, FrontmatterValue>
@@ -19,6 +21,7 @@ export class FrontmatterError extends Error {
 const FENCE = '---'
 const KEY_LINE = /^([A-Za-z_][\w-]*):(?:\s+(.*))?$/
 const LIST_ITEM = /^\s*-\s+(.*)$/
+const MAP_ENTRY = /^(\s+)([A-Za-z_][\w-]*):(?:\s+(.*))?$/
 const DOUBLE_QUOTE_ESCAPES: Record<string, string> = { '"': '"', '\\': '\\', '/': '/', n: '\n', t: '\t', r: '\r', '0': '\0' }
 
 interface Cursor {
@@ -130,7 +133,7 @@ const readFlowArray = (cursor: Cursor): string[] => {
   return fail(cursor, 'unterminated array')
 }
 
-const readInlineValue = (cursor: Cursor): FrontmatterValue => {
+const readInlineValue = (cursor: Cursor): string | string[] => {
   const char = cursor.text[cursor.index]
   const isQuoted = char === '"' || char === "'"
   const isArray = char === '['
@@ -148,6 +151,52 @@ const readScalar = (text: string, line: number): string => {
 }
 
 const isSkippable = (line: string): boolean => line.trim() === '' || line.trimStart().startsWith('#')
+
+interface BlockValue {
+  value: FrontmatterValue
+  next: number
+}
+
+const readList = (lines: string[], from: number, firstLine: number): BlockValue => {
+  const items: string[] = []
+  let index = from
+  while (index < lines.length) {
+    const line = lines[index] ?? ''
+    const item = LIST_ITEM.exec(line)
+    if (!item && !isSkippable(line)) break
+    index++
+    if (item) items.push(readScalar(item[1] ?? '', firstLine + index - 1))
+  }
+  return { value: items, next: index }
+}
+
+const readMap = (lines: string[], from: number, firstLine: number, indent: string): BlockValue => {
+  const map: Record<string, string> = {}
+  let index = from
+  while (index < lines.length) {
+    const line = lines[index] ?? ''
+    const entry = MAP_ENTRY.exec(line)
+    if (!entry && !isSkippable(line)) break
+    index++
+    if (!entry) continue
+    const cursor: Cursor = { text: line, index: 0, line: firstLine + index - 1 }
+    const key = entry[2] ?? ''
+    const inline = entry[3]?.trim() ?? ''
+    if (entry[1] !== indent) fail(cursor, `inconsistent indentation before "${key}"`)
+    if (Object.hasOwn(map, key)) fail(cursor, `duplicate key "${key}"`)
+    if (inline === '' || inline.startsWith('#')) fail(cursor, `"${key}" needs a string value`)
+    map[key] = readScalar(inline, cursor.line)
+  }
+  return { value: map, next: index }
+}
+
+const readBlockValue = (lines: string[], from: number, firstLine: number): BlockValue => {
+  const first = lines.slice(from).find((line) => !isSkippable(line)) ?? ''
+  if (LIST_ITEM.test(first)) return readList(lines, from, firstLine)
+  const entry = MAP_ENTRY.exec(first)
+  if (entry) return readMap(lines, from, firstLine, entry[1] ?? '')
+  return { value: '', next: from }
+}
 
 const parseBlock = (lines: string[], firstLine: number): Record<string, FrontmatterValue> => {
   const data: Record<string, FrontmatterValue> = {}
@@ -168,16 +217,9 @@ const parseBlock = (lines: string[], firstLine: number): Record<string, Frontmat
       data[key] = readInlineValue({ text: inline, index: 0, line: lineNumber })
       continue
     }
-    const items: string[] = []
-    while (index < lines.length) {
-      const itemLine = lines[index] ?? ''
-      const item = LIST_ITEM.exec(itemLine)
-      if (!item && !isSkippable(itemLine)) break
-      index++
-      if (!item) continue
-      items.push(readScalar(item[1] ?? '', firstLine + index - 1))
-    }
-    data[key] = items.length > 0 ? items : ''
+    const block = readBlockValue(lines, index, firstLine)
+    data[key] = block.value
+    index = block.next
   }
   return data
 }

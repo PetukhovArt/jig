@@ -1,3 +1,7 @@
+---
+name: mr-watching
+description: "drive your open merge requests through conflicts, threads and CI."
+---
 # mr-watching
 
 **You own the merge frontier. Clear one merge request at a time and stop where the human's call begins.**

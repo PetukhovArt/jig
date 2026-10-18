@@ -1,3 +1,7 @@
+---
+name: investigation
+description: "understand code or a decision without changing it."
+---
 # investigation
 
 **You own the answer. Plan, route, write.**

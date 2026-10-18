@@ -1,3 +1,7 @@
+---
+name: feature
+description: "build new behavior with the right data shape and prove it on the running product."
+---
 # feature
 
 **You own the design. Plan, review, verify.**

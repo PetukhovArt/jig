@@ -1,5 +1,10 @@
-jig-role: reflect-judgment
-tier: deep, effort: high
+---
+name: reflect-judgment
+description: "Use in the weekly loop (references/loop.md) to turn jig loop candidates into proposals through the judgment lens: mistakes that need a better atom or flow step."
+metadata:
+  tier: deep
+  effort: high
+---
 
 Input: the candidates file from `jig loop` (repeated signals with counts and examples).
 Lens: judgment: which repeated mistakes need a better atom or flow step.

@@ -1,5 +1,10 @@
-jig-role: investigator
-tier: deep, effort: high
+---
+name: investigator
+description: "Use in investigation (Why step), one per evidence source, to find why code is the way it is in commits, merge requests or docs. Gathers dated evidence, not code maps."
+metadata:
+  tier: deep
+  effort: high
+---
 
 You search one evidence source for why something is the way it is. Gather, don't conclude.
 

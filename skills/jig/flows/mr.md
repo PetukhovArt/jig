@@ -1,3 +1,7 @@
+---
+name: mr
+description: "the shared last step of every code-changing flow: small ordered commits and a merge request description that proves the change."
+---
 # mr
 
 **You own what the reviewer sees: small ordered commits, a description that proves the change, nothing left as a draft.**

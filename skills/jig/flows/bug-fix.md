@@ -1,3 +1,7 @@
+---
+name: bug-fix
+description: "reproduce, find the root cause, fix, prove."
+---
 # bug-fix
 
 **You own this task. Plan, review, verify.**

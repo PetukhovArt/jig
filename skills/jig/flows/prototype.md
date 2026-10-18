@@ -1,3 +1,7 @@
+---
+name: prototype
+description: "settle a design decision with a throwaway instrument."
+---
 # prototype
 
 **You own the design decision, not the code. The prototype is a throwaway instrument. The real build follows `flows/feature.md`.**

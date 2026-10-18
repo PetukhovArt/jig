@@ -16,6 +16,7 @@ describe('parseFrontmatter', () => {
     ['empty flow array', doc('---', 'paths: []', '---'), { paths: [] }],
     ['comma inside quoted item', doc('---', 'paths: ["{a,b}/*.ts"]', '---'), { paths: ['{a,b}/*.ts'] }],
     ['block array', doc('---', 'paths:', '  - "a/**"', '  - b/*.ts', 'name: x', '---'), { paths: ['a/**', 'b/*.ts'], name: 'x' }],
+    ['nested map', doc('---', 'metadata:', '  tier: deep', '', '  # c', "  effort: 'high'", 'name: x', '---'), { metadata: { tier: 'deep', effort: 'high' }, name: 'x' }],
     ['empty value', doc('---', 'a:', '---'), { a: '' }],
     ['blank and comment lines', doc('---', '', '# c', 'a: 1', '---'), { a: '1' }],
     ['crlf line endings', '---\r\nname: x\r\n---\r\nbody', { name: 'x' }],
@@ -41,6 +42,10 @@ describe('parseFrontmatter', () => {
     ['unterminated array', doc('---', 'a: ["x", "y"', '---'), 2],
     ['text after quoted value', doc('---', 'a: "x" y', '---'), 2],
     ['invalid escape', doc('---', 'a: "\\q"', '---'), 2],
+    ['map entry without a value', doc('---', 'metadata:', '  tier: deep', '  effort:', '---'), 4],
+    ['inconsistent map indentation', doc('---', 'metadata:', '  tier: deep', '    effort: high', '---'), 4],
+    ['duplicate map key', doc('---', 'metadata:', '  tier: deep', '  tier: fast', '---'), 4],
+    ['array in a map', doc('---', 'metadata:', '  tier: [deep]', '---'), 3],
   ])('rejects %s with its line', (_name, text, line) => {
     let caught: unknown
     try {

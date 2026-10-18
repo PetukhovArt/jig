@@ -1,3 +1,7 @@
+---
+name: review
+description: "review a merge request (yours or someone else's) and post proven findings."
+---
 # review
 
 **You own the verdict, not the diff. Find aggressively, judge separately, prove every finding.**

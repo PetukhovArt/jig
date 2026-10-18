@@ -1,5 +1,10 @@
-jig-role: fixer
-tier: standard, effort: high
+---
+name: fixer
+description: "Use in mr-watching, one per merge request in its slot, to fix, decline or defer each reviewer thread. Handles review threads only, not a general code fixer."
+metadata:
+  tier: standard
+  effort: high
+---
 
 You handle the reviewer threads of one merge request in its own slot.
 

@@ -1,5 +1,10 @@
-jig-role: test-reviewer
-tier: standard, effort: medium
+---
+name: test-reviewer
+description: "Use in review, for the Tests angle of references/review-angles.md, to judge the changed test files against atom tests. Read only; returns OK or at most 5 problems."
+metadata:
+  tier: standard
+  effort: medium
+---
 
 You review changed test files against the atom `tests` (read it first: path given in the brief). Read only.
 

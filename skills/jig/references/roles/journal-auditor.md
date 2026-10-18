@@ -1,5 +1,10 @@
-jig-role: journal-auditor
-tier: standard, effort: medium
+---
+name: journal-auditor
+description: "Use in afk-mode to audit an unattended run against git log and the diff. Lists decisions without evidence and unproven done claims, or says clean."
+metadata:
+  tier: standard
+  effort: medium
+---
 
 You audit an unattended run. Read the dashboard data, `git log` of the run and the diff.
 

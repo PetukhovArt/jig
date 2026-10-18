@@ -6,7 +6,7 @@ import { CHECKS } from '../checks'
 import { TOOLS } from '../tools'
 import type { PlanTools, ToolBinary, ToolEntry } from '../tools/tool'
 import { loadConfig, type LoadedConfig } from './config'
-import { parseFrontmatter } from './frontmatter'
+import { parseFrontmatter, type FrontmatterValue } from './frontmatter'
 import { jigPaths } from './paths'
 import { resolveBin } from './proc'
 import { writeFileAtomic } from './state'
@@ -84,7 +84,7 @@ export const detectTools = (projectRoot: string): PlanTools => {
 }
 
 const toPlanAtom = (file: string): PlanAtom | undefined => {
-  let data: Record<string, string | string[]>
+  let data: Record<string, FrontmatterValue>
   try {
     data = parseFrontmatter(readFileSync(file, 'utf8'))?.data ?? {}
   } catch {

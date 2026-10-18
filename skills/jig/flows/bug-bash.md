@@ -1,3 +1,7 @@
+---
+name: bug-bash
+description: "attack a feature in the running app and report reproduced bugs."
+---
 # bug-bash
 
 **You own the attack, not the fix. A bug is reported only after it reproduced twice through the UI.**

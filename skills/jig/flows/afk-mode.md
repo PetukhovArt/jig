@@ -1,3 +1,7 @@
+---
+name: afk-mode
+description: "work unattended toward a checkable done condition."
+---
 # afk-mode
 
 **You own the exit condition. Define done, then drive to it without stopping.**
