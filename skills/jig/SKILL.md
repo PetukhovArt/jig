@@ -34,7 +34,7 @@ CLI: `node <root>/bin/jig.mjs <command>`. Atoms: `<root>/atoms/<name>.md`. Flows
 - `refactoring`: change structure, keep behavior, prove equivalence.
 - `perf`: measure, explain the limiter, fix, measure again.
 - `prototype`: settle a design decision with a throwaway instrument.
-- `ui-match`: make UI match a baseline or a UI design pixel for pixel.
+- `ui-match`: make UI match a reference: a design (Figma, an image) or an existing implementation.
 - `review`: review a merge request (yours or someone else's) and post proven findings.
 - `bug-bash`: attack a feature in the running app and report reproduced bugs.
 - `mr-watching`: drive your open merge requests through conflicts, threads and CI.
