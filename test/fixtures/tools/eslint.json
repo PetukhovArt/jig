@@ -1,0 +1,96 @@
+[
+  {
+    "filePath": "ROOT/src/c.js",
+    "messages": [
+      {
+        "ruleId": "no-unused-vars",
+        "severity": 2,
+        "message": "'unused' is assigned a value but never used.",
+        "line": 1,
+        "column": 7,
+        "nodeType": "Identifier",
+        "messageId": "unusedVar",
+        "endLine": 1,
+        "endColumn": 13,
+        "suggestions": [
+          {
+            "messageId": "removeVar",
+            "data": {
+              "varName": "unused"
+            },
+            "fix": {
+              "range": [
+                0,
+                16
+              ],
+              "text": ""
+            },
+            "desc": "Remove unused variable 'unused'."
+          }
+        ]
+      },
+      {
+        "ruleId": "no-console",
+        "severity": 1,
+        "message": "Unexpected console statement.",
+        "line": 2,
+        "column": 1,
+        "nodeType": "MemberExpression",
+        "messageId": "unexpected",
+        "endLine": 2,
+        "endColumn": 12,
+        "suggestions": [
+          {
+            "fix": {
+              "range": [
+                17,
+                33
+              ],
+              "text": ""
+            },
+            "messageId": "removeConsole",
+            "data": {
+              "propertyName": "log"
+            },
+            "desc": "Remove the console.log()."
+          }
+        ]
+      },
+      {
+        "ruleId": "eqeqeq",
+        "severity": 2,
+        "message": "Expected '===' and instead saw '=='.",
+        "line": 3,
+        "column": 31,
+        "nodeType": "BinaryExpression",
+        "messageId": "unexpected",
+        "endLine": 3,
+        "endColumn": 33,
+        "suggestions": [
+          {
+            "messageId": "replaceOperator",
+            "data": {
+              "expectedOperator": "===",
+              "actualOperator": "=="
+            },
+            "fix": {
+              "range": [
+                64,
+                66
+              ],
+              "text": "==="
+            },
+            "desc": "Use '===' instead of '=='."
+          }
+        ]
+      }
+    ],
+    "suppressedMessages": [],
+    "errorCount": 2,
+    "fatalErrorCount": 0,
+    "warningCount": 1,
+    "fixableErrorCount": 0,
+    "fixableWarningCount": 0,
+    "usedDeprecatedRules": []
+  }
+]

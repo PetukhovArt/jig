@@ -22,6 +22,8 @@ import { checkNoVerify } from '../rules/no-verify'
 import { checkProtectedPath, checkShellWrite } from '../rules/protected'
 import type { Edit } from '../rules/rule'
 import { checkSuppressions } from '../rules/suppressions'
+import { checkEdit } from '../gates/edit'
+import { stopGate } from '../gates/stop'
 import {
   collapseFindings,
   formatDenial,
@@ -263,7 +265,7 @@ const preBash = (event: EventOf<'pre-bash'>, ctx: HookContext): Outcome => {
     config = loadConfig(ctx.projectRoot)
     return checkNoVerify(event.command, { projectRoot: ctx.projectRoot, sessionId: ctx.sessionId, config })
   }
-  const shellWrite: Check = () => (config === undefined ? undefined : checkShellWrite(event.command, config))
+  const shellWrite: Check = () => (config === undefined ? undefined : checkShellWrite(event.command, config, { projectRoot: ctx.projectRoot, cwd: ctx.cwd }))
   return runChecks(ctx, guard, [shellWrite])
 }
 
@@ -276,7 +278,26 @@ const testChecklist = (pluginRoot: string): string =>
     '4. Trivial code (a getter, a re-export, a wrapper) gets no test.',
   ].join('\n')
 
-const postEdit = (event: EventOf<'post-edit'>, ctx: HookContext): Outcome => {
+const editToolFindings = async (ctx: HookContext, file: string): Promise<Finding[]> => {
+  let runs: Awaited<ReturnType<typeof checkEdit>>
+  try {
+    runs = await checkEdit(loadPlan(ctx.projectRoot, ctx.pluginRoot), ctx.projectRoot, file)
+  } catch (error) {
+    journalFailure(ctx, error)
+    return []
+  }
+  for (const toolRun of runs) {
+    if (toolRun.failure !== undefined) {
+      journal(ctx, { kind: 'tool-failure', tool: toolRun.tool, file, message: toolRun.failure, durationMs: toolRun.durationMs })
+    }
+    for (const finding of toolRun.findings) {
+      journal(ctx, { kind: 'finding', tool: finding.tool, rule: finding.rule, file: finding.file, line: finding.line, message: finding.message })
+    }
+  }
+  return runs.flatMap((toolRun) => toolRun.findings)
+}
+
+const postEdit = async (event: EventOf<'post-edit'>, ctx: HookContext): Promise<Outcome> => {
   const now = Date.now()
   const state = openSession(ctx)
   state.edits.push({ path: event.file, at: now, agent: ctx.agent })
@@ -291,7 +312,7 @@ const postEdit = (event: EventOf<'post-edit'>, ctx: HookContext): Outcome => {
   if (isRuntimeVisible(event.file)) {
     state.lastRuntimeEditAt = now
   }
-  const toolFindings: Finding[] = []
+  const toolFindings = await editToolFindings(ctx, event.file)
   const toolLines = collapseFindings(toolFindings)
   const findingLines = [...toolLines, ...state.pendingWarnings]
   const shown = limitLines(findingLines, POST_EDIT_LINE_LIMIT, ctx.pluginRoot)
@@ -342,7 +363,15 @@ const subagentStart = (ctx: HookContext): Outcome => {
   return { type: 'context', text: formatSessionAtoms(atoms, ctx.pluginRoot) }
 }
 
-const stop = (): Outcome => NONE
+const stop = async (event: EventOf<'stop'>, ctx: HookContext): Promise<Outcome> => {
+  const state = openSession(ctx)
+  const verdict = await stopGate({ projectRoot: ctx.projectRoot, pluginRoot: ctx.pluginRoot, state, stopHookActive: event.stopHookActive })
+  writeState(ctx.projectRoot, state)
+  for (const note of verdict.notes) {
+    journal(ctx, note)
+  }
+  return verdict.outcome
+}
 
 const route = (event: JigEvent, ctx: HookContext): Outcome | Promise<Outcome> => {
   switch (event.kind) {
@@ -365,7 +394,7 @@ const route = (event: JigEvent, ctx: HookContext): Outcome | Promise<Outcome> =>
     case 'subagent-start':
       return subagentStart({ ...ctx, agent: event.agentId })
     case 'stop':
-      return stop()
+      return stop(event, ctx)
   }
 }
 

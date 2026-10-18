@@ -1,0 +1,30 @@
+{
+  "diagnostics": [
+    {
+      "message": "'unused' is declared but never used.",
+      "code": "eslint(no-unused-vars)",
+      "severity": "warning",
+      "causes": [],
+      "url": "https://oxc.rs/docs/guide/usage/linter/rules/eslint/no-unused-vars.html",
+      "help": "Consider removing this declaration.",
+      "filename": "src/a.ts",
+      "labels": [{ "label": "'unused' is declared here", "span": { "offset": 6, "length": 6, "line": 1, "column": 7 } }],
+      "related": []
+    },
+    {
+      "message": "Unexpected `debugger` statement",
+      "code": "eslint(no-debugger)",
+      "severity": "error",
+      "causes": [],
+      "url": "https://oxc.rs/docs/guide/usage/linter/rules/eslint/no-debugger.html",
+      "help": "Remove the debugger statement",
+      "filename": "src/a.ts",
+      "labels": [{ "span": { "offset": 40, "length": 9, "line": 3, "column": 3 } }],
+      "related": []
+    }
+  ],
+  "number_of_files": 1,
+  "number_of_rules": 101,
+  "threads_count": 8,
+  "start_time": 0.004
+}

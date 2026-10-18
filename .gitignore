@@ -152,3 +152,4 @@ vite.config.ts.timestamp-*
 evals/**/results/
 evals/_toolchain/
 evals/private/
+.jig/

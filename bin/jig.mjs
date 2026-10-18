@@ -628,11 +628,15 @@ var loadConfig = (projectRoot) => {
 };
 
 // src/core/proc.ts
+import { spawn } from "node:child_process";
 import { existsSync as existsSync3, mkdirSync as mkdirSync2, readFileSync as readFileSync2, realpathSync, rmSync, statSync, writeFileSync as writeFileSync2 } from "node:fs";
+import { setPriority } from "node:os";
 import { basename, delimiter, dirname as dirname2, extname, isAbsolute as isAbsolute2, join as join2, relative as relative2, resolve as resolve2 } from "node:path";
+var LOW_PRIORITY = 10;
 var LOCK_WAIT_MS = 15e3;
 var LOCK_STALE_MS = 5 * 60 * 1e3;
 var LOCK_POLL_MS = 200;
+var KILL_GRACE_MS = 1e3;
 var MAX_OUTPUT_BYTES = 32 * 1024 * 1024;
 var readPackageJson = (path) => {
   try {
@@ -738,6 +742,64 @@ var findUnresolvedShim = (name, env = process.env) => {
   const found = findInPath(name, env);
   const isUnresolved = found !== void 0 && isShim(found) && resolveShimTarget(found) === void 0;
   return isUnresolved ? found : void 0;
+};
+var lowerPriority = (pid) => {
+  if (pid === void 0) return;
+  try {
+    setPriority(pid, LOW_PRIORITY);
+  } catch {
+    return;
+  }
+};
+var run = (argv, options) => {
+  const [command, ...args] = argv;
+  const startedAt = Date.now();
+  if (command === void 0) {
+    return Promise.resolve({ code: null, stdout: "", stderr: "", timedOut: false, error: "empty argv", durationMs: 0 });
+  }
+  return new Promise((resolveRun) => {
+    const child = spawn(command, args, {
+      cwd: options.cwd,
+      env: options.env ?? process.env,
+      windowsHide: true,
+      stdio: ["pipe", "pipe", "pipe"]
+    });
+    lowerPriority(child.pid);
+    const stdout = [];
+    const stderr = [];
+    let outputBytes = 0;
+    let timedOut = false;
+    let spawnError;
+    const collect = (target) => (chunk) => {
+      outputBytes += chunk.length;
+      if (outputBytes <= MAX_OUTPUT_BYTES) {
+        target.push(chunk);
+      }
+    };
+    child.stdout.on("data", collect(stdout));
+    child.stderr.on("data", collect(stderr));
+    child.stdin.on("error", () => void 0);
+    child.stdin.end(options.input ?? "");
+    const timer = setTimeout(() => {
+      timedOut = true;
+      child.kill();
+      setTimeout(() => child.kill("SIGKILL"), KILL_GRACE_MS).unref();
+    }, options.timeoutMs);
+    child.on("error", (error) => {
+      spawnError = error.message;
+    });
+    child.on("close", (code) => {
+      clearTimeout(timer);
+      const result = {
+        code,
+        stdout: Buffer.concat(stdout).toString("utf8"),
+        stderr: Buffer.concat(stderr).toString("utf8"),
+        timedOut,
+        durationMs: Date.now() - startedAt
+      };
+      resolveRun(spawnError === void 0 ? result : { ...result, error: spawnError });
+    });
+  });
 };
 var isAlive = (pid) => {
   try {
@@ -1247,19 +1309,19 @@ var readRun = (path) => {
   const value = JSON.parse(text2);
   return isRun(value) ? value : void 0;
 };
-var isActive = (run2, now) => now.getTime() - Date.parse(run2.updatedAt) < ACTIVE_RUN_MAX_AGE_MS;
+var isActive = (run3, now) => now.getTime() - Date.parse(run3.updatedAt) < ACTIVE_RUN_MAX_AGE_MS;
 var readActiveRun = (projectRoot, now = /* @__PURE__ */ new Date()) => {
   const location = runLocation(projectRoot);
-  const run2 = readRun(location.data);
-  if (run2 === void 0 || !isActive(run2, now)) return void 0;
-  return { run: run2, page: toSlash(location.page) };
+  const run3 = readRun(location.data);
+  if (run3 === void 0 || !isActive(run3, now)) return void 0;
+  return { run: run3, page: toSlash(location.page) };
 };
-var currentStep = (run2) => {
+var currentStep = (run3) => {
   for (const status of CURRENT_STEP_ORDER) {
-    const step = run2.steps.find((candidate) => candidate.status === status);
+    const step = run3.steps.find((candidate) => candidate.status === status);
     if (step) return step;
   }
-  return run2.steps.at(-1);
+  return run3.steps.at(-1);
 };
 var activeRunContext = (projectRoot, now = /* @__PURE__ */ new Date()) => {
   const active = readActiveRun(projectRoot, now);
@@ -1268,17 +1330,17 @@ var activeRunContext = (projectRoot, now = /* @__PURE__ */ new Date()) => {
   const stepPart = step ? `step ${step.n} "${step.title}"` : "no steps";
   return `jig: flow run "${active.run.title}", ${stepPart}, dashboard ${active.page}`;
 };
-var renderPage = (run2) => {
-  const json = JSON.stringify(run2, null, 2).replace(/</g, "\\u003c");
+var renderPage = (run3) => {
+  const json = JSON.stringify(run3, null, 2).replace(/</g, "\\u003c");
   return template_default.replace(RUN_BLOCK, (_match, open, _body, close) => `${open}
 ${json}
 ${close}`);
 };
-var saveRun = (location, run2) => {
+var saveRun = (location, run3) => {
   mkdirSync5(dirname4(location.data), { recursive: true });
-  writeFileAtomic(location.data, `${JSON.stringify(run2, null, 2)}
+  writeFileAtomic(location.data, `${JSON.stringify(run3, null, 2)}
 `);
-  writeFileAtomic(location.page, renderPage(run2));
+  writeFileAtomic(location.page, renderPage(run3));
 };
 var required2 = (value, what) => {
   if (value === void 0 || value === "") throw usage(`${what} is required`);
@@ -1290,14 +1352,14 @@ var parseNumber = (value, what) => {
   if (!Number.isInteger(n) || n < 1) throw new DashFailure(EXIT_NOT_MET, `${what} must be a positive integer, got ${text2}`);
   return n;
 };
-var stepAt = (run2, n) => {
-  const step = run2.steps.find((candidate) => candidate.n === n);
-  if (step === void 0) throw new DashFailure(EXIT_NOT_MET, `no step ${n}, the run has ${run2.steps.length}`);
+var stepAt = (run3, n) => {
+  const step = run3.steps.find((candidate) => candidate.n === n);
+  if (step === void 0) throw new DashFailure(EXIT_NOT_MET, `no step ${n}, the run has ${run3.steps.length}`);
   return step;
 };
 var nextNumber = (items) => items.reduce((max, item) => Math.max(max, item.n), 0) + 1;
-var setStep = (run2, [nText, status, waitsFor], at) => {
-  const step = stepAt(run2, parseNumber(nText, "step number"));
+var setStep = (run3, [nText, status, waitsFor], at) => {
+  const step = stepAt(run3, parseNumber(nText, "step number"));
   delete step.waitsFor;
   step.at = at;
   if (status === "blocked") {
@@ -1310,8 +1372,8 @@ var setStep = (run2, [nText, status, waitsFor], at) => {
   step.status = status;
   return "ok";
 };
-var addStep = (run2, [title], at) => {
-  run2.steps.push({ n: nextNumber(run2.steps), title: required2(title, "step title"), status: "todo", at });
+var addStep = (run3, [title], at) => {
+  run3.steps.push({ n: nextNumber(run3.steps), title: required2(title, "step title"), status: "todo", at });
   return "ok";
 };
 var parseDecisionFlags = (args) => {
@@ -1323,14 +1385,14 @@ var parseDecisionFlags = (args) => {
   }
   return flags;
 };
-var addDecision = (run2, [text2, ...rest], at) => {
+var addDecision = (run3, [text2, ...rest], at) => {
   const flags = parseDecisionFlags(rest);
   const why = flags.get("--why");
   const evidence = flags.get("--evidence");
   const result = flags.get("--result");
   if (result !== void 0 && !DECISION_RESULTS.has(result)) throw usage(`--result must be kept or reverted, got ${result}`);
-  run2.decisions.push({
-    n: nextNumber(run2.decisions),
+  run3.decisions.push({
+    n: nextNumber(run3.decisions),
     text: required2(text2, "decision text"),
     ...why === void 0 ? {} : { why },
     ...evidence === void 0 ? {} : { evidence },
@@ -1339,23 +1401,23 @@ var addDecision = (run2, [text2, ...rest], at) => {
   });
   return "ok";
 };
-var addResult = (run2, [title, href], at) => {
-  run2.results.push({ title: required2(title, "result title"), ...href ? { href } : {}, at });
+var addResult = (run3, [title, href], at) => {
+  run3.results.push({ title: required2(title, "result title"), ...href ? { href } : {}, at });
   return "ok";
 };
-var addAsk = (run2, [question, fallback], at) => {
-  const n = nextNumber(run2.asks);
-  run2.asks.push({ n, question: required2(question, "question"), default: required2(fallback, "default answer"), askedAt: at });
+var addAsk = (run3, [question, fallback], at) => {
+  const n = nextNumber(run3.asks);
+  run3.asks.push({ n, question: required2(question, "question"), default: required2(fallback, "default answer"), askedAt: at });
   return String(n);
 };
-var answerAsk = (run2, [nText, answer], at) => {
+var answerAsk = (run3, [nText, answer], at) => {
   const n = parseNumber(nText, "question number");
   const text2 = required2(answer, "answer");
-  const ask = run2.asks.find((candidate) => candidate.n === n && candidate.answer === void 0);
+  const ask = run3.asks.find((candidate) => candidate.n === n && candidate.answer === void 0);
   if (ask === void 0) throw new DashFailure(EXIT_NOT_MET, `no open question ${n}`);
   ask.answer = text2;
   ask.answeredAt = at;
-  run2.decisions.push({ n: nextNumber(run2.decisions), text: `${ask.question} ${text2}`, at });
+  run3.decisions.push({ n: nextNumber(run3.decisions), text: `${ask.question} ${text2}`, at });
   return "ok";
 };
 var MUTATIONS = /* @__PURE__ */ new Map([
@@ -1366,7 +1428,7 @@ var MUTATIONS = /* @__PURE__ */ new Map([
   ["ask", addAsk],
   ["answer", answerAsk]
 ]);
-var sameShape = (run2, title, steps) => run2.title === title && run2.steps.length === steps.length && run2.steps.every((step, index) => step.title === steps[index]);
+var sameShape = (run3, title, steps) => run3.title === title && run3.steps.length === steps.length && run3.steps.every((step, index) => step.title === steps[index]);
 var initRun = (projectRoot, location, [title, ...steps], now) => {
   const runTitle = required2(title, "run title");
   if (steps.length === 0) throw usage("init needs at least one step");
@@ -1374,7 +1436,7 @@ var initRun = (projectRoot, location, [title, ...steps], now) => {
   const at = now.toISOString();
   const existing = readRun(location.data);
   const isKept = existing !== void 0 && sameShape(existing, runTitle, steps);
-  const run2 = isKept ? { ...existing, updatedAt: at } : {
+  const run3 = isKept ? { ...existing, updatedAt: at } : {
     v: 1,
     title: runTitle,
     branch: location.branch,
@@ -1390,7 +1452,7 @@ var initRun = (projectRoot, location, [title, ...steps], now) => {
     results: [],
     asks: []
   };
-  saveRun(location, run2);
+  saveRun(location, run3);
   return toSlash(location.page);
 };
 var dispatch = (args, now) => {
@@ -1402,15 +1464,15 @@ var dispatch = (args, now) => {
   if (sub !== "path" && mutation === void 0) {
     throw usage(`unknown dash subcommand ${sub ?? "(none)"}, expected init, step, add, decision, result, ask, answer or path`);
   }
-  const run2 = readRun(location.data);
-  if (run2 === void 0 || !isActive(run2, now)) {
+  const run3 = readRun(location.data);
+  if (run3 === void 0 || !isActive(run3, now)) {
     throw new DashFailure(EXIT_NOT_MET, `no active run for branch ${location.branch}, start one with: dash init "<title>" "<step>"...`);
   }
   if (mutation === void 0) return toSlash(location.page);
   const at = now.toISOString();
-  const output = mutation(run2, rest, at);
-  run2.updatedAt = at;
-  saveRun(location, run2);
+  const output = mutation(run3, rest, at);
+  run3.updatedAt = at;
+  saveRun(location, run3);
   return output;
 };
 var runDash = (args) => {
@@ -1650,13 +1712,695 @@ var runDoctor = (args) => {
   return checks.some((check) => check.status === "fail") ? 1 : 0;
 };
 
-// src/hook/dispatch.ts
+// src/gates/stop.ts
+import { createHash as createHash4 } from "node:crypto";
+import { existsSync as existsSync5 } from "node:fs";
+import { join as join11 } from "node:path";
+
+// src/core/snapshot.ts
+import { createHash as createHash2 } from "node:crypto";
+import { statSync as statSync5 } from "node:fs";
+import { join as join9 } from "node:path";
+var stampOf = (absolutePath) => {
+  try {
+    const stat = statSync5(absolutePath);
+    return stat.isFile() ? { mtimeMs: stat.mtimeMs, size: stat.size } : void 0;
+  } catch {
+    return void 0;
+  }
+};
+var isInsideProject = (path) => path !== "" && !path.startsWith("../") && path !== "..";
+var changedFiles = (projectRoot) => {
+  const top = gitToplevel(projectRoot);
+  if (top === void 0) return [];
+  const entries = gitStatus(top) ?? [];
+  return entries.map((entry) => toProjectPath(projectRoot, join9(top, entry.path))).filter(isInsideProject);
+};
+var takeSnapshot = (projectRoot) => {
+  const snapshot = {};
+  for (const path of changedFiles(projectRoot)) {
+    const stamp = stampOf(join9(projectRoot, path));
+    if (stamp !== void 0) {
+      snapshot[path] = stamp;
+    }
+  }
+  return snapshot;
+};
+var isSameStamp = (left, right) => left !== void 0 && left.mtimeMs === right.mtimeMs && left.size === right.size;
+var diffFingerprint = (stamps) => {
+  const lines = Object.keys(stamps).sort().map((path) => `${path}:${stamps[path]?.mtimeMs}:${stamps[path]?.size}`);
+  return createHash2("sha1").update(lines.join("\n")).digest("hex");
+};
+var turnDiff = (projectRoot, snapshot, edits) => {
+  const stamps = {};
+  for (const { path } of edits) {
+    const stamp = stampOf(join9(projectRoot, path));
+    if (stamp !== void 0) {
+      stamps[path] = stamp;
+    }
+  }
+  for (const path of changedFiles(projectRoot)) {
+    if (Object.hasOwn(stamps, path)) continue;
+    const stamp = stampOf(join9(projectRoot, path));
+    if (stamp === void 0 || isSameStamp(snapshot[path], stamp)) continue;
+    stamps[path] = stamp;
+  }
+  const files = Object.keys(stamps).sort();
+  return { files, stamps, fingerprint: diffFingerprint(stamps) };
+};
+
+// src/tools/eslint.ts
+import { resolve as resolve3 } from "node:path";
+
+// src/tools/tool.ts
+var FAILURE_DETAIL_MAX = 200;
+var HUNK_HEADER = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/;
+var firstOutputLine = (text2) => text2.trim().split("\n")[0]?.slice(0, FAILURE_DETAIL_MAX) ?? "";
+var runTool = async (invocation) => {
+  const { tool, argv, cwd, timeoutMs, okCodes, parse } = invocation;
+  const result = await run(argv, { cwd, timeoutMs });
+  const failed = (failure) => ({ tool, findings: [], durationMs: result.durationMs, failure });
+  if (result.timedOut) return failed(`timeout after ${timeoutMs} ms`);
+  if (result.error !== void 0) return failed(result.error);
+  const isOkCode = result.code !== null && okCodes.includes(result.code);
+  if (!isOkCode) return failed(`exit ${result.code}: ${firstOutputLine(result.stderr || result.stdout)}`);
+  try {
+    return { tool, findings: parse(result.stdout), durationMs: result.durationMs };
+  } catch (error) {
+    return failed(error instanceof Error ? error.message : String(error));
+  }
+};
+var parseDiffLines = (diff) => {
+  const lines = /* @__PURE__ */ new Map();
+  let current;
+  for (const line of diff.split("\n")) {
+    if (line.startsWith("+++ ")) {
+      const path = line.slice(4).trimEnd();
+      current = path === "/dev/null" ? void 0 : /* @__PURE__ */ new Set();
+      if (current !== void 0) {
+        lines.set(path, current);
+      }
+      continue;
+    }
+    const hunk = HUNK_HEADER.exec(line);
+    if (hunk === null || current === void 0) continue;
+    const start = Number(hunk[1]);
+    const count = hunk[2] === void 0 ? 1 : Number(hunk[2]);
+    for (let at = start; at < start + count; at++) {
+      current.add(at);
+    }
+  }
+  return lines;
+};
+var changedLines = (projectRoot, files) => {
+  const result = /* @__PURE__ */ new Map();
+  if (files.length === 0) return result;
+  const listed = git(["ls-files", "-z", "--", ...files], projectRoot);
+  const tracked = new Set(listed.ok ? listed.stdout.split("\0").filter(Boolean) : []);
+  const diff = git(
+    ["-c", "core.quotePath=false", "diff", "--no-color", "--no-ext-diff", "--unified=0", "--relative", "--no-prefix", "HEAD", "--", ...files],
+    projectRoot
+  );
+  const diffLines = diff.ok ? parseDiffLines(diff.stdout) : /* @__PURE__ */ new Map();
+  for (const file of files) {
+    const isWholeFile = !diff.ok || !tracked.has(file);
+    result.set(file, isWholeFile ? "all" : diffLines.get(file) ?? /* @__PURE__ */ new Set());
+  }
+  return result;
+};
+var isOnChangedLine = (lines, line) => lines === "all" || lines?.has(line) === true;
+
+// src/tools/eslint.ts
+var ESLINT_EXTENSIONS = /* @__PURE__ */ new Set([".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs", ".vue"]);
+var OK_CODES = [0, 1];
+var ERROR_SEVERITY = 2;
+var parseEslint = (stdout, projectRoot, cwd = projectRoot) => {
+  if (stdout.trim() === "") return [];
+  const results = JSON.parse(stdout);
+  return results.flatMap((result) => {
+    const file = toProjectPath(projectRoot, resolve3(cwd, result.filePath ?? ""));
+    return (result.messages ?? []).map((message) => ({
+      tool: "eslint",
+      rule: message.ruleId ?? "eslint",
+      severity: message.severity === ERROR_SEVERITY ? "error" : "warn",
+      file,
+      line: message.line ?? 1,
+      message: message.message ?? ""
+    }));
+  });
+};
+var runEslint = (tool, projectRoot, files, timeoutMs) => runTool({
+  tool: "eslint",
+  argv: [
+    ...tool.bin,
+    "--format",
+    "json",
+    "--cache",
+    "--cache-location",
+    `${toSlash(jigPaths(projectRoot).eslintCache)}/`,
+    "--no-warn-ignored",
+    ...files
+  ],
+  cwd: projectRoot,
+  timeoutMs,
+  okCodes: OK_CODES,
+  parse: (stdout) => parseEslint(stdout, projectRoot)
+});
+
+// src/tools/finding.ts
+var POST_EDIT_LINE_LIMIT = 15;
+var STOP_LINE_LIMIT = 20;
+var formatFinding = (finding) => `${finding.file}:${finding.line} ${finding.rule} \u2192 ${finding.fix ?? finding.message}`;
+var formatDenial = (finding) => finding.message;
+var collapseFindings = (findings) => {
+  const groups = /* @__PURE__ */ new Map();
+  for (const finding of findings) {
+    const key = `${finding.rule}\0${finding.file}`;
+    const group = groups.get(key);
+    if (group === void 0) {
+      groups.set(key, { first: finding, count: 1 });
+      continue;
+    }
+    group.count++;
+    if (finding.line < group.first.line) {
+      group.first = finding;
+    }
+  }
+  return [...groups.values()].map(
+    ({ first, count }) => count === 1 ? formatFinding(first) : `${formatFinding(first)} (\xD7${count})`
+  );
+};
+var truncationLine = (hidden, pluginRoot) => `\u2026 ${hidden} more (run: node ${toSlash(pluginRoot)}/bin/jig.mjs check stop)`;
+var limitLines = (lines, limit, pluginRoot) => {
+  if (lines.length <= limit) return [...lines];
+  const kept = lines.slice(0, limit - 1);
+  return [...kept, truncationLine(lines.length - kept.length, pluginRoot)];
+};
+var formatFindings = (findings, limit, pluginRoot) => limitLines(collapseFindings(findings), limit, pluginRoot);
+
+// src/tools/stratum.ts
+var CONTRACT_VERSION = 1;
+var OK_CODES2 = [0, 1, 3];
+var SEVERITIES2 = { error: "error", warning: "warn" };
+var toFinding = (record) => {
+  const severity = SEVERITIES2[record.severity ?? ""];
+  const isUsable = record.v === CONTRACT_VERSION && severity !== void 0 && record.rule !== void 0 && record.file !== void 0;
+  if (!isUsable) return void 0;
+  return {
+    tool: "stratum",
+    rule: record.rule,
+    severity,
+    file: record.file,
+    line: record.line ?? 1,
+    message: record.message ?? "",
+    ...record.fix ? { fix: record.fix } : {}
+  };
+};
+var parseStratum = (stdout) => stdout.split("\n").filter((line) => line.trim() !== "").map((line) => toFinding(JSON.parse(line))).filter((finding) => finding !== void 0);
+var runStratum = (tool, projectRoot, files, timeoutMs) => runTool({
+  tool: "stratum",
+  argv: [...tool.bin, "--format", "jsonl", "--config", tool.config, "--files", ...files],
+  cwd: projectRoot,
+  timeoutMs,
+  okCodes: OK_CODES2,
+  parse: parseStratum
+});
+
+// src/tools/tsc.ts
+import { createHash as createHash3 } from "node:crypto";
+import { mkdirSync as mkdirSync7, readFileSync as readFileSync9, statSync as statSync6, writeFileSync as writeFileSync4 } from "node:fs";
+import { dirname as dirname5, extname as extname2, join as join10, relative as relative3, resolve as resolve4 } from "node:path";
+var TYPED_EXTENSIONS = /* @__PURE__ */ new Set([".ts", ".tsx", ".mts", ".cts", ".vue"]);
+var OK_CODES3 = [0, 1, 2];
+var HASH_LENGTH = 12;
+var TSC_ERROR = /^(.+)\((\d+),(\d+)\): error (TS\d+): (.*)$/;
+var GLOBAL_ERROR = /error TS\d+: .*/;
+var WILDCARD = /[*?]/;
+var DEFAULT_INCLUDE = ["**/*"];
+var isTypedFile = (file) => TYPED_EXTENSIONS.has(extname2(file)) && !file.endsWith(".d.ts");
+var isFile3 = (path) => {
+  try {
+    return statSync6(path).isFile();
+  } catch {
+    return false;
+  }
+};
+var readTsconfig = (path) => {
+  const value = parseJsonc(readFileSync9(path, "utf8"));
+  return typeof value === "object" && value !== null ? value : {};
+};
+var stringsOf = (value) => Array.isArray(value) ? value.filter((item) => typeof item === "string") : void 0;
+var findNearestTsconfig = (projectRoot, file) => {
+  const top = resolve4(projectRoot);
+  let dir = dirname5(resolve4(projectRoot, file));
+  for (; ; ) {
+    const candidate = join10(dir, TSCONFIG);
+    if (isFile3(candidate)) return candidate;
+    const isTop = relative3(top, dir) === "";
+    const parent = dirname5(dir);
+    if (isTop || parent === dir) return void 0;
+    dir = parent;
+  }
+};
+var toIncludeGlob = (pattern) => {
+  const clean = toSlash(pattern).replace(/^\.\//, "").replace(/\/$/, "");
+  const lastSegment = clean.split("/").pop() ?? "";
+  const isDirectory = !WILDCARD.test(clean) && !lastSegment.includes(".");
+  return isDirectory ? `${clean}/**/*` : clean;
+};
+var covers = (configPath, absoluteFile) => {
+  const config = readTsconfig(configPath);
+  const path = toSlash(relative3(dirname5(configPath), absoluteFile));
+  const files = stringsOf(config.files) ?? [];
+  if (files.some((entry) => toSlash(entry).replace(/^\.\//, "") === path)) return true;
+  const include = stringsOf(config.include) ?? (config.files === void 0 ? DEFAULT_INCLUDE : []);
+  return include.length > 0 && matchGlob(path, include.map(toIncludeGlob));
+};
+var referencePath = (fromConfig, reference) => {
+  const path = reference?.path;
+  if (typeof path !== "string") return void 0;
+  const target = resolve4(dirname5(fromConfig), path);
+  return isFile3(target) ? target : join10(target, TSCONFIG);
+};
+var isSolutionConfig = (config) => Array.isArray(config.files) && config.files.length === 0 && Array.isArray(config.references);
+var selectTsconfig = (configPath, absoluteFile) => {
+  const config = readTsconfig(configPath);
+  if (!isSolutionConfig(config)) return configPath;
+  for (const reference of config.references) {
+    const target = referencePath(configPath, reference);
+    if (target !== void 0 && isFile3(target) && covers(target, absoluteFile)) return target;
+  }
+  return void 0;
+};
+var groupByTsconfig = (projectRoot, files) => {
+  const byConfig = /* @__PURE__ */ new Map();
+  const skipped = [];
+  for (const file of files.filter(isTypedFile)) {
+    const nearest = findNearestTsconfig(projectRoot, file);
+    const selected = nearest === void 0 ? void 0 : selectTsconfig(nearest, resolve4(projectRoot, file));
+    if (selected === void 0) {
+      skipped.push(file);
+      continue;
+    }
+    byConfig.set(selected, [...byConfig.get(selected) ?? [], file]);
+  }
+  return { groups: [...byConfig].map(([config, groupFiles]) => ({ config, files: groupFiles })), skipped };
+};
+var tsconfigHash = (configPath) => createHash3("sha1").update(configPath).digest("hex").slice(0, HASH_LENGTH);
+var closureConfig = (projectRoot, group) => {
+  const configDir = toSlash(dirname5(group.config));
+  const hash = tsconfigHash(group.config);
+  return {
+    extends: toSlash(group.config),
+    files: group.files.map((file) => toSlash(resolve4(projectRoot, file))),
+    include: [`${configDir}/*.d.ts`, `${configDir}/src/**/*.d.ts`],
+    compilerOptions: {
+      noEmit: true,
+      incremental: true,
+      composite: false,
+      tsBuildInfoFile: `${toSlash(jigPaths(projectRoot).tscCache)}/${hash}.tsbuildinfo`
+    }
+  };
+};
+var writeClosureConfig = (projectRoot, group) => {
+  const dir = jigPaths(projectRoot).tscCache;
+  mkdirSync7(dir, { recursive: true });
+  const path = join10(dir, `tsconfig.${tsconfigHash(group.config)}.json`);
+  writeFileSync4(path, `${JSON.stringify(closureConfig(projectRoot, group), null, 2)}
+`);
+  return path;
+};
+var pathKey = (path) => process.platform === "win32" ? path.toLowerCase() : path;
+var parseTscOutput = (stdout, tool, projectRoot, cwd = projectRoot) => stdout.split("\n").map((line) => TSC_ERROR.exec(line.trimEnd())).filter((match) => match !== null).map(([, file = "", line = "1", , code = "", message = ""]) => ({
+  tool,
+  rule: code,
+  severity: "error",
+  file: toProjectPath(projectRoot, resolve4(cwd, file)),
+  line: Number(line),
+  message
+}));
+var keepGroupFindings = (findings, files) => {
+  const keys = new Set(files.map(pathKey));
+  return findings.filter((finding) => keys.has(pathKey(finding.file)));
+};
+var checkerFor = (checkers, group) => {
+  const hasVue = group.files.some((file) => file.endsWith(".vue"));
+  if (hasVue && checkers.vueTsc !== void 0) return { tool: "vue-tsc", bin: checkers.vueTsc.bin, files: group.files };
+  if (checkers.tsc === void 0) return void 0;
+  const files = group.files.filter((file) => !file.endsWith(".vue"));
+  return files.length === 0 ? void 0 : { tool: "tsc", bin: checkers.tsc.bin, files };
+};
+var runTypeCheck = async (checkers, projectRoot, group, timeoutMs) => {
+  const checker = checkerFor(checkers, group);
+  if (checker === void 0) return void 0;
+  const config = writeClosureConfig(projectRoot, { config: group.config, files: checker.files });
+  const argv = checker.tool === "vue-tsc" ? [...checker.bin, "--noEmit", "-p", config] : [...checker.bin, "-p", config, "--pretty", "false"];
+  return runTool({
+    tool: checker.tool,
+    argv,
+    cwd: projectRoot,
+    timeoutMs,
+    okCodes: OK_CODES3,
+    parse: (stdout) => {
+      const findings = parseTscOutput(stdout, checker.tool, projectRoot);
+      const globalError = findings.length === 0 ? GLOBAL_ERROR.exec(stdout)?.[0] : void 0;
+      if (globalError !== void 0) throw new Error(globalError);
+      return keepGroupFindings(findings, checker.files);
+    }
+  });
+};
+
+// src/gates/edit.ts
+import { extname as extname3 } from "node:path";
+
+// src/tools/oxlint.ts
 import { readFileSync as readFileSync10 } from "node:fs";
-import { join as join12 } from "node:path";
+import { resolve as resolve5 } from "node:path";
+var OK_CODES4 = [0, 1];
+var lineAtOffset = (path, offset) => {
+  try {
+    return readFileSync10(path, "utf8").slice(0, offset).split("\n").length;
+  } catch {
+    return 1;
+  }
+};
+var startLine = (diagnostic, absolutePath) => {
+  const span = diagnostic.labels?.[0]?.span;
+  if (span?.line !== void 0) return span.line;
+  if (span?.offset !== void 0) return lineAtOffset(absolutePath, span.offset);
+  return 1;
+};
+var diagnosticsOf = (stdout) => {
+  if (stdout.trim() === "") return [];
+  const value = JSON.parse(stdout);
+  if (Array.isArray(value)) return value;
+  const diagnostics = value.diagnostics;
+  return Array.isArray(diagnostics) ? diagnostics : [];
+};
+var parseOxlint = (stdout, projectRoot, cwd = projectRoot) => diagnosticsOf(stdout).map((diagnostic) => {
+  const absolutePath = resolve5(cwd, diagnostic.filename ?? "");
+  return {
+    tool: "oxlint",
+    rule: diagnostic.ruleId ?? diagnostic.code ?? "oxlint",
+    severity: diagnostic.severity === "error" ? "error" : "warn",
+    file: toProjectPath(projectRoot, absolutePath),
+    line: startLine(diagnostic, absolutePath),
+    message: diagnostic.message ?? ""
+  };
+});
+var runOxlint = (tool, projectRoot, file, timeoutMs) => runTool({
+  tool: "oxlint",
+  argv: [...tool.bin, "--format", "json", "-c", tool.config, file],
+  cwd: projectRoot,
+  timeoutMs,
+  okCodes: OK_CODES4,
+  parse: (stdout) => parseOxlint(stdout, projectRoot)
+});
+
+// src/gates/edit.ts
+var EDIT_TOOL_TIMEOUT_MS = 5e3;
+var isCodeFile = (file) => ESLINT_EXTENSIONS.has(extname3(file));
+var ruleLevel = (plan, rule) => plan.config.rules[rule] ?? "error";
+var applyLevel = (findings, level) => {
+  if (level === "off") return [];
+  if (level === "error") return [...findings];
+  return findings.map((finding) => ({ ...finding, severity: "warn" }));
+};
+var withFindings = (toolRun, findings) => ({ ...toolRun, findings });
+var oxlintRun = async (plan, projectRoot, file) => {
+  const level = ruleLevel(plan, "gate/oxlint");
+  if (plan.tools.oxlint === void 0 || level === "off") return void 0;
+  const result = await runOxlint(plan.tools.oxlint, projectRoot, file, EDIT_TOOL_TIMEOUT_MS);
+  const errors = result.findings.filter((finding) => finding.severity === "error");
+  if (errors.length === 0) return withFindings(result, []);
+  const lines = changedLines(projectRoot, [file]).get(file);
+  return withFindings(result, applyLevel(errors.filter((finding) => isOnChangedLine(lines, finding.line)), level));
+};
+var stratumRun = async (plan, projectRoot, file) => {
+  const level = ruleLevel(plan, "gate/stratum");
+  if (plan.tools.stratum === void 0 || level === "off") return void 0;
+  const result = await runStratum(plan.tools.stratum, projectRoot, [file], EDIT_TOOL_TIMEOUT_MS);
+  return withFindings(result, applyLevel(result.findings, level));
+};
+var checkEdit = async (plan, projectRoot, file) => {
+  if (!isCodeFile(file)) return [];
+  const runs = await Promise.all([oxlintRun(plan, projectRoot, file), stratumRun(plan, projectRoot, file)]);
+  return runs.filter((toolRun) => toolRun !== void 0);
+};
+
+// src/gates/stop.ts
+var TYPES_TIMEOUT_MS = 6e4;
+var ESLINT_TIMEOUT_MS = 3e4;
+var STRATUM_TIMEOUT_MS = 15e3;
+var STOP_HARD_LIMIT_MS = 11e4;
+var MAX_CONSECUTIVE_BLOCKS = 3;
+var DASH_TIMEOUT_MS = 5e3;
+var EXIT_FINDINGS = 1;
+var EXIT_USAGE2 = 2;
+var NONE = { type: "none" };
+var SKIP_VERIFY = "skip-verify";
+var isBlocking = (finding) => finding.severity === "error";
+var failureNotes = (runs) => runs.filter((toolRun) => toolRun.failure !== void 0).map((toolRun) => ({ kind: "tool-failure", tool: toolRun.tool, message: toolRun.failure ?? "", durationMs: toolRun.durationMs }));
+var timed = async (rule, body) => {
+  const startedAt = Date.now();
+  const { runs, findings } = await body();
+  return { rule, runs, findings, durationMs: Date.now() - startedAt };
+};
+var createBudget = (startedAt) => (ownMs) => Math.max(0, Math.min(ownMs, startedAt + STOP_HARD_LIMIT_MS - Date.now()));
+var typesStep = (input, budget, notes) => timed("gate/tsc", async () => {
+  const level = ruleLevel(input.plan, "gate/tsc");
+  if (level === "off") return { runs: [], findings: [] };
+  const { groups, skipped } = groupByTsconfig(input.projectRoot, input.diff.files);
+  for (const file of skipped) {
+    notes.push({ kind: "gate-skipped", tool: "jig", rule: "gate/tsc", file, message: "no tsconfig covers the file" });
+  }
+  const runs = [];
+  for (const group of groups) {
+    const timeoutMs = budget(TYPES_TIMEOUT_MS);
+    if (timeoutMs === 0) break;
+    const toolRun = await runTypeCheck(input.plan.tools, input.projectRoot, group, timeoutMs);
+    if (toolRun !== void 0) {
+      runs.push(toolRun);
+    }
+  }
+  return { runs, findings: applyLevel(runs.flatMap((toolRun) => toolRun.findings), level) };
+});
+var eslintStep = (input, budget) => timed("gate/eslint", async () => {
+  const level = ruleLevel(input.plan, "gate/eslint");
+  const files = input.diff.files.filter(isCodeFile);
+  const timeoutMs = budget(ESLINT_TIMEOUT_MS);
+  const tool = input.plan.tools.eslint;
+  const isSkipped = level === "off" || files.length === 0 || timeoutMs === 0;
+  if (isSkipped || tool === void 0) return { runs: [], findings: [] };
+  const toolRun = await runEslint(tool, input.projectRoot, files, timeoutMs);
+  const errors = toolRun.findings.filter(isBlocking);
+  const lines = errors.length === 0 ? /* @__PURE__ */ new Map() : changedLines(input.projectRoot, files);
+  const onChanged = errors.filter((finding) => isOnChangedLine(lines.get(finding.file), finding.line));
+  return { runs: [toolRun], findings: applyLevel(onChanged, level) };
+});
+var stratumStep = (input, budget) => timed("gate/stratum", async () => {
+  const level = ruleLevel(input.plan, "gate/stratum");
+  const files = input.diff.files.filter(isCodeFile);
+  const timeoutMs = budget(STRATUM_TIMEOUT_MS);
+  const tool = input.plan.tools.stratum;
+  const isSkipped = level === "off" || files.length === 0 || timeoutMs === 0;
+  if (isSkipped || tool === void 0) return { runs: [], findings: [] };
+  const toolRun = await runStratum(tool, input.projectRoot, files, timeoutMs);
+  return { runs: [toolRun], findings: applyLevel(toolRun.findings, level) };
+});
+var latestEdit = (diff, files, recorded) => Math.max(recorded ?? 0, ...files.map((file) => diff.stamps[file]?.mtimeMs ?? 0));
+var jigFinding = (rule, file, message) => ({
+  tool: "jig",
+  rule,
+  severity: "error",
+  file,
+  line: 1,
+  message
+});
+var testReviewFindings = (input, times) => {
+  const tests = input.diff.files.filter(isTestFile);
+  const [first] = tests;
+  if (first === void 0) return [];
+  const lastTestEdit = latestEdit(input.diff, tests, times.lastTestEditAt);
+  const isReviewed = times.testReviewAt !== void 0 && times.testReviewAt >= lastTestEdit;
+  if (isReviewed) return [];
+  const root = toSlash(input.pluginRoot);
+  const message = `jig/test-review: test files changed (${tests.join(", ")}) and no test-reviewer ran after the last change. Spawn a subagent with the role template ${root}/skills/jig/references/roles/test-reviewer.md over these files, then fix what it reports.`;
+  return applyLevel([jigFinding("jig/test-review", first, message)], ruleLevel(input.plan, "jig/test-review"));
+};
+var hasSkipVerifyDecision = (projectRoot, since) => {
+  const active = readActiveRun(projectRoot);
+  if (active === void 0) return false;
+  return active.run.decisions.some(
+    (decision) => decision.text.startsWith(SKIP_VERIFY) && (decision.why ?? "").trim() !== "" && Date.parse(decision.at) > since
+  );
+};
+var verifyFactFindings = (input, times, notes) => {
+  if (input.plan.tools.agentView === void 0) return [];
+  const visible = input.diff.files.filter(isRuntimeVisible);
+  const [first] = visible;
+  if (first === void 0) return [];
+  const lastRuntimeEdit = latestEdit(input.diff, visible, times.lastRuntimeEditAt);
+  const isVerified = times.verifyAt !== void 0 && times.verifyAt >= lastRuntimeEdit;
+  if (isVerified) return [];
+  if (hasSkipVerifyDecision(input.projectRoot, lastRuntimeEdit)) {
+    notes.push({ kind: "skip-verify", tool: "jig", rule: "jig/verify-fact", file: first });
+    return [];
+  }
+  const root = toSlash(input.pluginRoot);
+  const message = `jig/verify-fact: runtime-visible files changed (${visible.length}: ${visible.slice(0, 3).join(", ")}) and the app was not checked since. Verify on the running app (agent-view: act replay or the verify skill), or record why not: node ${root}/bin/jig.mjs dash decision "skip-verify" --why "<reason>".`;
+  return applyLevel([jigFinding("jig/verify-fact", first, message)], ruleLevel(input.plan, "jig/verify-fact"));
+};
+var stateStep = (rule, findings) => timed(rule, () => Promise.resolve({ runs: [], findings: findings() }));
+var runStopChecks = async (input) => {
+  const startedAt = Date.now();
+  const budget = createBudget(startedAt);
+  const notes = [];
+  const steps = [];
+  const isStopped = () => steps.some((step) => step.findings.some(isBlocking));
+  const lock = await acquireLock(jigPaths(input.projectRoot).heavyLock);
+  if (lock === void 0) {
+    notes.push({ kind: "gate-skipped", tool: "jig", message: "heavy checks lock is busy" });
+  } else {
+    try {
+      const heavySteps = [() => typesStep(input, budget, notes), () => eslintStep(input, budget), () => stratumStep(input, budget)];
+      for (const step of heavySteps) {
+        if (isStopped()) break;
+        steps.push(await step());
+      }
+    } finally {
+      lock.release();
+    }
+  }
+  const times = input.times;
+  if (times !== void 0 && !isStopped()) {
+    steps.push(await stateStep("jig/test-review", () => testReviewFindings(input, times)));
+  }
+  if (times !== void 0 && !isStopped()) {
+    steps.push(await stateStep("jig/verify-fact", () => verifyFactFindings(input, times, notes)));
+  }
+  const findings = steps.flatMap((step) => step.findings);
+  notes.push(...failureNotes(steps.flatMap((step) => step.runs)));
+  return { steps, findings, blocking: findings.filter(isBlocking), notes, durationMs: Date.now() - startedAt };
+};
+var findingsFingerprint = (findings) => createHash4("sha1").update(collapseFindings(findings).sort().join("\n")).digest("hex");
+var blockReason = (blocking, pluginRoot) => {
+  const toolLines = formatFindings(blocking.filter((finding) => finding.tool !== "jig"), STOP_LINE_LIMIT, pluginRoot);
+  const jigLines = blocking.filter((finding) => finding.tool === "jig").map((finding) => finding.message);
+  return [...toolLines, ...jigLines].join("\n");
+};
+var UNRESOLVED_WHY = "the stop hook fired again with no new edits since the last block";
+var recordUnresolved = async (projectRoot, pluginRoot) => {
+  const bin = join11(pluginRoot, "bin", "jig.mjs");
+  if (!existsSync5(bin) || readActiveRun(projectRoot) === void 0) return;
+  await run([process.execPath, bin, "dash", "decision", "gate unresolved", "--why", UNRESOLVED_WHY], {
+    cwd: projectRoot,
+    timeoutMs: DASH_TIMEOUT_MS,
+    env: { ...process.env, CLAUDE_PROJECT_DIR: projectRoot }
+  });
+};
+var blockNotes = (blocking) => blocking.map((finding) => ({
+  kind: "gate-block",
+  tool: finding.tool,
+  rule: finding.rule,
+  file: finding.file,
+  line: finding.line,
+  message: finding.message
+}));
+var stopGate = async (input) => {
+  const { projectRoot, pluginRoot, state } = input;
+  const diff = turnDiff(projectRoot, state.snapshot, state.edits);
+  const isQuiet = diff.files.length === 0 || diff.fingerprint === state.stop.lastGreenFingerprint;
+  if (isQuiet) return { outcome: NONE, notes: [] };
+  const isUnresolved = input.stopHookActive && diff.fingerprint === state.stop.lastBlockDiffFingerprint;
+  if (isUnresolved) {
+    await recordUnresolved(projectRoot, pluginRoot);
+    return { outcome: NONE, notes: [{ kind: "gate-unresolved", tool: "jig", message: UNRESOLVED_WHY }] };
+  }
+  const plan = loadPlan(projectRoot, pluginRoot);
+  const checks = await runStopChecks({ projectRoot, pluginRoot, plan, diff, times: state });
+  if (checks.blocking.length === 0) {
+    state.stop = { lastGreenFingerprint: diff.fingerprint, consecutiveBlocks: 0 };
+    resetSnapshot(state, takeSnapshot(projectRoot));
+    return { outcome: NONE, notes: [...checks.notes, { kind: "gate-pass", tool: "jig", durationMs: checks.durationMs }] };
+  }
+  const fingerprint = findingsFingerprint(checks.blocking);
+  const isRepeat = fingerprint === state.stop.lastBlockFingerprint;
+  const consecutiveBlocks = isRepeat ? state.stop.consecutiveBlocks + 1 : 1;
+  if (consecutiveBlocks > MAX_CONSECUTIVE_BLOCKS) {
+    state.stop = { consecutiveBlocks: 0 };
+    const [first] = checks.blocking;
+    const giveUp = { kind: "gate-giveup", tool: "jig", durationMs: checks.durationMs, ...first && { rule: first.rule, file: first.file } };
+    return { outcome: NONE, notes: [...checks.notes, giveUp] };
+  }
+  state.stop = { ...state.stop, lastBlockFingerprint: fingerprint, consecutiveBlocks, lastBlockDiffFingerprint: diff.fingerprint };
+  return {
+    outcome: { type: "block", reason: blockReason(checks.blocking, pluginRoot) },
+    notes: [...checks.notes, ...blockNotes(checks.blocking)]
+  };
+};
+var printFailures = (runs) => {
+  for (const toolRun of runs) {
+    if (toolRun.failure !== void 0) {
+      process.stderr.write(`jig: ${toolRun.tool} failed (${toolRun.failure})
+`);
+    }
+  }
+};
+var checkStopCommand = async (projectRoot, pluginRoot) => {
+  const diff = turnDiff(projectRoot, {}, []);
+  if (diff.files.length === 0) {
+    process.stdout.write("clean\n");
+    return 0;
+  }
+  const checks = await runStopChecks({ projectRoot, pluginRoot, plan: loadPlan(projectRoot, pluginRoot), diff });
+  printFailures(checks.steps.flatMap((step) => step.runs));
+  if (checks.findings.length === 0) {
+    process.stdout.write("clean\n");
+    return 0;
+  }
+  process.stdout.write(`${formatFindings(checks.findings, STOP_LINE_LIMIT, pluginRoot).join("\n")}
+`);
+  return checks.blocking.length > 0 ? EXIT_FINDINGS : 0;
+};
+var checkEditCommand = async (projectRoot, pluginRoot, file) => {
+  if (file === void 0 || file === "") {
+    process.stderr.write("jig: check edit needs a file\n");
+    return EXIT_USAGE2;
+  }
+  const path = toProjectPath(projectRoot, file, process.cwd());
+  const runs = await checkEdit(loadPlan(projectRoot, pluginRoot), projectRoot, path);
+  printFailures(runs);
+  const findings = runs.flatMap((toolRun) => toolRun.findings);
+  if (findings.length === 0) return 0;
+  process.stdout.write(`${formatFindings(findings, POST_EDIT_LINE_LIMIT, pluginRoot).join("\n")}
+`);
+  return EXIT_FINDINGS;
+};
+var runCheck = (args) => {
+  const [sub, file] = args;
+  const projectRoot = resolveProjectRoot(process.cwd());
+  const pluginRoot = resolvePluginRoot();
+  if (sub === "stop") {
+    ensureJigDir(projectRoot);
+    return checkStopCommand(projectRoot, pluginRoot);
+  }
+  if (sub === "edit") {
+    ensureJigDir(projectRoot);
+    return checkEditCommand(projectRoot, pluginRoot, file);
+  }
+  process.stderr.write(`jig: unknown check ${sub ?? "(none)"}, expected edit or stop
+`);
+  return EXIT_USAGE2;
+};
+
+// src/hook/dispatch.ts
+import { readFileSync as readFileSync12 } from "node:fs";
+import { join as join14 } from "node:path";
 
 // src/adapters/claude.ts
-import { readFileSync as readFileSync9 } from "node:fs";
-import { isAbsolute as isAbsolute3, resolve as resolve3 } from "node:path";
+import { readFileSync as readFileSync11 } from "node:fs";
+import { isAbsolute as isAbsolute3, resolve as resolve6 } from "node:path";
 var SESSION_SOURCES = ["startup", "resume", "clear", "compact", "fork"];
 var HOOK_EVENT_NAMES = {
   "session-start": "SessionStart",
@@ -1677,7 +2421,7 @@ var text = (object, key) => {
 };
 var readCurrent = (absolutePath) => {
   try {
-    return readFileSync9(absolutePath, "utf8");
+    return readFileSync11(absolutePath, "utf8");
   } catch {
     return "";
   }
@@ -1698,7 +2442,7 @@ var multiEditPairs = (input) => {
 var preEditEvent = (toolName, input, paths) => {
   const rawFile = toolName === "NotebookEdit" ? text(input, "notebook_path") : text(input, "file_path");
   if (rawFile === void 0) return void 0;
-  const absolute = isAbsolute3(rawFile) ? rawFile : resolve3(paths.cwd, rawFile);
+  const absolute = isAbsolute3(rawFile) ? rawFile : resolve6(paths.cwd, rawFile);
   const file = toProjectPath(paths.projectRoot, absolute);
   if (toolName === "Edit") {
     const before = text(input, "old_string");
@@ -1780,7 +2524,7 @@ var parseHookInput = (name, raw, env = process.env) => {
   if (!isObject2(input)) return void 0;
   const sessionId = text(input, "session_id");
   if (sessionId === void 0) return void 0;
-  const cwd = resolve3(text(input, "cwd") ?? process.cwd());
+  const cwd = resolve6(text(input, "cwd") ?? process.cwd());
   const projectRoot = resolveProjectRoot(cwd, env);
   const event = toEvent(name, input, { projectRoot, cwd });
   if (event === void 0) return void 0;
@@ -1804,37 +2548,8 @@ var formatOutcome = (kind, outcome) => {
   }
 };
 
-// src/core/snapshot.ts
-import { statSync as statSync5 } from "node:fs";
-import { join as join9 } from "node:path";
-var stampOf = (absolutePath) => {
-  try {
-    const stat = statSync5(absolutePath);
-    return stat.isFile() ? { mtimeMs: stat.mtimeMs, size: stat.size } : void 0;
-  } catch {
-    return void 0;
-  }
-};
-var isInsideProject = (path) => path !== "" && !path.startsWith("../") && path !== "..";
-var changedFiles = (projectRoot) => {
-  const top = gitToplevel(projectRoot);
-  if (top === void 0) return [];
-  const entries = gitStatus(top) ?? [];
-  return entries.map((entry) => toProjectPath(projectRoot, join9(top, entry.path))).filter(isInsideProject);
-};
-var takeSnapshot = (projectRoot) => {
-  const snapshot = {};
-  for (const path of changedFiles(projectRoot)) {
-    const stamp = stampOf(join9(projectRoot, path));
-    if (stamp !== void 0) {
-      snapshot[path] = stamp;
-    }
-  }
-  return snapshot;
-};
-
 // src/rules/comments.ts
-import { join as join10 } from "node:path";
+import { join as join12 } from "node:path";
 
 // src/rules/lexer.ts
 var SCRIPT_EXTENSION = /\.(?:ts|tsx|mts|cts|js|jsx|mjs|cjs)$/i;
@@ -1850,6 +2565,8 @@ var SCRIPT_BLOCK = /(<script\b[^>]*>)([\s\S]*?)<\/script\s*>/gi;
 var STYLE_BLOCK = /<style\b[^>]*>[\s\S]*?<\/style\s*>/gi;
 var HTML_COMMENT = /<!--[\s\S]*?-->/g;
 var SFC_TAG = /<(?:script|template|style)\b/i;
+var EXPORT_MODIFIERS = /* @__PURE__ */ new Set(["default", "abstract", "declare", "const"]);
+var EXPORT_BODY_KEYWORDS = /* @__PURE__ */ new Set(["class", "interface", "enum"]);
 var countNewlines = (text2, from, to) => {
   let count = 0;
   for (let index = from; index < to; index++) {
@@ -1858,6 +2575,56 @@ var countNewlines = (text2, from, to) => {
     }
   }
   return count;
+};
+var ExportBodyTracker = class {
+  state = "none";
+  bodyDepth;
+  word(word, depth) {
+    if (depth !== 0) return;
+    if (word === "export") {
+      this.state = "modifiers";
+      return;
+    }
+    if (this.state === "type-value") {
+      this.state = "none";
+      return;
+    }
+    if (this.state !== "modifiers") return;
+    if (EXPORT_MODIFIERS.has(word)) return;
+    if (word === "type") {
+      this.state = "type-name";
+      return;
+    }
+    this.state = EXPORT_BODY_KEYWORDS.has(word) ? "declaration" : "none";
+  }
+  punctuator(char, depth) {
+    if (char === "{" && depth === 1) {
+      const isBodyOpen = this.state === "declaration" || this.state === "type-value";
+      this.bodyDepth = isBodyOpen ? depth : this.bodyDepth;
+      this.state = "none";
+      return;
+    }
+    if (this.bodyDepth !== void 0 && depth < this.bodyDepth) {
+      this.bodyDepth = void 0;
+    }
+    if (depth !== 0 || char === "{") return;
+    if (this.state === "type-name" && char === "=") {
+      this.state = "type-value";
+      return;
+    }
+    const isTypeParameter = this.state === "type-name" || this.state === "declaration";
+    if (char === ";" || !isTypeParameter) {
+      this.state = "none";
+    }
+  }
+  other() {
+    if (this.state === "type-value" || this.state === "modifiers") {
+      this.state = "none";
+    }
+  }
+  isMember(depth) {
+    return this.bodyDepth !== void 0 && depth === this.bodyDepth;
+  }
 };
 var JsLexer = class {
   constructor(source, end, start, firstLine2) {
@@ -1873,6 +2640,8 @@ var JsLexer = class {
   isRegexAllowed = true;
   isInTemplate = false;
   templateDepths = [];
+  braceDepth = 0;
+  exportBody = new ExportBodyTracker();
   comments = [];
   run() {
     while (this.index < this.end) {
@@ -1911,6 +2680,7 @@ var JsLexer = class {
     if (char === "`") {
       this.index++;
       this.isInTemplate = true;
+      this.exportBody.other();
       return;
     }
     if (IDENTIFIER_START.test(char)) {
@@ -1926,35 +2696,52 @@ var JsLexer = class {
   scanPunctuator(char) {
     this.index++;
     this.isRegexAllowed = !DIVISION_AFTER.has(char);
+    const isInterpolationEnd = this.updateTemplateDepth(char);
+    if (char === "{") {
+      this.braceDepth++;
+    } else if (char === "}" && !isInterpolationEnd) {
+      this.braceDepth--;
+    }
+    this.exportBody.punctuator(char, this.braceDepth);
+  }
+  updateTemplateDepth(char) {
     const top = this.templateDepths.length - 1;
     const depth = this.templateDepths[top];
-    if (depth === void 0) return;
+    if (depth === void 0) return false;
     if (char === "{") {
       this.templateDepths[top] = depth + 1;
-      return;
+      return false;
     }
-    if (char !== "}") return;
+    if (char !== "}") return false;
     if (depth > 0) {
       this.templateDepths[top] = depth - 1;
-      return;
+      return false;
     }
     this.templateDepths.pop();
     this.isInTemplate = true;
+    return true;
+  }
+  isExportMember() {
+    return this.templateDepths.length === 0 && this.exportBody.isMember(this.braceDepth);
   }
   scanWord() {
     const start = this.index;
     while (this.index < this.end && IDENTIFIER_PART.test(this.at())) {
       this.index++;
     }
-    this.isRegexAllowed = REGEX_KEYWORDS.has(this.source.slice(start, this.index));
+    const word = this.source.slice(start, this.index);
+    this.isRegexAllowed = REGEX_KEYWORDS.has(word);
+    this.exportBody.word(word, this.braceDepth);
   }
   scanNumber() {
+    this.exportBody.other();
     while (this.index < this.end && NUMBER_PART.test(this.at())) {
       this.index++;
     }
     this.isRegexAllowed = false;
   }
   scanString(quote) {
+    this.exportBody.other();
     this.index++;
     while (this.index < this.end) {
       const char = this.at();
@@ -2015,7 +2802,7 @@ var JsLexer = class {
       this.index++;
     }
     const text2 = this.source.slice(start, this.index).replace(/\r$/, "");
-    this.comments.push({ text: text2, line: this.line, kind: "line", end: this.index });
+    this.comments.push({ text: text2, line: this.line, kind: "line", start, end: this.index, isExportMember: this.isExportMember() });
   }
   scanBlockComment() {
     const start = this.index;
@@ -2024,7 +2811,8 @@ var JsLexer = class {
     const stop2 = close === -1 || close + 2 > this.end ? this.end : close + 2;
     this.line += countNewlines(this.source, start, stop2);
     this.index = stop2;
-    this.comments.push({ text: this.source.slice(start, stop2), line, kind: "block", end: stop2 });
+    const text2 = this.source.slice(start, stop2);
+    this.comments.push({ text: text2, line, kind: "block", start, end: stop2, isExportMember: this.isExportMember() });
   }
   scanRegex() {
     let position = this.index + 1;
@@ -2052,6 +2840,7 @@ var JsLexer = class {
     }
     this.index = position;
     this.isRegexAllowed = false;
+    this.exportBody.other();
     return true;
   }
 };
@@ -2078,7 +2867,7 @@ var lexVue = (source) => {
   for (const match of source.matchAll(HTML_COMMENT)) {
     if (isInside(match.index, skipped)) continue;
     const end = match.index + match[0].length;
-    comments.push({ text: match[0], line: lineAt(source, match.index), kind: "block", end });
+    comments.push({ text: match[0], line: lineAt(source, match.index), kind: "block", start: match.index, end, isExportMember: false });
   }
   return comments.sort((left, right) => left.end - right.end);
 };
@@ -2094,18 +2883,58 @@ var activeSeverity = (config, rule) => {
   const severity = config.rules[rule];
   return severity === "off" ? void 0 : severity;
 };
-var jigFinding = (rule, severity, hit) => ({
+var jigFinding2 = (rule, severity, hit) => ({
   tool: "jig",
   rule,
   severity,
   ...hit
 });
 
+// src/rules/suppressions.ts
+var RULE = "jig/suppressions";
+var DIRECTIVES = [
+  /\beslint-disable(?:-next-line|-line)?\b/,
+  /\boxlint-disable(?:-next-line|-line)?\b/,
+  /\bbiome-ignore\b/,
+  /@ts-(?:ignore|expect-error|nocheck)\b/,
+  /\bstratum-ignore\b/
+];
+var LINE_BREAK = /\r?\n/;
+var findDirective = (line) => {
+  for (const directive of DIRECTIVES) {
+    const match = directive.exec(line);
+    if (match !== null) return match[0];
+  }
+  return void 0;
+};
+var checkSuppressions = (file, edits, config) => {
+  const severity = activeSeverity(config, RULE);
+  if (severity === void 0) return [];
+  const existing = new Set(edits.flatMap((edit) => edit.before.split(LINE_BREAK).map((line) => line.trim())));
+  const findings = [];
+  for (const edit of edits) {
+    edit.after.split(LINE_BREAK).forEach((text2, index) => {
+      if (existing.has(text2.trim())) return;
+      const directive = findDirective(text2);
+      if (directive === void 0) return;
+      const line = fileLine(edit, index + 1);
+      const message = `${RULE}: "${directive}" at ${file}:${line} silences a check. Fix the cause instead; only a human adds suppressions.`;
+      findings.push(jigFinding2(RULE, severity, { file, line, message }));
+    });
+  }
+  return findings;
+};
+
 // src/rules/comments.ts
-var RULE = "jig/comments";
+var RULE2 = "jig/comments";
 var LICENSE_HEADER_LINES = 15;
 var LICENSE = /SPDX-License-Identifier|copyright|license/i;
 var TICKET_TODO = /^\s*(?:\/\/+|\/\*+|\*)?\s*TODO\((?:[A-Z][A-Z0-9]+-\d+|#\d+)\):\s*\S/;
+var LINE_BREAK2 = /\r?\n/;
+var COMMENT_PREFIX = /^\s*(?:\/\/+|\/\*+|\*+)/;
+var COMMENT_CLOSE = /\*+\/\s*$/;
+var SUPPRESSION_PAIR = /\beslint-enable\b/;
+var isSuppression = (text2) => findDirective(text2) !== void 0 || SUPPRESSION_PAIR.test(text2);
 var EXTERNAL_LINK = /https?:\/\//;
 var TOOL_DIRECTIVES = [
   /^\s*\/\/\/\s*<reference\b/,
@@ -2143,11 +2972,13 @@ var isFollowedByExport = (source, end) => {
     }
   }
 };
+var firstContentLine = (text2) => text2.split(LINE_BREAK2).map((line) => line.replace(COMMENT_CLOSE, "").replace(COMMENT_PREFIX, "").trim()).find((line) => line !== "") ?? "";
 var isAllowed = (comment, source) => {
   const { text: text2 } = comment;
   const isLicense = comment.line <= LICENSE_HEADER_LINES && LICENSE.test(text2);
-  const isPublicJsDoc = comment.kind === "block" && text2.startsWith("/**") && isFollowedByExport(source, comment.end);
-  return isLicense || TICKET_TODO.test(text2) || isPublicJsDoc || EXTERNAL_LINK.test(text2) || TOOL_DIRECTIVES.some((directive) => directive.test(text2));
+  const isJsDoc = comment.kind === "block" && text2.startsWith("/**");
+  const isPublicJsDoc = isJsDoc && (comment.isExportMember || isFollowedByExport(source, comment.end));
+  return isLicense || isSuppression(text2) || TICKET_TODO.test(firstContentLine(text2)) || isPublicJsDoc || EXTERNAL_LINK.test(text2) || TOOL_DIRECTIVES.some((directive) => directive.test(text2));
 };
 var countExisting = (file, edits) => {
   const counts = /* @__PURE__ */ new Map();
@@ -2159,33 +2990,41 @@ var countExisting = (file, edits) => {
   }
   return counts;
 };
+var addedComments = (file, edit) => {
+  if (edit.prefix === void 0) {
+    const located = (comment) => ({ comment, line: fileLine(edit, comment.line), source: edit.after });
+    return (lexComments(file, edit.after) ?? []).map(located);
+  }
+  const { prefix } = edit;
+  const source = prefix + edit.after;
+  return (lexComments(file, source) ?? []).filter((comment) => comment.start >= prefix.length).map((comment) => ({ comment, line: comment.line, source }));
+};
 var checkComments = (file, edits, config) => {
-  const severity = activeSeverity(config, RULE);
+  const severity = activeSeverity(config, RULE2);
   if (severity === void 0) return [];
   if (lexComments(file, "") === void 0) return [];
   const existing = countExisting(file, edits);
-  const atom = toSlash(join10(resolvePluginRoot(), "atoms", "comments.md"));
+  const atom = toSlash(join12(resolvePluginRoot(), "atoms", "comments.md"));
   const findings = [];
   for (const edit of edits) {
-    for (const comment of lexComments(file, edit.after) ?? []) {
+    for (const { comment, line, source } of addedComments(file, edit)) {
       const key = normalize(comment.text);
       const remaining = existing.get(key) ?? 0;
       if (remaining > 0) {
         existing.set(key, remaining - 1);
         continue;
       }
-      const line = fileLine(edit, comment.line);
-      if (isAllowed({ ...comment, line }, edit.after)) continue;
-      const message = `${RULE}: new comment at ${file}:${line} is not allowed. Allowed: license header, TODO(<TICKET-1>), JSDoc on an export, an external constraint with a link, a tool directive. Remove it and express the intent in code (atom comments: ${atom}).`;
-      findings.push(jigFinding(RULE, severity, { file, line, message }));
+      if (isAllowed({ ...comment, line }, source)) continue;
+      const message = `${RULE2}: new comment at ${file}:${line} is not allowed. Allowed: license header, TODO(<TICKET-1>), JSDoc on an export, an external constraint with a link, a tool directive. Remove it and express the intent in code (atom comments: ${atom}).`;
+      findings.push(jigFinding2(RULE2, severity, { file, line, message }));
     }
   }
   return findings;
 };
 
 // src/rules/no-verify.ts
-import { createHash as createHash2 } from "node:crypto";
-import { join as join11 } from "node:path";
+import { createHash as createHash5 } from "node:crypto";
+import { join as join13 } from "node:path";
 
 // src/rules/shell.ts
 var SEGMENT_BREAKS = /* @__PURE__ */ new Set([";", "&", "|", "\n", "(", ")"]);
@@ -2294,7 +3133,7 @@ var ShellTokenizer = class {
 var splitShell = (command) => new ShellTokenizer(command).run();
 
 // src/rules/no-verify.ts
-var RULE2 = "jig/no-verify";
+var RULE3 = "jig/no-verify";
 var ALLOWANCE_MS = 10 * 60 * 1e3;
 var SESSION_ENV = "CLAUDE_CODE_SESSION_ID";
 var HUSKY_OFF = /^(?:\$env:)?(?:HUSKY=0|HUSKY_SKIP_HOOKS=1)$/;
@@ -2366,7 +3205,7 @@ var detectBypass = (command) => {
   }
   return result;
 };
-var stagedHash = (files) => createHash2("sha256").update([...files].sort().join("\n")).digest("hex");
+var stagedHash = (files) => createHash5("sha256").update([...files].sort().join("\n")).digest("hex");
 var consumeAllowance = (projectRoot, sessionId, now) => {
   const state = readState(projectRoot, sessionId);
   const allowance = state?.noVerifyAllowance;
@@ -2377,15 +3216,15 @@ var consumeAllowance = (projectRoot, sessionId, now) => {
   writeState(projectRoot, state);
   return true;
 };
-var jigCommand = () => toSlash(join11(resolvePluginRoot(), "bin", "jig.mjs"));
+var jigCommand = () => toSlash(join13(resolvePluginRoot(), "bin", "jig.mjs"));
 var checkNoVerify = (command, ctx) => {
-  const severity = activeSeverity(ctx.config, RULE2);
+  const severity = activeSeverity(ctx.config, RULE3);
   if (severity === void 0) return void 0;
   const bypass = detectBypass(command);
   if (bypass === void 0) return void 0;
   if (bypass === "commit" && consumeAllowance(ctx.projectRoot, ctx.sessionId, Date.now())) return void 0;
-  const message = `${RULE2}: commits keep their hooks. If the pre-commit fails only on files outside your change, run: node ${jigCommand()} allow-no-verify`;
-  return jigFinding(RULE2, severity, { file: "", line: 1, message });
+  const message = `${RULE3}: commits keep their hooks. If the pre-commit fails only on files outside your change, run: node ${jigCommand()} allow-no-verify`;
+  return jigFinding2(RULE3, severity, { file: "", line: 1, message });
 };
 var findRepoPaths = (output, projectRoot, tracked) => {
   const root = `${toSlash(projectRoot).toLowerCase()}/`;
@@ -2407,7 +3246,7 @@ var print = (text2) => {
 };
 var recordAllowed = (projectRoot, sessionId, paths) => {
   try {
-    appendJournal(projectRoot, { session: sessionId, agent: MAIN_AGENT, kind: "no-verify-allowed", rule: RULE2, message: paths.join(", ") });
+    appendJournal(projectRoot, { session: sessionId, agent: MAIN_AGENT, kind: "no-verify-allowed", rule: RULE3, message: paths.join(", ") });
   } catch (error) {
     process.stderr.write(`jig: journal write failed (${error instanceof Error ? error.message : String(error)})
 `);
@@ -2452,7 +3291,8 @@ ${hook.stderr}`, projectRoot, new Set(gitLsFiles(projectRoot)));
 };
 
 // src/rules/protected.ts
-var RULE3 = "jig/protected-paths";
+import { isAbsolute as isAbsolute4, posix } from "node:path";
+var RULE4 = "jig/protected-paths";
 var PROTECTED_GLOBS = [
   ".jig/config.jsonc",
   ".jig/config.json",
@@ -2523,95 +3363,42 @@ var writeTargets = (words) => {
   const pick = Object.hasOwn(WRITERS, name) ? WRITERS[name] : void 0;
   return pick === void 0 ? [] : pick(words.slice(start + 1));
 };
-var denial = (path) => `${RULE3}: ${path} configures the checks and is protected. Do not change it; tell the user what change you need and why.`;
+var denial = (path) => `${RULE4}: ${path} configures the checks and is protected. Do not change it; tell the user what change you need and why.`;
 var pathSuffixes = (token) => {
   const parts = toSlash(token).replace(/^\.\//, "").split("/");
   return parts.map((_, index) => parts.slice(index).join("/")).filter(Boolean);
 };
-var protectedSuffix = (target) => NULL_TARGETS.has(target) ? void 0 : pathSuffixes(target).find((suffix) => isProtected(suffix));
-var checkProtectedPath = (file, config) => {
-  const severity = activeSeverity(config, RULE3);
-  if (severity === void 0 || !isProtected(file)) return void 0;
-  return jigFinding(RULE3, severity, { file, line: 1, message: denial(file) });
+var protectedSuffix = (target) => pathSuffixes(target).find((suffix) => isProtected(suffix));
+var insideProject = (path) => {
+  const normalized = posix.normalize(toSlash(path));
+  const isOutside = normalized === ".." || normalized.startsWith("../") || isAbsolute4(normalized);
+  return isOutside ? void 0 : normalized.replace(/^\.\//, "");
 };
-var checkShellWrite = (command, config) => {
-  const severity = activeSeverity(config, RULE3);
+var protectedInProject = (target, ctx) => {
+  const path = insideProject(toProjectPath(ctx.projectRoot, target, ctx.cwd));
+  return path !== void 0 && isProtected(path) ? path : void 0;
+};
+var checkProtectedPath = (file, config) => {
+  const severity = activeSeverity(config, RULE4);
+  const path = insideProject(file);
+  if (severity === void 0 || path === void 0 || !isProtected(path)) return void 0;
+  return jigFinding2(RULE4, severity, { file, line: 1, message: denial(file) });
+};
+var checkShellWrite = (command, config, ctx) => {
+  const severity = activeSeverity(config, RULE4);
   if (severity === void 0) return void 0;
   for (const segment of splitShell(command)) {
     for (const target of [...segment.redirects, ...writeTargets(segment.words)]) {
-      const path = protectedSuffix(target);
-      if (path !== void 0) return jigFinding(RULE3, severity, { file: path, line: 1, message: denial(path) });
+      if (NULL_TARGETS.has(target)) continue;
+      const path = ctx === void 0 ? protectedSuffix(target) : protectedInProject(target, ctx);
+      if (path !== void 0) return jigFinding2(RULE4, severity, { file: path, line: 1, message: denial(path) });
     }
   }
   return void 0;
-};
-
-// src/rules/suppressions.ts
-var RULE4 = "jig/suppressions";
-var DIRECTIVES = [
-  /\beslint-disable(?:-next-line|-line)?\b/,
-  /\boxlint-disable(?:-next-line|-line)?\b/,
-  /\bbiome-ignore\b/,
-  /@ts-(?:ignore|expect-error|nocheck)\b/,
-  /\bstratum-ignore\b/
-];
-var LINE_BREAK = /\r?\n/;
-var findDirective = (line) => {
-  for (const directive of DIRECTIVES) {
-    const match = directive.exec(line);
-    if (match !== null) return match[0];
-  }
-  return void 0;
-};
-var checkSuppressions = (file, edits, config) => {
-  const severity = activeSeverity(config, RULE4);
-  if (severity === void 0) return [];
-  const existing = new Set(edits.flatMap((edit) => edit.before.split(LINE_BREAK).map((line) => line.trim())));
-  const findings = [];
-  for (const edit of edits) {
-    edit.after.split(LINE_BREAK).forEach((text2, index) => {
-      if (existing.has(text2.trim())) return;
-      const directive = findDirective(text2);
-      if (directive === void 0) return;
-      const line = fileLine(edit, index + 1);
-      const message = `${RULE4}: "${directive}" at ${file}:${line} silences a check. Fix the cause instead; only a human adds suppressions.`;
-      findings.push(jigFinding(RULE4, severity, { file, line, message }));
-    });
-  }
-  return findings;
-};
-
-// src/tools/finding.ts
-var POST_EDIT_LINE_LIMIT = 15;
-var formatFinding = (finding) => `${finding.file}:${finding.line} ${finding.rule} \u2192 ${finding.fix ?? finding.message}`;
-var formatDenial = (finding) => finding.message;
-var collapseFindings = (findings) => {
-  const groups = /* @__PURE__ */ new Map();
-  for (const finding of findings) {
-    const key = `${finding.rule}\0${finding.file}`;
-    const group = groups.get(key);
-    if (group === void 0) {
-      groups.set(key, { first: finding, count: 1 });
-      continue;
-    }
-    group.count++;
-    if (finding.line < group.first.line) {
-      group.first = finding;
-    }
-  }
-  return [...groups.values()].map(
-    ({ first, count }) => count === 1 ? formatFinding(first) : `${formatFinding(first)} (\xD7${count})`
-  );
-};
-var truncationLine = (hidden, pluginRoot) => `\u2026 ${hidden} more (run: node ${toSlash(pluginRoot)}/bin/jig.mjs check stop)`;
-var limitLines = (lines, limit, pluginRoot) => {
-  if (lines.length <= limit) return [...lines];
-  const kept = lines.slice(0, limit - 1);
-  return [...kept, truncationLine(lines.length - kept.length, pluginRoot)];
 };
 
 // src/hook/dispatch.ts
-var NONE = { type: "none" };
+var NONE2 = { type: "none" };
 var SUBAGENT_ATOM_LIMIT = 10;
 var TEST_REVIEWER_MARKER = "jig-role: test-reviewer";
 var GUARDED_KINDS = /* @__PURE__ */ new Set(["pre-edit", "pre-bash"]);
@@ -2664,7 +3451,7 @@ var deliverAtoms = (ctx, state, file) => {
   }
   return texts;
 };
-var contextOf = (parts) => parts.length === 0 ? NONE : { type: "context", text: parts.join("\n") };
+var contextOf = (parts) => parts.length === 0 ? NONE2 : { type: "context", text: parts.join("\n") };
 var compactRunLine = (ctx, now) => {
   try {
     return activeRunContext(ctx.projectRoot, new Date(now));
@@ -2703,7 +3490,7 @@ var prompt = (ctx) => {
   state.turn += 1;
   ctx.turn = state.turn;
   writeState(ctx.projectRoot, state);
-  return NONE;
+  return NONE2;
 };
 var runOpenCheck = (ctx, check) => {
   try {
@@ -2719,7 +3506,7 @@ var settleFindings = (ctx, findings) => {
     journal(ctx, { kind: "deny", tool: "jig", rule: denial2.rule, file: denial2.file, line: denial2.line, message: denial2.message });
     return { type: "deny", reason: formatDenial(denial2) };
   }
-  if (findings.length === 0) return NONE;
+  if (findings.length === 0) return NONE2;
   for (const finding of findings) {
     journal(ctx, { kind: "finding", tool: "jig", rule: finding.rule, file: finding.file, line: finding.line, message: finding.message });
   }
@@ -2730,7 +3517,7 @@ var settleFindings = (ctx, findings) => {
   } catch (error) {
     journalFailure(ctx, error);
   }
-  return NONE;
+  return NONE2;
 };
 var runChecks = (ctx, guard, openChecks) => {
   let guarded;
@@ -2748,14 +3535,14 @@ var runChecks = (ctx, guard, openChecks) => {
 };
 var readCurrent2 = (path) => {
   try {
-    return readFileSync10(path, "utf8");
+    return readFileSync12(path, "utf8");
   } catch {
     return "";
   }
 };
 var locateEdits = (event, projectRoot) => {
   if (event.wholeFile !== void 0) return event.edits.map((edit) => ({ ...edit, line: 1 }));
-  const current = readCurrent2(join12(projectRoot, event.file));
+  const current = readCurrent2(join14(projectRoot, event.file));
   return event.edits.map((edit) => {
     const at = edit.before === "" ? -1 : current.indexOf(edit.before);
     return at === -1 ? edit : { ...edit, line: current.slice(0, at).split("\n").length };
@@ -2780,7 +3567,7 @@ var preBash = (event, ctx) => {
     config = loadConfig(ctx.projectRoot);
     return checkNoVerify(event.command, { projectRoot: ctx.projectRoot, sessionId: ctx.sessionId, config });
   };
-  const shellWrite = () => config === void 0 ? void 0 : checkShellWrite(event.command, config);
+  const shellWrite = () => config === void 0 ? void 0 : checkShellWrite(event.command, config, { projectRoot: ctx.projectRoot, cwd: ctx.cwd });
   return runChecks(ctx, guard, [shellWrite]);
 };
 var testChecklist = (pluginRoot) => [
@@ -2790,7 +3577,25 @@ var testChecklist = (pluginRoot) => [
   "3. It does not duplicate an existing test of this unit.",
   "4. Trivial code (a getter, a re-export, a wrapper) gets no test."
 ].join("\n");
-var postEdit = (event, ctx) => {
+var editToolFindings = async (ctx, file) => {
+  let runs;
+  try {
+    runs = await checkEdit(loadPlan(ctx.projectRoot, ctx.pluginRoot), ctx.projectRoot, file);
+  } catch (error) {
+    journalFailure(ctx, error);
+    return [];
+  }
+  for (const toolRun of runs) {
+    if (toolRun.failure !== void 0) {
+      journal(ctx, { kind: "tool-failure", tool: toolRun.tool, file, message: toolRun.failure, durationMs: toolRun.durationMs });
+    }
+    for (const finding of toolRun.findings) {
+      journal(ctx, { kind: "finding", tool: finding.tool, rule: finding.rule, file: finding.file, line: finding.line, message: finding.message });
+    }
+  }
+  return runs.flatMap((toolRun) => toolRun.findings);
+};
+var postEdit = async (event, ctx) => {
   const now = Date.now();
   const state = openSession(ctx);
   state.edits.push({ path: event.file, at: now, agent: ctx.agent });
@@ -2805,7 +3610,7 @@ var postEdit = (event, ctx) => {
   if (isRuntimeVisible(event.file)) {
     state.lastRuntimeEditAt = now;
   }
-  const toolFindings = [];
+  const toolFindings = await editToolFindings(ctx, event.file);
   const toolLines = collapseFindings(toolFindings);
   const findingLines = [...toolLines, ...state.pendingWarnings];
   const shown = limitLines(findingLines, POST_EDIT_LINE_LIMIT, ctx.pluginRoot);
@@ -2821,35 +3626,43 @@ var postEdit = (event, ctx) => {
 var postRead = (event, ctx) => {
   const state = openSession(ctx);
   const parts = deliverAtoms(ctx, state, event.file);
-  if (parts.length === 0) return NONE;
+  if (parts.length === 0) return NONE2;
   writeState(ctx.projectRoot, state);
   return contextOf(parts);
 };
 var postBash = (event, ctx) => {
   const isVerify = event.ok && AGENT_VIEW_VERIFY_COMMAND.test(event.command);
-  if (!isVerify) return NONE;
+  if (!isVerify) return NONE2;
   const state = openSession(ctx);
   state.verifyAt = Date.now();
   writeState(ctx.projectRoot, state);
-  return NONE;
+  return NONE2;
 };
 var postAgent = (event, ctx) => {
-  if (!event.prompt.includes(TEST_REVIEWER_MARKER)) return NONE;
+  if (!event.prompt.includes(TEST_REVIEWER_MARKER)) return NONE2;
   const state = openSession(ctx);
   state.testReviewAt = Date.now();
   writeState(ctx.projectRoot, state);
-  return NONE;
+  return NONE2;
 };
 var subagentStart = (ctx) => {
   const state = readState(ctx.projectRoot, ctx.sessionId);
-  if (state === void 0 || state.sessionAtoms.length === 0) return NONE;
+  if (state === void 0 || state.sessionAtoms.length === 0) return NONE2;
   const plan = loadPlan(ctx.projectRoot, ctx.pluginRoot);
   const recent = state.sessionAtoms.slice(-SUBAGENT_ATOM_LIMIT);
   const atoms = recent.map((name) => plan.atoms.find((atom) => atom.name === name)).filter((atom) => atom !== void 0);
-  if (atoms.length === 0) return NONE;
+  if (atoms.length === 0) return NONE2;
   return { type: "context", text: formatSessionAtoms(atoms, ctx.pluginRoot) };
 };
-var stop = () => NONE;
+var stop = async (event, ctx) => {
+  const state = openSession(ctx);
+  const verdict = await stopGate({ projectRoot: ctx.projectRoot, pluginRoot: ctx.pluginRoot, state, stopHookActive: event.stopHookActive });
+  writeState(ctx.projectRoot, state);
+  for (const note of verdict.notes) {
+    journal(ctx, note);
+  }
+  return verdict.outcome;
+};
 var route = (event, ctx) => {
   switch (event.kind) {
     case "session-start":
@@ -2871,7 +3684,7 @@ var route = (event, ctx) => {
     case "subagent-start":
       return subagentStart({ ...ctx, agent: event.agentId });
     case "stop":
-      return stop();
+      return stop(event, ctx);
   }
 };
 var dispatch2 = async (event, base, pluginRoot = resolvePluginRoot()) => {
@@ -2881,7 +3694,7 @@ var dispatch2 = async (event, base, pluginRoot = resolvePluginRoot()) => {
   } catch (error) {
     if (GUARDED_KINDS.has(event.kind)) return guardFailure(ctx, error);
     journalFailure(ctx, error);
-    return NONE;
+    return NONE2;
   }
 };
 var handleHook = async (name, raw, env = process.env) => {
@@ -2915,8 +3728,8 @@ var runHook = async (args) => {
 };
 
 // src/loop/loop.ts
-import { mkdirSync as mkdirSync7, writeFileSync as writeFileSync4 } from "node:fs";
-import { join as join13 } from "node:path";
+import { mkdirSync as mkdirSync8, writeFileSync as writeFileSync5 } from "node:fs";
+import { join as join15 } from "node:path";
 var DEFAULT_DAYS = 7;
 var DAY_MS2 = 24 * 60 * 60 * 1e3;
 var MIN_TURNS = 2;
@@ -3012,10 +3825,10 @@ var runLoop = (args) => {
   const to = /* @__PURE__ */ new Date();
   const from = new Date(to.getTime() - days * DAY_MS2);
   const records = readJournal(projectRoot, from.getTime());
-  const dir = join13(ensureJigDir(projectRoot).runs, "_loop", to.toISOString().slice(0, 10));
-  mkdirSync7(dir, { recursive: true });
-  const path = join13(dir, "candidates.md");
-  writeFileSync4(path, formatCandidates(records, from, to, days));
+  const dir = join15(ensureJigDir(projectRoot).runs, "_loop", to.toISOString().slice(0, 10));
+  mkdirSync8(dir, { recursive: true });
+  const path = join15(dir, "candidates.md");
+  writeFileSync5(path, formatCandidates(records, from, to, days));
   process.stdout.write(`${path}
 `);
   return 0;
@@ -3023,8 +3836,8 @@ var runLoop = (args) => {
 
 // src/slot/slot.ts
 import { spawnSync as spawnSync2 } from "node:child_process";
-import { cpSync, existsSync as existsSync5, mkdirSync as mkdirSync8, readdirSync as readdirSync5, readFileSync as readFileSync11, rmSync as rmSync4, writeFileSync as writeFileSync5 } from "node:fs";
-import { basename as basename3, dirname as dirname5, isAbsolute as isAbsolute4, join as join14, relative as relative3, resolve as resolve4 } from "node:path";
+import { cpSync, existsSync as existsSync6, mkdirSync as mkdirSync9, readdirSync as readdirSync5, readFileSync as readFileSync13, rmSync as rmSync4, writeFileSync as writeFileSync6 } from "node:fs";
+import { basename as basename3, dirname as dirname6, isAbsolute as isAbsolute5, join as join16, relative as relative4, resolve as resolve7 } from "node:path";
 import { parseArgs } from "node:util";
 var SLOT_LOCK = "slot.lock";
 var AGENT_VIEW_CONFIG2 = "agent-view.config.json";
@@ -3051,7 +3864,7 @@ var parseWorktreeList = (porcelain) => {
     if (pathLine === void 0) continue;
     const branchLine = lines.find((line) => line.startsWith("branch "));
     const worktree = {
-      path: resolve4(pathLine.slice("worktree ".length)),
+      path: resolve7(pathLine.slice("worktree ".length)),
       isPrunable: lines.some((line) => line === "prunable" || line.startsWith("prunable "))
     };
     if (branchLine !== void 0) {
@@ -3130,24 +3943,24 @@ var loadContext = () => {
 var formatDuplicates = (duplicates) => [...duplicates].map(([slot, group]) => `s${slot}: ${group.map((worktree) => toSlash(worktree.path)).join(", ")}`).join("; ");
 var isTracked = (dir, file) => git(["ls-files", "--error-unmatch", "--", file], dir).ok;
 var writeLocalFile = (dir, file, content) => {
-  const path = join14(dir, file);
-  mkdirSync8(dirname5(path), { recursive: true });
-  writeFileSync5(path, content);
+  const path = join16(dir, file);
+  mkdirSync9(dirname6(path), { recursive: true });
+  writeFileSync6(path, content);
   if (isTracked(dir, file)) {
     git(["update-index", "--skip-worktree", "--", file], dir);
   }
 };
 var insideDir = (dir, file) => {
-  const path = resolve4(dir, file);
-  const rel = relative3(dir, path);
-  if (rel === "" || rel.startsWith("..") || isAbsolute4(rel)) throw new Error(`path ${file} leaves the slot dir`);
+  const path = resolve7(dir, file);
+  const rel = relative4(dir, path);
+  if (rel === "" || rel.startsWith("..") || isAbsolute5(rel)) throw new Error(`path ${file} leaves the slot dir`);
   return path;
 };
 var copyFromMain = (mainRoot, dir, copyFiles) => {
   const rootEnvFiles = readdirSync5(mainRoot, { withFileTypes: true }).filter((entry) => entry.isFile() && ENV_FILE.test(entry.name)).map((entry) => entry.name);
   for (const file of /* @__PURE__ */ new Set([...rootEnvFiles, ...copyFiles])) {
-    const source = join14(mainRoot, file);
-    if (!existsSync5(source)) {
+    const source = join16(mainRoot, file);
+    if (!existsSync6(source)) {
       process.stderr.write(`jig: copyFiles ${file} is missing in ${toSlash(mainRoot)}
 `);
       continue;
@@ -3158,19 +3971,19 @@ var copyFromMain = (mainRoot, dir, copyFiles) => {
 var writePorts = (dir, slots, slot) => {
   for (const [key, port] of Object.entries(slots.ports ?? {})) {
     const path = insideDir(dir, port.target);
-    const text2 = existsSync5(path) ? readFileSync11(path, "utf8") : "";
+    const text2 = existsSync6(path) ? readFileSync13(path, "utf8") : "";
     writeLocalFile(dir, port.target, setEnvValue(text2, key, String(port.base + slot * port.step)));
   }
 };
 var readJsonObject = (path) => {
-  if (!existsSync5(path)) return {};
-  const value = parseJsonc(readFileSync11(path, "utf8"));
+  if (!existsSync6(path)) return {};
+  const value = parseJsonc(readFileSync13(path, "utf8"));
   const isObject3 = typeof value === "object" && value !== null && !Array.isArray(value);
   return isObject3 ? value : {};
 };
 var writeAgentView = (mainRoot, dir, slots, cdpPort) => {
-  const own = join14(dir, AGENT_VIEW_CONFIG2);
-  const base = readJsonObject(existsSync5(own) ? own : join14(mainRoot, AGENT_VIEW_CONFIG2));
+  const own = join16(dir, AGENT_VIEW_CONFIG2);
+  const base = readJsonObject(existsSync6(own) ? own : join16(mainRoot, AGENT_VIEW_CONFIG2));
   writeLocalFile(dir, AGENT_VIEW_CONFIG2, `${JSON.stringify(agentViewConfig(base, slots, cdpPort), null, 2)}
 `);
 };
@@ -3180,7 +3993,7 @@ var worktreeAddArgs = (cwd, dir, branch) => {
   return branchExists(cwd, branch) ? ["worktree", "add", dir, branch] : ["worktree", "add", dir, "-b", branch];
 };
 var reserveSlot = async (context, slots, options) => {
-  const lock = await acquireLock(join14(ensureJigDir(context.mainRoot).cache, SLOT_LOCK));
+  const lock = await acquireLock(join16(ensureJigDir(context.mainRoot).cache, SLOT_LOCK));
   if (lock === void 0) return fail3("slot new is running elsewhere, retry", 1);
   try {
     git(["worktree", "prune"], context.projectRoot);
@@ -3193,7 +4006,7 @@ var reserveSlot = async (context, slots, options) => {
 `);
     }
     const slot = lowestFreeSlot(taken);
-    const dir = resolve4(context.mainRoot, slots.worktreesDir, slotDirName(context.repo, slot, options.slug));
+    const dir = resolve7(context.mainRoot, slots.worktreesDir, slotDirName(context.repo, slot, options.slug));
     const added = git(worktreeAddArgs(context.projectRoot, dir, options.branch), context.projectRoot);
     if (!added.ok) return fail3(`git worktree add failed: ${added.stderr.trim()}`, 2);
     return { slot, dir };
@@ -3352,6 +4165,7 @@ var runVersion = () => {
 };
 var commands = /* @__PURE__ */ new Map([
   ["hook", runHook],
+  ["check", runCheck],
   ["build", runBuild],
   ["atom", runAtom],
   ["slot", runSlot],
@@ -3366,7 +4180,7 @@ var fail4 = (message) => {
 `);
   return EXIT_FAILURE;
 };
-var run = async (argv) => {
+var run2 = async (argv) => {
   const nodeVersion = process.versions.node;
   const nodeMajor = Number(nodeVersion.split(".")[0]);
   if (nodeMajor < MIN_NODE_MAJOR2) {
@@ -3387,4 +4201,4 @@ var run = async (argv) => {
     return fail4(message);
   }
 };
-process.exitCode = await run(process.argv.slice(2));
+process.exitCode = await run2(process.argv.slice(2));
