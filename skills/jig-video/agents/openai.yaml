@@ -1,5 +1,5 @@
 interface:
-  display_name: "jig-feature-video"
+  display_name: "jig-video"
   short_description: "Record a narrated demo video of a change"
 policy:
   allow_implicit_invocation: false

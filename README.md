@@ -59,7 +59,7 @@ Without `/jig`, only the hooks and path-matched atoms run, and a small task goes
 
 Flows (`skills/jig/flows/`): `investigation`, `bug-fix`, `feature`, `interface-design`, `refactoring`, `perf`, `prototype`, `visual-parity`, `review`, `bug-bash`, `babysit`, `autonomous-run`, `session-pickup`, `pause-safely`. Every code-changing flow ends with the shared `mr` step. Subagent roles are templates in `skills/jig/references/roles/`; each template names a model tier, and `jig tiers` maps it to the agent's models (built-in for Claude Code, overridable in `~/.jig/config.jsonc`).
 
-Other skills: `jig-slots` (model or user), `jig-explain` and `jig-feature-video` (user only).
+Other skills: `jig-slots` (model or user), `jig-explain` and `jig-video` (user only).
 
 ## Configuration
 
