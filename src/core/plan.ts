@@ -2,11 +2,11 @@ import { createHash } from 'node:crypto'
 import { mkdirSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { version as pluginVersion } from '../../package.json'
+import { CHECKS } from '../checks'
 import { TOOLS } from '../tools'
 import type { PlanTools, ToolBinary, ToolEntry } from '../tools/tool'
 import { loadConfig, type LoadedConfig } from './config'
 import { parseFrontmatter } from './frontmatter'
-import { createMatcher } from './glob'
 import { jigPaths } from './paths'
 import { resolveBin } from './proc'
 import { writeFileAtomic } from './state'
@@ -30,29 +30,10 @@ export interface Plan {
   atoms: PlanAtom[]
 }
 
-export const AGENT_VIEW_CONFIG = 'agent-view.config.json'
-
-export const AGENT_VIEW_BINARY: ToolBinary = {
-  key: 'agentView',
-  label: 'agent-view',
-  command: 'agent-view',
-  packages: ['@petukhovart/agent-view'],
-  configs: [AGENT_VIEW_CONFIG],
-  requiresConfig: true,
-}
-
-export const PLAN_BINARIES: readonly ToolBinary[] = [...TOOLS.flatMap((tool) => tool.binaries), AGENT_VIEW_BINARY]
-
-export const TEST_FILE_GLOBS = ['**/*.{test,spec}.{ts,tsx,js,jsx,mts,cts,mjs,cjs}', '**/__tests__/**'] as const
-export const RUNTIME_VISIBLE_GLOBS = ['**/*.{vue,tsx,jsx,svelte,html,css,scss,less}'] as const
-export const AGENT_VIEW_VERIFY_COMMAND =
-  /(?:^|[\s;&|])(?:npx\s+)?agent-view\s+(?:act\s+replay|dom|screenshot|snap|click|fill|wait|eval|drag|key|upload)\b/
-
-export const isTestFile = createMatcher(TEST_FILE_GLOBS)
-
-const matchesRuntimeGlob = createMatcher(RUNTIME_VISIBLE_GLOBS)
-
-export const isRuntimeVisible = (path: string): boolean => matchesRuntimeGlob(path) && !isTestFile(path)
+export const PLAN_BINARIES: readonly ToolBinary[] = [
+  ...TOOLS.flatMap((tool) => tool.binaries),
+  ...CHECKS.flatMap((check) => check.binaries),
+]
 
 const HASHED_INPUTS = [
   ...new Set(PLAN_BINARIES.flatMap((binary) => binary.configs)),

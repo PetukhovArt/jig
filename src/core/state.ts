@@ -1,6 +1,7 @@
 import { mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { jigPaths } from './paths'
+import type { ProofKind } from '../checks/check'
 import type { Snapshot } from './snapshot'
 
 export interface EditRecord {
@@ -15,6 +16,13 @@ export interface StopState {
   consecutiveBlocks: number
   lastBlockDiffFingerprint?: string
 }
+
+export interface ProofTimes {
+  editAt?: number
+  proofAt?: number
+}
+
+export type CheckTimes = Record<string, Partial<Record<ProofKind, ProofTimes>>>
 
 export interface NoVerifyAllowance {
   stagedHash: string
@@ -32,8 +40,7 @@ export interface SessionState {
   edits: EditRecord[]
   lastTestEditAt?: number
   testReviewAt?: number
-  lastRuntimeEditAt?: number
-  verifyAt?: number
+  checks: CheckTimes
   testChecklistShown: boolean
   delivered: Record<string, string[]>
   sessionAtoms: string[]
@@ -65,6 +72,7 @@ export const createSessionState = (sessionId: string, snapshot: Snapshot, now: D
     updatedAt: iso,
     snapshot,
     edits: [],
+    checks: {},
     testChecklistShown: false,
     delivered: {},
     sessionAtoms: [],
@@ -78,7 +86,16 @@ export const resetSnapshot = (state: SessionState, snapshot: Snapshot): void => 
   state.edits = []
 }
 
-const isSessionState = (value: unknown): value is SessionState => {
+export const stampCheck = (state: SessionState, check: string, kinds: readonly ProofKind[], field: keyof ProofTimes, at: number): void => {
+  if (kinds.length === 0) return
+  const times = state.checks[check] ?? {}
+  for (const kind of kinds) {
+    times[kind] = { ...times[kind], [field]: at }
+  }
+  state.checks[check] = times
+}
+
+const isSessionState =(value: unknown): value is SessionState => {
   if (typeof value !== 'object' || value === null) return false
   const candidate = value as Partial<SessionState>
   return candidate.v === 1 && typeof candidate.sessionId === 'string' && typeof candidate.snapshot === 'object'
@@ -94,7 +111,8 @@ export const readState = (projectRoot: string, sessionId: string): SessionState 
   try {
     const value: unknown = JSON.parse(text)
     if (!isSessionState(value)) return undefined
-    return typeof value.turn === 'number' ? value : { ...value, turn: 0 }
+    const checks = typeof value.checks === 'object' && value.checks !== null ? value.checks : {}
+    return { ...value, turn: typeof value.turn === 'number' ? value.turn : 0, checks }
   } catch {
     return undefined
   }

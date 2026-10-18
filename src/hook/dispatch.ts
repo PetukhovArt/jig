@@ -6,7 +6,8 @@ import { loadConfig, type JigConfig } from '../core/config'
 import { activeRunContext } from '../dash/dash'
 import { appendJournal, rotateJournal, type JournalEntry } from '../core/journal'
 import { ensureJigDir, resolvePluginRoot, toSlash } from '../core/paths'
-import { AGENT_VIEW_VERIFY_COMMAND, isRuntimeVisible, isTestFile, loadPlan, type PlanAtom } from '../core/plan'
+import { CHECKS } from '../checks'
+import { loadPlan, type PlanAtom } from '../core/plan'
 import { takeSnapshot } from '../core/snapshot'
 import {
   createSessionState,
@@ -14,9 +15,11 @@ import {
   pruneStates,
   readState,
   resetSnapshot,
+  stampCheck,
   writeState,
   type SessionState,
 } from '../core/state'
+import { isTestFile } from '../core/test-files'
 import { checkComments } from '../rules/comments'
 import { checkNoVerify } from '../rules/no-verify'
 import { checkProtectedPath, checkShellWrite } from '../rules/protected'
@@ -283,8 +286,8 @@ const postEdit = async (event: EventOf<'post-edit'>, ctx: HookContext): Promise<
       parts.push(testChecklist(ctx.pluginRoot))
     }
   }
-  if (isRuntimeVisible(event.file)) {
-    state.lastRuntimeEditAt = now
+  for (const check of CHECKS) {
+    stampCheck(state, check.name, check.requires(event.file), 'editAt', now)
   }
   const toolFindings = await editToolFindings(ctx, event.file)
   const toolLines = collapseFindings(toolFindings)
@@ -309,10 +312,14 @@ const postRead = (event: EventOf<'post-read'>, ctx: HookContext): Outcome => {
 }
 
 const postBash = (event: EventOf<'post-bash'>, ctx: HookContext): Outcome => {
-  const isVerify = event.ok && AGENT_VIEW_VERIFY_COMMAND.test(event.command)
-  if (!isVerify) return NONE
+  if (!event.ok) return NONE
+  const proofs = CHECKS.map((check) => ({ name: check.name, kinds: check.proves(event.command) })).filter((proof) => proof.kinds.length > 0)
+  if (proofs.length === 0) return NONE
+  const now = Date.now()
   const state = openSession(ctx)
-  state.verifyAt = Date.now()
+  for (const proof of proofs) {
+    stampCheck(state, proof.name, proof.kinds, 'proofAt', now)
+  }
   writeState(ctx.projectRoot, state)
   return NONE
 }

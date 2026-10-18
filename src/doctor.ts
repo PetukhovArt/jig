@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { CHECKS, isCheckActive } from './checks'
 import { loadConfig } from './core/config'
 import { gitLsFiles } from './core/git'
 import { JOURNAL_MAX_BYTES, listJournalFiles } from './core/journal'
@@ -87,6 +88,9 @@ const checkTool = (projectRoot: string, tools: PlanTools, spec: ToolBinary): Che
   return warn(`${spec.label}: ${config} found, binary not found, tool not used`)
 }
 
+const checkRuntime = (tools: PlanTools): Check[] =>
+  CHECKS.map((check) => ok(`check ${check.name}: ${isCheckActive(check, tools) ? `active, proves ${Object.keys(check.hints).join(', ')}` : 'not used'}`))
+
 const checkGitignore = (projectRoot: string): Check => {
   const path = jigPaths(projectRoot).gitignore
   return existsSync(path) ? ok(`gitignore: ${path}`) : warn(`gitignore: ${path} missing, jig creates it on first run`)
@@ -165,6 +169,7 @@ export const runDoctor: Command = (args) => {
     checkConfig(projectRoot),
     checkTiers(),
     ...PLAN_BINARIES.map((spec) => checkTool(projectRoot, tools, spec)),
+    ...checkRuntime(tools),
     checkGitignore(projectRoot),
     checkDeny(projectRoot),
     ...checkAtomPaths(projectRoot, pluginRoot),

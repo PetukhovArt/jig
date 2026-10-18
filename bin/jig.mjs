@@ -374,6 +374,51 @@ import { createHash as createHash2 } from "node:crypto";
 import { mkdirSync as mkdirSync6, readdirSync as readdirSync2, readFileSync as readFileSync7, statSync as statSync4 } from "node:fs";
 import { dirname as dirname5, join as join5 } from "node:path";
 
+// src/core/test-files.ts
+var TEST_FILE_GLOBS = ["**/*.{test,spec}.{ts,tsx,js,jsx,mts,cts,mjs,cjs}", "**/__tests__/**"];
+var isTestFile = createMatcher(TEST_FILE_GLOBS);
+
+// src/checks/check.ts
+var PROOF_KINDS = ["behavior", "look"];
+var defineCheck = (definition) => definition;
+var isCheckActive = (check, tools) => check.binaries.every((binary) => tools[binary.key] !== void 0);
+
+// src/checks/agent-view.ts
+var AGENT_VIEW_CONFIG = "agent-view.config.json";
+var AGENT_VIEW_BINARY = {
+  key: "agentView",
+  label: "agent-view",
+  command: "agent-view",
+  packages: ["@petukhovart/agent-view"],
+  configs: [AGENT_VIEW_CONFIG],
+  requiresConfig: true
+};
+var isMarkup = createMatcher(["**/*.{vue,tsx,jsx,svelte,html}"]);
+var isStyle = createMatcher(["**/*.{css,scss,less}"]);
+var PROOFS = [
+  ["behavior", /(?:^|[\s;&|])(?:npx\s+)?agent-view\s+act\s+replay\b/],
+  ["look", /(?:^|[\s;&|])(?:npx\s+)?agent-view\s+(?:screenshot|snap)\b/]
+];
+var requires = (file) => {
+  if (isTestFile(file)) return [];
+  if (isMarkup(file)) return ["behavior", "look"];
+  if (isStyle(file)) return ["look"];
+  return [];
+};
+var agentViewCheck = defineCheck({
+  name: "agent-view",
+  binaries: [AGENT_VIEW_BINARY],
+  requires,
+  proves: (command) => PROOFS.filter(([, pattern]) => pattern.test(command)).map(([kind]) => kind),
+  hints: {
+    behavior: "agent-view act replay <use case>",
+    look: "agent-view screenshot"
+  }
+});
+
+// src/checks/index.ts
+var CHECKS = [agentViewCheck];
+
 // src/tools/eslint.ts
 import { resolve as resolve3 } from "node:path";
 
@@ -744,8 +789,8 @@ var eslintTool = defineTool({
     const files = input.files.filter(isCodeFile);
     const timeoutMs = input.budget(ESLINT_TIMEOUT_MS);
     const entry = tools.eslint;
-    const isSkipped = files.length === 0 || timeoutMs === 0;
-    if (isSkipped || !hasConfig(entry)) return { runs: [], findings: [] };
+    const isSkipped2 = files.length === 0 || timeoutMs === 0;
+    if (isSkipped2 || !hasConfig(entry)) return { runs: [], findings: [] };
     const toolRun = await runEslint(entry, input.projectRoot, files, timeoutMs);
     const errors = toolRun.findings.filter((finding) => finding.severity === "error");
     return { runs: [toolRun], findings: keepOnChangedLines(input.projectRoot, errors) };
@@ -860,8 +905,8 @@ var stratumTool = defineTool({
     const files = input.files.filter(isCodeFile);
     const timeoutMs = input.budget(STRATUM_TIMEOUT_MS);
     const entry = tools.stratum;
-    const isSkipped = files.length === 0 || timeoutMs === 0;
-    if (isSkipped || !hasConfig(entry)) return { runs: [], findings: [] };
+    const isSkipped2 = files.length === 0 || timeoutMs === 0;
+    if (isSkipped2 || !hasConfig(entry)) return { runs: [], findings: [] };
     const toolRun = await runStratum(entry, input.projectRoot, files, timeoutMs);
     return { runs: [toolRun], findings: toolRun.findings };
   }
@@ -1388,6 +1433,7 @@ var createSessionState = (sessionId, snapshot, now = /* @__PURE__ */ new Date())
     updatedAt: iso,
     snapshot,
     edits: [],
+    checks: {},
     testChecklistShown: false,
     delivered: {},
     sessionAtoms: [],
@@ -1398,6 +1444,14 @@ var createSessionState = (sessionId, snapshot, now = /* @__PURE__ */ new Date())
 var resetSnapshot = (state, snapshot) => {
   state.snapshot = snapshot;
   state.edits = [];
+};
+var stampCheck = (state, check, kinds, field, at) => {
+  if (kinds.length === 0) return;
+  const times = state.checks[check] ?? {};
+  for (const kind of kinds) {
+    times[kind] = { ...times[kind], [field]: at };
+  }
+  state.checks[check] = times;
 };
 var isSessionState = (value) => {
   if (typeof value !== "object" || value === null) return false;
@@ -1414,7 +1468,8 @@ var readState = (projectRoot, sessionId) => {
   try {
     const value = JSON.parse(text2);
     if (!isSessionState(value)) return void 0;
-    return typeof value.turn === "number" ? value : { ...value, turn: 0 };
+    const checks = typeof value.checks === "object" && value.checks !== null ? value.checks : {};
+    return { ...value, turn: typeof value.turn === "number" ? value.turn : 0, checks };
   } catch {
     return void 0;
   }
@@ -1469,22 +1524,10 @@ var pruneStates = (projectRoot, now = Date.now(), maxAgeMs = STATE_MAX_AGE_MS) =
 };
 
 // src/core/plan.ts
-var AGENT_VIEW_CONFIG = "agent-view.config.json";
-var AGENT_VIEW_BINARY = {
-  key: "agentView",
-  label: "agent-view",
-  command: "agent-view",
-  packages: ["@petukhovart/agent-view"],
-  configs: [AGENT_VIEW_CONFIG],
-  requiresConfig: true
-};
-var PLAN_BINARIES = [...TOOLS.flatMap((tool) => tool.binaries), AGENT_VIEW_BINARY];
-var TEST_FILE_GLOBS = ["**/*.{test,spec}.{ts,tsx,js,jsx,mts,cts,mjs,cjs}", "**/__tests__/**"];
-var RUNTIME_VISIBLE_GLOBS = ["**/*.{vue,tsx,jsx,svelte,html,css,scss,less}"];
-var AGENT_VIEW_VERIFY_COMMAND = /(?:^|[\s;&|])(?:npx\s+)?agent-view\s+(?:act\s+replay|dom|screenshot|snap|click|fill|wait|eval|drag|key|upload)\b/;
-var isTestFile = createMatcher(TEST_FILE_GLOBS);
-var matchesRuntimeGlob = createMatcher(RUNTIME_VISIBLE_GLOBS);
-var isRuntimeVisible = (path) => matchesRuntimeGlob(path) && !isTestFile(path);
+var PLAN_BINARIES = [
+  ...TOOLS.flatMap((tool) => tool.binaries),
+  ...CHECKS.flatMap((check) => check.binaries)
+];
 var HASHED_INPUTS = [
   ...new Set(PLAN_BINARIES.flatMap((binary) => binary.configs)),
   "package.json",
@@ -2276,6 +2319,7 @@ var checkTool = (projectRoot, tools, spec) => {
   if (config === void 0) return ok(`${spec.label}: not used`);
   return warn(`${spec.label}: ${config} found, binary not found, tool not used`);
 };
+var checkRuntime = (tools) => CHECKS.map((check) => ok(`check ${check.name}: ${isCheckActive(check, tools) ? `active, proves ${Object.keys(check.hints).join(", ")}` : "not used"}`));
 var checkGitignore = (projectRoot) => {
   const path = jigPaths(projectRoot).gitignore;
   return existsSync5(path) ? ok(`gitignore: ${path}`) : warn(`gitignore: ${path} missing, jig creates it on first run`);
@@ -2348,6 +2392,7 @@ var runDoctor = (args) => {
     checkConfig(projectRoot),
     checkTiers(),
     ...PLAN_BINARIES.map((spec) => checkTool(projectRoot, tools, spec)),
+    ...checkRuntime(tools),
     checkGitignore(projectRoot),
     checkDeny(projectRoot),
     ...checkAtomPaths(projectRoot, pluginRoot),
@@ -2507,28 +2552,69 @@ var testReviewFindings = (input, times) => {
   const message = `jig/test-review: test files changed (${tests.join(", ")}) and no test-reviewer ran after the last change. Spawn a subagent with the role template ${root}/skills/jig/references/roles/test-reviewer.md over these files, then fix what it reports.`;
   return applyLevel([jigFinding("jig/test-review", first, message)], ruleLevel(input.plan, "jig/test-review"));
 };
-var hasSkipVerifyDecision = (projectRoot, since) => {
+var skipScope = (text2) => {
+  if (!text2.startsWith(SKIP_VERIFY)) return void 0;
+  const rest = text2.slice(SKIP_VERIFY.length);
+  if (!rest.startsWith(":")) return "all";
+  const named = rest.slice(1).split(/\s/)[0];
+  return PROOF_KINDS.find((kind) => kind === named);
+};
+var readSkipDecisions = (projectRoot) => {
   const active = readActiveRun(projectRoot);
-  if (active === void 0) return false;
-  return active.run.decisions.some(
-    (decision) => decision.text.startsWith(SKIP_VERIFY) && (decision.why ?? "").trim() !== "" && Date.parse(decision.at) > since
-  );
+  if (active === void 0) return [];
+  const skips = [];
+  for (const decision of active.run.decisions) {
+    const scope = skipScope(decision.text);
+    if (scope !== void 0 && (decision.why ?? "").trim() !== "") {
+      skips.push({ scope, at: Date.parse(decision.at) });
+    }
+  }
+  return skips;
+};
+var isSkipped = (skips, kind, since) => skips.some((skip) => (skip.scope === "all" || skip.scope === kind) && skip.at > since);
+var missingProofs = (check, input, times, skips, notes) => {
+  const recorded = times.checks[check.name] ?? {};
+  const missing = [];
+  for (const kind of PROOF_KINDS) {
+    const files = input.diff.files.filter((file) => check.requires(file).includes(kind));
+    const [first] = files;
+    if (first === void 0) continue;
+    const editAt = latestEdit(input.diff, files, recorded[kind]?.editAt);
+    const proofAt = recorded[kind]?.proofAt;
+    if (proofAt !== void 0 && proofAt >= editAt) continue;
+    if (isSkipped(skips(), kind, editAt)) {
+      notes.push({ kind: "skip-verify", tool: "jig", rule: "jig/verify-fact", file: first, message: `${check.name} ${kind}` });
+      continue;
+    }
+    missing.push({ kind, files });
+  }
+  return missing;
+};
+var verifyFactMessage = (check, missing, pluginRoot) => {
+  const files = [...new Set(missing.flatMap((proof) => proof.files))];
+  const skip = `node ${toSlash(pluginRoot)}/bin/jig.mjs dash decision`;
+  const options = missing.map((proof) => {
+    const hint = check.hints[proof.kind];
+    const run3 = hint === void 0 ? "" : `run ${hint}, or `;
+    return `${proof.kind}: ${run3}if not needed: ${skip} "skip-verify:${proof.kind}" --why "<reason>".`;
+  });
+  return [
+    `jig/verify-fact: ${check.name} has no ${missing.map((proof) => proof.kind).join(" and ")} proof since files changed (${files.length}: ${files.slice(0, 3).join(", ")}).`,
+    ...options,
+    `To skip all: ${skip} "skip-verify" --why "<reason>".`
+  ].join(" ");
 };
 var verifyFactFindings = (input, times, notes) => {
-  if (input.plan.tools.agentView === void 0) return [];
-  const visible = input.diff.files.filter(isRuntimeVisible);
-  const [first] = visible;
-  if (first === void 0) return [];
-  const lastRuntimeEdit = latestEdit(input.diff, visible, times.lastRuntimeEditAt);
-  const isVerified = times.verifyAt !== void 0 && times.verifyAt >= lastRuntimeEdit;
-  if (isVerified) return [];
-  if (hasSkipVerifyDecision(input.projectRoot, lastRuntimeEdit)) {
-    notes.push({ kind: "skip-verify", tool: "jig", rule: "jig/verify-fact", file: first });
-    return [];
+  let skips;
+  const loadSkips = () => skips ??= readSkipDecisions(input.projectRoot);
+  const findings = [];
+  for (const check of CHECKS.filter((candidate) => isCheckActive(candidate, input.plan.tools))) {
+    const missing = missingProofs(check, input, times, loadSkips, notes);
+    const [first] = missing.flatMap((proof) => proof.files);
+    if (first === void 0) continue;
+    findings.push(jigFinding("jig/verify-fact", first, verifyFactMessage(check, missing, input.pluginRoot)));
   }
-  const root = toSlash(input.pluginRoot);
-  const message = `jig/verify-fact: runtime-visible files changed (${visible.length}: ${visible.slice(0, 3).join(", ")}) and the app was not checked since. Verify on the running app (agent-view: act replay or the verify skill), or record why not: node ${root}/bin/jig.mjs dash decision "skip-verify" --why "<reason>".`;
-  return applyLevel([jigFinding("jig/verify-fact", first, message)], ruleLevel(input.plan, "jig/verify-fact"));
+  return applyLevel(findings, ruleLevel(input.plan, "jig/verify-fact"));
 };
 var stateStep = (rule, findings) => timed(rule, () => Promise.resolve({ runs: [], findings: findings() }));
 var runStopChecks = async (input) => {
@@ -3897,8 +3983,8 @@ var postEdit = async (event, ctx) => {
       parts.push(testChecklist(ctx.pluginRoot));
     }
   }
-  if (isRuntimeVisible(event.file)) {
-    state.lastRuntimeEditAt = now;
+  for (const check of CHECKS) {
+    stampCheck(state, check.name, check.requires(event.file), "editAt", now);
   }
   const toolFindings = await editToolFindings(ctx, event.file);
   const toolLines = collapseFindings(toolFindings);
@@ -3921,10 +4007,14 @@ var postRead = (event, ctx) => {
   return contextOf(parts);
 };
 var postBash = (event, ctx) => {
-  const isVerify = event.ok && AGENT_VIEW_VERIFY_COMMAND.test(event.command);
-  if (!isVerify) return NONE2;
+  if (!event.ok) return NONE2;
+  const proofs = CHECKS.map((check) => ({ name: check.name, kinds: check.proves(event.command) })).filter((proof) => proof.kinds.length > 0);
+  if (proofs.length === 0) return NONE2;
+  const now = Date.now();
   const state = openSession(ctx);
-  state.verifyAt = Date.now();
+  for (const proof of proofs) {
+    stampCheck(state, proof.name, proof.kinds, "proofAt", now);
+  }
   writeState(ctx.projectRoot, state);
   return NONE2;
 };

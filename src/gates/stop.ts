@@ -1,10 +1,12 @@
 import { createHash } from 'node:crypto'
 import type { RuleId } from '../core/config'
 import { ensureJigDir, jigPaths, resolvePluginRoot, resolveProjectRoot, toProjectPath, toSlash } from '../core/paths'
-import { isRuntimeVisible, isTestFile, loadPlan, type Plan } from '../core/plan'
+import { CHECKS, isCheckActive, PROOF_KINDS, type CheckDefinition, type ProofKind } from '../checks'
+import { loadPlan, type Plan } from '../core/plan'
 import { acquireLock, transferLock } from '../core/proc'
 import { takeSnapshot, turnDiff, type TurnDiff } from '../core/snapshot'
 import { resetSnapshot, type SessionState } from '../core/state'
+import { isTestFile } from '../core/test-files'
 import { addRunDecision, readActiveRun } from '../dash/dash'
 import type { Outcome } from '../hook/types'
 import { TOOLS, type RegisteredTool } from '../tools'
@@ -16,7 +18,7 @@ type Command = (args: string[]) => number | Promise<number>
 
 export type { JournalNote } from '../tools/tool'
 
-export type GateTimes = Pick<SessionState, 'lastTestEditAt' | 'testReviewAt' | 'lastRuntimeEditAt' | 'verifyAt'>
+export type GateTimes = Pick<SessionState, 'lastTestEditAt' | 'testReviewAt' | 'checks'>
 
 export interface StopStep {
   rule: RuleId
@@ -116,31 +118,85 @@ const testReviewFindings = (input: StopChecksInput, times: GateTimes): Finding[]
   return applyLevel([jigFinding('jig/test-review', first, message)], ruleLevel(input.plan, 'jig/test-review'))
 }
 
-const hasSkipVerifyDecision = (projectRoot: string, since: number): boolean => {
+interface SkipDecision {
+  scope: ProofKind | 'all'
+  at: number
+}
+
+const skipScope = (text: string): SkipDecision['scope'] | undefined => {
+  if (!text.startsWith(SKIP_VERIFY)) return undefined
+  const rest = text.slice(SKIP_VERIFY.length)
+  if (!rest.startsWith(':')) return 'all'
+  const named = rest.slice(1).split(/\s/)[0]
+  return PROOF_KINDS.find((kind) => kind === named)
+}
+
+const readSkipDecisions = (projectRoot: string): SkipDecision[] => {
   const active = readActiveRun(projectRoot)
-  if (active === undefined) return false
-  return active.run.decisions.some(
-    (decision) => decision.text.startsWith(SKIP_VERIFY) && (decision.why ?? '').trim() !== '' && Date.parse(decision.at) > since,
-  )
+  if (active === undefined) return []
+  const skips: SkipDecision[] = []
+  for (const decision of active.run.decisions) {
+    const scope = skipScope(decision.text)
+    if (scope !== undefined && (decision.why ?? '').trim() !== '') {
+      skips.push({ scope, at: Date.parse(decision.at) })
+    }
+  }
+  return skips
+}
+
+const isSkipped = (skips: readonly SkipDecision[], kind: ProofKind, since: number): boolean =>
+  skips.some((skip) => (skip.scope === 'all' || skip.scope === kind) && skip.at > since)
+
+interface MissingProof {
+  kind: ProofKind
+  files: string[]
+}
+
+const missingProofs = (check: CheckDefinition, input: StopChecksInput, times: GateTimes, skips: () => SkipDecision[], notes: JournalNote[]): MissingProof[] => {
+  const recorded = times.checks[check.name] ?? {}
+  const missing: MissingProof[] = []
+  for (const kind of PROOF_KINDS) {
+    const files = input.diff.files.filter((file) => check.requires(file).includes(kind))
+    const [first] = files
+    if (first === undefined) continue
+    const editAt = latestEdit(input.diff, files, recorded[kind]?.editAt)
+    const proofAt = recorded[kind]?.proofAt
+    if (proofAt !== undefined && proofAt >= editAt) continue
+    if (isSkipped(skips(), kind, editAt)) {
+      notes.push({ kind: 'skip-verify', tool: 'jig', rule: 'jig/verify-fact', file: first, message: `${check.name} ${kind}` })
+      continue
+    }
+    missing.push({ kind, files })
+  }
+  return missing
+}
+
+const verifyFactMessage = (check: CheckDefinition, missing: readonly MissingProof[], pluginRoot: string): string => {
+  const files = [...new Set(missing.flatMap((proof) => proof.files))]
+  const skip = `node ${toSlash(pluginRoot)}/bin/jig.mjs dash decision`
+  const options = missing.map((proof) => {
+    const hint = check.hints[proof.kind]
+    const run = hint === undefined ? '' : `run ${hint}, or `
+    return `${proof.kind}: ${run}if not needed: ${skip} "skip-verify:${proof.kind}" --why "<reason>".`
+  })
+  return [
+    `jig/verify-fact: ${check.name} has no ${missing.map((proof) => proof.kind).join(' and ')} proof since files changed (${files.length}: ${files.slice(0, 3).join(', ')}).`,
+    ...options,
+    `To skip all: ${skip} "skip-verify" --why "<reason>".`,
+  ].join(' ')
 }
 
 const verifyFactFindings = (input: StopChecksInput, times: GateTimes, notes: JournalNote[]): Finding[] => {
-  if (input.plan.tools.agentView === undefined) return []
-  const visible = input.diff.files.filter(isRuntimeVisible)
-  const [first] = visible
-  if (first === undefined) return []
-  const lastRuntimeEdit = latestEdit(input.diff, visible, times.lastRuntimeEditAt)
-  const isVerified = times.verifyAt !== undefined && times.verifyAt >= lastRuntimeEdit
-  if (isVerified) return []
-  if (hasSkipVerifyDecision(input.projectRoot, lastRuntimeEdit)) {
-    notes.push({ kind: 'skip-verify', tool: 'jig', rule: 'jig/verify-fact', file: first })
-    return []
+  let skips: SkipDecision[] | undefined
+  const loadSkips = (): SkipDecision[] => (skips ??= readSkipDecisions(input.projectRoot))
+  const findings: Finding[] = []
+  for (const check of CHECKS.filter((candidate) => isCheckActive(candidate, input.plan.tools))) {
+    const missing = missingProofs(check, input, times, loadSkips, notes)
+    const [first] = missing.flatMap((proof) => proof.files)
+    if (first === undefined) continue
+    findings.push(jigFinding('jig/verify-fact', first, verifyFactMessage(check, missing, input.pluginRoot)))
   }
-  const root = toSlash(input.pluginRoot)
-  const message =
-    `jig/verify-fact: runtime-visible files changed (${visible.length}: ${visible.slice(0, 3).join(', ')}) and the app was not checked since. ` +
-    `Verify on the running app (agent-view: act replay or the verify skill), or record why not: node ${root}/bin/jig.mjs dash decision "skip-verify" --why "<reason>".`
-  return applyLevel([jigFinding('jig/verify-fact', first, message)], ruleLevel(input.plan, 'jig/verify-fact'))
+  return applyLevel(findings, ruleLevel(input.plan, 'jig/verify-fact'))
 }
 
 const stateStep = (rule: RuleId, findings: () => Finding[]): Promise<StopStep> =>
