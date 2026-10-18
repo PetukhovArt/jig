@@ -1,4 +1,4 @@
-# Design record
+# Module design record
 
 The page that ships with the sketch. One page, plain headings, no boilerplate. Replace each note in braces; drop a section you have nothing for, except the shapes considered. Terms follow `references/deep-modules.md`.
 

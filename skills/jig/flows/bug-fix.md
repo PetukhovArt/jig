@@ -7,7 +7,7 @@ Atoms: root-causes, prove-shippable, change-impact, tests.
 1. Reproduce the bug yourself on the surface where the user sees it. Runtime-visible: drive the app (agent-view) and save the path as an act scenario. Otherwise: a failing test or a script. Build the loop so it goes red on the bug.
 2. Understand the area first: the how and why steps of `flows/investigation.md`, as deep as the bug needs.
 3. Minimise the reproduction, write hypotheses down, instrument instead of guessing, until you reach the first place the system went wrong.
-4. The fix crosses a function boundary (changes a signature, an exported type or a module's public surface): `flows/interface-design.md` first. Otherwise `skip: the fix stays inside one function`.
+4. The fix crosses a function boundary (changes a signature, an exported type or a module's public surface): `flows/module-design.md` first. Otherwise `skip: the fix stays inside one function`.
 5. Name the fact the fix is safe because of (atom change-impact).
 6. Fix it at the root. Fix every instance of the same mistake.
 7. Re-run the same reproduction: red before, green after. A regression test only if it passes atom tests.

@@ -29,7 +29,7 @@ Atoms: typescript, effects.
 ### 5. Wrappers and proxies
 Look for: a type wrapping another (cache, adapter, decorator, proxy). Routing: every method calls the wrapped instance, not a fresh lookup through a registry or a global (re-entry, recursion). Completeness: every method callers use is exposed.
 Evidence: the method line that goes to the wrong place, or the call of a method the wrapper lacks.
-Atoms: boundaries.
+Atoms: system-edges.
 
 ### 6. Guard without siblings
 Look for: a hunk that adds a guard, early return, validation or branch, i.e. a new invariant. State the invariant in one sentence without naming the file; grep each symbol of the guard's condition across the whole tree; a sibling is a place with the same precondition and no guard. Zero siblings is a valid answer.
@@ -39,7 +39,7 @@ Atoms: root-causes, change-impact.
 ### 7. Security
 Look for: a sink in the diff plus a path to it from untrusted input. A string reaching an executable context (`innerHTML`, `v-html`, `eval`, `new Function`, SQL or shell built by concatenation); a path or URL built from a user value without normalisation (traversal, open redirect, `file://` in Electron); external data parsed and trusted by shape; a secret in the diff; a removed protection (escape, CSP, `postMessage` origin check, `contextIsolation`, IPC validation); a permission check only on the client.
 Evidence: the sink line plus the source of the input. Important by default; a secret in the diff is always important, no input needed. Not a finding: "maybe XSS" without a sink in the diff.
-Atoms: boundaries.
+Atoms: system-edges.
 
 ## Rules
 
@@ -56,7 +56,7 @@ Atoms: smells, typescript.
 ### 10. Architecture
 Look for: a module exporting its internals; a god object; variability solved by branching in application code where an adapter or registry belongs; an abstraction with one consumer; an orchestrator owning state; hidden coupling (shared mutable state, an event contract by convention, implicit call order); an anemic model (invariants moved into outside functions, an illegal state representable); code placed in a module that does not own the concept; new code in a zone marked legacy; a list synced by hand with a second list; a second way to do a task while the old one keeps its callers; temporal decomposition; an import that bypasses a public index. Project layer rules, the ADRs in force and the glossary apply only with a quote from the project document.
 Evidence: the quoted diff line plus the rule (from this list, or quoted from the project's architecture document, ADR or glossary). Not a finding: "I would split it differently" without a broken rule.
-Atoms: boundaries, domain-model, reader-cost, one-way, shared-state, patterns.
+Atoms: system-edges, domain-model, reader-cost, one-way, shared-state, patterns.
 
 ## Cleanup
 

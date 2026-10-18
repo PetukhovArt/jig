@@ -23,18 +23,18 @@ CLI: `node <root>/bin/jig.mjs <command>`. Atoms: `<root>/atoms/<name>.md`. Flows
 - A question for the user: `dash ask "<question>" "<default>"`, then continue with the default. When the user answers: `dash answer <n> "<answer>"` and follow the answer.
 - When a step names an atom, read `<root>/atoms/<name>.md` before acting on that step.
 - When a step names a role, read its template and pass the full template text plus your brief (goal, scope, file pointers, the atoms it must read with their paths) as the subagent prompt. The subagent's model and effort come from the template's `tier:` line: run `node <root>/bin/jig.mjs tiers` once per session and use its mapping; when it prints no mapping for this agent, choose a model that fits the tier description in `references/tiers.md`. Review what it returns; do not pass its text through.
-- Code crossing a function boundary → `flows/interface-design.md` before writing it.
+- Code crossing a function boundary → `flows/module-design.md` before writing it.
 - Hooks may deny an edit or keep you from finishing. Read the reason, fix the cause, do not work around it.
 
 ## Flows
 - `investigation`: understand code or a decision without changing it.
 - `bug-fix`: reproduce, find the root cause, fix, prove.
 - `feature`: build new behavior with the right data shape and prove it on the running product.
-- `interface-design`: ground, sketch two shapes in parallel, pick by depth, implement against the sketch.
+- `module-design`: ground, sketch two shapes in parallel, pick by depth, implement against the sketch.
 - `refactoring`: change structure, keep behavior, prove equivalence.
 - `perf`: measure, explain the limiter, fix, measure again.
 - `prototype`: settle a design decision with a throwaway instrument.
-- `visual-match`: make UI match a baseline or a design pixel for pixel.
+- `ui-match`: make UI match a baseline or a UI design pixel for pixel.
 - `review`: review a merge request (yours or someone else's) and post proven findings.
 - `bug-bash`: attack a feature in the running app and report reproduced bugs.
 - `mr-watching`: drive your open merge requests through conflicts, threads and CI.

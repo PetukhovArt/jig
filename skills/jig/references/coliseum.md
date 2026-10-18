@@ -20,7 +20,7 @@ Every candidate gets the same prompt, so the prompt is the contract.
 
 ## 3. Cross-judge
 
-After every candidate finishes, spawn one subagent with role `referee`. Prefer a model of its tier that wrote no candidate. Give it the rubric, `references/interface-red-flags.md` and the candidates by location label. It runs while you read.
+After every candidate finishes, spawn one subagent with role `referee`. Prefer a model of its tier that wrote no candidate. Give it the rubric, `references/module-red-flags.md` and the candidates by location label. It runs while you read.
 
 ## 4. Pick
 

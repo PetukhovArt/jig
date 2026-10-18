@@ -6,7 +6,7 @@ Atoms: reader-cost, do-less, one-way, dead-code, automate-repeats, patterns, dom
 
 1. Pin the behavior: an existing test, a characterization test, or an act replay that passes now.
 2. Name the missing structure: what makes the code hard to change (atoms reader-cost, domain-model, patterns).
-3. Name the target shape as types and module boundaries before moving code; crossing a function boundary → `flows/interface-design.md`.
+3. Name the target shape as types and module boundaries before moving code; crossing a function boundary → `flows/module-design.md`.
 4. Subtract first: delete dead code, redundant layers and stub references.
 5. Move in small green steps. Migrate callers and delete the old way in the same wave. Ten similar edits: write the codemod (atom automate-repeats).
 6. Prove equivalence: the same pin passes, plus a type check and the project's tests on the touched area.

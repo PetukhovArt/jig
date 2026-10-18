@@ -2,7 +2,7 @@
 
 **You own the verdict, not the diff. Find aggressively, judge separately, prove every finding.**
 
-Atoms: evidence, change-impact, do-less, reader-cost, domain-model, boundaries, one-way, dead-code, effects, smells, tests, comments, docs, typescript, lessons-to-checks.
+Atoms: evidence, change-impact, do-less, reader-cost, domain-model, system-edges, one-way, dead-code, effects, smells, tests, comments, docs, typescript, lessons-to-checks.
 
 1. Prepare: the merge request (yours or someone else's) via `glab`/`gh` (see `references/forge.md`), its description and linked task, the diff against its target, the project's rules (AGENTS.md, ADRs, glossary).
 2. Find: spawn subagents with role `finder`, one per angle from `references/review-angles.md` that the diff touches. Each returns candidates only, with `file:line`.

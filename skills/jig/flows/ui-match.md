@@ -1,4 +1,4 @@
-# visual-match
+# ui-match
 
 **You own pixel-exact equivalence. The baseline is the spec. You do not touch it.**
 

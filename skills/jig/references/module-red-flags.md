@@ -1,4 +1,4 @@
-# Interface red flags
+# Module red flags
 
 Screen every candidate shape before you pick. A red flag is a reason to revise or reject the shape. Terms follow `references/deep-modules.md`.
 
@@ -44,7 +44,7 @@ Fix: keep one. Move the callers and delete the others in the same change (atom `
 
 Looks like: code outside a module can import its internals by a deep path.
 Hurts: the shortest path that compiles imports them, and they become part of the interface.
-Fix: make internals unreachable: a public index plus a build or lint rule (for example a stratum rule) that fails an outside import (atom `boundaries`).
+Fix: make internals unreachable: a public index plus a build or lint rule (for example a stratum rule) that fails an outside import (atom `system-edges`).
 
 ## Hand-synced list
 
