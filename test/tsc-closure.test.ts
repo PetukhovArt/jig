@@ -1,9 +1,10 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { groupByTsconfig, runTypeCheck, writeClosureConfig } from '../src/tools/tsc'
+import { transferLock } from '../src/core/proc'
+import { groupByTsconfig, runTypeCheck, tsconfigHash, writeClosureConfig } from '../src/tools/tsc'
 
 let root: string
 
@@ -55,6 +56,24 @@ describe('tsc closure of the turn diff', () => {
     ])
     expect(grouping.skipped).toEqual(['src/orphan.ts'])
   })
+
+  it('detaches a check that outlives its timeout, which then writes the incremental cache and frees the lock it was handed', async () => {
+    write('tsconfig.json', '{ "compilerOptions": { "strict": true, "noEmit": true }, "include": ["src"] }')
+    write('src/use.ts', "export const s: string = 'x'\n")
+    const { groups } = groupByTsconfig(root, ['src/use.ts'])
+    const lockPath = join(root, '.jig', 'cache', 'heavy.lock')
+    write('.jig/cache/heavy.lock', JSON.stringify({ pid: process.pid, at: Date.now() }))
+    const result = await runTypeCheck({ tsc: { bin: tscBin } }, root, groups[0]!, 1, lockPath)
+    expect(result?.failure).toContain('detached')
+    transferLock(lockPath, result!.detachedPid!)
+    const deadline = Date.now() + 60_000
+    while (existsSync(lockPath) && Date.now() < deadline) {
+      await new Promise((done) => setTimeout(done, 200))
+    }
+    expect(existsSync(lockPath)).toBe(false)
+    const buildInfo = join(root, '.jig', 'cache', 'tsc', `${tsconfigHash(groups[0]!.config)}.tsbuildinfo`)
+    expect(existsSync(buildInfo)).toBe(true)
+  }, 70_000)
 
   it('reports type errors of the group files only, not of the files they import', async () => {
     write('tsconfig.json', '{ "compilerOptions": { "strict": true, "noEmit": true }, "include": ["src"] }')

@@ -840,6 +840,9 @@ var tryCreateLock = (path) => {
     throw error;
   }
 };
+var transferLock = (path, pid) => {
+  writeFileSync2(path, JSON.stringify({ pid, at: Date.now() }));
+};
 var sleep = (ms) => new Promise((done) => setTimeout(done, ms));
 var acquireLock = async (path, waitMs = LOCK_WAIT_MS) => {
   mkdirSync2(dirname2(path), { recursive: true });
@@ -989,6 +992,10 @@ var HASHED_INPUTS = [
   AGENT_VIEW_CONFIG,
   TSCONFIG,
   "package.json",
+  "package-lock.json",
+  "pnpm-lock.yaml",
+  "yarn.lock",
+  "node_modules/.package-lock.json",
   ".jig/config.jsonc"
 ];
 var fileStamp = (path) => {
@@ -1284,6 +1291,7 @@ var DashFailure = class extends Error {
   code;
 };
 var usage = (message) => new DashFailure(EXIT_USAGE, message);
+var noActiveRun = (location) => new DashFailure(EXIT_NOT_MET, `no active run for branch ${location.branch}, start one with: dash init "<title>" "<step>"...`);
 var branchDirName = (projectRoot) => {
   const branch = gitCurrentBranch(projectRoot);
   if (branch !== void 0) return branch.replace(/[^A-Za-z0-9._-]/g, "_");
@@ -1385,20 +1393,33 @@ var parseDecisionFlags = (args) => {
   }
   return flags;
 };
-var addDecision = (run3, [text2, ...rest], at) => {
-  const flags = parseDecisionFlags(rest);
-  const why = flags.get("--why");
-  const evidence = flags.get("--evidence");
-  const result = flags.get("--result");
-  if (result !== void 0 && !DECISION_RESULTS.has(result)) throw usage(`--result must be kept or reverted, got ${result}`);
+var addRunDecision = (projectRoot, text2, why, details = {}, now = /* @__PURE__ */ new Date()) => {
+  const location = runLocation(projectRoot);
+  const run3 = readRun(location.data);
+  if (run3 === void 0 || !isActive(run3, now)) return false;
+  const at = now.toISOString();
   run3.decisions.push({
     n: nextNumber(run3.decisions),
     text: required2(text2, "decision text"),
     ...why === void 0 ? {} : { why },
-    ...evidence === void 0 ? {} : { evidence },
-    ...result === void 0 ? {} : { result },
+    ...details.evidence === void 0 ? {} : { evidence: details.evidence },
+    ...details.result === void 0 ? {} : { result: details.result },
     at
   });
+  run3.updatedAt = at;
+  saveRun(location, run3);
+  return true;
+};
+var recordDecision = (projectRoot, location, [text2, ...rest], now) => {
+  const flags = parseDecisionFlags(rest);
+  const evidence = flags.get("--evidence");
+  const result = flags.get("--result");
+  if (result !== void 0 && !DECISION_RESULTS.has(result)) throw usage(`--result must be kept or reverted, got ${result}`);
+  const details = {
+    ...evidence === void 0 ? {} : { evidence },
+    ...result === void 0 ? {} : { result }
+  };
+  if (!addRunDecision(projectRoot, required2(text2, "decision text"), flags.get("--why"), details, now)) throw noActiveRun(location);
   return "ok";
 };
 var addResult = (run3, [title, href], at) => {
@@ -1423,7 +1444,6 @@ var answerAsk = (run3, [nText, answer], at) => {
 var MUTATIONS = /* @__PURE__ */ new Map([
   ["step", setStep],
   ["add", addStep],
-  ["decision", addDecision],
   ["result", addResult],
   ["ask", addAsk],
   ["answer", answerAsk]
@@ -1460,14 +1480,13 @@ var dispatch = (args, now) => {
   const projectRoot = resolveProjectRoot(process.cwd());
   const location = runLocation(projectRoot);
   if (sub === "init") return initRun(projectRoot, location, rest, now);
+  if (sub === "decision") return recordDecision(projectRoot, location, rest, now);
   const mutation = sub === void 0 ? void 0 : MUTATIONS.get(sub);
   if (sub !== "path" && mutation === void 0) {
     throw usage(`unknown dash subcommand ${sub ?? "(none)"}, expected init, step, add, decision, result, ask, answer or path`);
   }
   const run3 = readRun(location.data);
-  if (run3 === void 0 || !isActive(run3, now)) {
-    throw new DashFailure(EXIT_NOT_MET, `no active run for branch ${location.branch}, start one with: dash init "<title>" "<step>"...`);
-  }
+  if (run3 === void 0 || !isActive(run3, now)) throw noActiveRun(location);
   if (mutation === void 0) return toSlash(location.page);
   const at = now.toISOString();
   const output = mutation(run3, rest, at);
@@ -1714,8 +1733,6 @@ var runDoctor = (args) => {
 
 // src/gates/stop.ts
 import { createHash as createHash4 } from "node:crypto";
-import { existsSync as existsSync5 } from "node:fs";
-import { join as join11 } from "node:path";
 
 // src/core/snapshot.ts
 import { createHash as createHash2 } from "node:crypto";
@@ -1776,19 +1793,23 @@ import { resolve as resolve3 } from "node:path";
 var FAILURE_DETAIL_MAX = 200;
 var HUNK_HEADER = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/;
 var firstOutputLine = (text2) => text2.trim().split("\n")[0]?.slice(0, FAILURE_DETAIL_MAX) ?? "";
-var runTool = async (invocation) => {
-  const { tool, argv, cwd, timeoutMs, okCodes, parse } = invocation;
-  const result = await run(argv, { cwd, timeoutMs });
-  const failed = (failure) => ({ tool, findings: [], durationMs: result.durationMs, failure });
-  if (result.timedOut) return failed(`timeout after ${timeoutMs} ms`);
-  if (result.error !== void 0) return failed(result.error);
-  const isOkCode = result.code !== null && okCodes.includes(result.code);
-  if (!isOkCode) return failed(`exit ${result.code}: ${firstOutputLine(result.stderr || result.stdout)}`);
+var settleExit = (invocation, exited) => {
+  const { tool, okCodes, parse } = invocation;
+  const failed = (failure) => ({ tool, findings: [], durationMs: exited.durationMs, failure });
+  const isOkCode = exited.code !== null && okCodes.includes(exited.code);
+  if (!isOkCode) return failed(`exit ${exited.code}: ${firstOutputLine(exited.errorOutput || exited.output)}`);
   try {
-    return { tool, findings: parse(result.stdout), durationMs: result.durationMs };
+    return { tool, findings: parse(exited.output), durationMs: exited.durationMs };
   } catch (error) {
     return failed(error instanceof Error ? error.message : String(error));
   }
+};
+var runTool = async (invocation) => {
+  const { tool, argv, cwd, timeoutMs } = invocation;
+  const result = await run(argv, { cwd, timeoutMs });
+  if (result.timedOut) return { tool, findings: [], durationMs: result.durationMs, failure: `timeout after ${timeoutMs} ms` };
+  if (result.error !== void 0) return { tool, findings: [], durationMs: result.durationMs, failure: result.error };
+  return settleExit(invocation, { code: result.code, output: result.stdout, errorOutput: result.stderr, durationMs: result.durationMs });
 };
 var parseDiffLines = (diff) => {
   const lines = /* @__PURE__ */ new Map();
@@ -1928,8 +1949,84 @@ var runStratum = (tool, projectRoot, files, timeoutMs) => runTool({
 
 // src/tools/tsc.ts
 import { createHash as createHash3 } from "node:crypto";
-import { mkdirSync as mkdirSync7, readFileSync as readFileSync9, statSync as statSync6, writeFileSync as writeFileSync4 } from "node:fs";
-import { dirname as dirname5, extname as extname2, join as join10, relative as relative3, resolve as resolve4 } from "node:path";
+import { mkdirSync as mkdirSync8, readFileSync as readFileSync10, statSync as statSync6, writeFileSync as writeFileSync4 } from "node:fs";
+import { dirname as dirname6, extname as extname2, join as join10, relative as relative3, resolve as resolve4 } from "node:path";
+
+// src/tools/detach.ts
+import { spawn as spawn2 } from "node:child_process";
+import { mkdirSync as mkdirSync7, readFileSync as readFileSync9 } from "node:fs";
+import { setPriority as setPriority2 } from "node:os";
+import { dirname as dirname5 } from "node:path";
+var WRAPPER = [
+  "const { spawn } = require('node:child_process')",
+  "const { closeSync, openSync, readFileSync, rmSync } = require('node:fs')",
+  "const { setPriority } = require('node:os')",
+  "const [lockPath, outputPath, priority, command, ...args] = process.argv.slice(1)",
+  "const output = openSync(outputPath, 'w')",
+  "const child = spawn(command, args, { stdio: ['ignore', output, output], windowsHide: true })",
+  "try { setPriority(child.pid, Number(priority)) } catch {}",
+  "const releaseOwnLock = () => {",
+  "  try { if (JSON.parse(readFileSync(lockPath, 'utf8')).pid === process.pid) rmSync(lockPath, { force: true }) } catch {}",
+  "}",
+  "const finish = (code) => { closeSync(output); releaseOwnLock(); process.exit(code ?? 1) }",
+  "child.on('error', () => finish(1))",
+  "child.on('exit', (code) => finish(code))"
+].join("\n");
+var readOutput = (path) => {
+  try {
+    return readFileSync9(path, "utf8");
+  } catch {
+    return "";
+  }
+};
+var lowerPriority2 = (pid) => {
+  if (pid === void 0) return;
+  try {
+    setPriority2(pid, LOW_PRIORITY);
+  } catch {
+    return;
+  }
+};
+var runDetachable = (invocation) => {
+  const { tool, argv, cwd, timeoutMs, outputPath, lockPath } = invocation;
+  mkdirSync7(dirname5(outputPath), { recursive: true });
+  const startedAt = Date.now();
+  const elapsed = () => Date.now() - startedAt;
+  return new Promise((resolveRun) => {
+    let isSettled = false;
+    const settle = (result) => {
+      if (isSettled) return;
+      isSettled = true;
+      clearTimeout(timer);
+      resolveRun(result);
+    };
+    const child = spawn2(process.execPath, ["-e", WRAPPER, lockPath ?? "", outputPath, String(LOW_PRIORITY), ...argv], {
+      cwd,
+      detached: true,
+      stdio: "ignore",
+      windowsHide: true
+    });
+    lowerPriority2(child.pid);
+    const timer = setTimeout(() => {
+      child.unref();
+      const pid = child.pid;
+      settle({
+        tool,
+        findings: [],
+        durationMs: elapsed(),
+        failure: `timeout after ${timeoutMs} ms, detached (pid ${pid}) to finish the incremental cache`,
+        ...pid === void 0 ? {} : { detachedPid: pid }
+      });
+    }, timeoutMs);
+    child.on("error", (error) => settle({ tool, findings: [], durationMs: elapsed(), failure: error.message }));
+    child.on("exit", (code) => {
+      const output = readOutput(outputPath);
+      settle(settleExit(invocation, { code, output, errorOutput: output, durationMs: elapsed() }));
+    });
+  });
+};
+
+// src/tools/tsc.ts
 var TYPED_EXTENSIONS = /* @__PURE__ */ new Set([".ts", ".tsx", ".mts", ".cts", ".vue"]);
 var OK_CODES3 = [0, 1, 2];
 var HASH_LENGTH = 12;
@@ -1946,18 +2043,18 @@ var isFile3 = (path) => {
   }
 };
 var readTsconfig = (path) => {
-  const value = parseJsonc(readFileSync9(path, "utf8"));
+  const value = parseJsonc(readFileSync10(path, "utf8"));
   return typeof value === "object" && value !== null ? value : {};
 };
 var stringsOf = (value) => Array.isArray(value) ? value.filter((item) => typeof item === "string") : void 0;
 var findNearestTsconfig = (projectRoot, file) => {
   const top = resolve4(projectRoot);
-  let dir = dirname5(resolve4(projectRoot, file));
+  let dir = dirname6(resolve4(projectRoot, file));
   for (; ; ) {
     const candidate = join10(dir, TSCONFIG);
     if (isFile3(candidate)) return candidate;
     const isTop = relative3(top, dir) === "";
-    const parent = dirname5(dir);
+    const parent = dirname6(dir);
     if (isTop || parent === dir) return void 0;
     dir = parent;
   }
@@ -1970,7 +2067,7 @@ var toIncludeGlob = (pattern) => {
 };
 var covers = (configPath, absoluteFile) => {
   const config = readTsconfig(configPath);
-  const path = toSlash(relative3(dirname5(configPath), absoluteFile));
+  const path = toSlash(relative3(dirname6(configPath), absoluteFile));
   const files = stringsOf(config.files) ?? [];
   if (files.some((entry) => toSlash(entry).replace(/^\.\//, "") === path)) return true;
   const include = stringsOf(config.include) ?? (config.files === void 0 ? DEFAULT_INCLUDE : []);
@@ -1979,7 +2076,7 @@ var covers = (configPath, absoluteFile) => {
 var referencePath = (fromConfig, reference) => {
   const path = reference?.path;
   if (typeof path !== "string") return void 0;
-  const target = resolve4(dirname5(fromConfig), path);
+  const target = resolve4(dirname6(fromConfig), path);
   return isFile3(target) ? target : join10(target, TSCONFIG);
 };
 var isSolutionConfig = (config) => Array.isArray(config.files) && config.files.length === 0 && Array.isArray(config.references);
@@ -2008,7 +2105,7 @@ var groupByTsconfig = (projectRoot, files) => {
 };
 var tsconfigHash = (configPath) => createHash3("sha1").update(configPath).digest("hex").slice(0, HASH_LENGTH);
 var closureConfig = (projectRoot, group) => {
-  const configDir = toSlash(dirname5(group.config));
+  const configDir = toSlash(dirname6(group.config));
   const hash = tsconfigHash(group.config);
   return {
     extends: toSlash(group.config),
@@ -2024,7 +2121,7 @@ var closureConfig = (projectRoot, group) => {
 };
 var writeClosureConfig = (projectRoot, group) => {
   const dir = jigPaths(projectRoot).tscCache;
-  mkdirSync7(dir, { recursive: true });
+  mkdirSync8(dir, { recursive: true });
   const path = join10(dir, `tsconfig.${tsconfigHash(group.config)}.json`);
   writeFileSync4(path, `${JSON.stringify(closureConfig(projectRoot, group), null, 2)}
 `);
@@ -2050,16 +2147,18 @@ var checkerFor = (checkers, group) => {
   const files = group.files.filter((file) => !file.endsWith(".vue"));
   return files.length === 0 ? void 0 : { tool: "tsc", bin: checkers.tsc.bin, files };
 };
-var runTypeCheck = async (checkers, projectRoot, group, timeoutMs) => {
+var runTypeCheck = async (checkers, projectRoot, group, timeoutMs, lockPath) => {
   const checker = checkerFor(checkers, group);
   if (checker === void 0) return void 0;
   const config = writeClosureConfig(projectRoot, { config: group.config, files: checker.files });
   const argv = checker.tool === "vue-tsc" ? [...checker.bin, "--noEmit", "-p", config] : [...checker.bin, "-p", config, "--pretty", "false"];
-  return runTool({
+  return runDetachable({
     tool: checker.tool,
     argv,
     cwd: projectRoot,
     timeoutMs,
+    outputPath: join10(jigPaths(projectRoot).tscCache, `${tsconfigHash(group.config)}.out`),
+    ...lockPath === void 0 ? {} : { lockPath },
     okCodes: OK_CODES3,
     parse: (stdout) => {
       const findings = parseTscOutput(stdout, checker.tool, projectRoot);
@@ -2074,12 +2173,12 @@ var runTypeCheck = async (checkers, projectRoot, group, timeoutMs) => {
 import { extname as extname3 } from "node:path";
 
 // src/tools/oxlint.ts
-import { readFileSync as readFileSync10 } from "node:fs";
+import { readFileSync as readFileSync11 } from "node:fs";
 import { resolve as resolve5 } from "node:path";
 var OK_CODES4 = [0, 1];
 var lineAtOffset = (path, offset) => {
   try {
-    return readFileSync10(path, "utf8").slice(0, offset).split("\n").length;
+    return readFileSync11(path, "utf8").slice(0, offset).split("\n").length;
   } catch {
     return 1;
   }
@@ -2154,7 +2253,6 @@ var ESLINT_TIMEOUT_MS = 3e4;
 var STRATUM_TIMEOUT_MS = 15e3;
 var STOP_HARD_LIMIT_MS = 11e4;
 var MAX_CONSECUTIVE_BLOCKS = 3;
-var DASH_TIMEOUT_MS = 5e3;
 var EXIT_FINDINGS = 1;
 var EXIT_USAGE2 = 2;
 var NONE = { type: "none" };
@@ -2167,7 +2265,12 @@ var timed = async (rule, body) => {
   return { rule, runs, findings, durationMs: Date.now() - startedAt };
 };
 var createBudget = (startedAt) => (ownMs) => Math.max(0, Math.min(ownMs, startedAt + STOP_HARD_LIMIT_MS - Date.now()));
-var typesStep = (input, budget, notes) => timed("gate/tsc", async () => {
+var onChangedLines = (projectRoot, findings) => {
+  if (findings.length === 0) return [];
+  const lines = changedLines(projectRoot, [...new Set(findings.map((finding) => finding.file))]);
+  return findings.filter((finding) => isOnChangedLine(lines.get(finding.file), finding.line));
+};
+var typesStep = (input, budget, lock, notes) => timed("gate/tsc", async () => {
   const level = ruleLevel(input.plan, "gate/tsc");
   if (level === "off") return { runs: [], findings: [] };
   const { groups, skipped } = groupByTsconfig(input.projectRoot, input.diff.files);
@@ -2178,12 +2281,17 @@ var typesStep = (input, budget, notes) => timed("gate/tsc", async () => {
   for (const group of groups) {
     const timeoutMs = budget(TYPES_TIMEOUT_MS);
     if (timeoutMs === 0) break;
-    const toolRun = await runTypeCheck(input.plan.tools, input.projectRoot, group, timeoutMs);
-    if (toolRun !== void 0) {
-      runs.push(toolRun);
+    const toolRun = await runTypeCheck(input.plan.tools, input.projectRoot, group, timeoutMs, lock.path);
+    if (toolRun === void 0) continue;
+    runs.push(toolRun);
+    if (toolRun.detachedPid !== void 0) {
+      transferLock(lock.path, toolRun.detachedPid);
+      lock.isTransferred = true;
+      break;
     }
   }
-  return { runs, findings: applyLevel(runs.flatMap((toolRun) => toolRun.findings), level) };
+  const findings = onChangedLines(input.projectRoot, runs.flatMap((toolRun) => toolRun.findings));
+  return { runs, findings: applyLevel(findings, level) };
 });
 var eslintStep = (input, budget) => timed("gate/eslint", async () => {
   const level = ruleLevel(input.plan, "gate/eslint");
@@ -2193,9 +2301,7 @@ var eslintStep = (input, budget) => timed("gate/eslint", async () => {
   const isSkipped = level === "off" || files.length === 0 || timeoutMs === 0;
   if (isSkipped || tool === void 0) return { runs: [], findings: [] };
   const toolRun = await runEslint(tool, input.projectRoot, files, timeoutMs);
-  const errors = toolRun.findings.filter(isBlocking);
-  const lines = errors.length === 0 ? /* @__PURE__ */ new Map() : changedLines(input.projectRoot, files);
-  const onChanged = errors.filter((finding) => isOnChangedLine(lines.get(finding.file), finding.line));
+  const onChanged = onChangedLines(input.projectRoot, toolRun.findings.filter(isBlocking));
   return { runs: [toolRun], findings: applyLevel(onChanged, level) };
 });
 var stratumStep = (input, budget) => timed("gate/stratum", async () => {
@@ -2258,18 +2364,21 @@ var runStopChecks = async (input) => {
   const notes = [];
   const steps = [];
   const isStopped = () => steps.some((step) => step.findings.some(isBlocking));
-  const lock = await acquireLock(jigPaths(input.projectRoot).heavyLock);
-  if (lock === void 0) {
+  const acquired = await acquireLock(jigPaths(input.projectRoot).heavyLock);
+  if (acquired === void 0) {
     notes.push({ kind: "gate-skipped", tool: "jig", message: "heavy checks lock is busy" });
   } else {
+    const lock = { path: acquired.path, isTransferred: false };
     try {
-      const heavySteps = [() => typesStep(input, budget, notes), () => eslintStep(input, budget), () => stratumStep(input, budget)];
+      const heavySteps = [() => typesStep(input, budget, lock, notes), () => eslintStep(input, budget), () => stratumStep(input, budget)];
       for (const step of heavySteps) {
         if (isStopped()) break;
         steps.push(await step());
       }
     } finally {
-      lock.release();
+      if (!lock.isTransferred) {
+        acquired.release();
+      }
     }
   }
   const times = input.times;
@@ -2290,15 +2399,6 @@ var blockReason = (blocking, pluginRoot) => {
   return [...toolLines, ...jigLines].join("\n");
 };
 var UNRESOLVED_WHY = "the stop hook fired again with no new edits since the last block";
-var recordUnresolved = async (projectRoot, pluginRoot) => {
-  const bin = join11(pluginRoot, "bin", "jig.mjs");
-  if (!existsSync5(bin) || readActiveRun(projectRoot) === void 0) return;
-  await run([process.execPath, bin, "dash", "decision", "gate unresolved", "--why", UNRESOLVED_WHY], {
-    cwd: projectRoot,
-    timeoutMs: DASH_TIMEOUT_MS,
-    env: { ...process.env, CLAUDE_PROJECT_DIR: projectRoot }
-  });
-};
 var blockNotes = (blocking) => blocking.map((finding) => ({
   kind: "gate-block",
   tool: finding.tool,
@@ -2314,7 +2414,7 @@ var stopGate = async (input) => {
   if (isQuiet) return { outcome: NONE, notes: [] };
   const isUnresolved = input.stopHookActive && diff.fingerprint === state.stop.lastBlockDiffFingerprint;
   if (isUnresolved) {
-    await recordUnresolved(projectRoot, pluginRoot);
+    addRunDecision(projectRoot, "gate unresolved", UNRESOLVED_WHY);
     return { outcome: NONE, notes: [{ kind: "gate-unresolved", tool: "jig", message: UNRESOLVED_WHY }] };
   }
   const plan = loadPlan(projectRoot, pluginRoot);
@@ -2395,11 +2495,11 @@ var runCheck = (args) => {
 };
 
 // src/hook/dispatch.ts
-import { readFileSync as readFileSync12 } from "node:fs";
-import { join as join14 } from "node:path";
+import { readFileSync as readFileSync13 } from "node:fs";
+import { join as join13 } from "node:path";
 
 // src/adapters/claude.ts
-import { readFileSync as readFileSync11 } from "node:fs";
+import { readFileSync as readFileSync12 } from "node:fs";
 import { isAbsolute as isAbsolute3, resolve as resolve6 } from "node:path";
 var SESSION_SOURCES = ["startup", "resume", "clear", "compact", "fork"];
 var HOOK_EVENT_NAMES = {
@@ -2421,7 +2521,7 @@ var text = (object, key) => {
 };
 var readCurrent = (absolutePath) => {
   try {
-    return readFileSync11(absolutePath, "utf8");
+    return readFileSync12(absolutePath, "utf8");
   } catch {
     return "";
   }
@@ -2549,7 +2649,7 @@ var formatOutcome = (kind, outcome) => {
 };
 
 // src/rules/comments.ts
-import { join as join12 } from "node:path";
+import { join as join11 } from "node:path";
 
 // src/rules/lexer.ts
 var SCRIPT_EXTENSION = /\.(?:ts|tsx|mts|cts|js|jsx|mjs|cjs)$/i;
@@ -3004,7 +3104,7 @@ var checkComments = (file, edits, config) => {
   if (severity === void 0) return [];
   if (lexComments(file, "") === void 0) return [];
   const existing = countExisting(file, edits);
-  const atom = toSlash(join12(resolvePluginRoot(), "atoms", "comments.md"));
+  const atom = toSlash(join11(resolvePluginRoot(), "atoms", "comments.md"));
   const findings = [];
   for (const edit of edits) {
     for (const { comment, line, source } of addedComments(file, edit)) {
@@ -3024,7 +3124,7 @@ var checkComments = (file, edits, config) => {
 
 // src/rules/no-verify.ts
 import { createHash as createHash5 } from "node:crypto";
-import { join as join13 } from "node:path";
+import { join as join12 } from "node:path";
 
 // src/rules/shell.ts
 var SEGMENT_BREAKS = /* @__PURE__ */ new Set([";", "&", "|", "\n", "(", ")"]);
@@ -3216,7 +3316,7 @@ var consumeAllowance = (projectRoot, sessionId, now) => {
   writeState(projectRoot, state);
   return true;
 };
-var jigCommand = () => toSlash(join13(resolvePluginRoot(), "bin", "jig.mjs"));
+var jigCommand = () => toSlash(join12(resolvePluginRoot(), "bin", "jig.mjs"));
 var checkNoVerify = (command, ctx) => {
   const severity = activeSeverity(ctx.config, RULE3);
   if (severity === void 0) return void 0;
@@ -3535,17 +3635,19 @@ var runChecks = (ctx, guard, openChecks) => {
 };
 var readCurrent2 = (path) => {
   try {
-    return readFileSync12(path, "utf8");
+    return readFileSync13(path, "utf8");
   } catch {
     return "";
   }
 };
 var locateEdits = (event, projectRoot) => {
-  if (event.wholeFile !== void 0) return event.edits.map((edit) => ({ ...edit, line: 1 }));
-  const current = readCurrent2(join14(projectRoot, event.file));
+  if (event.wholeFile !== void 0) return event.edits.map((edit) => ({ ...edit, line: 1, prefix: "" }));
+  const current = readCurrent2(join13(projectRoot, event.file));
   return event.edits.map((edit) => {
     const at = edit.before === "" ? -1 : current.indexOf(edit.before);
-    return at === -1 ? edit : { ...edit, line: current.slice(0, at).split("\n").length };
+    if (at === -1) return edit;
+    const prefix = current.slice(0, at);
+    return { ...edit, line: prefix.split("\n").length, prefix };
   });
 };
 var preEdit = (event, ctx) => {
@@ -3728,8 +3830,8 @@ var runHook = async (args) => {
 };
 
 // src/loop/loop.ts
-import { mkdirSync as mkdirSync8, writeFileSync as writeFileSync5 } from "node:fs";
-import { join as join15 } from "node:path";
+import { mkdirSync as mkdirSync9, writeFileSync as writeFileSync5 } from "node:fs";
+import { join as join14 } from "node:path";
 var DEFAULT_DAYS = 7;
 var DAY_MS2 = 24 * 60 * 60 * 1e3;
 var MIN_TURNS = 2;
@@ -3825,9 +3927,9 @@ var runLoop = (args) => {
   const to = /* @__PURE__ */ new Date();
   const from = new Date(to.getTime() - days * DAY_MS2);
   const records = readJournal(projectRoot, from.getTime());
-  const dir = join15(ensureJigDir(projectRoot).runs, "_loop", to.toISOString().slice(0, 10));
-  mkdirSync8(dir, { recursive: true });
-  const path = join15(dir, "candidates.md");
+  const dir = join14(ensureJigDir(projectRoot).runs, "_loop", to.toISOString().slice(0, 10));
+  mkdirSync9(dir, { recursive: true });
+  const path = join14(dir, "candidates.md");
   writeFileSync5(path, formatCandidates(records, from, to, days));
   process.stdout.write(`${path}
 `);
@@ -3836,8 +3938,8 @@ var runLoop = (args) => {
 
 // src/slot/slot.ts
 import { spawnSync as spawnSync2 } from "node:child_process";
-import { cpSync, existsSync as existsSync6, mkdirSync as mkdirSync9, readdirSync as readdirSync5, readFileSync as readFileSync13, rmSync as rmSync4, writeFileSync as writeFileSync6 } from "node:fs";
-import { basename as basename3, dirname as dirname6, isAbsolute as isAbsolute5, join as join16, relative as relative4, resolve as resolve7 } from "node:path";
+import { cpSync, existsSync as existsSync5, mkdirSync as mkdirSync10, readdirSync as readdirSync5, readFileSync as readFileSync14, rmSync as rmSync4, writeFileSync as writeFileSync6 } from "node:fs";
+import { basename as basename3, dirname as dirname7, isAbsolute as isAbsolute5, join as join15, relative as relative4, resolve as resolve7 } from "node:path";
 import { parseArgs } from "node:util";
 var SLOT_LOCK = "slot.lock";
 var AGENT_VIEW_CONFIG2 = "agent-view.config.json";
@@ -3943,8 +4045,8 @@ var loadContext = () => {
 var formatDuplicates = (duplicates) => [...duplicates].map(([slot, group]) => `s${slot}: ${group.map((worktree) => toSlash(worktree.path)).join(", ")}`).join("; ");
 var isTracked = (dir, file) => git(["ls-files", "--error-unmatch", "--", file], dir).ok;
 var writeLocalFile = (dir, file, content) => {
-  const path = join16(dir, file);
-  mkdirSync9(dirname6(path), { recursive: true });
+  const path = join15(dir, file);
+  mkdirSync10(dirname7(path), { recursive: true });
   writeFileSync6(path, content);
   if (isTracked(dir, file)) {
     git(["update-index", "--skip-worktree", "--", file], dir);
@@ -3959,8 +4061,8 @@ var insideDir = (dir, file) => {
 var copyFromMain = (mainRoot, dir, copyFiles) => {
   const rootEnvFiles = readdirSync5(mainRoot, { withFileTypes: true }).filter((entry) => entry.isFile() && ENV_FILE.test(entry.name)).map((entry) => entry.name);
   for (const file of /* @__PURE__ */ new Set([...rootEnvFiles, ...copyFiles])) {
-    const source = join16(mainRoot, file);
-    if (!existsSync6(source)) {
+    const source = join15(mainRoot, file);
+    if (!existsSync5(source)) {
       process.stderr.write(`jig: copyFiles ${file} is missing in ${toSlash(mainRoot)}
 `);
       continue;
@@ -3971,19 +4073,19 @@ var copyFromMain = (mainRoot, dir, copyFiles) => {
 var writePorts = (dir, slots, slot) => {
   for (const [key, port] of Object.entries(slots.ports ?? {})) {
     const path = insideDir(dir, port.target);
-    const text2 = existsSync6(path) ? readFileSync13(path, "utf8") : "";
+    const text2 = existsSync5(path) ? readFileSync14(path, "utf8") : "";
     writeLocalFile(dir, port.target, setEnvValue(text2, key, String(port.base + slot * port.step)));
   }
 };
 var readJsonObject = (path) => {
-  if (!existsSync6(path)) return {};
-  const value = parseJsonc(readFileSync13(path, "utf8"));
+  if (!existsSync5(path)) return {};
+  const value = parseJsonc(readFileSync14(path, "utf8"));
   const isObject3 = typeof value === "object" && value !== null && !Array.isArray(value);
   return isObject3 ? value : {};
 };
 var writeAgentView = (mainRoot, dir, slots, cdpPort) => {
-  const own = join16(dir, AGENT_VIEW_CONFIG2);
-  const base = readJsonObject(existsSync6(own) ? own : join16(mainRoot, AGENT_VIEW_CONFIG2));
+  const own = join15(dir, AGENT_VIEW_CONFIG2);
+  const base = readJsonObject(existsSync5(own) ? own : join15(mainRoot, AGENT_VIEW_CONFIG2));
   writeLocalFile(dir, AGENT_VIEW_CONFIG2, `${JSON.stringify(agentViewConfig(base, slots, cdpPort), null, 2)}
 `);
 };
@@ -3993,7 +4095,7 @@ var worktreeAddArgs = (cwd, dir, branch) => {
   return branchExists(cwd, branch) ? ["worktree", "add", dir, branch] : ["worktree", "add", dir, "-b", branch];
 };
 var reserveSlot = async (context, slots, options) => {
-  const lock = await acquireLock(join16(ensureJigDir(context.mainRoot).cache, SLOT_LOCK));
+  const lock = await acquireLock(join15(ensureJigDir(context.mainRoot).cache, SLOT_LOCK));
   if (lock === void 0) return fail3("slot new is running elsewhere, retry", 1);
   try {
     git(["worktree", "prune"], context.projectRoot);

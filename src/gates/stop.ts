@@ -1,15 +1,13 @@
 import { createHash } from 'node:crypto'
-import { existsSync } from 'node:fs'
-import { join } from 'node:path'
 import type { RuleId } from '../core/config'
 import type { JournalEntry } from '../core/journal'
 import { ensureJigDir, jigPaths, resolvePluginRoot, resolveProjectRoot, toProjectPath, toSlash } from '../core/paths'
 import { isRuntimeVisible, isTestFile, loadPlan, type Plan } from '../core/plan'
-import { acquireLock, run } from '../core/proc'
+import { acquireLock, transferLock } from '../core/proc'
 import { takeSnapshot, turnDiff, type TurnDiff } from '../core/snapshot'
 import { resetSnapshot, type SessionState } from '../core/state'
-import { readActiveRun } from '../dash/dash'
-import type { Outcome } from '../hook/dispatch'
+import { addRunDecision, readActiveRun } from '../dash/dash'
+import type { Outcome } from '../hook/types'
 import { runEslint } from '../tools/eslint'
 import { collapseFindings, formatFindings, POST_EDIT_LINE_LIMIT, STOP_LINE_LIMIT, type Finding } from '../tools/finding'
 import { runStratum } from '../tools/stratum'
@@ -64,7 +62,6 @@ export const STRATUM_TIMEOUT_MS = 15_000
 export const STOP_HARD_LIMIT_MS = 110_000
 export const MAX_CONSECUTIVE_BLOCKS = 3
 
-const DASH_TIMEOUT_MS = 5_000
 const EXIT_FINDINGS = 1
 const EXIT_USAGE = 2
 const NONE: Outcome = { type: 'none' }
@@ -88,7 +85,18 @@ const createBudget = (startedAt: number) => (ownMs: number): number =>
 
 type Budget = ReturnType<typeof createBudget>
 
-const typesStep = (input: StopChecksInput, budget: Budget, notes: JournalNote[]): Promise<StopStep> =>
+interface HeavyLock {
+  path: string
+  isTransferred: boolean
+}
+
+const onChangedLines = (projectRoot: string, findings: readonly Finding[]): Finding[] => {
+  if (findings.length === 0) return []
+  const lines = changedLines(projectRoot, [...new Set(findings.map((finding) => finding.file))])
+  return findings.filter((finding) => isOnChangedLine(lines.get(finding.file), finding.line))
+}
+
+const typesStep = (input: StopChecksInput, budget: Budget, lock: HeavyLock, notes: JournalNote[]): Promise<StopStep> =>
   timed('gate/tsc', async () => {
     const level = ruleLevel(input.plan, 'gate/tsc')
     if (level === 'off') return { runs: [], findings: [] }
@@ -100,12 +108,17 @@ const typesStep = (input: StopChecksInput, budget: Budget, notes: JournalNote[])
     for (const group of groups) {
       const timeoutMs = budget(TYPES_TIMEOUT_MS)
       if (timeoutMs === 0) break
-      const toolRun = await runTypeCheck(input.plan.tools, input.projectRoot, group, timeoutMs)
-      if (toolRun !== undefined) {
-        runs.push(toolRun)
+      const toolRun = await runTypeCheck(input.plan.tools, input.projectRoot, group, timeoutMs, lock.path)
+      if (toolRun === undefined) continue
+      runs.push(toolRun)
+      if (toolRun.detachedPid !== undefined) {
+        transferLock(lock.path, toolRun.detachedPid)
+        lock.isTransferred = true
+        break
       }
     }
-    return { runs, findings: applyLevel(runs.flatMap((toolRun) => toolRun.findings), level) }
+    const findings = onChangedLines(input.projectRoot, runs.flatMap((toolRun) => toolRun.findings))
+    return { runs, findings: applyLevel(findings, level) }
   })
 
 const eslintStep = (input: StopChecksInput, budget: Budget): Promise<StopStep> =>
@@ -117,9 +130,7 @@ const eslintStep = (input: StopChecksInput, budget: Budget): Promise<StopStep> =
     const isSkipped = level === 'off' || files.length === 0 || timeoutMs === 0
     if (isSkipped || tool === undefined) return { runs: [], findings: [] }
     const toolRun = await runEslint(tool, input.projectRoot, files, timeoutMs)
-    const errors = toolRun.findings.filter(isBlocking)
-    const lines = errors.length === 0 ? new Map() : changedLines(input.projectRoot, files)
-    const onChanged = errors.filter((finding) => isOnChangedLine(lines.get(finding.file), finding.line))
+    const onChanged = onChangedLines(input.projectRoot, toolRun.findings.filter(isBlocking))
     return { runs: [toolRun], findings: applyLevel(onChanged, level) }
   })
 
@@ -197,18 +208,21 @@ export const runStopChecks = async (input: StopChecksInput): Promise<StopChecks>
   const notes: JournalNote[] = []
   const steps: StopStep[] = []
   const isStopped = (): boolean => steps.some((step) => step.findings.some(isBlocking))
-  const lock = await acquireLock(jigPaths(input.projectRoot).heavyLock)
-  if (lock === undefined) {
+  const acquired = await acquireLock(jigPaths(input.projectRoot).heavyLock)
+  if (acquired === undefined) {
     notes.push({ kind: 'gate-skipped', tool: 'jig', message: 'heavy checks lock is busy' })
   } else {
+    const lock: HeavyLock = { path: acquired.path, isTransferred: false }
     try {
-      const heavySteps = [() => typesStep(input, budget, notes), () => eslintStep(input, budget), () => stratumStep(input, budget)]
+      const heavySteps = [() => typesStep(input, budget, lock, notes), () => eslintStep(input, budget), () => stratumStep(input, budget)]
       for (const step of heavySteps) {
         if (isStopped()) break
         steps.push(await step())
       }
     } finally {
-      lock.release()
+      if (!lock.isTransferred) {
+        acquired.release()
+      }
     }
   }
   const times = input.times
@@ -234,16 +248,6 @@ export const blockReason = (blocking: readonly Finding[], pluginRoot: string): s
 
 const UNRESOLVED_WHY = 'the stop hook fired again with no new edits since the last block'
 
-const recordUnresolved = async (projectRoot: string, pluginRoot: string): Promise<void> => {
-  const bin = join(pluginRoot, 'bin', 'jig.mjs')
-  if (!existsSync(bin) || readActiveRun(projectRoot) === undefined) return
-  await run([process.execPath, bin, 'dash', 'decision', 'gate unresolved', '--why', UNRESOLVED_WHY], {
-    cwd: projectRoot,
-    timeoutMs: DASH_TIMEOUT_MS,
-    env: { ...process.env, CLAUDE_PROJECT_DIR: projectRoot },
-  })
-}
-
 const blockNotes = (blocking: readonly Finding[]): JournalNote[] =>
   blocking.map((finding) => ({
     kind: 'gate-block',
@@ -261,7 +265,7 @@ export const stopGate = async (input: StopGateInput): Promise<StopVerdict> => {
   if (isQuiet) return { outcome: NONE, notes: [] }
   const isUnresolved = input.stopHookActive && diff.fingerprint === state.stop.lastBlockDiffFingerprint
   if (isUnresolved) {
-    await recordUnresolved(projectRoot, pluginRoot)
+    addRunDecision(projectRoot, 'gate unresolved', UNRESOLVED_WHY)
     return { outcome: NONE, notes: [{ kind: 'gate-unresolved', tool: 'jig', message: UNRESOLVED_WHY }] }
   }
   const plan = loadPlan(projectRoot, pluginRoot)

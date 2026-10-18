@@ -11,7 +11,10 @@ import { checkProtectedPath, checkShellWrite } from '../src/rules/protected'
 import { checkSuppressions } from '../src/rules/suppressions'
 
 vi.mock('../src/rules/protected', () => ({ checkProtectedPath: vi.fn(), checkShellWrite: vi.fn() }))
-vi.mock('../src/rules/suppressions', () => ({ checkSuppressions: vi.fn(() => []) }))
+vi.mock('../src/rules/suppressions', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../src/rules/suppressions')>()),
+  checkSuppressions: vi.fn(() => []),
+}))
 vi.mock('../src/rules/comments', () => ({ checkComments: vi.fn(() => []) }))
 vi.mock('../src/rules/no-verify', () => ({ checkNoVerify: vi.fn() }))
 
@@ -178,8 +181,27 @@ describe('guards fail closed', () => {
 
     await handleHook('pre-edit', input, env())
 
-    expect(vi.mocked(checkComments).mock.calls[0]?.[1]).toEqual([{ before: 'const marker = 1', after: 'const marker = 2', line: 4 }])
+    expect(vi.mocked(checkComments).mock.calls[0]?.[1]).toEqual([
+      { before: 'const marker = 1', after: 'const marker = 2', line: 4, prefix: 'x\nx\nx\n' },
+    ])
     expect(vi.mocked(checkSuppressions).mock.calls[0]?.[1]?.[0]?.line).toBe(4)
+  })
+
+  it('allows JSDoc on a member of an exported interface when the edit omits the declaration line', async () => {
+    const actual = await vi.importActual<typeof import('../src/rules/comments')>('../src/rules/comments')
+    vi.mocked(checkComments).mockReset().mockImplementation(actual.checkComments)
+    const file = join(project, 'src', 'options.ts')
+    mkdirSync(dirname(file), { recursive: true })
+    writeFileSync(file, 'export interface Options {\n  size: number\n}\n')
+    const input = JSON.stringify({
+      session_id: 's-guard',
+      cwd: project,
+      hook_event_name: 'PreToolUse',
+      tool_name: 'Edit',
+      tool_input: { file_path: file, old_string: '  size: number', new_string: '  /** Width in pixels. */\n  width: number' },
+    })
+
+    await expect(handleHook('pre-edit', input, env())).resolves.toBe('')
   })
 
   it('denies with the rule text when a guard finds an error', async () => {

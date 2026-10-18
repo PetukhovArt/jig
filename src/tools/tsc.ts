@@ -7,7 +7,7 @@ import { jigPaths, toProjectPath, toSlash } from '../core/paths'
 import type { ToolBin } from '../core/plan'
 import { TSCONFIG } from '../core/plan'
 import type { Finding } from './finding'
-import { runTool, type ToolRun } from './tool'
+import { runDetachable, type DetachableRun } from './detach'
 
 interface TsconfigShape {
   files?: unknown
@@ -187,16 +187,19 @@ export const runTypeCheck = async (
   projectRoot: string,
   group: TscGroup,
   timeoutMs: number,
-): Promise<ToolRun | undefined> => {
+  lockPath?: string,
+): Promise<DetachableRun | undefined> => {
   const checker = checkerFor(checkers, group)
   if (checker === undefined) return undefined
   const config = writeClosureConfig(projectRoot, { config: group.config, files: checker.files })
   const argv = checker.tool === 'vue-tsc' ? [...checker.bin, '--noEmit', '-p', config] : [...checker.bin, '-p', config, '--pretty', 'false']
-  return runTool({
+  return runDetachable({
     tool: checker.tool,
     argv,
     cwd: projectRoot,
     timeoutMs,
+    outputPath: join(jigPaths(projectRoot).tscCache, `${tsconfigHash(group.config)}.out`),
+    ...(lockPath === undefined ? {} : { lockPath }),
     okCodes: OK_CODES,
     parse: (stdout) => {
       const findings = parseTscOutput(stdout, checker.tool, projectRoot)

@@ -87,4 +87,13 @@ describe('hooks through bin/jig.mjs', () => {
     postWrite('src/a.ts', 'export const a: number = 1\n')
     expect(stop()).toBe('')
   })
+
+  it.runIf(hasTypescript)('lets stop pass over an old type error on a line the turn did not change', () => {
+    write('src/old.ts', "export const old: number = 'legacy'\n")
+    git(['add', '-A'], root)
+    git(['-c', 'user.email=jig@test', '-c', 'user.name=jig', 'commit', '-q', '-m', 'legacy'], root)
+    hook('user-prompt-submit', { hook_event_name: 'UserPromptSubmit', prompt: 'go' })
+    postWrite('src/old.ts', "export const old: number = 'legacy'\nexport const fresh = 2\n")
+    expect(stop()).toBe('')
+  })
 })

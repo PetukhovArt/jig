@@ -31,40 +31,11 @@ import {
   POST_EDIT_LINE_LIMIT,
   type Finding,
 } from '../tools/finding'
+import type { EventBase, JigEvent, Outcome } from './types'
 
 type Command = (args: string[]) => number | Promise<number>
 
-export type SessionSource = 'startup' | 'resume' | 'clear' | 'compact' | 'fork'
-
-export interface EditPair {
-  before: string
-  after: string
-}
-
-export type JigEvent =
-  | { kind: 'session-start'; source: SessionSource }
-  | { kind: 'prompt' }
-  | { kind: 'pre-edit'; file: string; edits: EditPair[]; wholeFile?: string }
-  | { kind: 'pre-bash'; command: string }
-  | { kind: 'post-edit'; file: string }
-  | { kind: 'post-read'; file: string }
-  | { kind: 'post-bash'; command: string; ok: boolean }
-  | { kind: 'post-agent'; prompt: string }
-  | { kind: 'subagent-start'; agentId: string; agentType: string }
-  | { kind: 'stop'; stopHookActive: boolean }
-
-export interface EventBase {
-  sessionId: string
-  agentId?: string
-  projectRoot: string
-  cwd: string
-}
-
-export type Outcome =
-  | { type: 'none' }
-  | { type: 'deny'; reason: string }
-  | { type: 'context'; text: string }
-  | { type: 'block'; reason: string }
+export type { EditPair, EventBase, JigEvent, Outcome, SessionSource } from './types'
 
 interface HookContext extends EventBase {
   pluginRoot: string
@@ -237,11 +208,13 @@ const readCurrent = (path: string): string => {
 }
 
 const locateEdits = (event: EventOf<'pre-edit'>, projectRoot: string): Edit[] => {
-  if (event.wholeFile !== undefined) return event.edits.map((edit) => ({ ...edit, line: 1 }))
+  if (event.wholeFile !== undefined) return event.edits.map((edit) => ({ ...edit, line: 1, prefix: '' }))
   const current = readCurrent(join(projectRoot, event.file))
   return event.edits.map((edit) => {
     const at = edit.before === '' ? -1 : current.indexOf(edit.before)
-    return at === -1 ? edit : { ...edit, line: current.slice(0, at).split('\n').length }
+    if (at === -1) return edit
+    const prefix = current.slice(0, at)
+    return { ...edit, line: prefix.split('\n').length, prefix }
   })
 }
 

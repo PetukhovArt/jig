@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { isAbsolute, resolve } from 'node:path'
 import { resolveProjectRoot, toProjectPath } from '../core/paths'
-import type { EditPair, EventBase, JigEvent, Outcome, SessionSource } from '../hook/dispatch'
+import type { EditPair, EventBase, JigEvent, Outcome, SessionSource } from '../hook/types'
 
 type Json = Record<string, unknown>
 

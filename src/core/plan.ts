@@ -81,6 +81,10 @@ const HASHED_INPUTS = [
   AGENT_VIEW_CONFIG,
   TSCONFIG,
   'package.json',
+  'package-lock.json',
+  'pnpm-lock.yaml',
+  'yarn.lock',
+  'node_modules/.package-lock.json',
   '.jig/config.jsonc',
 ]
 

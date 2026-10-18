@@ -27,19 +27,31 @@ const HUNK_HEADER = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/
 
 const firstOutputLine = (text: string): string => text.trim().split('\n')[0]?.slice(0, FAILURE_DETAIL_MAX) ?? ''
 
-export const runTool = async (invocation: ToolInvocation): Promise<ToolRun> => {
-  const { tool, argv, cwd, timeoutMs, okCodes, parse } = invocation
-  const result = await run(argv, { cwd, timeoutMs })
-  const failed = (failure: string): ToolRun => ({ tool, findings: [], durationMs: result.durationMs, failure })
-  if (result.timedOut) return failed(`timeout after ${timeoutMs} ms`)
-  if (result.error !== undefined) return failed(result.error)
-  const isOkCode = result.code !== null && okCodes.includes(result.code)
-  if (!isOkCode) return failed(`exit ${result.code}: ${firstOutputLine(result.stderr || result.stdout)}`)
+export interface ExitedProcess {
+  code: number | null
+  output: string
+  errorOutput: string
+  durationMs: number
+}
+
+export const settleExit = (invocation: ToolInvocation, exited: ExitedProcess): ToolRun => {
+  const { tool, okCodes, parse } = invocation
+  const failed = (failure: string): ToolRun => ({ tool, findings: [], durationMs: exited.durationMs, failure })
+  const isOkCode = exited.code !== null && okCodes.includes(exited.code)
+  if (!isOkCode) return failed(`exit ${exited.code}: ${firstOutputLine(exited.errorOutput || exited.output)}`)
   try {
-    return { tool, findings: parse(result.stdout), durationMs: result.durationMs }
+    return { tool, findings: parse(exited.output), durationMs: exited.durationMs }
   } catch (error) {
     return failed(error instanceof Error ? error.message : String(error))
   }
+}
+
+export const runTool = async (invocation: ToolInvocation): Promise<ToolRun> => {
+  const { tool, argv, cwd, timeoutMs } = invocation
+  const result = await run(argv, { cwd, timeoutMs })
+  if (result.timedOut) return { tool, findings: [], durationMs: result.durationMs, failure: `timeout after ${timeoutMs} ms` }
+  if (result.error !== undefined) return { tool, findings: [], durationMs: result.durationMs, failure: result.error }
+  return settleExit(invocation, { code: result.code, output: result.stdout, errorOutput: result.stderr, durationMs: result.durationMs })
 }
 
 const parseDiffLines = (diff: string): Map<string, Set<number>> => {

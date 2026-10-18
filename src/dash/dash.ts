@@ -87,6 +87,9 @@ class DashFailure extends Error {
 
 const usage = (message: string): DashFailure => new DashFailure(EXIT_USAGE, message)
 
+const noActiveRun = (location: { branch: string }): DashFailure =>
+  new DashFailure(EXIT_NOT_MET, `no active run for branch ${location.branch}, start one with: dash init "<title>" "<step>"...`)
+
 const branchDirName = (projectRoot: string): string => {
   const branch = gitCurrentBranch(projectRoot)
   if (branch !== undefined) return branch.replace(/[^A-Za-z0-9._-]/g, '_')
@@ -203,20 +206,45 @@ const parseDecisionFlags = (args: string[]): Map<string, string> => {
   return flags
 }
 
-const addDecision: Mutation = (run, [text, ...rest], at) => {
-  const flags = parseDecisionFlags(rest)
-  const why = flags.get('--why')
-  const evidence = flags.get('--evidence')
-  const result = flags.get('--result')
-  if (result !== undefined && !DECISION_RESULTS.has(result)) throw usage(`--result must be kept or reverted, got ${result}`)
+export interface DecisionDetails {
+  evidence?: string
+  result?: 'kept' | 'reverted'
+}
+
+export const addRunDecision = (
+  projectRoot: string,
+  text: string,
+  why?: string,
+  details: DecisionDetails = {},
+  now: Date = new Date(),
+): boolean => {
+  const location = runLocation(projectRoot)
+  const run = readRun(location.data)
+  if (run === undefined || !isActive(run, now)) return false
+  const at = now.toISOString()
   run.decisions.push({
     n: nextNumber(run.decisions),
     text: required(text, 'decision text'),
     ...(why === undefined ? {} : { why }),
-    ...(evidence === undefined ? {} : { evidence }),
-    ...(result === undefined ? {} : { result: result as 'kept' | 'reverted' }),
+    ...(details.evidence === undefined ? {} : { evidence: details.evidence }),
+    ...(details.result === undefined ? {} : { result: details.result }),
     at,
   })
+  run.updatedAt = at
+  saveRun(location, run)
+  return true
+}
+
+const recordDecision = (projectRoot: string, location: RunLocation, [text, ...rest]: string[], now: Date): string => {
+  const flags = parseDecisionFlags(rest)
+  const evidence = flags.get('--evidence')
+  const result = flags.get('--result')
+  if (result !== undefined && !DECISION_RESULTS.has(result)) throw usage(`--result must be kept or reverted, got ${result}`)
+  const details: DecisionDetails = {
+    ...(evidence === undefined ? {} : { evidence }),
+    ...(result === undefined ? {} : { result: result as 'kept' | 'reverted' }),
+  }
+  if (!addRunDecision(projectRoot, required(text, 'decision text'), flags.get('--why'), details, now)) throw noActiveRun(location)
   return 'ok'
 }
 
@@ -245,7 +273,6 @@ const answerAsk: Mutation = (run, [nText, answer], at) => {
 const MUTATIONS = new Map<string, Mutation>([
   ['step', setStep],
   ['add', addStep],
-  ['decision', addDecision],
   ['result', addResult],
   ['ask', addAsk],
   ['answer', answerAsk],
@@ -290,6 +317,7 @@ const dispatch = (args: string[], now: Date): string => {
   const projectRoot = resolveProjectRoot(process.cwd())
   const location = runLocation(projectRoot)
   if (sub === 'init') return initRun(projectRoot, location, rest, now)
+  if (sub === 'decision') return recordDecision(projectRoot, location, rest, now)
 
   const mutation = sub === undefined ? undefined : MUTATIONS.get(sub)
   if (sub !== 'path' && mutation === undefined) {
@@ -297,9 +325,7 @@ const dispatch = (args: string[], now: Date): string => {
   }
 
   const run = readRun(location.data)
-  if (run === undefined || !isActive(run, now)) {
-    throw new DashFailure(EXIT_NOT_MET, `no active run for branch ${location.branch}, start one with: dash init "<title>" "<step>"...`)
-  }
+  if (run === undefined || !isActive(run, now)) throw noActiveRun(location)
   if (mutation === undefined) return toSlash(location.page)
 
   const at = now.toISOString()

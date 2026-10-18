@@ -270,6 +270,10 @@ const tryCreateLock = (path: string): boolean => {
   }
 }
 
+export const transferLock = (path: string, pid: number): void => {
+  writeFileSync(path, JSON.stringify({ pid, at: Date.now() }))
+}
+
 const sleep = (ms: number): Promise<void> => new Promise((done) => setTimeout(done, ms))
 
 export const acquireLock = async (path: string, waitMs: number = LOCK_WAIT_MS): Promise<Lock | undefined> => {
