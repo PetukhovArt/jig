@@ -1,13 +1,13 @@
-import { spawn, execFileSync } from 'node:child_process'
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { execFileSync } from 'node:child_process'
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs'
+import { cpus, tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
-import { fileURLToPath, pathToFileURL } from 'node:url'
+import { fileURLToPath } from 'node:url'
 import { parseArgs } from 'node:util'
+import { createProbe, formatMb, formatMs, formatPercent, percentile, runHook as runJigHook, sortedNumbers, startCpuSampler } from './measure.mjs'
 
 const jigRoot = dirname(dirname(fileURLToPath(import.meta.url)))
 const jigBin = join(jigRoot, 'bin', 'jig.mjs')
-const KB_PER_MB = 1024
 const DEFAULT_RUNS = 200
 
 const fail = (message) => {
@@ -40,23 +40,13 @@ if (!existsSync(absoluteFile)) fail(`${absoluteFile} does not exist`)
 const editedLine = readFileSync(absoluteFile, 'utf8').split(/\r?\n/).find((line) => line.trim() !== '') ?? ''
 
 const workDir = mkdtempSync(join(tmpdir(), 'jig-hot-path-'))
-const preloadPath = join(workDir, 'rss.mjs')
-writeFileSync(
-  preloadPath,
-  [
-    "import { writeFileSync } from 'node:fs'",
-    "process.on('exit', () => writeFileSync(process.env.JIG_BENCH_RSS_FILE, String(process.resourceUsage().maxRSS)))",
-    '',
-  ].join('\n'),
-)
-const rssFile = join(workDir, 'rss.txt')
+const probe = createProbe(workDir)
 const sessionId = `jig-bench-${process.pid}-${Date.now()}`
 
 const env = {
   ...process.env,
   CLAUDE_PROJECT_DIR: projectRoot,
   CLAUDE_PLUGIN_ROOT: jigRoot,
-  JIG_BENCH_RSS_FILE: rssFile,
 }
 
 const baseInput = (hookEventName) => ({
@@ -75,41 +65,15 @@ const events = {
   'pre-edit': { ...baseInput('PreToolUse'), tool_name: 'Edit', tool_use_id: 'bench', tool_input: editInput },
 }
 
-const runHook = (name) =>
-  new Promise((done, reject) => {
-    rmSync(rssFile, { force: true })
-    const started = performance.now()
-    const child = spawn(process.execPath, ['--import', pathToFileURL(preloadPath).href, jigBin, 'hook', name], {
-      cwd: projectRoot,
-      env,
-      stdio: ['pipe', 'pipe', 'pipe'],
-      windowsHide: true,
-    })
-    let stdout = ''
-    let stderr = ''
-    child.stdout.on('data', (chunk) => {
-      stdout += chunk
-    })
-    child.stderr.on('data', (chunk) => {
-      stderr += chunk
-    })
-    child.on('error', reject)
-    child.on('close', (code) => {
-      const ms = performance.now() - started
-      const rssKb = existsSync(rssFile) ? Number(readFileSync(rssFile, 'utf8')) : Number.NaN
-      done({ ms, rssKb, code, stdout, stderr })
-    })
-    child.stdin.end(JSON.stringify(events[name]))
-  })
-
-const percentile = (sorted, quantile) => sorted[Math.max(0, Math.ceil(quantile * sorted.length) - 1)]
+const runHook = (name) => runJigHook({ jigBin, probe, projectRoot, env, name, input: events[name] })
 
 const measure = async (name) => {
   const results = []
+  const stopSampler = startCpuSampler()
   for (let index = 0; index < runs; index++) {
     results.push(await runHook(name))
   }
-  return results
+  return { results, load: stopSampler() }
 }
 
 const journalTools = () => {
@@ -132,15 +96,17 @@ const journalTools = () => {
   return counts
 }
 
-const report = (name, results) => {
-  const times = results.map((result) => result.ms).sort((left, right) => left - right)
-  const rss = results.map((result) => result.rssKb).filter((value) => Number.isFinite(value))
+const report = (name, { results, load }) => {
+  const times = sortedNumbers(results.map((result) => result.ms))
+  const cpu = sortedNumbers(results.map((result) => result.cpuMs))
+  const rss = sortedNumbers(results.map((result) => result.rssKb))
   const failures = results.filter((result) => result.code !== 0)
   const withOutput = results.filter((result) => result.stdout.trim() !== '').length
-  const peak = rss.length === 0 ? 'n/a' : `${(Math.max(...rss) / KB_PER_MB).toFixed(1)} MB`
-  const format = (ms) => `${ms.toFixed(0)} ms`
   process.stdout.write(
-    `${name.padEnd(9)} runs ${results.length}  p50 ${format(percentile(times, 0.5))}  p95 ${format(percentile(times, 0.95))}  max ${format(times.at(-1))}  peak RSS ${peak}  output ${withOutput}  exit!=0 ${failures.length}\n`,
+    `${name.padEnd(9)} runs ${results.length}  p50 ${formatMs(percentile(times, 0.5))}  p95 ${formatMs(percentile(times, 0.95))}  max ${formatMs(times.at(-1))}  peak RSS ${formatMb(rss.at(-1))}  output ${withOutput}  exit!=0 ${failures.length}\n`,
+  )
+  process.stdout.write(
+    `${''.padEnd(9)} jig CPU p50 ${formatMs(percentile(cpu, 0.5))}  p95 ${formatMs(percentile(cpu, 0.95))}  machine CPU avg ${formatPercent(load.avg)}  peak ${formatPercent(load.peak)}\n`,
   )
   if (failures.length > 0) {
     process.stdout.write(`  first failure stderr: ${failures[0].stderr.trim().slice(0, 300)}\n`)
@@ -152,7 +118,7 @@ const removeSession = () => {
 }
 
 try {
-  process.stdout.write(`jig hot path: ${projectRoot}\nfile: ${relativeFile}\nnode ${process.version}, ${process.platform}\n`)
+  process.stdout.write(`jig hot path: ${projectRoot}\nfile: ${relativeFile}\nnode ${process.version}, ${process.platform}, ${cpus().length} CPUs\n`)
   await runHook('session-start')
   const before = journalTools()
   const postEdit = await measure('post-edit')

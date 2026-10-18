@@ -170,7 +170,8 @@ Benchmarks, against your own project:
 
 ```text
 node bench/hot-path.mjs <project-root> [--runs 200] [--file <relative path>]
+node bench/stop-gate.mjs <project-root> [--files 1,5,20] [--runs 3]
 node bench/false-positives.mjs <repo>
 ```
 
-`hot-path.mjs` times `pre-edit` and `post-edit` hooks and reports p50, p95, max and peak RSS (target: p95 < 300 ms, RSS < 150 MB). `false-positives.mjs` runs the comment and suppression rules over every tracked `.ts` and `.vue` file as if it were newly added and prints each hit.
+`hot-path.mjs` times `pre-edit` and `post-edit` hooks and reports p50, p95, max, peak RSS and CPU time of the jig process, and the machine CPU load during the runs (target: p95 < 300 ms, RSS < 150 MB). `stop-gate.mjs` plays a turn per run: `session-start`, `user-prompt-submit`, an exported const appended to N tracked `.ts` files (`.vue` with a non-setup `lang="ts"` script as a fallback) with a `post-edit` for each, then the timed `stop` hook. It reports wall time, peak RSS, jig CPU time, machine CPU (which includes tsc and ESLint) and the gate verdict, with the first run apart from the warm ones, and checks the target: stop < 20 s on 1, 5 and 20 files. It refuses files with uncommitted changes and restores their contents after each run and on Ctrl+C. `false-positives.mjs` runs the comment and suppression rules over every tracked `.ts` and `.vue` file as if it were newly added and prints each hit.
