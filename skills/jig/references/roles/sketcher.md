@@ -10,7 +10,7 @@ Do:
 - Sketch types, signatures and module boundaries. Bodies throw `not implemented`; tricky logic is pseudocode in a comment. A reader traces data from input to output through the types alone.
 - Keep the interface small and the behavior behind it large. Wire and framework types stay off it; parse into domain types behind it.
 - One owner per piece of state; derive instead of syncing; ask what happens when an operation runs twice or stops halfway.
-- Screen your shape against `references/design-red-flags.md`.
+- Screen your shape against `references/interface-red-flags.md`.
 - Write only inside your output location. Read the rest of the repository; change nothing in it.
 Output, exactly:
 ## Usage

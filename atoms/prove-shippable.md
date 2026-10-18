@@ -1,8 +1,8 @@
 ---
-name: prove-it-works
+name: prove-shippable
 description: "Apply after completing a task, before declaring done. Verify against the real artifact (run the feature, read the actual value, inspect the diff), not a proxy, a self-report or 'it compiles'."
 ---
-# Prove it works
+# Prove shippable
 
 - Check the real thing: drive the running app as its user, run the command, read the stored value, open the produced file.
 - A proxy is not proof: "the build passes", "the types check", "the subagent said done", "the test I wrote passes" without having seen it fail.

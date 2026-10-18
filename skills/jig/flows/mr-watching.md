@@ -1,8 +1,8 @@
-# babysit
+# mr-watching
 
 **You own the merge frontier. Clear one merge request at a time and stop where the human's call begins.**
 
-Atoms: autonomy, evidence, verifiable-units.
+Atoms: autonomy, evidence, small-steps.
 
 One pass per call. Recurrence is the user's `/loop`.
 

@@ -49,7 +49,7 @@ flowchart TD
 
 {The alternatives you considered and why this one; a table when there are several.}
 
-## Blast radius
+## Change impact
 
 **Rollback:** {"simple" | "hard" + why: a migration, deleted data, a changed public contract}.
 **What can break:** {screens, scenarios or consumers the merge touches, comma-separated}.

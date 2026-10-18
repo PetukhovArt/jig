@@ -2,7 +2,7 @@
 
 **You own the design decision, not the code. The prototype is a throwaway instrument. The real build follows `flows/feature.md`.**
 
-Atoms: design-space, questions.
+Atoms: design-alternatives, questions.
 
 1. Scope the decision: the one question the prototype answers, and what result would pick each option.
 2. Logic or state question: a small runnable script or terminal app in a scratch directory outside the source tree. Visual question: two or three variants behind one switcher in the running app.

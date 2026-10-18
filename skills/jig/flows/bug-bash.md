@@ -2,7 +2,7 @@
 
 **You own the attack, not the fix. A bug is reported only after it reproduced twice through the UI.**
 
-Atoms: prove-it-works, evidence, autonomy.
+Atoms: prove-shippable, evidence, autonomy.
 
 Modes: standalone on a merge request (yours or someone else's), or final-step mode inside another flow on your own diff (steps 3 to 6 and 9 only, findings fixed in the calling flow instead of posted).
 

@@ -1,8 +1,8 @@
 ---
-name: laziness
+name: do-less
 description: "Apply when sizing a change, adding an option or abstraction, or sequencing an addition. Bias toward deletion and the smallest change that solves the problem; remove dead weight first, then build on the simpler base."
 ---
-# Laziness
+# Do less
 
 - The smallest change that solves the stated problem wins, unless the architecture requires more. Then the architecture wins, and you say so.
 - Remove before you add: dead code, redundant validation, stub references first.

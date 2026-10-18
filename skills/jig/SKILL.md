@@ -34,13 +34,13 @@ CLI: `node <root>/bin/jig.mjs <command>`. Atoms: `<root>/atoms/<name>.md`. Flows
 - `refactoring`: change structure, keep behavior, prove equivalence.
 - `perf`: measure, explain the limiter, fix, measure again.
 - `prototype`: settle a design decision with a throwaway instrument.
-- `visual-parity`: make UI match a baseline or a design pixel for pixel.
+- `visual-match`: make UI match a baseline or a design pixel for pixel.
 - `review`: review a merge request (yours or someone else's) and post proven findings.
 - `bug-bash`: attack a feature in the running app and report reproduced bugs.
-- `babysit`: drive your open merge requests through conflicts, threads and CI.
-- `autonomous-run`: work unattended toward a checkable done condition.
-- `session-pickup`: resume work a previous session left.
-- `pause-safely`: stop cleanly with a resume point.
+- `mr-watching`: drive your open merge requests through conflicts, threads and CI.
+- `afk-mode`: work unattended toward a checkable done condition.
+- `session-resume`: resume work a previous session left.
+- `session-pause`: stop cleanly with a resume point.
 Every code-changing flow ends with the shared step in `flows/mr.md`.
 The weekly improvement loop: when the user asks for it, follow `references/loop.md`.
 

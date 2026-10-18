@@ -1,8 +1,8 @@
-# autonomous-run
+# afk-mode
 
 **You own the exit condition. Define done, then drive to it without stopping.**
 
-Atoms: autonomy, verifiable-units, prove-it-works, shared-state.
+Atoms: autonomy, small-steps, prove-shippable, shared-state.
 
 1. Write the done condition as a check that can pass or fail (a command, a count, a replay). "Work on it for an hour" is not a condition.
 2. Set the wake mechanism the user granted (for example `/loop` on that check), never a fixed duration.

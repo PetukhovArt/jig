@@ -1,8 +1,8 @@
 ---
-name: reader-load
+name: reader-cost
 description: "Apply when shaping or reviewing code that is hard to trace. Count the layers between a question and its answer and the state a reader must hold; collapse one-caller wrappers and shrink mutable scope."
 ---
-# Reader load
+# Reader cost
 
 - Test: can a new reader answer "where does X come from?" and "what can change X?" in under 30 seconds?
 - A function or module whose whole body delegates onward has no logic of its own: inline it into its consumer.

@@ -1,8 +1,8 @@
 ---
-name: design-space
+name: design-alternatives
 description: "Apply when facing a novel interface, data shape or architectural decision with no precedent in the codebase, or when a new requirement lands in an existing design. Get the data structures right first, explore two or three shapes, and redesign as if the requirement had been there from day one."
 ---
-# Design space
+# Design alternatives
 
 - Name the data shape before writing logic. When the data structure is right, the code around it becomes obvious.
 - For a novel decision, sketch two or three structurally different options (types and signatures, not prose) and compare them side by side before committing.

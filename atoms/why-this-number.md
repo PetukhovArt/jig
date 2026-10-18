@@ -1,8 +1,8 @@
 ---
-name: explain-the-number
+name: why-this-number
 description: "Apply before you trust, report or act on a measured number: a speedup, a regression, a latency, a throughput, an eval score. Find what limits it and rule out that it measured something other than the work you think."
 ---
-# Explain the number
+# Why this number
 
 - Ask "why is it not twice as good?" and name the limiter from a profile or a trace, not from intuition.
 - Rule out confounders: errors that made work skip, caching, dead code paths, an untuned baseline, a different machine or build mode, noise.

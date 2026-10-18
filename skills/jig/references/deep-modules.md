@@ -40,7 +40,7 @@ Use these terms exactly in sketches, records, decisions and review threads. Do n
 
 ## Red flags
 
-Screen every shape against `references/design-red-flags.md`. Assume the next contributor is an agent that sees only the files it opened, copies the nearest example and takes the shortest path that compiles. Prefer the shape where a change that looks right from one file is right for the whole repository.
+Screen every shape against `references/interface-red-flags.md`. Assume the next contributor is an agent that sees only the files it opened, copies the nearest example and takes the shortest path that compiles. Prefer the shape where a change that looks right from one file is right for the whole repository.
 
 ## Rejected framings
 

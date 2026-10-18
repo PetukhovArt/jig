@@ -1,8 +1,8 @@
 ---
-name: verifiable-units
+name: small-steps
 description: "Apply to multi-step work and to how you stack commits and merge requests. Break the work into small units that each end in a verifiable state, check each before the next, and order delivery so the sequence proves itself to a reviewer."
 ---
-# Verifiable units
+# Small steps
 
 - Each unit ends in a state you can check: a test goes green, a replay passes, a command prints the expected value.
 - Check a unit as a before/after bracket: show the state before, make the change, show the state after.

@@ -1,8 +1,8 @@
-# session-pickup
+# session-resume
 
 **You own the resume point. Read the prior trail, don't redo it.**
 
-Atoms: evidence, prove-it-works.
+Atoms: evidence, prove-shippable.
 
 1. Locate the trail: the dashboard of the current branch (`dash path`), a handoff note the user names, `git log` and `git status`.
 2. Reconstruct the state: the goal, the steps done, the open question, the last decision.

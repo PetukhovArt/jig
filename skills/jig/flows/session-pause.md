@@ -1,4 +1,4 @@
-# pause-safely
+# session-pause
 
 **You own a clean stop. Leave a checkpoint a cold-start agent can resume from.**
 

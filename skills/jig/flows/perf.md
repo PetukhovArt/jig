@@ -2,7 +2,7 @@
 
 **You own the measurement story. Plan, review, verify the numbers.**
 
-Atoms: explain-the-number, root-causes, prove-it-works.
+Atoms: why-this-number, root-causes, prove-shippable.
 
 1. Capture a baseline on the user's scenario: a trace, a profile or a benchmark, several runs, the same build mode as production.
 2. Explain the number: name what limits it before changing anything.

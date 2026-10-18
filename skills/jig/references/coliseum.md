@@ -20,7 +20,7 @@ Every candidate gets the same prompt, so the prompt is the contract.
 
 ## 3. Cross-judge
 
-After every candidate finishes, spawn one subagent with role `referee`. Prefer a model of its tier that wrote no candidate. Give it the rubric, `references/design-red-flags.md` and the candidates by location label. It runs while you read.
+After every candidate finishes, spawn one subagent with role `referee`. Prefer a model of its tier that wrote no candidate. Give it the rubric, `references/interface-red-flags.md` and the candidates by location label. It runs while you read.
 
 ## 4. Pick
 
@@ -36,6 +36,6 @@ After every candidate finishes, spawn one subagent with role `referee`. Prefer a
 
 ## 6. Verify
 
-Check the result like any other artifact (atom `prove-it-works`). A problem the coliseum missed: either the Frame was wrong (reframe and rerun) or a candidate caught it and the graft was missed (back to Graft).
+Check the result like any other artifact (atom `prove-shippable`). A problem the coliseum missed: either the Frame was wrong (reframe and rerun) or a candidate caught it and the graft was missed (back to Graft).
 
 Output: the artifact plus a note: the base and why, the referee's verdict, each graft with its source, what was rejected and why, convergence or dropouts, the verification result.

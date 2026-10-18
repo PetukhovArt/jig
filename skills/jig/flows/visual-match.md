@@ -1,8 +1,8 @@
-# visual-parity
+# visual-match
 
 **You own pixel-exact equivalence. The baseline is the spec. You do not touch it.**
 
-Atoms: prove-it-works, verifiable-units.
+Atoms: prove-shippable, small-steps.
 
 1. Fix the baseline first: screenshots of the reference (the old implementation, or the design export) taken by a script you can rerun, at fixed viewport sizes and states.
 2. Never edit the baseline or the screenshot harness to make a diff pass.

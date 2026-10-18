@@ -1,4 +1,4 @@
-# Design red flags
+# Interface red flags
 
 Screen every candidate shape before you pick. A red flag is a reason to revise or reject the shape. Terms follow `references/deep-modules.md`.
 

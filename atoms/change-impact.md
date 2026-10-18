@@ -1,8 +1,8 @@
 ---
-name: blast-radius
+name: change-impact
 description: "Apply before you change code other code depends on. Find what the change could break outside the diff, name the one fact the change is safe because of, and prove that fact as far as the risk demands."
 ---
-# Blast radius
+# Change impact
 
 - Ask what else reads, calls, imports, serializes or schedules what you change: callers, subscribers, persisted data, wire formats, timing, configuration.
 - Look where search stops: library source, generated code, string keys, reflection, other repositories that consume the contract.

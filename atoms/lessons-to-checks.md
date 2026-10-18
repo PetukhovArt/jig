@@ -1,8 +1,8 @@
 ---
-name: encode-lessons
+name: lessons-to-checks
 description: "Apply when you catch yourself writing the same instruction a second time, or see a recurring correction or review finding. Encode the rule as structure (architecture, a type, a lint whose message names the fix, a test) instead of more text."
 ---
-# Encode lessons
+# Lessons to checks
 
 - Fix at the highest level that works: architecture (one owner, one way, internals not importable), then a type, then a lint or hook whose error names the fix, then a test, and prose last.
 - A new check proves itself: it fails on the real mistake that prompted it.
