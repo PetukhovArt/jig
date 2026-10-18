@@ -26,20 +26,34 @@ const dash = async (minute: number, ...args: string[]): Promise<number> => {
 const runDir = (): string => join(root, '.jig', 'runs', 'feat_dash-x')
 const readRunJson = (): unknown => JSON.parse(readFileSync(join(runDir(), 'run.json'), 'utf8'))
 
-const drawPage = (page: string): { lang: string; html: string } => {
+interface DrawnPage {
+  lang: string
+  html: string
+  answersText: (drafts: Record<number, string>) => { count: number; text: string }
+}
+
+const drawPage = (page: string): DrawnPage => {
   const data = /<script type="application\/json" id="run">([\s\S]*?)<\/script>/.exec(page)?.[1] ?? ''
   const script = /<script>([\s\S]*?)<\/script>/.exec(page)?.[1] ?? ''
   const app = { innerHTML: '' }
   const htmlElement = { lang: '' }
+  const element = { addEventListener: () => undefined }
   const document = {
     title: '',
     documentElement: htmlElement,
     body: { classList: { toggle: () => false } },
     getElementById: (id: string) => (id === 'run' ? { textContent: data } : app),
-    querySelector: () => ({}),
+    querySelector: () => element,
+    querySelectorAll: () => [],
   }
-  runInNewContext(script, { document, localStorage: { getItem: () => null } })
-  return { lang: htmlElement.lang, html: app.innerHTML }
+  const context: Record<string, unknown> = {
+    document,
+    localStorage: { getItem: () => null },
+    location: { pathname: '/run/index.html' },
+    setInterval: () => 0,
+  }
+  runInNewContext(script, context)
+  return { lang: htmlElement.lang, html: app.innerHTML, answersText: context['answersText'] as DrawnPage['answersText'] }
 }
 
 beforeEach(() => {
@@ -119,6 +133,24 @@ describe('jig dash', () => {
     expect(drawn.lang).toBe(lang)
     expect(drawn.html).toContain(label)
     expect(drawn.html).not.toContain(foreign)
+  })
+
+  it('copies drafted answers of open questions only, in question order', async () => {
+    await dash(0, 'init', 'Сборка jig', 'План')
+    await dash(1, 'ask', 'Тема по умолчанию?', 'тёмная')
+    await dash(2, 'ask', 'Чем хостить?', 'glab')
+    await dash(3, 'ask', 'Сколько окон?', 'два')
+    await dash(4, 'ask', 'Уже отвечен?', 'да')
+    await dash(5, 'answer', '4', 'да')
+
+    const page = drawPage(readFileSync(join(runDir(), 'index.html'), 'utf8'))
+    const copied = page.answersText({ 3: 'три\nили четыре', 1: 'светлая', 2: '   ', 4: 'лишний' })
+
+    expect(copied).toEqual({
+      count: 2,
+      text: 'Ответы по прогону «Сборка jig»:\n№1 Тема по умолчанию?\n→ светлая\n\n№3 Сколько окон?\n→ три\nили четыре',
+    })
+    expect(page.answersText({})).toEqual({ count: 0, text: '' })
   })
 
   it('keeps an existing run when init repeats the same title and steps', async () => {

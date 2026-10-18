@@ -2,29 +2,55 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta http-equiv="refresh" content="30">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>jig run</title>
 <style>
 *{box-sizing:border-box}
+[hidden]{display:none!important}
 h1,h2,p,ol,ul{margin:0}
 ol,ul{padding:0;list-style:none}
-a:focus-visible,button:focus-visible{outline:3px solid currentColor;outline-offset:2px;border-radius:2px}
+a:focus-visible,button:focus-visible,.sign:focus-visible,textarea:focus-visible{outline:3px solid var(--now);outline-offset:2px;border-radius:4px}
 @media (prefers-reduced-motion:reduce){*{animation:none!important}}
-body{--bg:#141B26;--ink:#E6EAF0;--muted:#8A96A8;--go:#2FB38A;--now:#4C8DFF;--stop:#F0564A;--wait:#465264;--sign:#FFC72C;--sign-ink:#14213D;--rule:#2A3444;
-  margin:0;min-height:100vh;background:var(--bg);color:var(--ink);font:15px/1.45 system-ui,-apple-system,'Segoe UI',sans-serif}
-body.light{--bg:#EEF1F4;--ink:#14213D;--muted:#5B6678;--go:#1F8A70;--now:#2F6FEB;--stop:#E03E2F;--wait:#B8C2CC;--rule:#14213D}
+body{--bg:#141B26;--ink:#E6EAF0;--muted:#8A96A8;--go:#2FB38A;--now:#4C8DFF;--stop:#F0564A;--wait:#465264;--sign:#FFC72C;--sign-ink:#14213D;--rule:#2A3444;--panel:#1B2431;
+  margin:0;min-height:100vh;background:var(--bg);color:var(--ink);font:15px/1.45 system-ui,-apple-system,'Segoe UI',sans-serif;overflow-wrap:anywhere;-webkit-text-size-adjust:100%}
+body.light{--bg:#EEF1F4;--ink:#14213D;--muted:#5B6678;--go:#1F8A70;--now:#2F6FEB;--stop:#E03E2F;--wait:#B8C2CC;--rule:#14213D;--panel:#FFFFFF}
 a{color:var(--now)}
-.wrap{padding:24px 32px}
-.head{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap;padding-bottom:14px;border-bottom:2px solid var(--rule)}
-.head h1{font-size:22px;line-height:1.2;font-weight:700;letter-spacing:-.01em}
+button{font:inherit;cursor:pointer;min-height:44px;border-radius:6px}
+.wrap{max-width:1600px;margin:0 auto;padding:clamp(14px,3vw,32px)}
+.head{display:flex;justify-content:space-between;align-items:flex-end;gap:12px 20px;flex-wrap:wrap;padding-bottom:14px;border-bottom:2px solid var(--rule)}
+.head>div{min-width:0}
+.head h1{font-size:clamp(19px,1.2rem + .6vw,24px);line-height:1.2;font-weight:700;letter-spacing:-.01em}
 .sub{margin-top:3px;color:var(--muted);font-size:14px}
-.pos{font-size:17px;font-weight:500;color:var(--muted);display:flex;gap:14px;align-items:center}
+.pos{font-size:17px;font-weight:500;color:var(--muted);display:flex;gap:12px;align-items:center;flex-wrap:wrap}
 .pos b{color:var(--ink);font-weight:700}
-.theme{background:none;border:1px solid var(--rule);color:var(--muted);border-radius:6px;padding:2px 8px;font:inherit;font-size:14px;cursor:pointer}
-.body{display:grid;grid-template-columns:minmax(0,1fr) 400px;gap:32px;margin-top:18px;align-items:start}
+.theme{min-width:44px;background:none;border:1px solid var(--rule);color:var(--muted);padding:0 10px;font-size:16px}
+.copy{border:0;padding:0 16px;background:var(--sign);color:var(--sign-ink);font-size:15px;font-weight:700}
+.copy:disabled{opacity:.45;cursor:default}
+.signs{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,320px),1fr));gap:14px;margin-top:18px}
+.sign{min-width:0;background:var(--sign);color:var(--sign-ink);padding:14px 16px;border-radius:6px;cursor:pointer}
+.sign h2{font-size:14px;font-weight:700}
+.sign p{margin-top:6px;font-size:15px;line-height:1.4;font-weight:500}
+.sign .def{margin-top:10px;padding-top:8px;border-top:2px solid var(--sign-ink);font-size:14px}
+.sign .when{margin-top:4px;font-size:12px}
+.sign .hint{margin-top:8px;font-size:13px;font-weight:600;text-decoration:underline;text-underline-offset:3px}
+.sign .draft{margin-top:10px;padding:8px 10px;border-radius:4px;background:color-mix(in srgb,var(--sign-ink) 10%,transparent);font-size:14px}
+.sign .draft .tag{display:inline-block;margin-right:6px;padding:0 6px;border-radius:4px;background:var(--sign-ink);color:var(--sign);font-size:12px;font-weight:700}
+.reply{display:block;width:100%;min-height:110px;margin-top:10px;padding:10px 12px;border:2px solid var(--sign-ink);border-radius:6px;background:#FFFDF4;color:#14213D;font-family:inherit;font-size:16px;line-height:1.4;resize:vertical}
+.decided{margin-top:22px}
+.decided h2,aside h2{font-size:14px;font-weight:700}
+.cards{margin-top:10px;display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,340px),1fr));gap:14px}
+.card{min-width:0;display:flex;flex-direction:column;gap:8px;padding:14px 16px;border:1px solid color-mix(in srgb,var(--muted) 30%,transparent);border-left:4px solid var(--go);border-radius:6px;background:var(--panel)}
+.card .top{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}
+.card .txt{font-size:clamp(16px,.9rem + .3vw,18px);line-height:1.35;font-weight:600}
+.card dl{margin:0;display:grid;grid-template-columns:auto minmax(0,1fr);gap:2px 8px;font-size:14px;color:var(--muted)}
+.card dt{color:var(--ink);font-weight:500}
+.card dd{margin:0;min-width:0}
+.card.reverted{opacity:.55;border-left-color:var(--stop)}
+.card.reverted .txt{text-decoration:line-through;text-decoration-color:var(--stop)}
+.card .tag{padding:0 6px;border-radius:4px;background:var(--stop);color:#fff;font-size:12px;font-weight:600}
+.body{display:grid;grid-template-columns:minmax(0,1fr) clamp(300px,28vw,440px);gap:clamp(20px,3vw,40px);margin-top:24px;align-items:start}
 .line{width:fit-content;max-width:100%;margin:0 auto}
-.line li{display:grid;grid-template-columns:46px 28px minmax(0,1fr);min-height:36px}
+.line li{display:grid;grid-template-columns:52px 28px minmax(0,1fr);min-height:36px}
 .line time{font-size:13px;color:var(--muted);padding-top:1px;font-variant-numeric:tabular-nums}
 .st{position:relative}
 .st::before{content:"";position:absolute;left:11px;top:6px;bottom:-6px;width:6px;background:var(--c)}
@@ -40,39 +66,33 @@ a{color:var(--now)}
 .s-active{--c:var(--now)}
 .s-active .st i{left:1px;top:-3px;width:26px;height:26px;border-width:7px;animation:pulse 1.6s ease-out 1}
 @keyframes pulse{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--now) 60%,transparent)}100%{box-shadow:0 0 0 14px transparent}}
-.nm{padding:0 0 9px 8px}
+.nm{min-width:0;padding:0 0 9px 8px}
 .nm b{font-weight:600}
 .nm small{display:block;font-size:13px;color:var(--muted)}
 .s-blocked small,.stale small{color:var(--stop);font-weight:500}
 .here{display:inline-block;margin-left:6px;padding:0 7px;border-radius:4px;background:var(--now);color:#fff;font-size:12px;font-weight:600;vertical-align:1px}
-.signs{display:flex;gap:16px;margin-top:16px;overflow-x:auto;scroll-snap-type:x mandatory;padding-bottom:6px;scrollbar-color:var(--wait) transparent}
-.sign{flex:0 0 min(320px,85%);scroll-snap-align:start;background:var(--sign);color:var(--sign-ink);padding:14px 16px;border-radius:6px}
-.sign h2{font-size:14px;font-weight:700}
-.sign p{margin-top:6px;font-size:15px;line-height:1.4;font-weight:500}
-.sign .def{margin-top:10px;padding-top:8px;border-top:2px solid var(--sign-ink);font-size:14px}
-.sign .when{margin-top:4px;font-size:12px}
-aside h2,.decided h2{font-size:14px;font-weight:700}
-aside{position:sticky;top:16px;max-height:calc(100vh - 32px);overflow-y:auto;padding-right:6px;scrollbar-color:var(--wait) transparent}
+aside{min-width:0;position:sticky;top:16px;max-height:calc(100vh - 32px);overflow-y:auto;padding-right:6px;scrollbar-color:var(--wait) transparent}
 aside section+section{margin-top:20px}
-aside .list li{padding:8px 0;margin:0;border-bottom:1px solid color-mix(in srgb,var(--muted) 22%,transparent);overflow-wrap:anywhere}
-.decided{margin-top:18px}
-.cards{margin-top:10px;display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px}
-.card{display:flex;flex-direction:column;gap:8px;padding:14px 16px;border:1px solid color-mix(in srgb,var(--muted) 30%,transparent);border-left:4px solid var(--go);border-radius:6px;background:color-mix(in srgb,var(--ink) 4%,var(--bg));overflow-wrap:anywhere}
-.card .top{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}
-.card .txt{font-size:17px;line-height:1.35;font-weight:600}
-.card dl{margin:0;display:grid;grid-template-columns:auto 1fr;gap:2px 8px;font-size:14px;color:var(--muted)}
-.card dt{color:var(--ink);font-weight:500}
-.card dd{margin:0}
-.card.reverted{opacity:.55;border-left-color:var(--stop)}
-.card.reverted .txt{text-decoration:line-through;text-decoration-color:var(--stop)}
-.card .tag{padding:0 6px;border-radius:4px;background:var(--stop);color:#fff;font-size:12px;font-weight:600}
-.closed li{display:grid;grid-template-columns:20px 1fr;gap:8px;margin-top:7px}
+.closed li{display:grid;grid-template-columns:20px minmax(0,1fr);gap:8px;margin-top:7px}
 .closed li::before{content:"";width:16px;height:16px;margin-top:2px;border-radius:50%;background:var(--stop) linear-gradient(#fff,#fff) center/10px 3px no-repeat}
 .closed small{display:block;color:var(--muted);font-size:13px}
-.list li{margin-top:6px;display:grid;grid-template-columns:42px 1fr;gap:6px;font-size:14px;line-height:1.4}
+.list li{display:grid;grid-template-columns:48px minmax(0,1fr);gap:6px;padding:8px 0;font-size:14px;line-height:1.4;border-bottom:1px solid color-mix(in srgb,var(--muted) 22%,transparent)}
 .list time{color:var(--muted);font-size:13px;font-variant-numeric:tabular-nums}
 .list small{display:block;color:var(--muted);font-size:13px}
-@media (max-width:900px){.body{grid-template-columns:1fr}aside{position:static;max-height:none}}
+@media (max-width:900px){
+  .body{grid-template-columns:minmax(0,1fr)}
+  aside{position:static;max-height:none;overflow:visible;padding-right:0}
+  .line{width:auto;margin:0}
+}
+@media (max-width:480px){
+  .wrap{padding-bottom:92px}
+  .head{align-items:flex-start}
+  .line li{grid-template-columns:28px minmax(0,1fr);grid-template-areas:"st nm" "st tm"}
+  .line .st{grid-area:st}
+  .line .nm{grid-area:nm;padding-bottom:0}
+  .line time{grid-area:tm;padding:0 0 10px 8px;font-size:12px}
+  .copy{position:fixed;left:12px;right:12px;bottom:calc(12px + env(safe-area-inset-bottom));z-index:5;min-height:52px;box-shadow:0 6px 20px rgba(0,0,0,.35)}
+}
 </style>
 </head>
 <body>
@@ -83,6 +103,8 @@ aside .list li{padding:8px 0;margin:0;border-bottom:1px solid color-mix(in srgb,
 <script>
 const R = JSON.parse(document.getElementById('run').textContent);
 const STALE_MS = 15 * 60e3;
+const REFRESH_MS = 30e3;
+const COPIED_MS = 2500;
 const LABELS = {
   en: {
     locale: 'en-GB',
@@ -100,6 +122,14 @@ const LABELS = {
     ask: n => `Your decision needed (#${n})`,
     fallback: 'Going with the default meanwhile:',
     asked: 'Asked at',
+    answerHint: 'Tap to write an answer',
+    answerLabel: n => `Answer to question #${n}`,
+    draft: 'answer draft',
+    copy: 'Copy answers',
+    copied: n => `copied (${n})`,
+    copyFailed: 'copy failed',
+    answersFor: title => `Answers for run "${title}":`,
+    answerItem: (n, question) => `#${n} ${question}`,
     decisions: 'Decisions',
     why: 'why',
     evidence: 'evidence',
@@ -128,6 +158,14 @@ const LABELS = {
     ask: n => `Нужно ваше решение (№${n})`,
     fallback: 'Пока иду с вариантом:',
     asked: 'Спросил в',
+    answerHint: 'Нажмите, чтобы написать ответ',
+    answerLabel: n => `Ответ на вопрос №${n}`,
+    draft: 'черновик ответа',
+    copy: 'Скопировать ответы',
+    copied: n => `скопировано (${n})`,
+    copyFailed: 'не удалось скопировать',
+    answersFor: title => `Ответы по прогону «${title}»:`,
+    answerItem: (n, question) => `№${n} ${question}`,
     decisions: 'Решения',
     why: 'почему',
     evidence: 'доказательство',
@@ -169,16 +207,45 @@ const card = d => {
   return `<li class="card${isReverted ? ' reverted' : ''}"><div class="top"><time>${hm(d.at)}</time>${isReverted ? `<span class="tag">${L.reverted}</span>` : ''}</div>
     <p class="txt">${esc(d.text)}</p>${extra ? `<dl>${extra}</dl>` : ''}</li>`;
 };
+const sign = q => `<section class="sign" data-n="${q.n}" tabindex="0"><h2>${L.ask(q.n)}</h2><p>${esc(q.question)}</p>
+  <p class="def">${L.fallback} <b>${esc(q.default)}</b></p><p class="when">${L.asked} ${hm(q.askedAt)}, ${ago(q.askedAt)}</p>
+  <p class="draft" hidden><span class="tag">${L.draft}</span><span class="first"></span></p>
+  <p class="hint">${L.answerHint}</p>
+  <textarea class="reply" hidden aria-label="${L.answerLabel(q.n)}"></textarea></section>`;
+
+function draftKey(q) {
+  return `jig-dash-answer:${location.pathname}:${q.n}:${q.askedAt}`;
+}
+
+function answersText(drafts) {
+  const items = openAsks
+    .map(q => ({q, answer: String(drafts[q.n] ?? '').trim()}))
+    .filter(item => item.answer !== '')
+    .sort((a, b) => a.q.n - b.q.n)
+    .map(({q, answer}) => `${L.answerItem(q.n, q.question)}\n→ ${answer}`);
+  return {count: items.length, text: items.length ? `${L.answersFor(R.title)}\n${items.join('\n\n')}` : ''};
+}
+
+const readDraft = q => {
+  try {
+    return localStorage.getItem(draftKey(q)) ?? '';
+  } catch {
+    return '';
+  }
+};
+
+const drafts = Object.fromEntries(openAsks.map(q => [q.n, readDraft(q)]));
+let hasUnsaved = false;
 
 document.documentElement.lang = lang;
 document.body.classList.toggle('light', localStorage.getItem('jig-dash-theme') === 'light');
 document.title = R.title || L.run;
 document.getElementById('app').innerHTML = `<div class="wrap">
   <header class="head"><div><h1>${esc(R.title)}</h1><p class="sub">${L.branch} ${esc(R.branch)}, ${L.updated} ${hm(R.updatedAt)}, ${ago(R.updatedAt)}</p></div>
-    <p class="pos"><span>${current ? L.step(current.n, steps.length) : L.done(done, steps.length)}</span>
-    <button class="theme" aria-label="${L.theme}">&#9680;</button></p></header>
-  ${openAsks.length ? `<div class="signs">${openAsks.map(q => `<section class="sign"><h2>${L.ask(q.n)}</h2><p>${esc(q.question)}</p>
-    <p class="def">${L.fallback} <b>${esc(q.default)}</b></p><p class="when">${L.asked} ${hm(q.askedAt)}, ${ago(q.askedAt)}</p></section>`).join('')}</div>` : ''}
+    <div class="pos"><span>${current ? L.step(current.n, steps.length) : L.done(done, steps.length)}</span>
+    ${openAsks.length ? `<button class="copy" type="button">${L.copy}</button>` : ''}
+    <button class="theme" type="button" aria-label="${L.theme}">&#9680;</button></div></header>
+  ${openAsks.length ? `<div class="signs">${openAsks.map(sign).join('')}</div>` : ''}
   ${R.decisions.length ? `<section class="decided"><h2>${L.decisions}</h2><ol class="cards">${newest(R.decisions, 'at').map(card).join('')}</ol></section>` : ''}
   <div class="body"><div>
     <ol class="line" aria-label="${L.steps}">${steps.map(s => `<li class="s-${s.status}${s.stale ? ' stale' : ''}">
@@ -192,10 +259,93 @@ document.getElementById('app').innerHTML = `<div class="wrap">
     </aside>
   </div>
 </div>`;
-document.querySelector('.theme').onclick = () => {
+
+const copyButton = document.querySelector('.copy');
+const refreshCopy = () => {
+  if (copyButton) copyButton.disabled = answersText(drafts).count === 0;
+};
+
+const writeClipboard = async text => {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    const area = document.createElement('textarea');
+    area.value = text;
+    area.setAttribute('readonly', '');
+    area.style.position = 'fixed';
+    area.style.opacity = '0';
+    document.body.append(area);
+    area.select();
+    const isCopied = document.execCommand('copy');
+    area.remove();
+    return isCopied;
+  }
+};
+
+for (const box of document.querySelectorAll('.sign')) {
+  const q = openAsks.find(a => String(a.n) === box.dataset.n);
+  const reply = box.querySelector('.reply');
+  const draft = box.querySelector('.draft');
+  const hint = box.querySelector('.hint');
+  const showDraft = () => {
+    const first = drafts[q.n].trim().split('\n')[0];
+    const isEditing = !reply.hidden;
+    draft.hidden = isEditing || first === '';
+    hint.hidden = isEditing;
+    draft.querySelector('.first').textContent = first;
+  };
+  const open = () => {
+    if (!reply.hidden) return;
+    reply.hidden = false;
+    reply.value = drafts[q.n];
+    showDraft();
+    reply.focus();
+  };
+  box.addEventListener('click', open);
+  box.addEventListener('keydown', event => {
+    if (event.target === box && (event.key === 'Enter' || event.key === ' ')) {
+      event.preventDefault();
+      open();
+    }
+  });
+  reply.addEventListener('input', () => {
+    drafts[q.n] = reply.value;
+    try {
+      if (reply.value.trim() === '') localStorage.removeItem(draftKey(q));
+      else localStorage.setItem(draftKey(q), reply.value);
+      hasUnsaved = false;
+    } catch {
+      hasUnsaved = true;
+    }
+    refreshCopy();
+  });
+  reply.addEventListener('blur', () => {
+    if (hasUnsaved) return;
+    reply.hidden = true;
+    showDraft();
+  });
+  showDraft();
+}
+
+refreshCopy();
+copyButton?.addEventListener('click', async () => {
+  const {text, count} = answersText(drafts);
+  if (count === 0) return;
+  const isCopied = await writeClipboard(text);
+  copyButton.textContent = isCopied ? L.copied(count) : L.copyFailed;
+  setTimeout(() => { copyButton.textContent = L.copy; }, COPIED_MS);
+});
+
+document.querySelector('.theme').addEventListener('click', () => {
   const isLight = document.body.classList.toggle('light');
   localStorage.setItem('jig-dash-theme', isLight ? 'light' : 'dark');
-};
+});
+
+setInterval(() => {
+  const isTyping = document.activeElement?.classList?.contains('reply');
+  if (!isTyping && !hasUnsaved) location.reload();
+}, REFRESH_MS);
 </script>
 </body>
 </html>
