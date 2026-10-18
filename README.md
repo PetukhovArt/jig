@@ -6,7 +6,7 @@ The harness pyramid: the bottom layers (execution, safety, verification) are dur
 
 | Layer | jig part |
 | --- | --- |
-| Verification | end-of-turn gate over the project's tsc, ESLint, oxlint, stratum; the agent-view verify check |
+| Verification | end-of-turn gate over the project's tsc, ESLint, oxlint, stratum; runtime checks that ask for proof on the running app (`src/checks/`, agent-view for now) |
 | Safety | deny before action: protected paths, suppressions, comments, `--no-verify` |
 | Execution | worktree slots (`jig slot`) |
 | Context | atoms (`atoms/*.md`) |
@@ -49,9 +49,11 @@ Tool gates switch on by themselves when the project has the tool's config and bi
 | stratum | `stratum.config.jsonc` | after each edit and at the end of a turn |
 | tsc / vue-tsc | nearest `tsconfig.json` | end of turn, errors in the turn's files only |
 | ESLint | `eslint.config.*` or `.eslintrc*` | end of turn, changed lines only |
-| agent-view | `agent-view.config.json` | end of turn: a runtime-visible file (`.vue`, `.tsx`, `.css`, ...) changed and no agent-view command ran after it |
+| agent-view | `agent-view.config.json` | end of turn, runtime check: a changed file needs proof on the running app after its last edit |
 
 `jig check edit <file>` and `jig check stop` run the same paths by hand.
+
+A runtime check maps each changed file to the proof kinds it needs: `behavior` (the use case still works) and `look` (what the user sees). For agent-view, components and markup (`.vue`, `.tsx`, `.jsx`, `.svelte`, `.html`, not tests) need both, styles (`.css`, `.scss`, `.less`) need `look`. Only a successful `agent-view act replay` proves `behavior`, only `agent-view screenshot` or `snap` proves `look`; `dom`, `eval`, `click` and the like prove nothing. When a kind is not needed, record why on the run page: `jig dash decision "skip-verify:behavior" --why "<reason>"` (or `skip-verify:look`, or `skip-verify` for all kinds) lifts it for the turn.
 
 ## `/jig` and flows
 
@@ -75,7 +77,7 @@ Other skills: `jig-slots` (model or user), `jig-explain` and `jig-video` (user o
 }
 ```
 
-Rules: `jig/comments`, `jig/suppressions`, `jig/protected-paths`, `jig/no-verify`, `jig/test-review`, `jig/verify-fact`, `gate/oxlint`, `gate/stratum`, `gate/tsc`, `gate/eslint`; levels `off`, `warn`, `error`. The agent may not edit this file.
+Rules: `jig/comments`, `jig/suppressions`, `jig/protected-paths`, `jig/no-verify`, `jig/test-review`, `jig/verify-fact` (runtime checks: `behavior` and `look` proof), `gate/oxlint`, `gate/stratum`, `gate/tsc`, `gate/eslint`; levels `off`, `warn`, `error`. The agent may not edit this file.
 
 jig creates only `.jig/` in your project: `config.jsonc` goes to git, `journal/`, `runs/` and `cache/` are ignored by `.jig/.gitignore`.
 
@@ -114,7 +116,7 @@ Run as `node <plugin root>/bin/jig.mjs <command>`.
 | `dash <init\|step\|add\|decision\|result\|ask\|answer\|path>` | the run page under `.jig/runs/<branch>/` |
 | `loop [--days 7]` | aggregates the journal into improvement candidates |
 | `allow-no-verify` | allows `--no-verify` for one commit within 10 minutes, only when the pre-commit hook fails on files outside the staged change |
-| `doctor` | diagnostics: Node, config, found tools, deny block, atom globs, locks |
+| `doctor` | diagnostics: Node, config, found tools, active runtime checks, deny block, atom globs, locks |
 | `version` | plugin version |
 
 `hook <name>` is the entry point for `hooks/hooks.json`, not for people.
@@ -163,6 +165,16 @@ claude plugin eval . --case bug-fix --runs 1 --scaffold --allow-tools Write Edit
 claude plugin eval . --eval-dir evals/agent-flow --scaffold --ablation none --allow-tools Write Edit MultiEdit "Bash(*)"
 node evals/summarize.mjs evals/agent/results/<ts> evals/agent-flow/results/<ts>
 ```
+
+Where `claude plugin eval` cannot run Bash cases (Windows without its sandbox), `evals/run-local.mjs` runs the same case files with plain `claude -p`:
+
+```text
+node evals/run-local.mjs --plugin . --case bug-fix --runs 1 --keep-temp
+node evals/run-local.mjs --plugin . -j 3
+node evals/run-local.mjs --plugin . --eval-dir evals/agent-flow -j 3
+```
+
+It runs `scaffold.sh` with Git Bash in a fresh temp dir, then the prompt with `--plugin-dir` (arm `with`) or without it (arm `without`; `evals/agent-flow` runs `with` only). Both arms skip your own setup: user settings, hooks, plugins, MCP servers, `CLAUDE.md` and auto-memory. `regex` and `llm` graders (judge: `--judge-model`, haiku by default) score each run. It writes per-run JSON, the stream-json traces, `aggregate-result.json` for `summarize.mjs` and `summary.md` into `<eval dir>/results/local-<ts>/` (or `--out`). It stops launching runs when the account's rate limit utilization reaches `--stop-at-utilization` (default 0.98).
 
 `eval:prepare` installs the mini-project toolchain once into `evals/_toolchain/`. `--scaffold` runs each case's `scaffold.sh` (bash) on your machine. Drop `--case` and `--runs 1` for the full set with three runs per case.
 
