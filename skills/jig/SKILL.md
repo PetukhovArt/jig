@@ -16,7 +16,7 @@ CLI: `node <root>/bin/jig.mjs <command>`. Atoms: `<root>/atoms/<name>.md`. Flows
 2. Restate the task in one line each: the goal, the done check (something that can pass or fail), the proof you will show, what is already known, the constraints. Missing done check: propose one and continue with it.
 3. Pick the flow whose description fits. None fits: take the closest one and say in one line why.
 4. Read the flow file. Copy its numbered steps into the todo list verbatim, before any task-specific todos. A step you decide not to do stays in the list as `skip: <reason>`.
-5. Run `node <root>/bin/jig.mjs dash init "<task title>" "<step 1>" "<step 2>" ...` with the same steps. Give the user the printed page path once.
+5. Run `node <root>/bin/jig.mjs dash init --lang <en|ru> "<task title>" "<step 1>" "<step 2>" ...` with the same steps. `--lang` is the language you and the user talk in this session; write the title, steps, decisions and questions in it too. Give the user the printed page path once.
 
 ## While working
 - After every step: `dash step <n> done` and `dash step <n+1> active`. Each decision: `dash decision "<what>" --why "<why>" --evidence "<proof or file:line>"`. A discarded attempt: the same with `--result reverted`. Each deliverable: `dash result "<what>" "<path or link>"`.

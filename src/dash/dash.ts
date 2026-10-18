@@ -41,9 +41,14 @@ export interface RunAsk {
   answeredAt?: string
 }
 
+export const RUN_LANGS = ['en', 'ru'] as const
+
+export type RunLang = (typeof RUN_LANGS)[number]
+
 export interface Run {
   v: 1
   title: string
+  lang: RunLang
   branch: string
   createdAt: string
   updatedAt: string
@@ -88,7 +93,7 @@ class DashFailure extends Error {
 const usage = (message: string): DashFailure => new DashFailure(EXIT_USAGE, message)
 
 const noActiveRun = (location: { branch: string }): DashFailure =>
-  new DashFailure(EXIT_NOT_MET, `no active run for branch ${location.branch}, start one with: dash init "<title>" "<step>"...`)
+  new DashFailure(EXIT_NOT_MET, `no active run for branch ${location.branch}, start one with: dash init --lang <en|ru> "<title>" "<step>"...`)
 
 const branchDirName = (projectRoot: string): string => {
   const branch = gitCurrentBranch(projectRoot)
@@ -283,7 +288,16 @@ const sameShape = (run: Run, title: string, steps: string[]): boolean =>
   run.steps.length === steps.length &&
   run.steps.every((step, index) => step.title === steps[index])
 
-const initRun = (projectRoot: string, location: RunLocation, [title, ...steps]: string[], now: Date): string => {
+const isRunLang = (value: string | undefined): value is RunLang => RUN_LANGS.some((lang) => lang === value)
+
+const parseLang = ([flag, value, ...rest]: string[]): { lang: RunLang; rest: string[] } => {
+  if (flag !== '--lang') throw usage('init needs --lang <en|ru> first: the language the session is held in')
+  if (!isRunLang(value)) throw usage(`--lang must be ${RUN_LANGS.join(' or ')}, got ${value ?? 'nothing'}`)
+  return { lang: value, rest }
+}
+
+const initRun = (projectRoot: string, location: RunLocation, args: string[], now: Date): string => {
+  const { lang, rest: [title, ...steps] } = parseLang(args)
   const runTitle = required(title, 'run title')
   if (steps.length === 0) throw usage('init needs at least one step')
   ensureJigDir(projectRoot)
@@ -291,10 +305,11 @@ const initRun = (projectRoot: string, location: RunLocation, [title, ...steps]: 
   const existing = readRun(location.data)
   const isKept = existing !== undefined && sameShape(existing, runTitle, steps)
   const run: Run = isKept
-    ? { ...existing, updatedAt: at }
+    ? { ...existing, lang, updatedAt: at }
     : {
         v: 1,
         title: runTitle,
+        lang,
         branch: location.branch,
         createdAt: at,
         updatedAt: at,

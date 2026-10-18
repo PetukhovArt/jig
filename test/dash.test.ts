@@ -82,7 +82,7 @@ afterEach(() => {
 
 describe('jig dash', () => {
   it('turns a command sequence into the expected run.json and page', async () => {
-    expect(await dash(0, 'init', 'Ship dash', 'Plan', 'Build', 'Verify')).toBe(0)
+    expect(await dash(0, 'init', '--lang', 'en', 'Ship dash', 'Plan', 'Build', 'Verify')).toBe(0)
     expect(await dash(1, 'step', '1', 'done')).toBe(0)
     expect(await dash(2, 'step', '2', 'active')).toBe(0)
     expect(await dash(3, 'decision', 'Use a JSON block', '--why', 'page draws itself', '--evidence', 'template.html:1')).toBe(0)
@@ -100,6 +100,7 @@ describe('jig dash', () => {
     expect(readRunJson()).toEqual({
       v: 1,
       title: 'Ship dash',
+      lang: 'en',
       branch: 'feat_dash-x',
       createdAt: minutes(0),
       updatedAt: minutes(9),
@@ -124,10 +125,10 @@ describe('jig dash', () => {
   })
 
   it.each([
-    { title: 'Выпустить дашборд', lang: 'ru', label: 'сейчас здесь', foreign: 'now here' },
-    { title: 'Ship dash', lang: 'en', label: 'now here', foreign: 'сейчас здесь' },
-  ])('draws $lang labels for the run title "$title"', async ({ title, lang, label, foreign }) => {
-    await dash(0, 'init', title, 'Plan')
+    { title: 'Ship dash', lang: 'ru', label: 'сейчас здесь', foreign: 'now here' },
+    { title: 'Выпустить дашборд', lang: 'en', label: 'now here', foreign: 'сейчас здесь' },
+  ])('draws $lang labels from --lang whatever the title "$title" is written in', async ({ title, lang, label, foreign }) => {
+    await dash(0, 'init', '--lang', lang, title, 'Plan')
 
     const drawn = drawPage(readFileSync(join(runDir(), 'index.html'), 'utf8'))
     expect(drawn.lang).toBe(lang)
@@ -136,7 +137,7 @@ describe('jig dash', () => {
   })
 
   it('copies drafted answers of open questions only, in question order', async () => {
-    await dash(0, 'init', 'Сборка jig', 'План')
+    await dash(0, 'init', '--lang', 'ru', 'Сборка jig', 'План')
     await dash(1, 'ask', 'Тема по умолчанию?', 'тёмная')
     await dash(2, 'ask', 'Чем хостить?', 'glab')
     await dash(3, 'ask', 'Сколько окон?', 'два')
@@ -154,15 +155,15 @@ describe('jig dash', () => {
   })
 
   it('keeps an existing run when init repeats the same title and steps', async () => {
-    await dash(0, 'init', 'Ship dash', 'Plan', 'Build')
+    await dash(0, 'init', '--lang', 'en', 'Ship dash', 'Plan', 'Build')
     await dash(1, 'step', '1', 'done')
-    await dash(2, 'init', 'Ship dash', 'Plan', 'Build')
+    await dash(2, 'init', '--lang', 'en', 'Ship dash', 'Plan', 'Build')
 
     expect(readRunJson()).toMatchObject({ createdAt: minutes(0), updatedAt: minutes(2), steps: [{ status: 'done' }, { status: 'todo' }] })
   })
 
   it('escapes </script> in run text so the page block stays parseable', async () => {
-    await dash(0, 'init', 'Break </script><b>', 'Plan')
+    await dash(0, 'init', '--lang', 'en', 'Break </script><b>', 'Plan')
 
     const page = readFileSync(join(runDir(), 'index.html'), 'utf8')
     const block = /<script type="application\/json" id="run">([\s\S]*?)<\/script>/.exec(page)
@@ -170,7 +171,7 @@ describe('jig dash', () => {
   })
 
   it('exits 1 on a wrong number and when the run went quiet for 12 hours', async () => {
-    await dash(0, 'init', 'Ship dash', 'Plan')
+    await dash(0, 'init', '--lang', 'en', 'Ship dash', 'Plan')
 
     expect(await dash(1, 'step', '5', 'done')).toBe(1)
     expect(await dash(1, 'answer', '1', 'yes')).toBe(1)
@@ -179,7 +180,7 @@ describe('jig dash', () => {
   })
 
   it('reports the active run for session-start only while the heartbeat is younger than 12 hours', async () => {
-    await dash(0, 'init', 'Ship dash', 'Plan', 'Build')
+    await dash(0, 'init', '--lang', 'en', 'Ship dash', 'Plan', 'Build')
     await dash(1, 'step', '1', 'done')
     await dash(2, 'step', '2', 'active')
 

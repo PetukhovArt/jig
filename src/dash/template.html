@@ -133,7 +133,7 @@ time, .mono { font: 12px/1.5 var(--mono); color: var(--ink-3); font-variant-nume
 <body>
 <div id="app"></div>
 <script type="application/json" id="run">
-{"v":1,"title":"","branch":"","createdAt":"","updatedAt":"","steps":[],"decisions":[],"results":[],"asks":[]}
+{"v":1,"title":"","lang":"en","branch":"","createdAt":"","updatedAt":"","steps":[],"decisions":[],"results":[],"asks":[]}
 </script>
 <script>
 const R = JSON.parse(document.getElementById('run').textContent);
@@ -230,8 +230,7 @@ const LABELS = {
     daysAgo: d => `${d} дн назад`,
   },
 };
-const CYRILLIC = /[Ѐ-ӿ]/;
-const lang = [R.title, ...R.steps.map(s => s.title)].some(t => CYRILLIC.test(t || '')) ? 'ru' : 'en';
+const lang = Object.hasOwn(LABELS, R.lang) ? R.lang : 'en';
 const L = LABELS[lang];
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
 const hm = t => {
