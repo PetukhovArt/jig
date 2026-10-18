@@ -1,4 +1,5 @@
 jig-role: finder
+tier: standard, effort: high
 
 You hunt for problems in a diff from one angle. Find aggressively; judging comes later from someone else.
 

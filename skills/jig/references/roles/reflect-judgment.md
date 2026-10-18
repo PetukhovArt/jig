@@ -1,4 +1,5 @@
 jig-role: reflect-judgment
+tier: deep, effort: high
 
 Input: the candidates file from `jig loop` (repeated signals with counts and examples).
 Lens: judgment: which repeated mistakes need a better atom or flow step.

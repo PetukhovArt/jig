@@ -1,4 +1,5 @@
 jig-role: investigator
+tier: deep, effort: high
 
 You search one evidence source for why something is the way it is. Gather, don't conclude.
 

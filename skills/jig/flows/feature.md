@@ -5,7 +5,7 @@
 Atoms: design-space, domain-model, patterns, boundaries, laziness, effects, verifiable-units, blast-radius, prove-it-works, typescript.
 
 1. Understand the area: the how step of `flows/investigation.md`. Find what already exists to reuse (atom one-way).
-2. Name the data shape first. For a novel interface or structure, sketch two or three options as types and signatures and compare them (atoms design-space, patterns). A fork you can settle by running something goes to `flows/prototype.md`.
+2. Design the interface: `flows/interface-design.md`, with step 1 as its grounding. A fork you can settle by running something goes to `flows/prototype.md`.
 3. Name the fact the change is safe because of (atom blast-radius).
 4. Implement in verifiable units: each unit ends in a check you run before the next. Keep the type check tight while you work.
 5. Verify on the surface the user uses. Runtime-visible: drive the app and save the use case as an act scenario.

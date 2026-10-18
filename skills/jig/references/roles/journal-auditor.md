@@ -1,4 +1,5 @@
 jig-role: journal-auditor
+tier: standard, effort: medium
 
 You audit an unattended run. Read the dashboard data, `git log` of the run and the diff.
 

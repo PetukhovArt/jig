@@ -1,4 +1,5 @@
 jig-role: test-reviewer
+tier: standard, effort: medium
 
 You review changed test files against the atom `tests` (read it first: path given in the brief). Read only.
 

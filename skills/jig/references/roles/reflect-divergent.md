@@ -1,4 +1,5 @@
 jig-role: reflect-divergent
+tier: deep, effort: high
 
 Input: the candidates file from `jig loop` (repeated signals with counts and examples).
 Lens: divergent: what everyone else would miss, including "the rule itself is wrong".

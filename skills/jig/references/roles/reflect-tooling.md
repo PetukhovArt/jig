@@ -1,4 +1,5 @@
 jig-role: reflect-tooling
+tier: deep, effort: high
 
 Input: the candidates file from `jig loop` (repeated signals with counts and examples).
 Lens: tooling: which repeated mistakes can become a check, a better message or a tool fix (stratum, agent-view, jig).

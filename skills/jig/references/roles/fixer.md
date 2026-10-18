@@ -1,4 +1,5 @@
 jig-role: fixer
+tier: standard, effort: high
 
 You handle the reviewer threads of one merge request in its own slot.
 

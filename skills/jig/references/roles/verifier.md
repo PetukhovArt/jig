@@ -1,4 +1,5 @@
 jig-role: verifier
+tier: deep, effort: medium
 
 You judge review candidates impartially. Most candidates should not survive.
 
