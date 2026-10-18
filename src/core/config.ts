@@ -64,7 +64,7 @@ type Json = Record<string, unknown>
 
 const IDENTIFIER = /^[A-Za-z_$][\w$]*$/
 
-const childPath = (path: string, key: string | number): string => {
+export const childPath = (path: string, key: string | number): string => {
   if (typeof key === 'number') return `${path}[${key}]`
   return IDENTIFIER.test(key) ? `${path}.${key}` : `${path}[${JSON.stringify(key)}]`
 }
@@ -72,7 +72,7 @@ const childPath = (path: string, key: string | number): string => {
 const isObject = (value: unknown): value is Json =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
 
-class Validator {
+export class Validator {
   readonly errors: string[] = []
 
   report(path: string, problem: string): undefined {

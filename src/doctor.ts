@@ -17,6 +17,7 @@ import {
 } from './core/plan'
 import { createMatcher } from './core/glob'
 import { findUnresolvedShim, isLockAbandoned, readLock } from './core/proc'
+import { detectAgent, isUserMapped, loadUserConfig, resolveTiers, tierEntries } from './tiers/tiers'
 
 type Command = (args: string[]) => number | Promise<number>
 
@@ -83,7 +84,18 @@ const checkConfig = (projectRoot: string): Check => {
   return error === undefined ? ok(`config: ${path} valid`) : fail(`config: ${path} invalid: ${error}`)
 }
 
-const firstExisting = (projectRoot: string, names: readonly string[]): string | undefined =>
+const checkTiers = (): Check => {
+  const { label, config, error } = loadUserConfig()
+  if (error !== undefined) return fail(`tiers: ${label}: ${error}`)
+  const agent = detectAgent(undefined)
+  const tiers = resolveTiers(agent, config)
+  const source = isUserMapped(agent, config) ? label : 'built-in'
+  if (tiers === undefined) return ok(`tiers: ${agent} no mapping`)
+  const pairs = tierEntries(tiers).map(([tier, models]) => `${tier}=${models.join(',')}`)
+  return ok(`tiers: ${agent} ${pairs.join(' ')} (${source})`)
+}
+
+const firstExisting =(projectRoot: string, names: readonly string[]): string | undefined =>
   names.map((name) => join(projectRoot, name)).find((path) => existsSync(path))
 
 const checkTool = (projectRoot: string, tools: PlanTools, spec: ToolSpec): Check => {
@@ -175,6 +187,7 @@ export const runDoctor: Command = (args) => {
     ok(`plugin: ${pluginRoot}`),
     ok(`project: ${projectRoot}`),
     checkConfig(projectRoot),
+    checkTiers(),
     ...TOOLS.map((spec) => checkTool(projectRoot, tools, spec)),
     checkGitignore(projectRoot),
     checkDeny(projectRoot),

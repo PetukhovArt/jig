@@ -1517,8 +1517,8 @@ var runDash = (args) => {
 };
 
 // src/doctor.ts
-import { existsSync as existsSync4, readFileSync as readFileSync8 } from "node:fs";
-import { join as join8 } from "node:path";
+import { existsSync as existsSync5, readFileSync as readFileSync9 } from "node:fs";
+import { join as join9 } from "node:path";
 
 // src/core/journal.ts
 import { appendFileSync, mkdirSync as mkdirSync6, readdirSync as readdirSync4, readFileSync as readFileSync7, rmSync as rmSync3, statSync as statSync4 } from "node:fs";
@@ -1603,6 +1603,133 @@ var readJournal = (projectRoot, sinceMs = 0) => {
   return records;
 };
 
+// src/tiers/tiers.ts
+import { existsSync as existsSync4, readFileSync as readFileSync8 } from "node:fs";
+import { homedir } from "node:os";
+import { join as join8 } from "node:path";
+import { parseArgs } from "node:util";
+var TIERS = ["deep", "standard", "fast"];
+var UNKNOWN_AGENT = "unknown";
+var USER_CONFIG_ENV = "JIG_USER_CONFIG";
+var DEFAULT_LABEL = "~/.jig/config.jsonc";
+var AGENT_ID = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/;
+var NO_MAPPING = "no mapping: choose a model that fits the tier (deep = strongest reasoning, standard = balanced, fast = cheap mechanical work)";
+var DEFAULT_TIERS = {
+  claude: { deep: ["opus", "sonnet"], standard: ["sonnet"], fast: ["haiku"] }
+};
+var AGENT_ENV = [
+  { agent: "claude", vars: ["CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT"] },
+  { agent: "cursor", vars: ["CURSOR_AGENT", "CURSOR_VERSION"] },
+  { agent: "codex", vars: ["CODEX_SANDBOX", "CODEX_SANDBOX_NETWORK_DISABLED"] }
+];
+var emptyUserConfig = () => ({ tiers: {} });
+var readModels = (validator, value, path) => {
+  const models = validator.strings(value, path);
+  if (models === void 0) return void 0;
+  if (models.length === 0) return validator.report(path, "expected a non-empty array of strings");
+  const before = validator.errors.length;
+  models.forEach((model, index) => {
+    if (model === "") {
+      validator.report(childPath(path, index), "expected a non-empty string");
+    }
+  });
+  return validator.errors.length === before ? models : void 0;
+};
+var readTierMap = (validator, value, path) => {
+  const object = validator.object(value, path, TIERS);
+  if (object === void 0) return void 0;
+  const map = {};
+  for (const tier of TIERS) {
+    if (!Object.hasOwn(object, tier)) continue;
+    const models = readModels(validator, object[tier], childPath(path, tier));
+    if (models !== void 0) {
+      map[tier] = models;
+    }
+  }
+  return map;
+};
+var readTiers = (validator, value) => {
+  const path = "$.tiers";
+  const object = validator.object(value, path, void 0);
+  if (object === void 0) return {};
+  const tiers = {};
+  for (const [agent, entry] of Object.entries(object)) {
+    const agentPath = childPath(path, agent);
+    if (!AGENT_ID.test(agent)) {
+      validator.report(agentPath, "expected a kebab-case agent id");
+      continue;
+    }
+    const map = readTierMap(validator, entry, agentPath);
+    if (map !== void 0) {
+      tiers[agent] = map;
+    }
+  }
+  return tiers;
+};
+var validateUserConfig = (value) => {
+  const validator = new Validator();
+  const root = validator.object(value, "$", ["$schema", "tiers"]);
+  if (root === void 0) return { config: emptyUserConfig(), errors: validator.errors };
+  if (root["$schema"] !== void 0) {
+    validator.string(root["$schema"], "$.$schema");
+  }
+  const tiers = root["tiers"] === void 0 ? {} : readTiers(validator, root["tiers"]);
+  return { config: { tiers }, errors: validator.errors };
+};
+var parseUserConfig = (text2) => {
+  let value;
+  try {
+    value = parseJsonc(text2);
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    return { config: emptyUserConfig(), error: `$: ${reason}` };
+  }
+  const { config, errors } = validateUserConfig(value);
+  if (errors.length > 0) return { config: emptyUserConfig(), error: errors.join("; ") };
+  return { config };
+};
+var loadUserConfig = (env = process.env) => {
+  const override = env[USER_CONFIG_ENV];
+  const path = override || join8(homedir(), ".jig", "config.jsonc");
+  const label = override || DEFAULT_LABEL;
+  if (!existsSync4(path)) return { path, label, config: emptyUserConfig() };
+  return { path, label, ...parseUserConfig(readFileSync8(path, "utf8")) };
+};
+var detectAgent = (flag, env = process.env) => {
+  if (flag) return flag;
+  const match = AGENT_ENV.find(({ vars }) => vars.some((name) => Boolean(env[name])));
+  return match?.agent ?? UNKNOWN_AGENT;
+};
+var resolveTiers = (agent, userConfig) => {
+  const merged = { ...DEFAULT_TIERS[agent], ...userConfig.tiers[agent] };
+  return Object.keys(merged).length > 0 ? merged : void 0;
+};
+var isUserMapped = (agent, userConfig) => Object.hasOwn(userConfig.tiers, agent);
+var tierEntries = (tiers) => TIERS.flatMap((tier) => {
+  const models = tiers[tier];
+  return models === void 0 ? [] : [[tier, models]];
+});
+var formatTiers = (agent, tiers) => {
+  const head = `agent: ${agent}`;
+  if (tiers === void 0) return `${head}
+${NO_MAPPING}`;
+  const lines = tierEntries(tiers).map(([tier, models]) => `${tier}: ${models.join(", ")}`);
+  return [head, ...lines].join("\n");
+};
+var runTiers = (args) => {
+  const { values } = parseArgs({ args, options: { agent: { type: "string" }, json: { type: "boolean" } }, strict: true });
+  const loaded = loadUserConfig();
+  if (loaded.error !== void 0) {
+    throw new Error(`${loaded.label}: ${loaded.error}`);
+  }
+  const agent = detectAgent(values.agent);
+  const tiers = resolveTiers(agent, loaded.config);
+  const output = values.json ? JSON.stringify({ agent, tiers: tiers ?? null }) : formatTiers(agent, tiers);
+  process.stdout.write(`${output}
+`);
+  return 0;
+};
+
 // src/doctor.ts
 var MIN_NODE_MAJOR = 20;
 var BYTES_PER_MB = 1024 * 1024;
@@ -1640,11 +1767,21 @@ var checkNode = () => {
 };
 var checkConfig = (projectRoot) => {
   const path = jigPaths(projectRoot).config;
-  if (!existsSync4(path)) return ok(`config: ${path} absent, defaults apply`);
+  if (!existsSync5(path)) return ok(`config: ${path} absent, defaults apply`);
   const { error } = loadConfig(projectRoot);
   return error === void 0 ? ok(`config: ${path} valid`) : fail2(`config: ${path} invalid: ${error}`);
 };
-var firstExisting = (projectRoot, names) => names.map((name) => join8(projectRoot, name)).find((path) => existsSync4(path));
+var checkTiers = () => {
+  const { label, config, error } = loadUserConfig();
+  if (error !== void 0) return fail2(`tiers: ${label}: ${error}`);
+  const agent = detectAgent(void 0);
+  const tiers = resolveTiers(agent, config);
+  const source = isUserMapped(agent, config) ? label : "built-in";
+  if (tiers === void 0) return ok(`tiers: ${agent} no mapping`);
+  const pairs = tierEntries(tiers).map(([tier, models]) => `${tier}=${models.join(",")}`);
+  return ok(`tiers: ${agent} ${pairs.join(" ")} (${source})`);
+};
+var firstExisting = (projectRoot, names) => names.map((name) => join9(projectRoot, name)).find((path) => existsSync5(path));
 var checkTool = (projectRoot, tools, spec) => {
   const found = tools[spec.key];
   if (found !== void 0) {
@@ -1659,17 +1796,17 @@ var checkTool = (projectRoot, tools, spec) => {
 };
 var checkGitignore = (projectRoot) => {
   const path = jigPaths(projectRoot).gitignore;
-  return existsSync4(path) ? ok(`gitignore: ${path}`) : warn(`gitignore: ${path} missing, jig creates it on first run`);
+  return existsSync5(path) ? ok(`gitignore: ${path}`) : warn(`gitignore: ${path} missing, jig creates it on first run`);
 };
 var readDenyList = (path) => {
-  const settings = parseJsonc(readFileSync8(path, "utf8"));
+  const settings = parseJsonc(readFileSync9(path, "utf8"));
   const deny = settings?.permissions?.deny;
   return Array.isArray(deny) ? deny.filter((entry) => typeof entry === "string") : [];
 };
 var checkDeny = (projectRoot) => {
-  const path = join8(projectRoot, ".claude", "settings.json");
+  const path = join9(projectRoot, ".claude", "settings.json");
   let deny = [];
-  if (existsSync4(path)) {
+  if (existsSync5(path)) {
     try {
       deny = readDenyList(path);
     } catch (error) {
@@ -1704,7 +1841,7 @@ var checkJournal = (projectRoot) => {
   return bytes > JOURNAL_MAX_BYTES ? warn(`${text2}, above ${JOURNAL_MAX_BYTES / BYTES_PER_MB} MB`) : ok(text2);
 };
 var checkLock = (path) => {
-  if (!existsSync4(path)) return ok(`lock: ${path} free`);
+  if (!existsSync5(path)) return ok(`lock: ${path} free`);
   if (isLockAbandoned(path)) return warn(`lock: ${path} abandoned, remove it`);
   const holder = readLock(path);
   return ok(`lock: ${path} held${holder === void 0 ? "" : ` by pid ${holder.pid}`}`);
@@ -1727,13 +1864,14 @@ var runDoctor = (args) => {
     ok(`plugin: ${pluginRoot}`),
     ok(`project: ${projectRoot}`),
     checkConfig(projectRoot),
+    checkTiers(),
     ...TOOLS.map((spec) => checkTool(projectRoot, tools, spec)),
     checkGitignore(projectRoot),
     checkDeny(projectRoot),
     ...checkAtomPaths(projectRoot, pluginRoot),
     checkJournal(projectRoot),
     checkLock(paths.heavyLock),
-    checkLock(join8(paths.cache, "slot.lock"))
+    checkLock(join9(paths.cache, "slot.lock"))
   ];
   process.stdout.write(`${checks.map(formatCheck).join("\n")}
 `);
@@ -1746,7 +1884,7 @@ import { createHash as createHash4 } from "node:crypto";
 // src/core/snapshot.ts
 import { createHash as createHash2 } from "node:crypto";
 import { statSync as statSync5 } from "node:fs";
-import { join as join9 } from "node:path";
+import { join as join10 } from "node:path";
 var stampOf = (absolutePath) => {
   try {
     const stat = statSync5(absolutePath);
@@ -1760,12 +1898,12 @@ var changedFiles = (projectRoot) => {
   const top = gitToplevel(projectRoot);
   if (top === void 0) return [];
   const entries = gitStatus(top) ?? [];
-  return entries.map((entry) => toProjectPath(projectRoot, join9(top, entry.path))).filter(isInsideProject);
+  return entries.map((entry) => toProjectPath(projectRoot, join10(top, entry.path))).filter(isInsideProject);
 };
 var takeSnapshot = (projectRoot) => {
   const snapshot = {};
   for (const path of changedFiles(projectRoot)) {
-    const stamp = stampOf(join9(projectRoot, path));
+    const stamp = stampOf(join10(projectRoot, path));
     if (stamp !== void 0) {
       snapshot[path] = stamp;
     }
@@ -1780,14 +1918,14 @@ var diffFingerprint = (stamps) => {
 var turnDiff = (projectRoot, snapshot, edits) => {
   const stamps = {};
   for (const { path } of edits) {
-    const stamp = stampOf(join9(projectRoot, path));
+    const stamp = stampOf(join10(projectRoot, path));
     if (stamp !== void 0) {
       stamps[path] = stamp;
     }
   }
   for (const path of changedFiles(projectRoot)) {
     if (Object.hasOwn(stamps, path)) continue;
-    const stamp = stampOf(join9(projectRoot, path));
+    const stamp = stampOf(join10(projectRoot, path));
     if (stamp === void 0 || isSameStamp(snapshot[path], stamp)) continue;
     stamps[path] = stamp;
   }
@@ -1958,12 +2096,12 @@ var runStratum = (tool, projectRoot, files, timeoutMs) => runTool({
 
 // src/tools/tsc.ts
 import { createHash as createHash3 } from "node:crypto";
-import { mkdirSync as mkdirSync8, readFileSync as readFileSync10, statSync as statSync6, writeFileSync as writeFileSync4 } from "node:fs";
-import { dirname as dirname6, extname as extname2, join as join10, relative as relative3, resolve as resolve4 } from "node:path";
+import { mkdirSync as mkdirSync8, readFileSync as readFileSync11, statSync as statSync6, writeFileSync as writeFileSync4 } from "node:fs";
+import { dirname as dirname6, extname as extname2, join as join11, relative as relative3, resolve as resolve4 } from "node:path";
 
 // src/tools/detach.ts
 import { spawn as spawn2 } from "node:child_process";
-import { mkdirSync as mkdirSync7, readFileSync as readFileSync9 } from "node:fs";
+import { mkdirSync as mkdirSync7, readFileSync as readFileSync10 } from "node:fs";
 import { setPriority as setPriority2 } from "node:os";
 import { dirname as dirname5 } from "node:path";
 var WRAPPER = [
@@ -1983,7 +2121,7 @@ var WRAPPER = [
 ].join("\n");
 var readOutput = (path) => {
   try {
-    return readFileSync9(path, "utf8");
+    return readFileSync10(path, "utf8");
   } catch {
     return "";
   }
@@ -2052,7 +2190,7 @@ var isFile3 = (path) => {
   }
 };
 var readTsconfig = (path) => {
-  const value = parseJsonc(readFileSync10(path, "utf8"));
+  const value = parseJsonc(readFileSync11(path, "utf8"));
   return typeof value === "object" && value !== null ? value : {};
 };
 var stringsOf = (value) => Array.isArray(value) ? value.filter((item) => typeof item === "string") : void 0;
@@ -2060,7 +2198,7 @@ var findNearestTsconfig = (projectRoot, file) => {
   const top = resolve4(projectRoot);
   let dir = dirname6(resolve4(projectRoot, file));
   for (; ; ) {
-    const candidate = join10(dir, TSCONFIG);
+    const candidate = join11(dir, TSCONFIG);
     if (isFile3(candidate)) return candidate;
     const isTop = relative3(top, dir) === "";
     const parent = dirname6(dir);
@@ -2086,7 +2224,7 @@ var referencePath = (fromConfig, reference) => {
   const path = reference?.path;
   if (typeof path !== "string") return void 0;
   const target = resolve4(dirname6(fromConfig), path);
-  return isFile3(target) ? target : join10(target, TSCONFIG);
+  return isFile3(target) ? target : join11(target, TSCONFIG);
 };
 var isSolutionConfig = (config) => Array.isArray(config.files) && config.files.length === 0 && Array.isArray(config.references);
 var selectTsconfig = (configPath, absoluteFile) => {
@@ -2131,7 +2269,7 @@ var closureConfig = (projectRoot, group) => {
 var writeClosureConfig = (projectRoot, group) => {
   const dir = jigPaths(projectRoot).tscCache;
   mkdirSync8(dir, { recursive: true });
-  const path = join10(dir, `tsconfig.${tsconfigHash(group.config)}.json`);
+  const path = join11(dir, `tsconfig.${tsconfigHash(group.config)}.json`);
   writeFileSync4(path, `${JSON.stringify(closureConfig(projectRoot, group), null, 2)}
 `);
   return path;
@@ -2166,7 +2304,7 @@ var runTypeCheck = async (checkers, projectRoot, group, timeoutMs, lockPath) => 
     argv,
     cwd: projectRoot,
     timeoutMs,
-    outputPath: join10(jigPaths(projectRoot).tscCache, `${tsconfigHash(group.config)}.out`),
+    outputPath: join11(jigPaths(projectRoot).tscCache, `${tsconfigHash(group.config)}.out`),
     ...lockPath === void 0 ? {} : { lockPath },
     okCodes: OK_CODES3,
     parse: (stdout) => {
@@ -2182,12 +2320,12 @@ var runTypeCheck = async (checkers, projectRoot, group, timeoutMs, lockPath) => 
 import { extname as extname3 } from "node:path";
 
 // src/tools/oxlint.ts
-import { readFileSync as readFileSync11 } from "node:fs";
+import { readFileSync as readFileSync12 } from "node:fs";
 import { resolve as resolve5 } from "node:path";
 var OK_CODES4 = [0, 1];
 var lineAtOffset = (path, offset) => {
   try {
-    return readFileSync11(path, "utf8").slice(0, offset).split("\n").length;
+    return readFileSync12(path, "utf8").slice(0, offset).split("\n").length;
   } catch {
     return 1;
   }
@@ -2504,11 +2642,11 @@ var runCheck = (args) => {
 };
 
 // src/hook/dispatch.ts
-import { readFileSync as readFileSync13 } from "node:fs";
-import { join as join13 } from "node:path";
+import { readFileSync as readFileSync14 } from "node:fs";
+import { join as join14 } from "node:path";
 
 // src/adapters/claude.ts
-import { readFileSync as readFileSync12 } from "node:fs";
+import { readFileSync as readFileSync13 } from "node:fs";
 import { isAbsolute as isAbsolute3, resolve as resolve6 } from "node:path";
 var SESSION_SOURCES = ["startup", "resume", "clear", "compact", "fork"];
 var HOOK_EVENT_NAMES = {
@@ -2530,7 +2668,7 @@ var text = (object, key) => {
 };
 var readCurrent = (absolutePath) => {
   try {
-    return readFileSync12(absolutePath, "utf8");
+    return readFileSync13(absolutePath, "utf8");
   } catch {
     return "";
   }
@@ -2658,7 +2796,7 @@ var formatOutcome = (kind, outcome) => {
 };
 
 // src/rules/comments.ts
-import { join as join11 } from "node:path";
+import { join as join12 } from "node:path";
 
 // src/rules/lexer.ts
 var SCRIPT_EXTENSION = /\.(?:ts|tsx|mts|cts|js|jsx|mjs|cjs)$/i;
@@ -3113,7 +3251,7 @@ var checkComments = (file, edits, config) => {
   if (severity === void 0) return [];
   if (lexComments(file, "") === void 0) return [];
   const existing = countExisting(file, edits);
-  const atom = toSlash(join11(resolvePluginRoot(), "atoms", "comments.md"));
+  const atom = toSlash(join12(resolvePluginRoot(), "atoms", "comments.md"));
   const findings = [];
   for (const edit of edits) {
     for (const { comment, line, source } of addedComments(file, edit)) {
@@ -3133,7 +3271,7 @@ var checkComments = (file, edits, config) => {
 
 // src/rules/no-verify.ts
 import { createHash as createHash5 } from "node:crypto";
-import { join as join12 } from "node:path";
+import { join as join13 } from "node:path";
 
 // src/rules/shell.ts
 var SEGMENT_BREAKS = /* @__PURE__ */ new Set([";", "&", "|", "\n", "(", ")"]);
@@ -3325,7 +3463,7 @@ var consumeAllowance = (projectRoot, sessionId, now) => {
   writeState(projectRoot, state);
   return true;
 };
-var jigCommand = () => toSlash(join12(resolvePluginRoot(), "bin", "jig.mjs"));
+var jigCommand = () => toSlash(join13(resolvePluginRoot(), "bin", "jig.mjs"));
 var checkNoVerify = (command, ctx) => {
   const severity = activeSeverity(ctx.config, RULE3);
   if (severity === void 0) return void 0;
@@ -3644,14 +3782,14 @@ var runChecks = (ctx, guard, openChecks) => {
 };
 var readCurrent2 = (path) => {
   try {
-    return readFileSync13(path, "utf8");
+    return readFileSync14(path, "utf8");
   } catch {
     return "";
   }
 };
 var locateEdits = (event, projectRoot) => {
   if (event.wholeFile !== void 0) return event.edits.map((edit) => ({ ...edit, line: 1, prefix: "" }));
-  const current = readCurrent2(join13(projectRoot, event.file));
+  const current = readCurrent2(join14(projectRoot, event.file));
   return event.edits.map((edit) => {
     const at = edit.before === "" ? -1 : current.indexOf(edit.before);
     if (at === -1) return edit;
@@ -3840,7 +3978,7 @@ var runHook = async (args) => {
 
 // src/loop/loop.ts
 import { mkdirSync as mkdirSync9, writeFileSync as writeFileSync5 } from "node:fs";
-import { join as join14 } from "node:path";
+import { join as join15 } from "node:path";
 var DEFAULT_DAYS = 7;
 var DAY_MS2 = 24 * 60 * 60 * 1e3;
 var MIN_TURNS = 2;
@@ -3936,9 +4074,9 @@ var runLoop = (args) => {
   const to = /* @__PURE__ */ new Date();
   const from = new Date(to.getTime() - days * DAY_MS2);
   const records = readJournal(projectRoot, from.getTime());
-  const dir = join14(ensureJigDir(projectRoot).runs, "_loop", to.toISOString().slice(0, 10));
+  const dir = join15(ensureJigDir(projectRoot).runs, "_loop", to.toISOString().slice(0, 10));
   mkdirSync9(dir, { recursive: true });
-  const path = join14(dir, "candidates.md");
+  const path = join15(dir, "candidates.md");
   writeFileSync5(path, formatCandidates(records, from, to, days));
   process.stdout.write(`${path}
 `);
@@ -3947,9 +4085,9 @@ var runLoop = (args) => {
 
 // src/slot/slot.ts
 import { spawnSync as spawnSync2 } from "node:child_process";
-import { cpSync, existsSync as existsSync5, mkdirSync as mkdirSync10, readdirSync as readdirSync5, readFileSync as readFileSync14, rmSync as rmSync4, writeFileSync as writeFileSync6 } from "node:fs";
-import { basename as basename3, dirname as dirname7, isAbsolute as isAbsolute5, join as join15, relative as relative4, resolve as resolve7 } from "node:path";
-import { parseArgs } from "node:util";
+import { cpSync, existsSync as existsSync6, mkdirSync as mkdirSync10, readdirSync as readdirSync5, readFileSync as readFileSync15, rmSync as rmSync4, writeFileSync as writeFileSync6 } from "node:fs";
+import { basename as basename3, dirname as dirname7, isAbsolute as isAbsolute5, join as join16, relative as relative4, resolve as resolve7 } from "node:path";
+import { parseArgs as parseArgs2 } from "node:util";
 var SLOT_LOCK = "slot.lock";
 var AGENT_VIEW_CONFIG2 = "agent-view.config.json";
 var RECENT_MS = 24 * 60 * 60 * 1e3;
@@ -4054,7 +4192,7 @@ var loadContext = () => {
 var formatDuplicates = (duplicates) => [...duplicates].map(([slot, group]) => `s${slot}: ${group.map((worktree) => toSlash(worktree.path)).join(", ")}`).join("; ");
 var isTracked = (dir, file) => git(["ls-files", "--error-unmatch", "--", file], dir).ok;
 var writeLocalFile = (dir, file, content) => {
-  const path = join15(dir, file);
+  const path = join16(dir, file);
   mkdirSync10(dirname7(path), { recursive: true });
   writeFileSync6(path, content);
   if (isTracked(dir, file)) {
@@ -4070,8 +4208,8 @@ var insideDir = (dir, file) => {
 var copyFromMain = (mainRoot, dir, copyFiles) => {
   const rootEnvFiles = readdirSync5(mainRoot, { withFileTypes: true }).filter((entry) => entry.isFile() && ENV_FILE.test(entry.name)).map((entry) => entry.name);
   for (const file of /* @__PURE__ */ new Set([...rootEnvFiles, ...copyFiles])) {
-    const source = join15(mainRoot, file);
-    if (!existsSync5(source)) {
+    const source = join16(mainRoot, file);
+    if (!existsSync6(source)) {
       process.stderr.write(`jig: copyFiles ${file} is missing in ${toSlash(mainRoot)}
 `);
       continue;
@@ -4082,19 +4220,19 @@ var copyFromMain = (mainRoot, dir, copyFiles) => {
 var writePorts = (dir, slots, slot) => {
   for (const [key, port] of Object.entries(slots.ports ?? {})) {
     const path = insideDir(dir, port.target);
-    const text2 = existsSync5(path) ? readFileSync14(path, "utf8") : "";
+    const text2 = existsSync6(path) ? readFileSync15(path, "utf8") : "";
     writeLocalFile(dir, port.target, setEnvValue(text2, key, String(port.base + slot * port.step)));
   }
 };
 var readJsonObject = (path) => {
-  if (!existsSync5(path)) return {};
-  const value = parseJsonc(readFileSync14(path, "utf8"));
+  if (!existsSync6(path)) return {};
+  const value = parseJsonc(readFileSync15(path, "utf8"));
   const isObject3 = typeof value === "object" && value !== null && !Array.isArray(value);
   return isObject3 ? value : {};
 };
 var writeAgentView = (mainRoot, dir, slots, cdpPort) => {
-  const own = join15(dir, AGENT_VIEW_CONFIG2);
-  const base = readJsonObject(existsSync5(own) ? own : join15(mainRoot, AGENT_VIEW_CONFIG2));
+  const own = join16(dir, AGENT_VIEW_CONFIG2);
+  const base = readJsonObject(existsSync6(own) ? own : join16(mainRoot, AGENT_VIEW_CONFIG2));
   writeLocalFile(dir, AGENT_VIEW_CONFIG2, `${JSON.stringify(agentViewConfig(base, slots, cdpPort), null, 2)}
 `);
 };
@@ -4104,7 +4242,7 @@ var worktreeAddArgs = (cwd, dir, branch) => {
   return branchExists(cwd, branch) ? ["worktree", "add", dir, branch] : ["worktree", "add", dir, "-b", branch];
 };
 var reserveSlot = async (context, slots, options) => {
-  const lock = await acquireLock(join15(ensureJigDir(context.mainRoot).cache, SLOT_LOCK));
+  const lock = await acquireLock(join16(ensureJigDir(context.mainRoot).cache, SLOT_LOCK));
   if (lock === void 0) return fail3("slot new is running elsewhere, retry", 1);
   try {
     git(["worktree", "prune"], context.projectRoot);
@@ -4127,7 +4265,7 @@ var reserveSlot = async (context, slots, options) => {
 };
 var runInstall = (install, dir) => spawnSync2(install, { cwd: dir, shell: true, windowsHide: true, stdio: ["ignore", 2, 2] }).status;
 var slotNew = async (args) => {
-  const { values } = parseArgs({ args, options: { slug: { type: "string" }, branch: { type: "string" } }, strict: true });
+  const { values } = parseArgs2({ args, options: { slug: { type: "string" }, branch: { type: "string" } }, strict: true });
   const slug = values.slug;
   if (slug !== void 0 && !SLUG.test(slug)) return fail3(`invalid --slug ${slug}: use letters, digits, ., _, -`, 2);
   const context = loadContext();
@@ -4156,7 +4294,7 @@ var slotNew = async (args) => {
   return 0;
 };
 var slotLs = (args) => {
-  const { values } = parseArgs({ args, options: { json: { type: "boolean" } }, strict: true });
+  const { values } = parseArgs2({ args, options: { json: { type: "boolean" } }, strict: true });
   const context = loadContext();
   const rows = slotWorktrees(listWorktrees(context.projectRoot), context.repo).sort((left, right) => left.slot - right.slot).map((worktree) => ({
     slot: worktree.slot,
@@ -4175,7 +4313,7 @@ var slotLs = (args) => {
   return 0;
 };
 var slotRm = (args) => {
-  const { values, positionals } = parseArgs({
+  const { values, positionals } = parseArgs2({
     args,
     options: { force: { type: "boolean" } },
     allowPositionals: true,
@@ -4232,7 +4370,7 @@ var bucketOf = (worktree, openBranches, now) => {
   return isRecent(worktree.path, now) ? "recent" : "safe";
 };
 var slotSweep = (args) => {
-  const { values } = parseArgs({ args, options: { json: { type: "boolean" } }, strict: true });
+  const { values } = parseArgs2({ args, options: { json: { type: "boolean" } }, strict: true });
   const context = loadContext();
   const worktrees = listWorktrees(context.projectRoot).filter((worktree) => worktree.path !== context.mainRoot);
   const openBranches = openMrBranches(context.projectRoot);
@@ -4284,6 +4422,7 @@ var commands = /* @__PURE__ */ new Map([
   ["loop", runLoop],
   ["allow-no-verify", runAllowNoVerify],
   ["doctor", runDoctor],
+  ["tiers", runTiers],
   ["version", runVersion]
 ]);
 var fail4 = (message) => {
