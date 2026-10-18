@@ -13,7 +13,6 @@ export type JigEvent =
   | { kind: 'post-edit'; file: string }
   | { kind: 'post-read'; file: string }
   | { kind: 'post-bash'; command: string; ok: boolean }
-  | { kind: 'post-agent'; prompt: string }
   | { kind: 'subagent-start'; agentId: string; agentType: string }
   | { kind: 'stop'; stopHookActive: boolean }
 

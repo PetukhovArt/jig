@@ -14,7 +14,6 @@
         "jig/suppressions": { "$ref": "#/$defs/severity" },
         "jig/protected-paths": { "$ref": "#/$defs/severity" },
         "jig/no-verify": { "$ref": "#/$defs/severity" },
-        "jig/test-review": { "$ref": "#/$defs/severity" },
         "jig/verify-fact": { "$ref": "#/$defs/severity" },
         "gate/oxlint": { "$ref": "#/$defs/severity" },
         "gate/stratum": { "$ref": "#/$defs/severity" },

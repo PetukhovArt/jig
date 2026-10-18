@@ -4,6 +4,7 @@ import { dirname, join, resolve } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { git } from '../src/core/git'
 import { readJournal } from '../src/core/journal'
+import { buildPlan, writePlan } from '../src/core/plan'
 import { dispatch, type EventBase, type JigEvent } from '../src/hook/dispatch'
 
 const pluginRoot = resolve(__dirname, '..')
@@ -18,9 +19,9 @@ const write = (path: string, text: string): void => {
 
 const send = (event: JigEvent) => dispatch(event, base, pluginRoot)
 
-const editTest = async (text: string) => {
-  write('src/a.test.ts', text)
-  await send({ kind: 'post-edit', file: 'src/a.test.ts' })
+const editView = async (text: string) => {
+  write('src/App.vue', text)
+  await send({ kind: 'post-edit', file: 'src/App.vue' })
 }
 
 const journalKinds = (): string[] => readJournal(root).map((record) => record.kind)
@@ -34,6 +35,9 @@ beforeEach(async () => {
   git(['-c', 'user.email=jig@test', '-c', 'user.name=jig', 'commit', '-q', '-m', 'init'], root)
   await send({ kind: 'session-start', source: 'startup' })
   await send({ kind: 'prompt' })
+  const plan = buildPlan(root, pluginRoot)
+  plan.tools.agentView = { bin: ['agent-view'], config: join(root, 'agent-view.config.json') }
+  writePlan(root, plan)
 })
 
 afterEach(() => {
@@ -42,10 +46,10 @@ afterEach(() => {
 
 describe('stop gate loop protection', () => {
   it('does not block again when the stop hook is active and nothing changed since the block', async () => {
-    await editTest('it("a", () => {})\n')
+    await editView('<template>a</template>\n')
     const first = await send({ kind: 'stop', stopHookActive: false })
     expect(first.type).toBe('block')
-    expect(first.type === 'block' && first.reason).toContain('jig/test-review: test files changed (src/a.test.ts)')
+    expect(first.type === 'block' && first.reason).toContain('jig/verify-fact')
     expect(await send({ kind: 'stop', stopHookActive: true })).toEqual({ type: 'none' })
     expect(journalKinds()).toContain('gate-unresolved')
   })
@@ -53,7 +57,7 @@ describe('stop gate loop protection', () => {
   it('gives up on the fourth block in a row with the same findings', async () => {
     const outcomes: string[] = []
     for (const body of ['one', 'two', 'three', 'four']) {
-      await editTest(`it("${body}", () => {})\n`)
+      await editView(`<template>${body}</template>\n`)
       outcomes.push((await send({ kind: 'stop', stopHookActive: outcomes.length > 0 })).type)
     }
     expect(outcomes).toEqual(['block', 'block', 'block', 'none'])

@@ -1251,7 +1251,6 @@ var JIG_RULE_IDS = [
   "jig/suppressions",
   "jig/protected-paths",
   "jig/no-verify",
-  "jig/test-review",
   "jig/verify-fact"
 ];
 var RULE_IDS = [...JIG_RULE_IDS, ...TOOLS.map((tool) => tool.rule)];
@@ -1434,7 +1433,6 @@ var createSessionState = (sessionId, snapshot, now = /* @__PURE__ */ new Date())
     snapshot,
     edits: [],
     checks: {},
-    testChecklistShown: false,
     delivered: {},
     sessionAtoms: [],
     pendingWarnings: [],
@@ -2541,17 +2539,6 @@ var jigFinding = (rule, file, message) => ({
   line: 1,
   message
 });
-var testReviewFindings = (input, times) => {
-  const tests = input.diff.files.filter(isTestFile);
-  const [first] = tests;
-  if (first === void 0) return [];
-  const lastTestEdit = latestEdit(input.diff, tests, times.lastTestEditAt);
-  const isReviewed = times.testReviewAt !== void 0 && times.testReviewAt >= lastTestEdit;
-  if (isReviewed) return [];
-  const root = toSlash(input.pluginRoot);
-  const message = `jig/test-review: test files changed (${tests.join(", ")}) and no test-reviewer ran after the last change. Spawn a subagent with the role template ${root}/skills/jig/references/roles/test-reviewer.md over these files, then fix what it reports.`;
-  return applyLevel([jigFinding("jig/test-review", first, message)], ruleLevel(input.plan, "jig/test-review"));
-};
 var skipScope = (text2) => {
   if (!text2.startsWith(SKIP_VERIFY)) return void 0;
   const rest = text2.slice(SKIP_VERIFY.length);
@@ -2645,9 +2632,6 @@ var runStopChecks = async (input) => {
     }
   }
   const times = input.times;
-  if (times !== void 0 && !isStopped()) {
-    steps.push(await stateStep("jig/test-review", () => testReviewFindings(input, times)));
-  }
   if (times !== void 0 && !isStopped()) {
     steps.push(await stateStep("jig/verify-fact", () => verifyFactFindings(input, times, notes)));
   }
@@ -2773,7 +2757,6 @@ var HOOK_EVENT_NAMES = {
   "post-edit": "PostToolUse",
   "post-read": "PostToolUse",
   "post-bash": "PostToolUse",
-  "post-agent": "PostToolUse",
   "subagent-start": "SubagentStart",
   stop: "Stop"
 };
@@ -2862,8 +2845,6 @@ var toEvent = (name, input, paths) => {
       const command = text(toolInput, "command");
       return command === void 0 ? void 0 : { kind: "post-bash", command, ok: isBashSuccess(input["tool_response"]) };
     }
-    case "post-agent":
-      return { kind: "post-agent", prompt: text(toolInput, "prompt") ?? "" };
     case "subagent-start": {
       const agentId = text(input, "agent_id");
       if (agentId === void 0) return void 0;
@@ -3773,7 +3754,6 @@ var checkShellWrite = (command, config, ctx) => {
 // src/hook/dispatch.ts
 var NONE2 = { type: "none" };
 var SUBAGENT_ATOM_LIMIT = 10;
-var TEST_REVIEWER_MARKER = "jig-role: test-reviewer";
 var GUARDED_KINDS = /* @__PURE__ */ new Set(["pre-edit", "pre-bash"]);
 var AGENT_FLAG = "--agent";
 var errorMessage = (error) => error instanceof Error ? error.message : String(error);
@@ -3946,13 +3926,6 @@ var preBash = (event, ctx) => {
   const shellWrite = () => config === void 0 ? void 0 : checkShellWrite(event.command, config, { projectRoot: ctx.projectRoot, cwd: ctx.cwd });
   return runChecks(ctx, guard, [shellWrite]);
 };
-var testChecklist = (pluginRoot) => [
-  `jig: before you continue with this test (atom tests: ${toSlash(pluginRoot)}/atoms/tests.md):`,
-  "1. Break the implementation in your head: does this test fail? If not, it is useless.",
-  "2. It checks behavior through the public API, not internals or mocks.",
-  "3. It does not duplicate an existing test of this unit.",
-  "4. Trivial code (a getter, a re-export, a wrapper) gets no test."
-].join("\n");
 var editToolFindings = async (ctx, file) => {
   let runs;
   try {
@@ -3976,13 +3949,6 @@ var postEdit = async (event, ctx) => {
   const state = openSession(ctx);
   state.edits.push({ path: event.file, at: now, agent: ctx.agent });
   const parts = [];
-  if (isTestFile(event.file)) {
-    state.lastTestEditAt = now;
-    if (!state.testChecklistShown) {
-      state.testChecklistShown = true;
-      parts.push(testChecklist(ctx.pluginRoot));
-    }
-  }
   for (const check of CHECKS) {
     stampCheck(state, check.name, check.requires(event.file), "editAt", now);
   }
@@ -4015,13 +3981,6 @@ var postBash = (event, ctx) => {
   for (const proof of proofs) {
     stampCheck(state, proof.name, proof.kinds, "proofAt", now);
   }
-  writeState(ctx.projectRoot, state);
-  return NONE2;
-};
-var postAgent = (event, ctx) => {
-  if (!event.prompt.includes(TEST_REVIEWER_MARKER)) return NONE2;
-  const state = openSession(ctx);
-  state.testReviewAt = Date.now();
   writeState(ctx.projectRoot, state);
   return NONE2;
 };
@@ -4059,8 +4018,6 @@ var route = (event, ctx) => {
       return postRead(event, ctx);
     case "post-bash":
       return postBash(event, ctx);
-    case "post-agent":
-      return postAgent(event, ctx);
     case "subagent-start":
       return subagentStart({ ...ctx, agent: event.agentId });
     case "stop":

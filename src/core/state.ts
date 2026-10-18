@@ -38,10 +38,7 @@ export interface SessionState {
   updatedAt: string
   snapshot: Snapshot
   edits: EditRecord[]
-  lastTestEditAt?: number
-  testReviewAt?: number
   checks: CheckTimes
-  testChecklistShown: boolean
   delivered: Record<string, string[]>
   sessionAtoms: string[]
   pendingWarnings: string[]
@@ -73,7 +70,6 @@ export const createSessionState = (sessionId: string, snapshot: Snapshot, now: D
     snapshot,
     edits: [],
     checks: {},
-    testChecklistShown: false,
     delivered: {},
     sessionAtoms: [],
     pendingWarnings: [],

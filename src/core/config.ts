@@ -11,7 +11,6 @@ export const JIG_RULE_IDS = [
   'jig/suppressions',
   'jig/protected-paths',
   'jig/no-verify',
-  'jig/test-review',
   'jig/verify-fact',
 ] as const
 export type RuleId = (typeof JIG_RULE_IDS)[number] | GateRuleId

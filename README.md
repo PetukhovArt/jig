@@ -35,8 +35,7 @@ Then run `node <plugin root>/bin/jig.mjs doctor` in your project: it lists the t
 The hooks run in every project once the plugin is installed:
 
 - **Before an edit or a Bash command** (fails closed): edits to protected paths (`tsconfig*.json`, `eslint.config.*`, `.oxlintrc.json`, `stratum.config.jsonc`, `.jig/config.jsonc`, CI files, `.husky/`), new suppressions (`eslint-disable`, `@ts-ignore`, `@ts-expect-error`, `@ts-nocheck`, `oxlint-disable`, `biome-ignore`, `stratum-ignore`), comments outside the allowed list, and `git commit`/`git push` with `--no-verify` or its equivalents are denied with a one-line reason.
-- **After an edit**: atoms whose `paths` match the file (`typescript`, `tests`, `docs`), once per agent; a checklist on the first test file written in a session.
-- **At the end of a turn**: if test files changed and no subagent with the `test-reviewer` role ran after the last edit, the turn is blocked.
+- **After an edit**: atoms whose `paths` match the file (`typescript`, `tests`, `docs`), once per agent. Whether a test is worth writing and whether it is any good is the agent's judgment by the `tests` atom; no hook blocks on tests.
 - **Subagent start**: the subagent gets the index of atoms delivered in the session.
 
 ## What needs project configuration
@@ -77,7 +76,7 @@ Other skills: `jig-slots` (model or user), `jig-explain` and `jig-video` (user o
 }
 ```
 
-Rules: `jig/comments`, `jig/suppressions`, `jig/protected-paths`, `jig/no-verify`, `jig/test-review`, `jig/verify-fact` (runtime checks: `behavior` and `look` proof), `gate/oxlint`, `gate/stratum`, `gate/tsc`, `gate/eslint`; levels `off`, `warn`, `error`. The agent may not edit this file.
+Rules: `jig/comments`, `jig/suppressions`, `jig/protected-paths`, `jig/no-verify`, `jig/verify-fact` (runtime checks: `behavior` and `look` proof), `gate/oxlint`, `gate/stratum`, `gate/tsc`, `gate/eslint`; levels `off`, `warn`, `error`. The agent may not edit this file.
 
 jig creates only `.jig/` in your project: `config.jsonc` goes to git, `journal/`, `runs/` and `cache/` are ignored by `.jig/.gitignore`.
 

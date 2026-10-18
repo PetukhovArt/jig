@@ -19,7 +19,6 @@ import {
   writeState,
   type SessionState,
 } from '../core/state'
-import { isTestFile } from '../core/test-files'
 import { checkComments } from '../rules/comments'
 import { checkNoVerify } from '../rules/no-verify'
 import { checkProtectedPath, checkShellWrite } from '../rules/protected'
@@ -50,7 +49,6 @@ type EventOf<K extends JigEvent['kind']> = Extract<JigEvent, { kind: K }>
 
 const NONE: Outcome = { type: 'none' }
 const SUBAGENT_ATOM_LIMIT = 10
-const TEST_REVIEWER_MARKER = 'jig-role: test-reviewer'
 const GUARDED_KINDS: ReadonlySet<JigEvent['kind']> = new Set(['pre-edit', 'pre-bash'])
 const AGENT_FLAG = '--agent'
 
@@ -246,15 +244,6 @@ const preBash = (event: EventOf<'pre-bash'>, ctx: HookContext): Outcome => {
   return runChecks(ctx, guard, [shellWrite])
 }
 
-const testChecklist = (pluginRoot: string): string =>
-  [
-    `jig: before you continue with this test (atom tests: ${toSlash(pluginRoot)}/atoms/tests.md):`,
-    '1. Break the implementation in your head: does this test fail? If not, it is useless.',
-    '2. It checks behavior through the public API, not internals or mocks.',
-    '3. It does not duplicate an existing test of this unit.',
-    '4. Trivial code (a getter, a re-export, a wrapper) gets no test.',
-  ].join('\n')
-
 const editToolFindings = async (ctx: HookContext, file: string): Promise<Finding[]> => {
   let runs: Awaited<ReturnType<typeof checkEdit>>
   try {
@@ -279,13 +268,6 @@ const postEdit = async (event: EventOf<'post-edit'>, ctx: HookContext): Promise<
   const state = openSession(ctx)
   state.edits.push({ path: event.file, at: now, agent: ctx.agent })
   const parts: string[] = []
-  if (isTestFile(event.file)) {
-    state.lastTestEditAt = now
-    if (!state.testChecklistShown) {
-      state.testChecklistShown = true
-      parts.push(testChecklist(ctx.pluginRoot))
-    }
-  }
   for (const check of CHECKS) {
     stampCheck(state, check.name, check.requires(event.file), 'editAt', now)
   }
@@ -320,14 +302,6 @@ const postBash = (event: EventOf<'post-bash'>, ctx: HookContext): Outcome => {
   for (const proof of proofs) {
     stampCheck(state, proof.name, proof.kinds, 'proofAt', now)
   }
-  writeState(ctx.projectRoot, state)
-  return NONE
-}
-
-const postAgent = (event: EventOf<'post-agent'>, ctx: HookContext): Outcome => {
-  if (!event.prompt.includes(TEST_REVIEWER_MARKER)) return NONE
-  const state = openSession(ctx)
-  state.testReviewAt = Date.now()
   writeState(ctx.projectRoot, state)
   return NONE
 }
@@ -370,8 +344,6 @@ const route = (event: JigEvent, ctx: HookContext): Outcome | Promise<Outcome> =>
       return postRead(event, ctx)
     case 'post-bash':
       return postBash(event, ctx)
-    case 'post-agent':
-      return postAgent(event, ctx)
     case 'subagent-start':
       return subagentStart({ ...ctx, agent: event.agentId })
     case 'stop':

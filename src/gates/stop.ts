@@ -6,7 +6,6 @@ import { loadPlan, type Plan } from '../core/plan'
 import { acquireLock, transferLock } from '../core/proc'
 import { takeSnapshot, turnDiff, type TurnDiff } from '../core/snapshot'
 import { resetSnapshot, type SessionState } from '../core/state'
-import { isTestFile } from '../core/test-files'
 import { addRunDecision, readActiveRun } from '../dash/dash'
 import type { Outcome } from '../hook/types'
 import { TOOLS, type RegisteredTool } from '../tools'
@@ -18,7 +17,7 @@ type Command = (args: string[]) => number | Promise<number>
 
 export type { JournalNote } from '../tools/tool'
 
-export type GateTimes = Pick<SessionState, 'lastTestEditAt' | 'testReviewAt' | 'checks'>
+export type GateTimes = Pick<SessionState, 'checks'>
 
 export interface StopStep {
   rule: RuleId
@@ -103,20 +102,6 @@ const jigFinding = (rule: RuleId, file: string, message: string): Finding => ({
   line: 1,
   message,
 })
-
-const testReviewFindings = (input: StopChecksInput, times: GateTimes): Finding[] => {
-  const tests = input.diff.files.filter(isTestFile)
-  const [first] = tests
-  if (first === undefined) return []
-  const lastTestEdit = latestEdit(input.diff, tests, times.lastTestEditAt)
-  const isReviewed = times.testReviewAt !== undefined && times.testReviewAt >= lastTestEdit
-  if (isReviewed) return []
-  const root = toSlash(input.pluginRoot)
-  const message =
-    `jig/test-review: test files changed (${tests.join(', ')}) and no test-reviewer ran after the last change. ` +
-    `Spawn a subagent with the role template ${root}/skills/jig/references/roles/test-reviewer.md over these files, then fix what it reports.`
-  return applyLevel([jigFinding('jig/test-review', first, message)], ruleLevel(input.plan, 'jig/test-review'))
-}
 
 interface SkipDecision {
   scope: ProofKind | 'all'
@@ -230,9 +215,6 @@ export const runStopChecks = async (input: StopChecksInput): Promise<StopChecks>
     }
   }
   const times = input.times
-  if (times !== undefined && !isStopped()) {
-    steps.push(await stateStep('jig/test-review', () => testReviewFindings(input, times)))
-  }
   if (times !== undefined && !isStopped()) {
     steps.push(await stateStep('jig/verify-fact', () => verifyFactFindings(input, times, notes)))
   }

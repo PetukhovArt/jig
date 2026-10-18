@@ -16,7 +16,6 @@ const HOOK_EVENT_NAMES: Record<JigEvent['kind'], string> = {
   'post-edit': 'PostToolUse',
   'post-read': 'PostToolUse',
   'post-bash': 'PostToolUse',
-  'post-agent': 'PostToolUse',
   'subagent-start': 'SubagentStart',
   stop: 'Stop',
 }
@@ -118,8 +117,6 @@ const toEvent = (name: string, input: Json, paths: PathContext): JigEvent | unde
       const command = text(toolInput, 'command')
       return command === undefined ? undefined : { kind: 'post-bash', command, ok: isBashSuccess(input['tool_response']) }
     }
-    case 'post-agent':
-      return { kind: 'post-agent', prompt: text(toolInput, 'prompt') ?? '' }
     case 'subagent-start': {
       const agentId = text(input, 'agent_id')
       if (agentId === undefined) return undefined
