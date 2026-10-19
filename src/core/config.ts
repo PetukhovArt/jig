@@ -41,13 +41,18 @@ export interface SlotsConfig {
   ports?: Record<string, PortConfig>
   cdp?: CdpConfig
   instance?: Record<string, unknown>
-  copyFiles?: string[]
   clearCache?: string[]
+}
+
+export interface WorktreeConfig {
+  seedExclude?: string[]
+  copyFiles?: string[]
 }
 
 export interface JigConfig {
   rules: Record<RuleId, Severity>
   slots?: SlotsConfig
+  worktree?: WorktreeConfig
 }
 
 export interface LoadedConfig extends JigConfig {
@@ -162,7 +167,6 @@ const SLOT_KEYS = [
   'ports',
   'cdp',
   'instance',
-  'copyFiles',
   'clearCache',
 ] as const
 
@@ -181,7 +185,6 @@ const readSlots = (validator: Validator, value: unknown): SlotsConfig | undefine
     ports: (raw) => readPorts(validator, raw, at('ports')),
     cdp: (raw) => readStep(validator, raw, at('cdp'), ['base', 'step']),
     instance: (raw) => validator.object(raw, at('instance'), undefined),
-    copyFiles: (raw) => validator.strings(raw, at('copyFiles')),
     clearCache: (raw) => validator.strings(raw, at('clearCache')),
   }
   for (const [key, read] of Object.entries(readers)) {
@@ -194,6 +197,23 @@ const readSlots = (validator: Validator, value: unknown): SlotsConfig | undefine
   return slots
 }
 
+const WORKTREE_KEYS = ['seedExclude', 'copyFiles'] as const
+
+const readWorktree = (validator: Validator, value: unknown): WorktreeConfig | undefined => {
+  const path = '$.worktree'
+  const object = validator.object(value, path, WORKTREE_KEYS)
+  if (object === undefined) return undefined
+  const worktree: WorktreeConfig = {}
+  for (const key of WORKTREE_KEYS) {
+    if (object[key] === undefined) continue
+    const parsed = validator.strings(object[key], childPath(path, key))
+    if (parsed !== undefined) {
+      worktree[key] = parsed
+    }
+  }
+  return worktree
+}
+
 export const defaultRules = (): Record<RuleId, Severity> =>
   Object.fromEntries(RULE_IDS.map((rule) => [rule, DEFAULT_SEVERITIES[rule] ?? DEFAULT_SEVERITY])) as Record<RuleId, Severity>
 
@@ -201,14 +221,19 @@ export const defaultConfig = (): JigConfig => ({ rules: defaultRules() })
 
 export const validateConfig = (value: unknown): { config: JigConfig; errors: string[] } => {
   const validator = new Validator()
-  const root = validator.object(value, '$', ['$schema', 'rules', 'slots'])
+  const root = validator.object(value, '$', ['$schema', 'rules', 'slots', 'worktree'])
   if (root === undefined) return { config: defaultConfig(), errors: validator.errors }
   if (root['$schema'] !== undefined) {
     validator.string(root['$schema'], '$.$schema')
   }
   const rules = readRules(validator, root['rules'])
   const slots = root['slots'] === undefined ? undefined : readSlots(validator, root['slots'])
-  const config: JigConfig = slots === undefined ? { rules } : { rules, slots }
+  const worktree = root['worktree'] === undefined ? undefined : readWorktree(validator, root['worktree'])
+  const config: JigConfig = {
+    rules,
+    ...(slots === undefined ? {} : { slots }),
+    ...(worktree === undefined ? {} : { worktree }),
+  }
   return { config, errors: validator.errors }
 }
 

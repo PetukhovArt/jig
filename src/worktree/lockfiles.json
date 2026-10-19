@@ -1,0 +1,17 @@
+[
+  { "file": "package-lock.json", "install": "npm ci" },
+  { "file": "npm-shrinkwrap.json", "install": "npm ci" },
+  { "file": "pnpm-lock.yaml", "install": "pnpm install --frozen-lockfile" },
+  { "file": "yarn.lock", "install": "yarn install --frozen-lockfile" },
+  { "file": "bun.lock", "install": "bun install --frozen-lockfile" },
+  { "file": "bun.lockb", "install": "bun install --frozen-lockfile" },
+  { "file": "deno.lock", "install": "deno install --frozen" },
+  { "file": "uv.lock", "install": "uv sync --frozen" },
+  { "file": "poetry.lock", "install": "poetry install --no-root" },
+  { "file": "Pipfile.lock", "install": "pipenv sync" },
+  { "file": "Gemfile.lock", "install": "bundle install" },
+  { "file": "composer.lock", "install": "composer install" },
+  { "file": "go.sum", "install": "go mod download" },
+  { "file": "Cargo.lock", "install": "cargo fetch --locked" },
+  { "file": "packages.lock.json", "install": "dotnet restore --locked-mode" }
+]

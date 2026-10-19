@@ -7,6 +7,7 @@ import { runLoop } from '../loop/loop'
 import { runSlot } from '../slot/slot'
 import { runTaskStatus } from '../task-status/task-status'
 import { runTiers } from '../tiers/tiers'
+import { runWorktree } from '../worktree/worktree'
 
 type Command = (args: string[]) => number | Promise<number>
 
@@ -24,6 +25,7 @@ const commands = new Map<string, Command>([
   ['build', runBuild],
   ['atom', runAtom],
   ['slot', runSlot],
+  ['worktree', runWorktree],
   ['task-status', runTaskStatus],
   ['loop', runLoop],
   ['doctor', runDoctor],

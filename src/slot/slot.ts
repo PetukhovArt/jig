@@ -1,33 +1,25 @@
 import { spawnSync } from 'node:child_process'
-import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
-import { loadConfig, type SlotsConfig } from '../core/config'
+import { loadConfig, type SlotsConfig, type WorktreeConfig } from '../core/config'
 import { git } from '../core/git'
 import { parseJsonc } from '../core/jsonc'
 import { ensureJigDir, resolveProjectRoot, toSlash } from '../core/paths'
-import { acquireLock, findInPath } from '../core/proc'
+import { acquireLock } from '../core/proc'
+import { listWorktrees, type Worktree } from '../worktree/list'
+import { installSteps } from '../worktree/lockfiles'
+import { formatSeed, seedWorktree } from '../worktree/seed'
 
 type Command = (args: string[]) => number | Promise<number>
-
-export interface Worktree {
-  path: string
-  branch?: string
-  isPrunable: boolean
-}
 
 export interface SlotWorktree extends Worktree {
   slot: number
 }
 
-type Bucket = 'hold-wip' | 'hold-open-mr' | 'recent' | 'safe'
-
 const SLOT_LOCK = 'slot.lock'
 const AGENT_VIEW_CONFIG = 'agent-view.config.json'
-const RECENT_MS = 24 * 60 * 60 * 1000
-const MS_PER_SECOND = 1000
 const SLUG = /^[A-Za-z0-9][A-Za-z0-9._-]*$/
-const ENV_FILE = /^\.env/
 const NO_VALUE = 'none'
 
 const fail = (message: string, code: number): number => {
@@ -40,25 +32,6 @@ const print = (text: string): void => {
 }
 
 const escapeRegExp = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-
-const parseWorktreeList = (porcelain: string): Worktree[] => {
-  const worktrees: Worktree[] = []
-  for (const block of porcelain.split(/\r?\n\r?\n/)) {
-    const lines = block.split(/\r?\n/).filter(Boolean)
-    const pathLine = lines.find((line) => line.startsWith('worktree '))
-    if (pathLine === undefined) continue
-    const branchLine = lines.find((line) => line.startsWith('branch '))
-    const worktree: Worktree = {
-      path: resolve(pathLine.slice('worktree '.length)),
-      isPrunable: lines.some((line) => line === 'prunable' || line.startsWith('prunable ')),
-    }
-    if (branchLine !== undefined) {
-      worktree.branch = branchLine.slice('branch '.length).replace(/^refs\/heads\//, '')
-    }
-    worktrees.push(worktree)
-  }
-  return worktrees
-}
 
 export const slotNumber = (dirName: string, repo: string): number | undefined => {
   const match = new RegExp(`^${escapeRegExp(repo)}-s(\\d+)(?:-|$)`).exec(dirName)
@@ -128,20 +101,15 @@ const formatPorts = (ports: Record<string, number>): string => {
   return entries.length === 0 ? NO_VALUE : entries.join(' ')
 }
 
-const listWorktrees = (cwd: string): Worktree[] => {
-  const result = git(['worktree', 'list', '--porcelain'], cwd)
-  if (!result.ok) throw new Error(`git worktree list failed: ${result.stderr.trim()}`)
-  return parseWorktreeList(result.stdout)
-}
-
-interface SlotContext {
+export interface SlotContext {
   projectRoot: string
   mainRoot: string
   repo: string
   slots?: SlotsConfig
+  worktree?: WorktreeConfig
 }
 
-const loadContext = (): SlotContext => {
+export const loadContext = (): SlotContext => {
   const projectRoot = resolveProjectRoot(process.cwd())
   const config = loadConfig(projectRoot)
   if (config.error !== undefined) throw new Error(`.jig/config.jsonc: ${config.error}`)
@@ -149,6 +117,9 @@ const loadContext = (): SlotContext => {
   const context: SlotContext = { projectRoot, mainRoot, repo: basename(mainRoot) }
   if (config.slots !== undefined) {
     context.slots = config.slots
+  }
+  if (config.worktree !== undefined) {
+    context.worktree = config.worktree
   }
   return context
 }
@@ -174,20 +145,6 @@ const insideDir = (dir: string, file: string): string => {
   const rel = relative(dir, path)
   if (rel === '' || rel.startsWith('..') || isAbsolute(rel)) throw new Error(`path ${file} leaves the slot dir`)
   return path
-}
-
-const copyFromMain = (mainRoot: string, dir: string, copyFiles: readonly string[]): void => {
-  const rootEnvFiles = readdirSync(mainRoot, { withFileTypes: true })
-    .filter((entry) => entry.isFile() && ENV_FILE.test(entry.name))
-    .map((entry) => entry.name)
-  for (const file of new Set([...rootEnvFiles, ...copyFiles])) {
-    const source = join(mainRoot, file)
-    if (!existsSync(source)) {
-      process.stderr.write(`jig: copyFiles ${file} is missing in ${toSlash(mainRoot)}\n`)
-      continue
-    }
-    cpSync(source, insideDir(dir, file), { recursive: true })
-  }
 }
 
 const writePorts = (dir: string, slots: SlotsConfig, slot: number): void => {
@@ -266,7 +223,9 @@ const slotNew = async (args: string[]): Promise<number> => {
   })
   if (typeof reserved === 'number') return reserved
   const { slot, dir } = reserved
-  copyFromMain(context.mainRoot, dir, slots.copyFiles ?? [])
+  for (const line of formatSeed(seedWorktree(context.mainRoot, dir, context.worktree))) {
+    process.stderr.write(`jig: ${line}\n`)
+  }
   writePorts(dir, slots, slot)
   const cdpPort = slotCdpPort(slots, slot)
   if (cdpPort !== undefined) {
@@ -313,6 +272,25 @@ const slotLs = (args: string[]): number => {
   return 0
 }
 
+const parseSlotNumber = (text: string | undefined): number | undefined => {
+  const slot = Number(text?.replace(/^s/, ''))
+  return Number.isInteger(slot) && slot >= 1 ? slot : undefined
+}
+
+const findSlot = (context: SlotContext, slot: number): SlotWorktree | string => {
+  const matches = slotWorktrees(listWorktrees(context.projectRoot), context.repo).filter((worktree) => worktree.slot === slot)
+  const [worktree] = matches
+  if (worktree === undefined) return `no slot ${slot}`
+  if (matches.length > 1) return `duplicate slot numbers: ${formatDuplicates(new Map([[slot, matches]]))}`
+  return worktree
+}
+
+const trackedChanges = (dir: string): string[] =>
+  git(['status', '--porcelain=v1', '--untracked-files=no'], dir)
+    .stdout.split(/\r?\n/)
+    .filter(Boolean)
+    .map((line) => line.slice(3))
+
 const slotRm = (args: string[]): number => {
   const { values, positionals } = parseArgs({
     args,
@@ -320,18 +298,14 @@ const slotRm = (args: string[]): number => {
     allowPositionals: true,
     strict: true,
   })
-  const slot = Number(positionals[0]?.replace(/^s/, ''))
-  if (positionals.length !== 1 || !Number.isInteger(slot) || slot < 1) return fail('usage: slot rm <N> [--force]', 2)
+  const slot = parseSlotNumber(positionals[0])
+  if (positionals.length !== 1 || slot === undefined) return fail('usage: slot rm <N> [--force]', 2)
   const context = loadContext()
-  const matches = slotWorktrees(listWorktrees(context.projectRoot), context.repo).filter((worktree) => worktree.slot === slot)
-  const [worktree] = matches
-  if (worktree === undefined) return fail(`no slot ${slot}`, 1)
-  if (matches.length > 1) return fail(`duplicate slot numbers: ${formatDuplicates(new Map([[slot, matches]]))}`, 1)
-  const isForced = values.force === true
-  const status = git(['status', '--porcelain=v1', '--untracked-files=no'], worktree.path)
-  const changes = status.stdout.split(/\r?\n/).filter(Boolean)
-  if (!isForced && changes.length > 0) {
-    return fail(`slot ${slot} has tracked changes, commit them or pass --force: ${changes.map((line) => line.slice(3)).join(', ')}`, 1)
+  const worktree = findSlot(context, slot)
+  if (typeof worktree === 'string') return fail(worktree, 1)
+  const changes = trackedChanges(worktree.path)
+  if (values.force !== true && changes.length > 0) {
+    return fail(`slot ${slot} has tracked changes, commit them or pass --force: ${changes.join(', ')}`, 1)
   }
   const removed = git(['worktree', 'remove', '--force', worktree.path], context.projectRoot)
   if (!removed.ok) return fail(`git worktree remove failed: ${removed.stderr.trim()}`, 1)
@@ -339,73 +313,45 @@ const slotRm = (args: string[]): number => {
   return 0
 }
 
-const runJson = (bin: string, args: string[], cwd: string): unknown => {
-  const result = spawnSync(bin, args, { cwd, encoding: 'utf8', windowsHide: true })
-  if (result.status !== 0) return undefined
-  try {
-    return JSON.parse(result.stdout) as unknown
-  } catch {
-    return undefined
-  }
+const headOf = (dir: string): string | undefined => {
+  const result = git(['rev-parse', 'HEAD'], dir)
+  return result.ok ? result.stdout.trim() : undefined
 }
 
-const branchNames = (value: unknown, field: string): string[] => {
-  if (!Array.isArray(value)) return []
-  return value.flatMap((item: Record<string, unknown>) => (typeof item[field] === 'string' ? [item[field]] : []))
-}
+const changedFiles = (dir: string, from: string, to: string): string[] =>
+  from === to ? [] : git(['diff', '--name-only', '-z', from, to], dir).stdout.split('\0').filter(Boolean)
 
-const openMrBranches = (cwd: string): Set<string> => {
-  const remote = git(['remote', 'get-url', 'origin'], cwd).stdout
-  const isGithub = remote.includes('github.com')
-  const tool = isGithub ? findInPath('gh') : findInPath('glab')
-  if (tool === undefined) return new Set()
-  const branches = isGithub
-    ? branchNames(runJson(tool, ['pr', 'list', '--state', 'open', '--limit', '200', '--json', 'headRefName'], cwd), 'headRefName')
-    : branchNames(runJson(tool, ['mr', 'list', '--per-page', '100', '--output', 'json'], cwd), 'source_branch')
-  return new Set(branches)
-}
-
-const isRecent = (path: string, now: number): boolean => {
-  const result = git(['log', '-1', '--format=%ct'], path)
-  const committedAt = Number(result.stdout.trim()) * MS_PER_SECOND
-  return result.ok && now - committedAt < RECENT_MS
-}
-
-const bucketOf = (worktree: Worktree, openBranches: Set<string>, now: number): Bucket => {
-  const status = git(['status', '--porcelain=v1'], worktree.path)
-  if (status.stdout.trim() !== '') return 'hold-wip'
-  if (worktree.branch !== undefined && openBranches.has(worktree.branch)) return 'hold-open-mr'
-  return isRecent(worktree.path, now) ? 'recent' : 'safe'
-}
-
-const slotSweep = (args: string[]): number => {
-  const { values } = parseArgs({ args, options: { json: { type: 'boolean' } }, strict: true })
+const slotShow = (args: string[]): number => {
+  const { positionals } = parseArgs({ args, options: {}, allowPositionals: true, strict: true })
+  const [slotText, ref] = positionals
+  const slot = parseSlotNumber(slotText)
+  if (positionals.length !== 2 || slot === undefined || ref === undefined) return fail('usage: slot show <N> <branch|commit>', 2)
   const context = loadContext()
-  const worktrees = listWorktrees(context.projectRoot).filter((worktree) => worktree.path !== context.mainRoot)
-  const openBranches = openMrBranches(context.projectRoot)
-  const now = Date.now()
-  const rows = worktrees.map((worktree) => ({
-    bucket: bucketOf(worktree, openBranches, now),
-    slot: slotNumber(basename(worktree.path), context.repo) ?? null,
-    path: toSlash(worktree.path),
-    branch: worktree.branch ?? null,
-  }))
-  if (values.json === true) {
-    print(JSON.stringify(rows, null, 2))
-    return 0
+  const worktree = findSlot(context, slot)
+  if (typeof worktree === 'string') return fail(worktree, 1)
+  const changes = trackedChanges(worktree.path)
+  if (changes.length > 0) {
+    return fail(`slot ${slot} has tracked changes; a slot only shows branches, edits belong in a feature worktree: ${changes.join(', ')}`, 1)
   }
-  for (const row of rows) {
-    const slot = row.slot === null ? '' : `  slot ${row.slot}`
-    print(`${row.bucket}  ${row.path}  ${row.branch ?? '(detached)'}${slot}`)
+  const before = headOf(worktree.path)
+  const checkout = git(['checkout', '--detach', ref], worktree.path)
+  if (!checkout.ok) return fail(`git checkout --detach ${ref} failed in slot ${slot}: ${checkout.stderr.trim()}`, 1)
+  const after = headOf(worktree.path)
+  const changed = before === undefined || after === undefined ? [] : changedFiles(worktree.path, before, after)
+  for (const step of installSteps(changed, context.slots?.install)) {
+    process.stderr.write(`jig: lock file changed, running ${step.command} in ${step.dir}\n`)
+    const status = runInstall(step.command, resolve(worktree.path, step.dir))
+    if (status !== 0) return fail(`install failed (exit ${status}) in slot ${slot} ${toSlash(worktree.path)}`, 1)
   }
+  print(`slot ${slot} ${toSlash(worktree.path)} at ${(after ?? '').slice(0, 12)} ${ref}`)
   return 0
 }
 
 const subcommands = new Map<string, Command>([
   ['new', slotNew],
+  ['show', slotShow],
   ['ls', slotLs],
   ['rm', slotRm],
-  ['sweep', slotSweep],
 ])
 
 export const runSlot: Command = (args) => {
