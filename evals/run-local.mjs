@@ -10,7 +10,7 @@ const JUDGE_INPUT_CAP = 80_000
 const usage = (message) => {
   if (message) process.stderr.write(`${message}\n`)
   process.stderr.write(`usage: node evals/run-local.mjs --plugin <dir> [--eval-dir evals/agent] [--case <name>] [--runs N]
-  [--arms with,without] [-j N] [--model <m>] [--judge-model haiku] [--out <dir>] [--keep-temp]
+  [--arms with,without] [-j N] [--model <m>] [--effort <level>] [--judge-model haiku] [--out <dir>] [--keep-temp]
   [--stop-at-utilization 0.98]
 `)
   process.exit(2)
@@ -31,6 +31,7 @@ const parseArgs = (argv) => {
     else if (flag === '--arms') options.arms = take(index++).split(',').map((arm) => arm.trim()).filter(Boolean)
     else if (flag === '-j' || flag === '--concurrency') options.concurrency = Math.max(1, Number(take(index++)))
     else if (flag === '--model') options.model = take(index++)
+    else if (flag === '--effort') options.effort = take(index++)
     else if (flag === '--judge-model') options.judgeModel = take(index++)
     else if (flag === '--out') options.out = take(index++)
     else if (flag === '--keep-temp') options.keepTemp = true
@@ -333,6 +334,7 @@ const agentArgs = (testCase, arm, options) => {
     ...ISOLATION_FLAGS,
   ]
   if (options.model) args.push('--model', options.model)
+  if (options.effort) args.push('--effort', options.effort)
   if (arm === 'with') args.push('--plugin-dir', options.plugin)
   return args
 }
