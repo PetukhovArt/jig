@@ -112,6 +112,7 @@ Other skills:
 | Skill | Invoked by | What it does |
 | --- | --- | --- |
 | `jig-review` | model or user | reviews a diff with finders, a separate judge and proven findings; mode `review` for someone else's merge request (threads, `--post`, re-review), mode `pre-mr` for your own diff before the merge request; `jig review-plan` prints the finder layout |
+| `jig-review-cycle` | user | one pass over every merge request awaiting your review: filter, `jig-review` in a worktree per merge request, threads posted, the verdict recorded through the team's process adapter ([Review cycle](#review-cycle)) |
 | `jig-slots` | model or user | a feature worktree per task, and finished branches shown in a slot with a warm dev server on offset ports |
 | `jig-init` | user | discovery by the catalog, questions code cannot answer, an explicit `.jig/config.jsonc`, agent-view and stratum setup, `jig doctor` |
 | `jig-task-status` | user | the decision trail of a long or unattended run |
@@ -121,6 +122,23 @@ Other skills:
 | `jig-video` | user | records a narrated demo video of a change's use cases |
 
 `jig-task-status` keeps the decision trail of a long or unattended run: one TSV row per decision, step or question in `.jig/runs/<branch>/task-status.tsv`, and a page built from it on demand; `afk-mode` follows it.
+
+### Review cycle
+
+`/jig-review-cycle [<focus>]` runs **one idempotent pass**: `jig review-cycle queue` lists the triggered merge requests and skips the approved (by anyone), the drafts, those whose review worktree is still live, those whose head the review state already covers with no new developer reply, and, when the adapter says `stale=on`, those where your open threads still wait on the developer. Each remaining one gets a worktree, a `jig-review` run in a subagent (two at a time), a check that the run accounted for every standing finding, a poster subagent, and last one `transition` per ref. An agent without subagents runs them one by one. Nothing sleeps or polls.
+
+What triggers a review and where the verdict goes is the team's: a **process adapter**, any executable answering `queue`, `rules`, `spec`, `base-check` and `transition` ([contract](skills/jig/references/process-adapter.md)), named in `.jig/config.local.jsonc`:
+
+```jsonc
+{ "reviewCycle": { "processAdapter": "~/review/process.mjs" } }
+```
+
+Without one, the queue is the forge's open merge requests where you are a reviewer, and nothing is recorded in a tracker. GitLab through `glab`, GitHub through `gh` (no withdrawal yet); `reviewCycle.forge` overrides the detection by the `origin` remote.
+
+The skill never schedules itself (`jig loop` is the weekly journal loop, not this). Recurrence is the caller's:
+
+- Claude Code: `/loop 2h /jig-review-cycle`. A new focus later: run `/jig-review-cycle <focus>` once; it is stored in `.jig/runs/review-cycle/focus.md` and every later firing reads it.
+- cron, a CI schedule or Task Scheduler: a headless agent run of the skill in the repository, e.g. `claude -p "/jig-review-cycle"` every two hours. The pass is idempotent, so an overlapping firing skips what the previous one is still reviewing.
 
 ## Configuration
 
@@ -144,6 +162,7 @@ Other skills:
 - A catalog name (`oxlint`, `tsc`, `eslint`, `stratum`, `agent-view`) turns that tool on; `false` turns it off. Its settings: `level`, `command`, `ignoreRules`. A name outside the catalog is an unknown key.
 - `checks`: the project's own commands, run after an edit (`"on": "edit"`) or at the end of a turn (`"on": "stop"`) on the files matching `files` (a glob or a list). `run` needs the `{files}` token, which becomes one argument per file; `format` reads the output (`exit` by default: a non-zero exit is one finding; `jsonl`, or a tool name for its parser); `level` as for rules. Findings carry the rule `check/<name>`.
 - `slots` and `worktree`: see [Commands](#commands).
+- `reviewCycle`: `processAdapter` and `forge` for the [review cycle](#review-cycle).
 
 jig creates only `.jig/` in your project: `config.jsonc` goes to git, `config.local.jsonc`, `journal/`, `runs/` and `cache/` are ignored by `.jig/.gitignore`.
 
@@ -183,6 +202,7 @@ Run as `node <plugin root>/bin/jig.mjs <command>`.
 | `worktree seed <dir>` | copies the main checkout's ignored files and recreates its ignored symlinks in another worktree; never overwrites tracked files |
 | `worktree sweep [--json] [--ask] [--yes <path\|slot>]...` | sorts every worktree but the main checkout into `hold-current`, `hold-locked`, `hold-wip`, `hold-open-mr`, `prunable`, `recent`, `safe`; removes only those confirmed at the `--ask` prompt or named by `--yes`, never a `hold-current`, `hold-locked` or `hold-wip` one |
 | `review-plan [<base>] [--selector full\|quick\|auto\|<tokens>] [--spec] [--mode review\|pre-mr] [--mr] [--no-state] [--agent <id>] [--json]` | the review layout for the diff against the base: counted lines, the inline path or the finders, their models and the judge, and the step files that apply to the run |
+| `review-cycle queue\|state-path\|base-check\|spec\|reconcile\|unresolved\|spec-hold\|withdraw\|verdict` | the deterministic half of the [review cycle](#review-cycle): the filtered queue, the state path of a merge request, the adapter's base-check and spec, the tally check, the count of unresolved threads without Nit and Pre-existing ones, the spec hold, withdrawing threads, the per-ref verdict; exit 3 when the forge or the adapter cannot answer |
 | `pre-mr [<base>]` | exit 0 when the branch's UI changes are proven or skipped with a level, else lists what is missing and exits 1 |
 | `pre-mr proof "<command>"` / `pre-mr bug-bash "<result>"` | runs a proof command and records it when it exits 0 / records the bug-bash result |
 | `skip-verify --level unit-test\|type-check\|none --why "<reason>"` | lets `pre-mr` pass with that level until the next edit |

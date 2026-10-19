@@ -1,0 +1,5 @@
+interface:
+  display_name: "jig-review-cycle"
+  short_description: "Review every merge request awaiting your review in one pass"
+policy:
+  allow_implicit_invocation: false
