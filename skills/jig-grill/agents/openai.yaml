@@ -1,0 +1,5 @@
+interface:
+  display_name: "jig-grill"
+  short_description: "Interview the user about a plan, one decision at a time"
+policy:
+  allow_implicit_invocation: false

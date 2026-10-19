@@ -1,9 +1,10 @@
 # Role index
 
+- `comment-pruner` (`skills/jig/references/roles/comment-pruner.md`, fast/low): Use in jig-prune-comments, one per batch of files, to delete comments the comments atom does not allow. Edits only inside one function; hands everything else back.
 - `explainer` (`skills/jig/references/roles/explainer.md`, deep/medium): Use in investigation (How step) to merge the explorer maps into one explanation of how the code works. Spot-checks their file:line claims; synthesizer answers Why instead.
 - `explorer` (`skills/jig/references/roles/explorer.md`, standard/medium): Use in investigation (How step), 2 to 4 in parallel, to map one angle of the code with file:line. Read only, gathers without concluding; investigator searches history instead.
 - `finder` (`skills/jig/references/roles/finder.md`, standard/high): Use in review, one per review angle, to hunt problems in a diff. Finds aggressively and returns candidates with file:line; verifier judges them later.
-- `fixer` (`skills/jig/references/roles/fixer.md`, standard/high): Use in mr-watching, one per merge request in its slot, to fix, decline or defer each reviewer thread. Handles review threads only, not a general code fixer.
+- `fixer` (`skills/jig/references/roles/fixer.md`, standard/high): Use in mr-watching, one per merge request in its worktree, to fix, decline or defer each reviewer thread. Handles review threads only, not a general code fixer.
 - `investigator` (`skills/jig/references/roles/investigator.md`, deep/high): Use in investigation (Why step), one per evidence source, to find why code is the way it is in commits, merge requests or docs. Gathers dated evidence, not code maps.
 - `journal-auditor` (`skills/jig/references/roles/journal-auditor.md`, standard/medium): Use in afk-mode to audit an unattended run against git log and the diff. Lists decisions without evidence and unproven done claims, or says clean.
 - `module-sketcher` (`skills/jig/references/roles/module-sketcher.md`, deep/high): Use in the coliseum fan-out (module-design), several in parallel, to sketch one candidate module interface in its own location. Commits to one shape; referee compares.
