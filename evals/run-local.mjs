@@ -258,7 +258,7 @@ const toolCallText = (events) =>
     .join('\n')
 
 const lastMessage = (events) => {
-  const reply = events.find((event) => event.type === 'result')
+  const reply = events.findLast((event) => event.type === 'result')
   if (typeof reply?.result === 'string' && reply.result.trim() !== '') return reply.result
   const assistant = events.findLast(
     (event) => event.type === 'assistant' && !event.parent_tool_use_id && Array.isArray(event.message?.content) && event.message.content.some((block) => block.type === 'text'),
