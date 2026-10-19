@@ -10,7 +10,7 @@
     "rules": {
       "type": "object",
       "additionalProperties": false,
-      "description": "jig's own rules. Suppression directives are always denied; these levels set the gates for new comments (default off) and new test cases (default error).",
+      "description": "jig's own rules. Suppression directives are always denied; these levels set the gates for new comments and new test cases (default error for both).",
       "properties": {
         "jig/comments": { "$ref": "#/$defs/severity" },
         "jig/tests": { "$ref": "#/$defs/severity" }

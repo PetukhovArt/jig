@@ -53,8 +53,7 @@ export const buildProposal = (base: Json, discovery: Discovery, config: Pick<Loa
     const target = found.kind === 'tool' ? tools : proofs
     target[found.name] = proposedSetting(found)
   }
-  const rules = { 'jig/comments': 'error', ...section(base, 'rules') }
-  return { $schema: SCHEMA_URL, ...base, rules, tools, proofs }
+  return { $schema: SCHEMA_URL, ...base, tools, proofs }
 }
 
 const questionsFor = (discovery: Discovery, boundaries: boolean): string[] => {
@@ -62,7 +61,6 @@ const questionsFor = (discovery: Discovery, boundaries: boolean): string[] => {
   const setupOf = (name: string): string => catalogEntry(name)?.setup.join(', then ') ?? ''
   const questions = [
     'App run command (slots.dev) and install command (slots.install), if the project runs an app.',
-    'Comment gate (rules["jig/comments"]): enable (default) or off.',
   ]
   const agentView = byName.get('agent-view')
   const agentViewState = agentView === undefined ? 'not installed' : agentView.status === 'ready' ? 'configured' : 'installed, no agent-view.config.json'

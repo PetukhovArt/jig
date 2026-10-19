@@ -104,9 +104,11 @@ describe('deny once, then let the same call pass', () => {
     expect(gate('src/a.spec.ts', [{ before: "it('a', f)\nit('b', f)\n", after: "it('a', f)\n" }], defaultConfig())).toEqual({ hits: [] })
   })
 
-  it('lets new comments through while the comment gate is off by default', () => {
+  it('gates new comments by default and lets them through once the project turns the gate off', () => {
     sessions++
-    expect(gate('src/a.ts', add('// explains a'), defaultConfig()).reason).toBeUndefined()
+    expect(gate('src/a.ts', add('// explains a'), defaultConfig()).reason).toMatch(/^jig\/comments: the edit adds 1 comment/)
+    sessions++
+    expect(gate('src/a.ts', add('// explains a'), withRules({ 'jig/comments': 'off' })).reason).toBeUndefined()
   })
 
   it('gives the full tests atom on the first new test case and passes the retry', () => {

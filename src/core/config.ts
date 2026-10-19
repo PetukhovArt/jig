@@ -14,7 +14,7 @@ export const RULE_IDS: readonly JigRuleId[] = JIG_RULE_IDS
 
 export const DEFAULT_SEVERITY: Severity = 'error'
 
-const DEFAULT_SEVERITIES: Partial<Record<JigRuleId, Severity>> = { 'jig/comments': 'off' }
+const DEFAULT_SEVERITIES: Partial<Record<JigRuleId, Severity>> = {}
 
 export interface ToolSettings {
   level: Severity

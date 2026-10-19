@@ -155,7 +155,7 @@ describe('discovery and drift', () => {
     write('.jig/config.jsonc', '{ "tools": { "eslint": { "ignoreRules": ["boundaries/*"] } }, "slots": { "worktreesDir": ".." } }')
     const fresh = buildInitReport(root, false)
     expect(fresh.proposal['tools']).toEqual({ tsc: { command: 'vue-tsc' }, eslint: {} })
-    expect(fresh.proposal['rules']).toEqual({ 'jig/comments': 'error' })
+    expect(fresh.proposal['rules']).toBeUndefined()
     expect(fresh.boundaries).toBe(true)
     expect(fresh.questions.join('\n')).toMatch(/stratum.*installed, no stratum\.config\.jsonc.*stratum-lint init.*boundaries\/\*/)
     const update = buildInitReport(root, true)

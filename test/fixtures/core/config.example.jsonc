@@ -1,6 +1,6 @@
 {
   "$schema": "https://raw.githubusercontent.com/PetukhovArt/jig/main/schema/config.schema.json",
-  // jig rules: off | warn | error. Missing keys use the default: error, jig/comments off.
+  // jig rules: off | warn | error. Missing keys use the default, error.
   "rules": {
     "jig/comments": "error",
     "jig/tests": "error"

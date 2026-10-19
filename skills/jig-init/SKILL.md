@@ -20,9 +20,8 @@ Read `<root>/atoms/questions.md` before the first question and follow it. Ask in
 3. Ask what is left, one question block per choice, each with a recommendation:
    - the command that runs the app (`slots.dev`) and installs packages (`slots.install`), when the repo did not say;
    - whether UI changes get proven in the running app with agent-view;
-   - whether stratum checks the module layers;
-   - the comment gate `rules["jig/comments"]`: recommend `"error"` (enable).
-   A tool the project has but the user wants off is written as `false`, so the next start does not report it as drift.
+   - whether stratum checks the module layers.
+   Do not ask about the comment gate: it is on by default, and a project turns it off itself with `"rules": { "jig/comments": "off" }`. A tool the project has but the user wants off is written as `false`, so the next start does not report it as drift.
 4. Write `.jig/config.jsonc` from the proposal and the answers: tools by name (`"eslint": {}`, `"tsc": { "command": "vue-tsc" }`), `false` to turn one off, `level` `off|warn|error`, `command` to replace the catalog command, `ignoreRules` for rule globs to drop, and the project's own checks as `checks: [{ "name", "files", "on": "edit"|"stop", "run": "... {files}", "format" }]`. With `--update`, keep every setting the user wrote; add and remove only what the drift names. Personal differences go to `.jig/config.local.jsonc`, never to the shared file. jig runs no project git hooks; a check needed earlier than the commit gets its own `checks` entry.
 5. agent-view, when the user wants it and the project has no `agent-view.config.json`: run `agent-view init` in the project root, review the `launch` field against the app run command, then add `"proofs": { "agent-view": {} }`.
 6. stratum, when the user wants it:
