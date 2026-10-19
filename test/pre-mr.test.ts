@@ -57,6 +57,7 @@ beforeEach(() => {
   write(root, 'src/a.ts', 'export const a = 1\n')
   write(root, 'src/App.vue', '<template><div /></template>\n')
   write(root, 'src/app.css', '.a {}\n')
+  write(root, '.jig/config.jsonc', '{ "agent-view": {} }\n')
   gitIn(root, 'add', '-A')
   gitIn(root, 'commit', '-qm', 'base')
   gitIn(root, 'checkout', '-qb', 'feature')
@@ -75,6 +76,15 @@ describe('jig pre-mr', () => {
     expect(stdout()).toContain('UI files: none')
     expect(stdout()).toContain('Bug-bash: UI not touched')
     expect(stdout()).toContain('Verification level: full')
+  })
+
+  it('asks for no UI proof when the config names no proof tool', () => {
+    write(root, '.jig/config.jsonc', '{}\n')
+    write(root, 'src/App.vue', '<template><span /></template>\n')
+
+    expect(run(['main'])).toBe(0)
+    expect(stdout()).toContain('UI files: src/App.vue; no UI proof tool in .jig/config.jsonc')
+    expect(stdout()).toContain('Verification level: no UI proof tool configured')
   })
 
   it('lists every missing proof and the bug-bash when UI files changed without them', () => {

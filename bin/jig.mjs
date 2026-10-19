@@ -4662,7 +4662,11 @@ var provenKinds = (command) => {
   const normalized = normalizeCommand(command);
   return PROOFS2.map((check2) => ({ check: check2.name, kinds: check2.proves(normalized) })).filter((entry) => entry.kinds.length > 0);
 };
-var requirements = (files) => PROOF_KINDS.map((kind) => ({ kind, files: files.filter((file) => PROOFS2.some((check2) => check2.requires(file).includes(kind))) })).filter(
+var configuredChecks = (root) => {
+  const { proofs } = loadConfig(root);
+  return PROOFS2.filter((check2) => enabledSetting(proofs, check2.name) !== void 0);
+};
+var requirements = (files, checks = PROOFS2) => PROOF_KINDS.map((kind) => ({ kind, files: files.filter((file) => checks.some((check2) => check2.requires(file).includes(kind))) })).filter(
   (requirement) => requirement.files.length > 0
 );
 var hintFor = (kind) => PROOFS2.map((check2) => check2.hints[kind]).find((hint) => hint !== void 0) ?? kind;
@@ -4701,9 +4705,12 @@ var branchCommits = (root, mergeBase, head) => {
   commits.add(head);
   return commits;
 };
-var evaluate = ({ root, mergeBase, head, tree, files, records }) => {
-  const needed = requirements(files);
-  if (needed.length === 0) return { type: "no-ui" };
+var evaluate = ({ root, mergeBase, head, tree, files, records, checks }) => {
+  const needed = requirements(files, checks);
+  if (needed.length === 0) {
+    const ui = requirements(files).flatMap((requirement) => requirement.files);
+    return ui.length === 0 ? { type: "no-ui" } : { type: "no-proof-tool", files: [...new Set(ui)] };
+  }
   const diffs = /* @__PURE__ */ new Map();
   const editedSince = (entry) => {
     const from = entry.tree ?? "";
@@ -4749,6 +4756,13 @@ var formatVerdict = (verdict, baseLine) => {
   switch (verdict.type) {
     case "no-ui":
       return [baseLine, "UI files: none", "Bug-bash: UI not touched", "Verification level: full"];
+    case "no-proof-tool":
+      return [
+        baseLine,
+        `UI files: ${fileList(verdict.files)}; no UI proof tool in .jig/config.jsonc, UI not proven`,
+        "Bug-bash: not run, no UI proof tool configured",
+        "Verification level: no UI proof tool configured"
+      ];
     case "proven":
       return [
         baseLine,
@@ -4779,7 +4793,7 @@ var check = (args, ctx) => {
   const base = resolveBase(root, positionals[0], "pre-mr");
   const files = [.../* @__PURE__ */ new Set([...base.stats.map((stat) => stat.path), ...untrackedPaths(root)])];
   const { head, tree } = snapshot(root);
-  const verdict = evaluate({ root, mergeBase: base.mergeBase, head, tree, files, records: recordsOf(root) });
+  const verdict = evaluate({ root, mergeBase: base.mergeBase, head, tree, files, records: recordsOf(root), checks: configuredChecks(root) });
   const baseLine = `base: ${base.ref} (merge base ${base.mergeBase.slice(0, 8)}, from ${base.source})`;
   const lines = formatVerdict(verdict, baseLine);
   if (verdict.type === "missing") {

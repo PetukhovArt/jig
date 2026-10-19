@@ -3,7 +3,8 @@ import { copyFileSync, existsSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
-import { CHECKS, PROOF_KINDS, type ProofKind } from '../checks'
+import { CHECKS, PROOF_KINDS, type CheckDefinition, type ProofKind } from '../checks'
+import { enabledSetting, loadConfig } from '../core/config'
 import { git, gitStatus, gitToplevel } from '../core/git'
 import { appendJournal, readJournal, type JournalEntry, type JournalRecord } from '../core/journal'
 import { ensureJigDir } from '../core/paths'
@@ -41,6 +42,7 @@ export type Gap =
 
 export type Verdict =
   | { type: 'no-ui' }
+  | { type: 'no-proof-tool'; files: string[] }
   | { type: 'proven'; proofs: JournalRecord[]; bugBash: JournalRecord }
   | { type: 'skipped'; skip: JournalRecord; gaps: Gap[]; bugBash?: JournalRecord }
   | { type: 'missing'; gaps: Gap[] }
@@ -114,8 +116,14 @@ export const provenKinds = (command: string): { check: string; kinds: readonly P
   return CHECKS.map((check) => ({ check: check.name, kinds: check.proves(normalized) })).filter((entry) => entry.kinds.length > 0)
 }
 
-export const requirements = (files: readonly string[]): Requirement[] =>
-  PROOF_KINDS.map((kind) => ({ kind, files: files.filter((file) => CHECKS.some((check) => check.requires(file).includes(kind))) })).filter(
+/** Proof tools the project names in its config; without one, pre-mr asks for no UI proof. */
+export const configuredChecks = (root: string): CheckDefinition[] => {
+  const { proofs } = loadConfig(root)
+  return CHECKS.filter((check) => enabledSetting(proofs, check.name) !== undefined)
+}
+
+export const requirements = (files: readonly string[], checks: readonly CheckDefinition[] = CHECKS): Requirement[] =>
+  PROOF_KINDS.map((kind) => ({ kind, files: files.filter((file) => checks.some((check) => check.requires(file).includes(kind))) })).filter(
     (requirement) => requirement.files.length > 0,
   )
 
@@ -169,11 +177,15 @@ export interface Evaluation {
   tree: string
   files: string[]
   records: JournalRecord[]
+  checks: readonly CheckDefinition[]
 }
 
-export const evaluate = ({ root, mergeBase, head, tree, files, records }: Evaluation): Verdict => {
-  const needed = requirements(files)
-  if (needed.length === 0) return { type: 'no-ui' }
+export const evaluate = ({ root, mergeBase, head, tree, files, records, checks }: Evaluation): Verdict => {
+  const needed = requirements(files, checks)
+  if (needed.length === 0) {
+    const ui = requirements(files).flatMap((requirement) => requirement.files)
+    return ui.length === 0 ? { type: 'no-ui' } : { type: 'no-proof-tool', files: [...new Set(ui)] }
+  }
   const diffs = new Map<string, Set<string> | undefined>()
   const editedSince = (entry: JournalRecord): Set<string> | undefined => {
     const from = entry.tree ?? ''
@@ -224,6 +236,13 @@ export const formatVerdict = (verdict: Verdict, baseLine: string): string[] => {
   switch (verdict.type) {
     case 'no-ui':
       return [baseLine, 'UI files: none', 'Bug-bash: UI not touched', 'Verification level: full']
+    case 'no-proof-tool':
+      return [
+        baseLine,
+        `UI files: ${fileList(verdict.files)}; no UI proof tool in .jig/config.jsonc, UI not proven`,
+        'Bug-bash: not run, no UI proof tool configured',
+        'Verification level: no UI proof tool configured',
+      ]
     case 'proven':
       return [
         baseLine,
@@ -255,7 +274,7 @@ const check = (args: string[], ctx: PreMrContext): number => {
   const base = resolveBase(root, positionals[0], 'pre-mr')
   const files = [...new Set([...base.stats.map((stat) => stat.path), ...untrackedPaths(root)])]
   const { head, tree } = snapshot(root)
-  const verdict = evaluate({ root, mergeBase: base.mergeBase, head, tree, files, records: recordsOf(root) })
+  const verdict = evaluate({ root, mergeBase: base.mergeBase, head, tree, files, records: recordsOf(root), checks: configuredChecks(root) })
   const baseLine = `base: ${base.ref} (merge base ${base.mergeBase.slice(0, 8)}, from ${base.source})`
   const lines = formatVerdict(verdict, baseLine)
   if (verdict.type === 'missing') {
