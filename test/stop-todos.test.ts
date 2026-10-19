@@ -37,6 +37,7 @@ beforeEach(async () => {
   base = { sessionId: 'todos', projectRoot: root, cwd: root }
   git(['init', '-q'], root)
   write('src/a.ts', 'export const a = 1\n')
+  write('.jig/config.jsonc', '{ "rules": { "jig/todos": "error" } }\n')
   git(['add', '-A'], root)
   git(['-c', 'user.email=jig@test', '-c', 'user.name=jig', 'commit', '-q', '-m', 'init'], root)
   await dispatch({ kind: 'session-start', source: 'startup' }, base, pluginRoot)
@@ -116,9 +117,12 @@ describe('stop gate: open todo items', () => {
     expect(await stop(undefined)).toEqual({ type: 'none' })
   })
 
-  it('passes with the rule off', async () => {
+  it('passes with the rule off, and off is the default', async () => {
     write('.jig/config.jsonc', '{ "rules": { "jig/todos": "off" } }\n')
     expect(await stop(FLOW)).toEqual({ type: 'none' })
+    write('.jig/config.jsonc', '{}\n')
+    await dispatch({ kind: 'prompt', command: 'jig' }, base, pluginRoot)
+    expect(await stop([])).toEqual({ type: 'none' })
   })
 
   it('reads the todo list from the Claude Code hook input', async () => {

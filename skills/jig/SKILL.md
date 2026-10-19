@@ -22,7 +22,7 @@ These hold for the whole task, in every flow.
 ## Before the first step
 1. Restate the task in one line each: the goal, the done check (something that can pass or fail), the proof you will show, what is already known, the constraints. Missing done check: propose one and continue with it.
 2. Pick the flow whose description fits. None fits, or the work is large and cross-cutting: `custom-flow`.
-3. Read the flow file. Put each of its numbered steps into your todo tool as its own item, verbatim (a ten-step flow is ten items), before any task-specific items. A step that does not apply: rewrite its item text to `skip: <reason>` and mark it completed. The session cannot end with an open item: the stop hook blocks it.
+3. Read the flow file. Copy its numbered steps verbatim into a todo list, before any task-specific items: the todo tool if the session has one, otherwise a list in your reply, updated at each step. A step you do not do stays in the list as `skip: <reason>`. Mark a step done when it is done; no in-progress updates.
 
 ## While working
 - When a step names an atom, read `<root>/atoms/<name>.md` before acting on that step. When what you are about to do matches a trigger in the atom index below, read that atom too.

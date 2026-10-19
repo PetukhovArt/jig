@@ -74,10 +74,10 @@ The hooks run in every project once the plugin is installed:
 
 - **Before an edit** (fails closed): a new suppression directive of ESLint, oxlint, Biome, TypeScript or stratum is always denied; fix the cause, only a human adds one. An edit that adds a comment or a test case is denied once with the rules: the full `comments` or `tests` atom the first time per agent and after each compaction, a one-line reminder later. The same call passes on retry, and removing a comment or a test never stops. Tool directives a build needs (`/// <reference>`, `@vite-ignore`, webpack magic comments, `__PURE__`) are not comments for the gate.
 - **After an edit**: the edit-time tools and `checks` from the config report findings on the file.
-- **End of turn**: first, when the agent keeps a todo list (Claude Code: its task or todo tool), an item neither completed nor starting with `skip:` or `n/a:` blocks the stop once, listing the open items; a second stop with the same open items passes and the journal records it. A `/jig` turn without any todo list is blocked once the same way; any other turn without a todo list never is. Then the heavy tools and `checks` from the config run over the turn's files and block the turn on an error, the chain stopping at the first failing tool.
+- **End of turn**: first, with `"jig/todos"` on and the agent keeping a todo list (Claude Code: its task or todo tool), an item neither completed nor starting with `skip:` or `n/a:` blocks the stop once, listing the open items; a second stop with the same open items passes and the journal records it. A `/jig` turn without any todo list is blocked once the same way; any other turn without a todo list never is. Then the heavy tools and `checks` from the config run over the turn's files and block the turn on an error, the chain stopping at the first failing tool.
 - **Session start**: one line when the config is invalid or the project drifted from it (a tool found but not named, a named tool without its binary), pointing to `jig init`, or `jig init --update` when a config exists.
 
-The comment and todo gates are on by default; a project turns the comment gate off with `"jig/comments": "off"` (suppressions stay denied), the test gate with `"jig/tests": "off"`, and the todo gate with `"jig/todos": "off"`.
+The comment and test gates are on by default; a project turns the comment gate off with `"jig/comments": "off"` (suppressions stay denied) and the test gate with `"jig/tests": "off"`. The todo gate is off by default: a strong model follows the flow steps without it and the todo bookkeeping costs calls; a project on a weaker model turns it on with `"jig/todos": "error"`.
 
 ## What needs project configuration
 
@@ -101,7 +101,7 @@ When the proof cannot run, `jig skip-verify --level unit-test|type-check|none --
 
 ## `/jig` and flows
 
-Without `/jig`, only the hooks run, and a small task goes in one shot. `/jig <task>` (fallback `/jig:jig`) is invoked by the user only. It restates the task with a done check, picks a flow and puts each of the flow's steps into the todo list; the end-of-turn todo gate keeps the agent working until each step is done or skipped. Its rules for evidence, autonomy and questions sit in `skills/jig/SKILL.md` itself, next to the atom index: one line per atom with its trigger, grouped by the moment of work. An atom file is read when a flow step names it or its trigger matches.
+Without `/jig`, only the hooks run, and a small task goes in one shot. `/jig <task>` (fallback `/jig:jig`) is invoked by the user only. It restates the task with a done check, picks a flow and copies the flow's steps into the todo list, a skipped step kept as `skip: <reason>` so you see what it chose not to do. Its rules for evidence, autonomy and questions sit in `skills/jig/SKILL.md` itself, next to the atom index: one line per atom with its trigger, grouped by the moment of work. An atom file is read when a flow step names it or its trigger matches.
 
 Flows (`skills/jig/flows/`): `investigation`, `diagnose`, `bug-fix`, `feature`, `module-design`, `refactoring`, `perf`, `metric-climb`, `prototype`, `ui-match`, `bug-bash`, `custom-flow`, `eval`, `mr-watching`, `afk-mode`, `session-resume`, `session-pause`. Every code-changing flow ends with the shared `mr` step: the `jig-review` skill in mode `pre-mr`, UI proof in a slot, `jig pre-mr`, then the merge request. Subagent roles are templates in `skills/jig/references/roles/`; each template names a model tier and an effort (`metadata.tier`, `metadata.effort`), and `jig tiers` maps the tier to the agent's models (built-in for Claude Code, overridable in `~/.jig/config.jsonc`).
 
@@ -140,7 +140,7 @@ Other skills:
 }
 ```
 
-- `rules`: `jig/comments`, `jig/tests` and `jig/todos`, levels `off`, `warn`, `error` (default `error`); any level but `off` keeps the gate on.
+- `rules`: `jig/comments`, `jig/tests` and `jig/todos`, levels `off`, `warn`, `error` (default `error`, `jig/todos` default `off`); any level but `off` keeps the gate on.
 - A catalog name (`oxlint`, `tsc`, `eslint`, `stratum`, `agent-view`) turns that tool on; `false` turns it off. Its settings: `level`, `command`, `ignoreRules`. A name outside the catalog is an unknown key.
 - `checks`: the project's own commands, run after an edit (`"on": "edit"`) or at the end of a turn (`"on": "stop"`) on the files matching `files` (a glob or a list). `run` needs the `{files}` token, which becomes one argument per file; `format` reads the output (`exit` by default: a non-zero exit is one finding; `jsonl`, or a tool name for its parser); `level` as for rules. Findings carry the rule `check/<name>`.
 - `slots` and `worktree`: see [Commands](#commands).
