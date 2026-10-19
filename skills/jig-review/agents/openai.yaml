@@ -1,0 +1,3 @@
+interface:
+  display_name: "jig-review"
+  short_description: "Review a merge request or your own diff before one"

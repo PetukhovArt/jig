@@ -23,6 +23,10 @@ Run every command from inside the repository: both CLIs take the host and projec
 | Update the description | `glab mr update <iid> --description "$(cat "$BODY")"` | `gh pr edit <n> --body-file "$BODY"` |
 | Post a new thread | `glab api --method POST projects/:fullpath/merge_requests/<iid>/discussions -H "Content-Type: application/json" --input <payload.json>` | `gh api --method POST repos/{owner}/{repo}/pulls/<n>/comments --input <payload.json>` |
 | Reply in a thread | `glab api --method POST projects/:fullpath/merge_requests/<iid>/discussions/<discussion-id>/notes -H "Content-Type: application/json" --input <payload.json>` | `gh api --method POST repos/{owner}/{repo}/pulls/<n>/comments/<comment-id>/replies --input <payload.json>` |
+| Diff refs (positions) | `glab api projects/:fullpath/merge_requests/<iid>` → `.diff_refs` (`base_sha`, `start_sha`, `head_sha`); a thread payload carries `position: {position_type: "text", base_sha, start_sha, head_sha, new_path, new_line}` | `gh pr view <n> --json headRefOid`; a comment payload carries `commit_id`, `path`, `line`, `side: "RIGHT"` |
+| Resolve a thread | `glab api --method PUT projects/:fullpath/merge_requests/<iid>/discussions/<discussion-id> -f resolved=true` | `gh api graphql -f query='mutation { resolveReviewThread(input: {threadId: "<thread-node-id>"}) { thread { isResolved } } }'` (thread ids: `reviewThreads` of the pull request) |
+| Post or update a general note | POST or PUT `projects/:fullpath/merge_requests/<iid>/notes[/<note-id>]` with `--input <payload.json>` | `gh api --method POST repos/{owner}/{repo}/issues/<n>/comments --input <payload.json>`; update: `--method PATCH repos/{owner}/{repo}/issues/comments/<id>` |
+| Update a note | `glab api --method PUT projects/:fullpath/merge_requests/<iid>/notes/<note-id> -H "Content-Type: application/json" --input <payload.json>` | `gh api --method PATCH repos/{owner}/{repo}/pulls/comments/<id> --input <payload.json>` |
 | CI status | `glab ci status` (current branch), `glab ci view <pipeline-id>` (job tree) | `gh pr checks <n>` |
 | Log of a failed job | `glab ci trace <job-id>` | `gh run view <run-id> --log-failed` |
 
