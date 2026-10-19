@@ -16,6 +16,13 @@ export interface StopState {
   lastBlockDiffFingerprint?: string
 }
 
+export interface TodoGateState {
+  turn: number
+  fingerprint: string
+  blocks: number
+  accepted?: string
+}
+
 export interface SessionState {
   v: 1
   sessionId: string
@@ -25,6 +32,7 @@ export interface SessionState {
   snapshot: Snapshot
   edits: EditRecord[]
   stop: StopState
+  todos?: TodoGateState
 }
 
 export const MAIN_AGENT = 'main'

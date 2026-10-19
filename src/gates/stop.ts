@@ -1,17 +1,18 @@
 import { createHash } from 'node:crypto'
 import { TOOLS, type RegisteredTool } from '../catalog/tools'
-import type { CustomCheck, RuleId } from '../core/config'
+import { loadConfig, type CustomCheck, type RuleId } from '../core/config'
 import { ensureJigDir, jigPaths, resolvePluginRoot, resolveProjectRoot, toProjectPath } from '../core/paths'
 import { loadPlan, type Plan } from '../core/plan'
 import { acquireLock, transferLock } from '../core/proc'
 import { takeSnapshot, turnDiff, type TurnDiff } from '../core/snapshot'
 import { resetSnapshot, type SessionState } from '../core/state'
 import { logToActiveJournal } from '../task-status/task-status'
-import type { Outcome } from '../hook/types'
+import type { Outcome, TodoItem } from '../hook/types'
 import { collapseFindings, formatFindings, POST_EDIT_LINE_LIMIT, STOP_LINE_LIMIT, type Finding } from '../tools/finding'
 import type { JournalNote, StopToolInput, ToolRun } from '../tools/tool'
 import { checkFiles, checkRule, runCustomCheck } from './custom'
 import { applySetting, checkEdit, toolFiles, toolSetting } from './edit'
+import { TODO_RULE, todoGate } from './todos'
 
 type Command = (args: string[]) => number | Promise<number>
 
@@ -44,6 +45,7 @@ export interface StopGateInput {
   pluginRoot: string
   state: SessionState
   stopHookActive: boolean
+  todos?: readonly TodoItem[]
 }
 
 export interface StopVerdict {
@@ -158,7 +160,7 @@ const blockNotes = (blocking: readonly Finding[]): JournalNote[] =>
     message: finding.message,
   }))
 
-export const stopGate = async (input: StopGateInput): Promise<StopVerdict> => {
+const checksGate = async (input: StopGateInput): Promise<StopVerdict> => {
   const { projectRoot, pluginRoot, state } = input
   const diff = turnDiff(projectRoot, state.snapshot, state.edits)
   const isQuiet = diff.files.length === 0 || diff.fingerprint === state.stop.lastGreenFingerprint
@@ -191,7 +193,16 @@ export const stopGate = async (input: StopGateInput): Promise<StopVerdict> => {
   }
 }
 
-const printFailures = (runs: readonly ToolRun[]): void => {
+const isTodoGateOn = (projectRoot: string) => (): boolean => loadConfig(projectRoot).rules[TODO_RULE] !== 'off'
+
+export const stopGate = async (input: StopGateInput): Promise<StopVerdict> => {
+  const todos = todoGate(input.todos, input.state, isTodoGateOn(input.projectRoot))
+  if (todos.outcome.type === 'block') return todos
+  const checks = await checksGate(input)
+  return { outcome: checks.outcome, notes: [...todos.notes, ...checks.notes] }
+}
+
+const printFailures =(runs: readonly ToolRun[]): void => {
   for (const toolRun of runs) {
     if (toolRun.failure !== undefined) {
       process.stderr.write(`jig: ${toolRun.tool} failed (${toolRun.failure})\n`)
