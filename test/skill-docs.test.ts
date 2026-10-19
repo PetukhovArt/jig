@@ -14,7 +14,7 @@ const role = (name: string, extra: string[] = [], metadata = ['  tier: deep', ' 
   doc([`name: ${name}`, 'description: "Use in flow-a step 1 to probe."', ...extra, 'metadata:', ...metadata])
 
 const DEFAULT_FILES: Record<string, string> = {
-  'skills/jig/SKILL.md': 'Start with `flows/flow-a.md`.\n',
+  'skills/jig/SKILL.md': doc(['name: jig', 'description: "probe skill."'], 'Start with `flows/flow-a.md`.'),
   [ROLE]: role('probe'),
   [FLOW]: doc(['name: flow-a', 'description: "probe the validator."'], '# flow-a\n\n1. Spawn role `probe`.'),
 }
@@ -70,7 +70,10 @@ describe('validateSkillDocs', () => {
     ['flow without frontmatter', { [FLOW]: '# flow-a\n\nSpawn role `probe`.\n' }, `${FLOW}: frontmatter is missing`],
     ['flow name differs from file', { [FLOW]: doc(['name: flow-b', 'description: "x."'], 'Spawn role `probe`.') }, `${FLOW}: name "flow-b" does not match file name "flow-a"`],
     ['mention of a missing role', { 'skills/jig/references/x.md': 'One line.\nSpawn role `prob`.\n' }, 'skills/jig/references/x.md:2: role `prob` does not exist'],
-    ['mention of a missing flow', { 'skills/other/SKILL.md': 'Then `flows/flow-z.md`.\n' }, 'skills/other/SKILL.md:1: flows/flow-z.md does not exist'],
+    ['mention of a missing flow', { 'skills/other/notes.md': 'Then `flows/flow-z.md`.\n' }, 'skills/other/notes.md:1: flows/flow-z.md does not exist'],
+    ['skill name differs from folder', { 'skills/jig-x/SKILL.md': doc(['name: Jig X', 'description: "x."']) }, 'skills/jig-x/SKILL.md: name "Jig X" does not match folder name "jig-x"'],
+    ['skill without frontmatter', { 'skills/jig-x/SKILL.md': '# x\n' }, 'skills/jig-x/SKILL.md: frontmatter is missing'],
+    ['skill folder not kebab-case', { 'skills/Jig_X/SKILL.md': doc(['name: Jig_X', 'description: "x."']) }, 'skills/Jig_X/SKILL.md: folder name is not lowercase words joined by hyphens'],
   ])('reports %s', (_name, files, expected) => {
     const errors = validateSkillDocs(makePluginRoot(files))
     expect(errors).toHaveLength(1)

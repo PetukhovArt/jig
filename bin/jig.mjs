@@ -5,7 +5,7 @@ var version = "0.1.0";
 
 // src/atoms/atoms.ts
 import { readFileSync as readFileSync9 } from "node:fs";
-import { basename as basename3, join as join7 } from "node:path";
+import { basename as basename3, join as join9 } from "node:path";
 
 // src/core/frontmatter.ts
 var FrontmatterError = class extends Error {
@@ -1656,10 +1656,18 @@ var loadPlan = (projectRoot, pluginRoot) => {
 };
 
 // src/atoms/markdown.ts
-import { readdirSync as readdirSync3, readFileSync as readFileSync8 } from "node:fs";
+import { existsSync as existsSync4, readdirSync as readdirSync3, readFileSync as readFileSync8 } from "node:fs";
+import { join as join6 } from "node:path";
 var listMarkdown = (dir) => {
   try {
     return readdirSync3(dir).filter((name) => name.endsWith(".md")).sort();
+  } catch {
+    return [];
+  }
+};
+var listSkillFolders = (pluginRoot) => {
+  try {
+    return readdirSync3(join6(pluginRoot, "skills")).filter((name) => existsSync4(join6(pluginRoot, "skills", name, "SKILL.md"))).sort();
   } catch {
     return [];
   }
@@ -1680,29 +1688,99 @@ var parseMarkdownFile = (text2) => {
   }
 };
 
-// src/atoms/skill-docs.ts
-import { readdirSync as readdirSync4 } from "node:fs";
-import { basename as basename2, join as join6 } from "node:path";
-var ROLES_DIR = "skills/jig/references/roles";
+// src/atoms/doc-refs.ts
+import { existsSync as existsSync5, readdirSync as readdirSync4 } from "node:fs";
+import { join as join7, posix } from "node:path";
 var FLOWS_DIR = "skills/jig/flows";
+var SHARED_FLOW = "mr";
+var SLASH = /(?<=^|[\s`(|"'>])\/(jig(?:[:-][a-z0-9-]+)*)(?![\w/.-])/gm;
+var LINK = /\]\(<?([^)\s>]+)>?(?:\s+"[^"]*")?\)/g;
+var BACKTICKED_PATH = /`((?:skills|references|scripts|agents)\/[^`\s]+)/g;
+var SKILL_RELATIVE = /^(?:references|scripts|agents)\//;
+var PLACEHOLDER = /[<>*{}[\]]/;
+var URL_SCHEME = /^[a-z][a-z0-9+.-]*:/i;
+var FLOW_LIST = /^Flows \(`skills\/jig\/flows\/`\): (.*)$/m;
+var listNested = (pluginRoot, dir) => {
+  try {
+    return readdirSync4(join7(pluginRoot, dir), { recursive: true, encoding: "utf8" }).filter((path) => path.endsWith(".md")).map((path) => `${dir}/${toSlash(path)}`);
+  } catch {
+    return [];
+  }
+};
+var exists = (pluginRoot, path) => existsSync5(join7(pluginRoot, path));
+var lineAt = (text2, index) => text2.slice(0, index).split("\n").length;
+var skillOf = (command) => {
+  const [plugin, skill] = command.split(":");
+  return skill ?? plugin ?? "";
+};
+var skillRoot = (file) => /^skills\/[^/]+/.exec(file)?.[0];
+var checkSlashCommands = ({ file, text: text2 }, skills) => [...text2.matchAll(SLASH)].filter((match) => !skills.has(skillOf(match[1] ?? ""))).map((match) => `${file}:${lineAt(text2, match.index)}: /${match[1]} names no skill in skills/`);
+var checkLinks = ({ file, text: text2 }, pluginRoot) => [...text2.matchAll(LINK)].flatMap((match) => {
+  const target = (match[1] ?? "").split("#")[0] ?? "";
+  if (target === "" || URL_SCHEME.test(target)) return [];
+  const path = posix.normalize(posix.join(posix.dirname(file), decodeURI(target)));
+  return exists(pluginRoot, path) ? [] : [`${file}:${lineAt(text2, match.index)}: link ${target} points at no file`];
+});
+var checkBacktickedPaths = ({ file, text: text2 }, pluginRoot) => [...text2.matchAll(BACKTICKED_PATH)].flatMap((match) => {
+  const path = match[1] ?? "";
+  if (PLACEHOLDER.test(path)) return [];
+  const root = SKILL_RELATIVE.test(path) ? skillRoot(file) : "";
+  if (root === void 0) return [];
+  const resolved = root === "" ? path : `${root}/${path}`;
+  return exists(pluginRoot, resolved) ? [] : [`${file}:${lineAt(text2, match.index)}: \`${path}\` points at no file`];
+});
+var checkFlowList = ({ file, text: text2 }, pluginRoot) => {
+  const match = file === "README.md" ? FLOW_LIST.exec(text2) : null;
+  if (match === null) return [];
+  const sentence = (match[1] ?? "").split(". ")[0] ?? "";
+  const listed = new Set([...sentence.matchAll(/`([^`]+)`/g)].map((name) => name[1] ?? ""));
+  const flows = listMarkdown(join7(pluginRoot, FLOWS_DIR)).map((name) => name.slice(0, -".md".length)).filter((name) => name !== SHARED_FLOW);
+  const line = lineAt(text2, match.index);
+  return [
+    ...flows.filter((name) => !listed.has(name)).map((name) => `${file}:${line}: flow ${name} is missing from the flow list`),
+    ...[...listed].filter((name) => !flows.includes(name)).map((name) => `${file}:${line}: flow ${name} does not exist in ${FLOWS_DIR}/`)
+  ];
+};
+var validateDocRefs = (pluginRoot) => {
+  const skills = new Set(listSkillFolders(pluginRoot));
+  const readme = exists(pluginRoot, "README.md") ? ["README.md"] : [];
+  const files = [...readme, ...listNested(pluginRoot, "docs"), ...listNested(pluginRoot, "skills")].sort();
+  return files.flatMap((file) => {
+    const doc = { file, text: readText2(join7(pluginRoot, file)).replace(/\r\n/g, "\n") };
+    return [
+      ...checkSlashCommands(doc, skills),
+      ...checkLinks(doc, pluginRoot),
+      ...checkBacktickedPaths(doc, pluginRoot),
+      ...checkFlowList(doc, pluginRoot)
+    ];
+  });
+};
+
+// src/atoms/skill-docs.ts
+import { readdirSync as readdirSync5 } from "node:fs";
+import { basename as basename2, join as join8 } from "node:path";
+var ROLES_DIR = "skills/jig/references/roles";
+var FLOWS_DIR2 = "skills/jig/flows";
 var ROLE_KEYS = /* @__PURE__ */ new Set(["name", "description", "metadata"]);
 var TIERS = ["deep", "standard", "fast"];
 var EFFORTS = ["low", "medium", "high"];
 var MAX_DESCRIPTION_LENGTH = 200;
+var SKILL_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+var MAX_SKILL_NAME_LENGTH = 64;
 var ROLE_MENTION = /\b[Rr]oles? `[^`]+`(?:(?:, |,? and |,? or )`[^`]+`)*/g;
 var BACKTICKED = /`([^`]+)`/g;
 var FLOW_MENTION = /\bflows\/([A-Za-z0-9_-]+)\.md/g;
-var lineAt = (text2, index) => text2.slice(0, index).split("\n").length;
+var lineAt2 = (text2, index) => text2.slice(0, index).split("\n").length;
 var findMentions = (file, text2) => {
   const roles = [...text2.matchAll(ROLE_MENTION)].flatMap(
-    (match) => [...match[0].matchAll(BACKTICKED)].map((name) => ({ name: name[1] ?? "", file, line: lineAt(text2, match.index) }))
+    (match) => [...match[0].matchAll(BACKTICKED)].map((name) => ({ name: name[1] ?? "", file, line: lineAt2(text2, match.index) }))
   );
-  const flows = [...text2.matchAll(FLOW_MENTION)].map((match) => ({ name: match[1] ?? "", file, line: lineAt(text2, match.index) }));
+  const flows = [...text2.matchAll(FLOW_MENTION)].map((match) => ({ name: match[1] ?? "", file, line: lineAt2(text2, match.index) }));
   return { roles, flows };
 };
 var listSkillMarkdown = (pluginRoot) => {
   try {
-    return readdirSync4(join6(pluginRoot, "skills"), { recursive: true, encoding: "utf8" }).filter((path) => path.endsWith(".md")).map((path) => `skills/${toSlash(path)}`).sort();
+    return readdirSync5(join8(pluginRoot, "skills"), { recursive: true, encoding: "utf8" }).filter((path) => path.endsWith(".md")).map((path) => `skills/${toSlash(path)}`).sort();
   } catch {
     return [];
   }
@@ -1715,9 +1793,9 @@ var checkDescription = (description) => {
   }
   return [];
 };
-var checkName = (name, fileName) => {
-  if (name === fileName) return [];
-  return typeof name === "string" && name !== "" ? [`name "${name}" does not match file name "${fileName}"`] : ["name is missing"];
+var checkName = (name, expected, source = "file name") => {
+  if (name === expected) return [];
+  return typeof name === "string" && name !== "" ? [`name "${name}" does not match ${source} "${expected}"`] : ["name is missing"];
 };
 var checkMetadata = (metadata) => {
   if (metadata === void 0 || typeof metadata === "string" || Array.isArray(metadata)) {
@@ -1730,7 +1808,7 @@ var checkMetadata = (metadata) => {
   return choices.filter(([key, allowed]) => !allowed.includes(metadata[key] ?? "")).map(([key, allowed]) => `metadata.${key} must be one of ${allowed.join(", ")}`);
 };
 var checkDoc = (pluginRoot, path, isRole) => {
-  const parsed = parseMarkdownFile(readText2(join6(pluginRoot, path)));
+  const parsed = parseMarkdownFile(readText2(join8(pluginRoot, path)));
   if (typeof parsed === "string") return [parsed];
   const { data } = parsed;
   const problems = [...checkName(data["name"], basename2(path, ".md")), ...checkDescription(data["description"])];
@@ -1738,10 +1816,18 @@ var checkDoc = (pluginRoot, path, isRole) => {
   const unknownKeys = Object.keys(data).filter((key) => !ROLE_KEYS.has(key));
   return [...unknownKeys.map((key) => `unknown frontmatter key "${key}"`), ...problems, ...checkMetadata(data["metadata"])];
 };
+var checkSkill = (pluginRoot, folder) => {
+  const parsed = parseMarkdownFile(readText2(join8(pluginRoot, "skills", folder, "SKILL.md")));
+  const problems = typeof parsed === "string" ? [parsed] : checkName(parsed.data["name"], folder, "folder name");
+  if (!SKILL_NAME.test(folder) || folder.length > MAX_SKILL_NAME_LENGTH) {
+    problems.push(`folder name is not lowercase words joined by hyphens, at most ${MAX_SKILL_NAME_LENGTH} characters`);
+  }
+  return problems.map((problem) => `skills/${folder}/SKILL.md: ${problem}`);
+};
 var validateSkillDocs = (pluginRoot) => {
-  const roles = listMarkdown(join6(pluginRoot, ROLES_DIR)).map((name) => basename2(name, ".md"));
-  const flows = new Set(listMarkdown(join6(pluginRoot, FLOWS_DIR)).map((name) => basename2(name, ".md")));
-  const mentions = listSkillMarkdown(pluginRoot).map((file) => findMentions(file, readText2(join6(pluginRoot, file)).replace(/\r\n/g, "\n")));
+  const roles = listMarkdown(join8(pluginRoot, ROLES_DIR)).map((name) => basename2(name, ".md"));
+  const flows = new Set(listMarkdown(join8(pluginRoot, FLOWS_DIR2)).map((name) => basename2(name, ".md")));
+  const mentions = listSkillMarkdown(pluginRoot).map((file) => findMentions(file, readText2(join8(pluginRoot, file)).replace(/\r\n/g, "\n")));
   const roleMentions = mentions.flatMap((found) => found.roles);
   const referenced = new Set(roleMentions.filter((mention) => !mention.file.startsWith(`${ROLES_DIR}/`)).map((mention) => mention.name));
   const roleErrors = roles.flatMap((name) => {
@@ -1753,15 +1839,16 @@ var validateSkillDocs = (pluginRoot) => {
     return problems.map((problem) => `${path}: ${problem}`);
   });
   const flowErrors = [...flows].flatMap((name) => {
-    const path = `${FLOWS_DIR}/${name}.md`;
+    const path = `${FLOWS_DIR2}/${name}.md`;
     return checkDoc(pluginRoot, path, false).map((problem) => `${path}: ${problem}`);
   });
   const roleNames = new Set(roles);
   const mentionErrors = [
     ...roleMentions.filter((mention) => !roleNames.has(mention.name)).map((mention) => `${mention.file}:${mention.line}: role \`${mention.name}\` does not exist in ${ROLES_DIR}/`),
-    ...mentions.flatMap((found) => found.flows).filter((mention) => !flows.has(mention.name)).map((mention) => `${mention.file}:${mention.line}: flows/${mention.name}.md does not exist in ${FLOWS_DIR}/`)
+    ...mentions.flatMap((found) => found.flows).filter((mention) => !flows.has(mention.name)).map((mention) => `${mention.file}:${mention.line}: flows/${mention.name}.md does not exist in ${FLOWS_DIR2}/`)
   ];
-  return [...roleErrors, ...flowErrors, ...mentionErrors];
+  const skillErrors = listSkillFolders(pluginRoot).flatMap((folder) => checkSkill(pluginRoot, folder));
+  return [...skillErrors, ...roleErrors, ...flowErrors, ...mentionErrors];
 };
 
 // src/atoms/atoms.ts
@@ -1774,11 +1861,11 @@ var MAX_ATOMS_PER_EVENT = 3;
 var MAX_SESSION_ATOMS = 10;
 var ATOMS_LINE = /^\s*Atoms:(.*)$/gm;
 var reachableNames = (pluginRoot) => {
-  const skillDir = join7(pluginRoot, "skills", "jig");
-  const flowsDir = join7(skillDir, "flows");
+  const skillDir = join9(pluginRoot, "skills", "jig");
+  const flowsDir = join9(skillDir, "flows");
   const texts = [
-    readText2(join7(skillDir, "SKILL.md")),
-    ...listMarkdown(flowsDir).map((name) => readText2(join7(flowsDir, name)))
+    readText2(join9(skillDir, "SKILL.md")),
+    ...listMarkdown(flowsDir).map((name) => readText2(join9(flowsDir, name)))
   ].map((text2) => text2.replace(/\r\n/g, "\n"));
   const names = /* @__PURE__ */ new Set();
   for (const text2 of texts) {
@@ -1851,11 +1938,11 @@ var checkAtom = (path, seen, reachable) => {
   return problems;
 };
 var validateAtoms = (pluginRoot) => {
-  const dir = join7(pluginRoot, "atoms");
+  const dir = join9(pluginRoot, "atoms");
   const reachable = reachableNames(pluginRoot);
   const seen = /* @__PURE__ */ new Set();
   return listMarkdown(dir).flatMap(
-    (name) => checkAtom(join7(dir, name), seen, reachable).map((problem) => `atoms/${name}: ${problem}`)
+    (name) => checkAtom(join9(dir, name), seen, reachable).map((problem) => `atoms/${name}: ${problem}`)
   );
 };
 var selectAtoms = (atoms, file, delivered) => {
@@ -1885,7 +1972,7 @@ var runBuild = (args) => {
     return 2;
   }
   const pluginRoot = resolvePluginRoot();
-  const errors = [...validateAtoms(pluginRoot), ...validateSkillDocs(pluginRoot)];
+  const errors = [...validateAtoms(pluginRoot), ...validateSkillDocs(pluginRoot), ...validateDocRefs(pluginRoot)];
   if (errors.length > 0) {
     process.stdout.write(`${errors.join("\n")}
 `);
@@ -1919,7 +2006,7 @@ var runAtom = (args) => {
 
 // src/dash/dash.ts
 import { mkdirSync as mkdirSync7, readFileSync as readFileSync10 } from "node:fs";
-import { dirname as dirname6, join as join8 } from "node:path";
+import { dirname as dirname6, join as join10 } from "node:path";
 
 // src/dash/template.html
 var template_default = "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n<title>jig run</title>\n<style>\nbody {\n  --paper: #faf9f5; --card: #fff; --sunk: #f0eee6;\n  --ink: #141413; --ink-2: #3d3d3a; --ink-3: #73726c; --line: rgba(31,30,29,.15); --line-2: rgba(31,30,29,.08);\n  --accent: #c6613f; --accent-soft: #f6e7df; --green: #2c7a39; --green-soft: #e2efdf;\n  --red: #b3261e; --red-soft: #f7dfdc; --blue: #2a69b8; --blue-soft: #dde8f5; --float: 0 2px 8px rgba(0,0,0,.08);\n  --sans: ui-sans-serif, system-ui, -apple-system, \"Segoe UI\", Roboto, sans-serif; --serif: ui-serif, Georgia, \"Times New Roman\", serif; --mono: ui-monospace, \"SF Mono\", Menlo, Consolas, monospace;\n}\n@media (prefers-color-scheme: dark) { body:not(.light) { color-scheme: dark;\n  --paper: #262624; --card: #30302e; --sunk: #1f1e1d;\n  --ink: #faf9f5; --ink-2: #c2c0b6; --ink-3: #9c9a92; --line: rgba(222,220,209,.15); --line-2: rgba(222,220,209,.08);\n  --accent: #d97757; --accent-soft: #46302a; --green: #6fb37a; --green-soft: #26372a;\n  --red: #e5776e; --red-soft: #432725; --blue: #7aa7e0; --blue-soft: #25313f; --float: 0 2px 8px rgba(0,0,0,.3);\n} }\nbody.dark { color-scheme: dark;\n  --paper: #262624; --card: #30302e; --sunk: #1f1e1d;\n  --ink: #faf9f5; --ink-2: #c2c0b6; --ink-3: #9c9a92; --line: rgba(222,220,209,.15); --line-2: rgba(222,220,209,.08);\n  --accent: #d97757; --accent-soft: #46302a; --green: #6fb37a; --green-soft: #26372a;\n  --red: #e5776e; --red-soft: #432725; --blue: #7aa7e0; --blue-soft: #25313f; --float: 0 2px 8px rgba(0,0,0,.3);\n}\n:where(*) { box-sizing: border-box; }\n[hidden] { display: none !important; }\nbody { margin: 0; min-height: 100vh; background: var(--paper); color: var(--ink); font: 430 16px/1.6 var(--sans); -webkit-text-size-adjust: 100%; overflow-x: clip; }\nh1, h2, p, ol { margin: 0; }\nol { padding: 0; list-style: none; }\nh1 { font: 500 26px/1.15 var(--serif); margin-bottom: 8px; text-wrap: balance; overflow-wrap: anywhere; }\nh2 { font: 500 22px/1.25 var(--serif); margin-bottom: 12px; display: flex; align-items: baseline; gap: 10px; }\na { color: var(--accent); text-underline-offset: 3px; }\nbutton { font: inherit; color: inherit; cursor: pointer; }\na:focus-visible, button:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }\ntime, .mono { font: 12px/1.5 var(--mono); color: var(--ink-3); font-variant-numeric: tabular-nums; }\n.pill { display: inline-block; font: 550 12px/1 var(--sans); padding: 4px 8px; border-radius: 99px; background: var(--sunk); color: var(--ink-2); border: 1px solid var(--line); white-space: nowrap; }\n.pill.accent { background: var(--accent-soft); color: var(--accent); border-color: transparent; }\n.pill.green { background: var(--green-soft); color: var(--green); border-color: transparent; }\n.pill.red { background: var(--red-soft); color: var(--red); border-color: transparent; }\n.pill.here { background: var(--accent); color: #fff; border-color: transparent; margin-left: 6px; vertical-align: 1px; }\n\n.page { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 40px; max-width: 1180px; margin: 0 auto; padding: 32px 24px 120px; }\n.rail { position: sticky; top: 24px; align-self: start; max-height: calc(100vh - 48px); overflow: auto; }\n.meta { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: center; margin-bottom: 12px; }\n.live { display: inline-flex; gap: 6px; align-items: center; }\n.big { font: 500 44px/1 var(--serif); margin: 6px 0 10px; }\n.big small { font: 430 16px/1 var(--sans); color: var(--ink-3); }\n.seg { display: flex; gap: 3px; margin-bottom: 8px; }\n.seg i { flex: 1; height: 6px; border-radius: 3px; background: var(--line); }\n.seg i.done { background: var(--green); } .seg i.active { background: var(--accent); } .seg i.blocked, .seg i.stale { background: var(--red); }\n.steps-toggle { display: none; border: 0; background: none; padding: 4px 0; font-size: 13px; color: var(--ink-3); }\n.dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; flex: none; border: 1.5px solid var(--ink-3); background: var(--paper); }\n.dot.done { background: var(--green); border-color: var(--green); }\n.dot.active { background: var(--accent); border-color: var(--accent); box-shadow: 0 0 0 4px var(--accent-soft); }\n.dot.blocked, .dot.stale { background: var(--red); border-color: var(--red); }\n.line { position: relative; margin-top: 12px; }\n.line::before { content: \"\"; position: absolute; left: 4px; top: 10px; bottom: 10px; width: 2px; background: var(--line); }\n.line li { position: relative; display: flex; gap: 12px; align-items: flex-start; padding: 5px 0; font-size: 14px; line-height: 1.45; }\n.line li .dot { margin-top: 5px; }\n.line li > div { min-width: 0; overflow-wrap: anywhere; }\n.line li.done > div { color: var(--ink-3); }\n.line li.blocked > div, .line li.stale > div { color: var(--red); }\n.line li.active > div { font-weight: 600; }\n.line small { display: block; font-size: 12px; font-weight: 430; color: var(--ink-3); }\n.line li.blocked small, .line li.stale small { color: var(--red); }\n\n.inbox { margin-bottom: 32px; }\n.ask { padding: 16px; background: var(--card); border: 1px solid var(--accent); border-radius: 12px; margin-bottom: 14px; }\n.ask .k { font-size: 12px; font-weight: 550; color: var(--ink-3); margin-bottom: 8px; display: flex; gap: 8px; flex-wrap: wrap; }\n.ask .k b { color: var(--accent); font-weight: 550; }\n.ask .q { font-weight: 600; margin-bottom: 10px; overflow-wrap: anywhere; }\n.ask .def { padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); font-size: 15px; line-height: 1.4; margin-bottom: 8px; }\n.ask .def small { display: block; font-size: 13px; color: var(--ink-2); margin-top: 2px; }\n.reply { display: block; width: 100%; min-height: 72px; font: 15px/1.5 var(--sans); padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); color: var(--ink); resize: vertical; }\n.reply:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: transparent; }\n\n.chips { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 18px; position: sticky; top: 0; z-index: 4; background: var(--paper); padding: 10px 0; border-bottom: 1px solid var(--line-2); }\n.chips button { font-size: 13px; font-weight: 550; line-height: 1; padding: 7px 11px; border-radius: 99px; border: 1px solid var(--line); background: var(--card); color: var(--ink-2); }\n.chips button[aria-pressed=\"true\"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }\n.feed[data-f=\"d\"] .ev:not(.d), .feed[data-f=\"r\"] .ev:not(.r), .feed[data-f=\"s\"] .ev:not(.s), .feed[data-f=\"a\"] .ev:not(.a) { display: none; }\n.ev { display: grid; grid-template-columns: 48px 26px minmax(0, 1fr); gap: 0 10px; position: relative; }\n.ev::before { content: \"\"; position: absolute; left: 70px; top: 0; bottom: 0; width: 1px; background: var(--line); }\n.ev > time { padding-top: 14px; text-align: right; }\n.ev .ico { width: 26px; height: 26px; margin-top: 12px; border-radius: 50%; display: grid; place-items: center; font: 600 12px/1 var(--mono); position: relative; }\n.ev.d .ico { background: var(--blue-soft); color: var(--blue); }\n.ev.r .ico { background: var(--green-soft); color: var(--green); }\n.ev.a .ico { background: var(--accent-soft); color: var(--accent); }\n.ev.s .ico { background: var(--red-soft); color: var(--red); }\n.item { padding: 12px 14px; background: var(--card); border: 1px solid var(--line); border-radius: 12px; margin: 6px 0; min-width: 0; }\n.item .top { display: flex; gap: 8px; align-items: center; margin-bottom: 4px; }\n.item .top:empty { display: none; }\n.item .top time { display: none; }\n.item p { font-size: 15px; overflow-wrap: anywhere; }\n.item.reverted p { text-decoration: line-through; color: var(--ink-3); }\n.item details summary { cursor: pointer; font-size: 13px; color: var(--ink-3); margin-top: 6px; }\n.item dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 2px 14px; margin: 8px 0 0; font-size: 14px; }\n.item dt { font-size: 12px; line-height: 1.9; color: var(--ink-3); } .item dd { margin: 0; color: var(--ink-2); overflow-wrap: anywhere; }\n.empty { color: var(--ink-3); font-size: 14px; }\n\n.bar { position: fixed; z-index: 10; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom)); display: flex; gap: 8px; align-items: center; }\n.theme { width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--line); background: var(--card); box-shadow: var(--float); color: var(--ink-2); }\n.copy { font-size: 14px; font-weight: 550; line-height: 1; padding: 13px 16px; border-radius: 99px; border: 0; background: var(--ink); color: var(--paper); box-shadow: var(--float); }\n.copy:disabled { background: var(--sunk); color: var(--ink-3); border: 1px solid var(--line); cursor: default; }\n\n@media (max-width: 900px) {\n  .page { grid-template-columns: minmax(0, 1fr); gap: 0; padding: 0 16px 110px; }\n  .rail { position: sticky; top: 0; z-index: 6; max-height: none; overflow: visible; background: var(--paper); padding: 14px 0 6px; border-bottom: 1px solid var(--line); }\n  h1 { font-size: 20px; margin-bottom: 4px; }\n  .meta { margin-bottom: 4px; }\n  .big { font: 600 15px/1.4 var(--sans); margin: 0; } .big small { font-size: 13px; }\n  .seg { margin: 6px 0 2px; }\n  .steps-toggle { display: block; }\n  .rail:not(.open) .line { display: none; }\n  .rail.open .line { max-height: 45vh; overflow: auto; }\n  .chips { position: static; }\n  .feed { padding-top: 16px; }\n  .ev { grid-template-columns: 40px 22px minmax(0, 1fr); gap: 0 8px; }\n  .ev::before { left: 58px; }\n  .ev .ico { width: 22px; height: 22px; font-size: 11px; }\n}\n@media (max-width: 480px) {\n  .ev { grid-template-columns: 22px minmax(0, 1fr); }\n  .ev > time { display: none; }\n  .ev::before { left: 11px; }\n  .item .top time { display: inline; }\n  .bar { left: 16px; }\n  .copy { flex: 1; }\n}\n</style>\n</head>\n<body>\n<div id=\"app\"></div>\n<script type=\"application/json\" id=\"run\">\n{\"v\":1,\"title\":\"\",\"lang\":\"en\",\"branch\":\"\",\"createdAt\":\"\",\"updatedAt\":\"\",\"steps\":[],\"decisions\":[],\"results\":[],\"asks\":[]}\n</script>\n<script>\nconst R = JSON.parse(document.getElementById('run').textContent);\nconst STALE_MS = 15 * 60e3;\nconst REFRESH_MS = 30e3;\nconst COPIED_MS = 2500;\nconst LABELS = {\n  en: {\n    locale: 'en-GB',\n    run: 'jig run',\n    branch: 'branch',\n    live: ago => `live, ${ago}`,\n    quiet: ago => `no news ${ago}`,\n    stepsDone: total => `/ ${total} steps done`,\n    stepsToggle: (stuck, current) => [stuck && `${stuck} stuck`, current && `now step ${current}`].filter(Boolean).join(', ') || 'Steps',\n    theme: 'Light or dark theme',\n    steps: 'Steps',\n    here: 'now here',\n    since: 'since',\n    waitsFor: 'waits for',\n    stale: (at, ago) => `no news since ${at}, ${ago}`,\n    waiting: 'Waiting for your answer',\n    ask: (i, total) => `Question ${i} of ${total}`,\n    asked: (n, at, ago) => `#${n} \xB7 asked at ${at}, ${ago}`,\n    fallback: 'The agent goes with this until you answer.',\n    answerLabel: n => `Answer to question #${n}`,\n    answerPlaceholder: 'Your own answer',\n    copy: 'Copy answers',\n    copied: n => `copied (${n})`,\n    copyFailed: 'copy failed',\n    answersFor: title => `Answers for run \"${title}\":`,\n    answerItem: (n, question) => `#${n} ${question}`,\n    journal: 'Journal',\n    all: 'All',\n    decisions: 'Decisions',\n    results: 'Results',\n    stuck: 'Stuck',\n    answered: 'Answers',\n    why: 'why',\n    evidence: 'evidence',\n    reverted: 'reverted',\n    kept: 'kept',\n    result: 'result',\n    answer: 'answer',\n    stepStuck: 'step stuck',\n    nothing: 'Nothing yet.',\n    justNow: 'just now',\n    minAgo: m => `${m} min ago`,\n    hoursAgo: (h, m) => `${h} h ${m} min ago`,\n    daysAgo: d => `${d} d ago`,\n  },\n  ru: {\n    locale: 'ru-RU',\n    run: '\u041F\u0440\u043E\u0433\u043E\u043D jig',\n    branch: '\u0432\u0435\u0442\u043A\u0430',\n    live: ago => `\u0436\u0438\u0432\u043E\u0439, ${ago}`,\n    quiet: ago => `\u043D\u0435\u0442 \u0432\u0435\u0441\u0442\u0435\u0439 ${ago}`,\n    stepsDone: total => `/ ${total} \u0448\u0430\u0433\u043E\u0432 \u0433\u043E\u0442\u043E\u0432\u043E`,\n    stepsToggle: (stuck, current) => [stuck && `${stuck} \u0441\u0442\u043E\u044F\u0442`, current && `\u0441\u0435\u0439\u0447\u0430\u0441 \u0448\u0430\u0433 ${current}`].filter(Boolean).join(', ') || '\u0428\u0430\u0433\u0438',\n    theme: '\u0421\u0432\u0435\u0442\u043B\u0430\u044F \u0438\u043B\u0438 \u0442\u0451\u043C\u043D\u0430\u044F \u0442\u0435\u043C\u0430',\n    steps: '\u0428\u0430\u0433\u0438',\n    here: '\u0441\u0435\u0439\u0447\u0430\u0441 \u0437\u0434\u0435\u0441\u044C',\n    since: '\u0438\u0434\u0451\u0442 \u0441',\n    waitsFor: '\u0436\u0434\u0451\u0442',\n    stale: (at, ago) => `\u043D\u0435\u0442 \u0432\u0435\u0441\u0442\u0435\u0439 \u0441 ${at}, ${ago}`,\n    waiting: '\u0416\u0434\u0443\u0442 \u0432\u0430\u0448\u0435\u0433\u043E \u043E\u0442\u0432\u0435\u0442\u0430',\n    ask: (i, total) => `\u0412\u043E\u043F\u0440\u043E\u0441 ${i} \u0438\u0437 ${total}`,\n    asked: (n, at, ago) => `\u2116${n} \xB7 \u0441\u043F\u0440\u043E\u0441\u0438\u043B \u0432 ${at}, ${ago}`,\n    fallback: '\u0410\u0433\u0435\u043D\u0442 \u0438\u0434\u0451\u0442 \u0441 \u044D\u0442\u0438\u043C \u0432\u0430\u0440\u0438\u0430\u043D\u0442\u043E\u043C, \u043F\u043E\u043A\u0430 \u043D\u0435\u0442 \u043E\u0442\u0432\u0435\u0442\u0430.',\n    answerLabel: n => `\u041E\u0442\u0432\u0435\u0442 \u043D\u0430 \u0432\u043E\u043F\u0440\u043E\u0441 \u2116${n}`,\n    answerPlaceholder: '\u0421\u0432\u043E\u0439 \u043E\u0442\u0432\u0435\u0442',\n    copy: '\u0421\u043A\u043E\u043F\u0438\u0440\u043E\u0432\u0430\u0442\u044C \u043E\u0442\u0432\u0435\u0442\u044B',\n    copied: n => `\u0441\u043A\u043E\u043F\u0438\u0440\u043E\u0432\u0430\u043D\u043E (${n})`,\n    copyFailed: '\u043D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u0441\u043A\u043E\u043F\u0438\u0440\u043E\u0432\u0430\u0442\u044C',\n    answersFor: title => `\u041E\u0442\u0432\u0435\u0442\u044B \u043F\u043E \u043F\u0440\u043E\u0433\u043E\u043D\u0443 \xAB${title}\xBB:`,\n    answerItem: (n, question) => `\u2116${n} ${question}`,\n    journal: '\u0416\u0443\u0440\u043D\u0430\u043B',\n    all: '\u0412\u0441\u0451',\n    decisions: '\u0420\u0435\u0448\u0435\u043D\u0438\u044F',\n    results: '\u0420\u0435\u0437\u0443\u043B\u044C\u0442\u0430\u0442\u044B',\n    stuck: '\u0421\u0442\u043E\u044F\u0442',\n    answered: '\u041E\u0442\u0432\u0435\u0442\u044B',\n    why: '\u043F\u043E\u0447\u0435\u043C\u0443',\n    evidence: '\u0434\u043E\u043A\u0430\u0437\u0430\u0442\u0435\u043B\u044C\u0441\u0442\u0432\u043E',\n    reverted: '\u043E\u0442\u0431\u0440\u043E\u0448\u0435\u043D\u043E',\n    kept: '\u043E\u0441\u0442\u0430\u0432\u043B\u0435\u043D\u043E',\n    result: '\u0440\u0435\u0437\u0443\u043B\u044C\u0442\u0430\u0442',\n    answer: '\u043E\u0442\u0432\u0435\u0442',\n    stepStuck: '\u0448\u0430\u0433 \u0441\u0442\u043E\u0438\u0442',\n    nothing: '\u041F\u043E\u043A\u0430 \u043F\u0443\u0441\u0442\u043E.',\n    justNow: '\u0442\u043E\u043B\u044C\u043A\u043E \u0447\u0442\u043E',\n    minAgo: m => `${m} \u043C\u0438\u043D \u043D\u0430\u0437\u0430\u0434`,\n    hoursAgo: (h, m) => `${h} \u0447 ${m} \u043C\u0438\u043D \u043D\u0430\u0437\u0430\u0434`,\n    daysAgo: d => `${d} \u0434\u043D \u043D\u0430\u0437\u0430\u0434`,\n  },\n};\nconst lang = Object.hasOwn(LABELS, R.lang) ? R.lang : 'en';\nconst L = LABELS[lang];\nconst esc = s => String(s ?? '').replace(/[&<>\"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;'}[c]));\nconst hm = t => {\n  const d = new Date(t);\n  return Number.isNaN(d.getTime()) ? '' : d.toLocaleString(L.locale, {hour: '2-digit', minute: '2-digit'});\n};\nconst ago = t => {\n  const m = Math.round((Date.now() - new Date(t)) / 60e3);\n  return m < 1 ? L.justNow : m < 60 ? L.minAgo(m) : m < 1440 ? L.hoursAgo(Math.floor(m / 60), m % 60) : L.daysAgo(Math.floor(m / 1440));\n};\nconst isQuiet = Date.now() - new Date(R.updatedAt) > STALE_MS;\nconst steps = R.steps.map(s => ({...s, stale: s.status === 'active' && isQuiet}));\nconst stuck = steps.filter(s => s.status === 'blocked' || s.stale);\nconst done = steps.filter(s => s.status === 'done').length;\nconst current = steps.find(s => s.status === 'active');\nconst openAsks = R.asks.filter(a => a.answer === undefined);\nconst answered = R.asks.filter(a => a.answer !== undefined);\nconst link = d => d.href ? `<a href=\"${esc(d.href)}\">${esc(d.title)}</a>` : esc(d.title);\nconst why = s => s.stale ? L.stale(hm(R.updatedAt), ago(R.updatedAt)) : `${L.waitsFor} ${esc(s.waitsFor)}`;\nconst newest = (items, key) => [...items].sort((a, b) => (b[key] || '').localeCompare(a[key] || '') || (b.n || 0) - (a.n || 0));\nconst stepClass = s => s.stale ? 'stale' : s.status;\n\nconst item = (at, tag, body, extraClass = '') => `<div class=\"item${extraClass}\"><div class=\"top\"><time>${hm(at)}</time>${tag}</div>${body}</div>`;\nconst decisionItem = d => {\n  const extra = [[L.why, d.why], [L.evidence, d.evidence]].filter(([, v]) => v);\n  const tag = d.result === 'reverted' ? `<span class=\"pill red\">${L.reverted}</span>` : d.result === 'kept' ? `<span class=\"pill green\">${L.kept}</span>` : '';\n  const more = extra.length ? `<details><summary>${extra.map(([k]) => k).join(' \xB7 ')}</summary><dl>${extra.map(([k, v]) => `<dt>${k}</dt><dd>${esc(v)}</dd>`).join('')}</dl></details>` : '';\n  return item(d.at, tag, `<p>${esc(d.text)}</p>${more}`, d.result === 'reverted' ? ' reverted' : '');\n};\nconst events = [\n  ...R.decisions.map(d => ({k: 'd', at: d.at, html: decisionItem(d)})),\n  ...R.results.map(r => ({k: 'r', at: r.at, html: item(r.at, `<span class=\"pill green\">${L.result}</span>`, `<p>${link(r)}</p>`)})),\n  ...answered.map(a => ({k: 'a', at: a.answeredAt, html: item(a.answeredAt, `<span class=\"pill\">${L.answer}</span>`, `<p>${esc(a.question)}</p><p class=\"mono\">\u2192 ${esc(a.answer)}</p>`)})),\n  ...stuck.map(s => ({k: 's', at: s.at, html: item(s.at, `<span class=\"pill red\">${L.stepStuck}</span>`, `<p>${s.n}. ${esc(s.title)}</p><p class=\"mono\">${why(s)}</p>`)})),\n];\nconst ICON = {d: '\u25C6', r: '\u2713', a: '?', s: '!'};\nconst FILTERS = [['all', L.all, events.length], ['d', L.decisions, R.decisions.length], ['r', L.results, R.results.length], ['s', L.stuck, stuck.length], ['a', L.answered, answered.length]];\nconst savedFilter = localStorage.getItem('jig-dash-filter');\nconst filter = FILTERS.some(([k, , count]) => k === savedFilter && count) ? savedFilter : 'all';\n\nconst askCard = (q, i) => `<section class=\"ask\" data-n=\"${q.n}\">\n  <div class=\"k\"><b>${L.ask(i + 1, openAsks.length)}</b><span>${L.asked(q.n, hm(q.askedAt), ago(q.askedAt))}</span></div>\n  <p class=\"q\">${esc(q.question)}</p>\n  <p class=\"def\">${esc(q.default)}<small>${L.fallback}</small></p>\n  <textarea class=\"reply\" rows=\"2\" placeholder=\"${L.answerPlaceholder}\" aria-label=\"${L.answerLabel(q.n)}\"></textarea></section>`;\nconst stepLine = s => `<li class=\"${stepClass(s)}\"><i class=\"dot ${stepClass(s)}\"></i><div>${s.n}. ${esc(s.title)}${s === current ? `<span class=\"pill here\">${L.here}</span>` : ''}\n  ${s.status === 'blocked' || s.stale ? `<small>${why(s)}</small>` : s === current ? `<small>${L.since} ${hm(s.at)}</small>` : ''}</div></li>`;\n\nfunction draftKey(q) {\n  return `jig-dash-answer:${location.pathname}:${q.n}:${q.askedAt}`;\n}\n\nfunction answersText(drafts) {\n  const items = openAsks\n    .map(q => ({q, answer: String(drafts[q.n] ?? '').trim()}))\n    .filter(item => item.answer !== '')\n    .sort((a, b) => a.q.n - b.q.n)\n    .map(({q, answer}) => `${L.answerItem(q.n, q.question)}\\n\u2192 ${answer}`);\n  return {count: items.length, text: items.length ? `${L.answersFor(R.title)}\\n${items.join('\\n\\n')}` : ''};\n}\n\nconst readDraft = q => {\n  try {\n    return localStorage.getItem(draftKey(q)) ?? '';\n  } catch {\n    return '';\n  }\n};\n\nconst drafts = Object.fromEntries(openAsks.map(q => [q.n, readDraft(q)]));\nlet hasUnsaved = false;\n\ndocument.documentElement.lang = lang;\nconst theme = localStorage.getItem('jig-dash-theme');\ndocument.body.classList.toggle('light', theme === 'light');\ndocument.body.classList.toggle('dark', theme === 'dark');\ndocument.title = R.title || L.run;\ndocument.getElementById('app').innerHTML = `<div class=\"page\">\n  <aside class=\"rail\">\n    <h1>${esc(R.title)}</h1>\n    <p class=\"meta mono\"><span>${L.branch} ${esc(R.branch)}</span><span class=\"live\"><i class=\"dot ${isQuiet ? 'blocked' : 'done'}\"></i>${isQuiet ? L.quiet(ago(R.updatedAt)) : L.live(ago(R.updatedAt))}</span></p>\n    <p class=\"big\">${done}<small> ${L.stepsDone(steps.length)}</small></p>\n    <div class=\"seg\">${steps.map(s => `<i class=\"${stepClass(s)}\" title=\"${s.n}. ${esc(s.title)}\"></i>`).join('')}</div>\n    <button class=\"steps-toggle\" type=\"button\" aria-expanded=\"false\">\u25B8 ${L.stepsToggle(stuck.length, current?.n)}</button>\n    <ol class=\"line\" aria-label=\"${L.steps}\">${steps.map(stepLine).join('')}</ol>\n  </aside>\n  <main class=\"feed\" data-f=\"${filter}\">\n    ${openAsks.length ? `<section class=\"inbox\"><h2>${L.waiting} <span class=\"pill accent\">${openAsks.length}</span></h2>${openAsks.map(askCard).join('')}</section>` : ''}\n    <h2>${L.journal}</h2>\n    ${events.length ? `<div class=\"chips\" role=\"toolbar\">${FILTERS.filter(([, , count]) => count).map(([k, label, count]) => `<button type=\"button\" data-f=\"${k}\" aria-pressed=\"${filter === k}\">${label} \xB7 ${count}</button>`).join('')}</div>\n    ${newest(events, 'at').map(e => `<div class=\"ev ${e.k}\"><time>${hm(e.at)}</time><span class=\"ico\">${ICON[e.k]}</span>${e.html}</div>`).join('')}` : `<p class=\"empty\">${L.nothing}</p>`}\n  </main>\n</div>\n<div class=\"bar\"><button class=\"theme\" type=\"button\" aria-label=\"${L.theme}\">&#9680;</button>${openAsks.length ? `<button class=\"copy\" type=\"button\">${L.copy}</button>` : ''}</div>`;\n\nconst copyButton = document.querySelector('.copy');\nconst refreshCopy = () => {\n  if (copyButton) copyButton.disabled = answersText(drafts).count === 0;\n};\n\nconst writeClipboard = async text => {\n  try {\n    await navigator.clipboard.writeText(text);\n    return true;\n  } catch {\n    const area = document.createElement('textarea');\n    area.value = text;\n    area.setAttribute('readonly', '');\n    area.style.position = 'fixed';\n    area.style.opacity = '0';\n    document.body.append(area);\n    area.select();\n    const isCopied = document.execCommand('copy');\n    area.remove();\n    return isCopied;\n  }\n};\n\nfor (const box of document.querySelectorAll('.ask')) {\n  const q = openAsks.find(a => String(a.n) === box.dataset.n);\n  const reply = box.querySelector('.reply');\n  reply.value = drafts[q.n];\n  reply.addEventListener('input', () => {\n    drafts[q.n] = reply.value;\n    try {\n      if (reply.value.trim() === '') localStorage.removeItem(draftKey(q));\n      else localStorage.setItem(draftKey(q), reply.value);\n      hasUnsaved = false;\n    } catch {\n      hasUnsaved = true;\n    }\n    refreshCopy();\n  });\n}\n\nfor (const chip of document.querySelectorAll('.chips button')) {\n  chip.addEventListener('click', () => {\n    document.querySelector('.feed').dataset.f = chip.dataset.f;\n    for (const other of document.querySelectorAll('.chips button')) other.setAttribute('aria-pressed', String(other === chip));\n    localStorage.setItem('jig-dash-filter', chip.dataset.f);\n  });\n}\n\ndocument.querySelector('.steps-toggle').addEventListener('click', event => {\n  const isOpen = document.querySelector('.rail').classList.toggle('open');\n  event.currentTarget.setAttribute('aria-expanded', String(isOpen));\n  event.currentTarget.textContent = `${isOpen ? '\u25BE' : '\u25B8'} ${L.stepsToggle(stuck.length, current?.n)}`;\n});\n\nrefreshCopy();\ncopyButton?.addEventListener('click', async () => {\n  const {text, count} = answersText(drafts);\n  if (count === 0) return;\n  const isCopied = await writeClipboard(text);\n  copyButton.textContent = isCopied ? L.copied(count) : L.copyFailed;\n  setTimeout(() => { copyButton.textContent = L.copy; }, COPIED_MS);\n});\n\ndocument.querySelector('.theme').addEventListener('click', () => {\n  const isDark = getComputedStyle(document.body).colorScheme === 'dark';\n  const next = isDark ? 'light' : 'dark';\n  document.body.classList.toggle('light', next === 'light');\n  document.body.classList.toggle('dark', next === 'dark');\n  localStorage.setItem('jig-dash-theme', next);\n});\n\nsetInterval(() => {\n  const isTyping = document.activeElement?.classList?.contains('reply');\n  if (!isTyping && !hasUnsaved) location.reload();\n}, REFRESH_MS);\n</script>\n</body>\n</html>\n";
@@ -1950,8 +2037,8 @@ var branchDirName = (projectRoot) => {
 };
 var runLocation = (projectRoot) => {
   const branch = branchDirName(projectRoot);
-  const dir = join8(jigPaths(projectRoot).runs, branch);
-  return { branch, data: join8(dir, "run.json"), page: join8(dir, "index.html") };
+  const dir = join10(jigPaths(projectRoot).runs, branch);
+  return { branch, data: join10(dir, "run.json"), page: join10(dir, "index.html") };
 };
 var isRun = (value) => {
   if (typeof value !== "object" || value === null) return false;
@@ -2167,12 +2254,12 @@ var runDash = (args) => {
 };
 
 // src/doctor.ts
-import { existsSync as existsSync5, readFileSync as readFileSync13 } from "node:fs";
-import { join as join11 } from "node:path";
+import { existsSync as existsSync7, readFileSync as readFileSync13 } from "node:fs";
+import { join as join13 } from "node:path";
 
 // src/core/journal.ts
-import { appendFileSync, mkdirSync as mkdirSync8, readdirSync as readdirSync5, readFileSync as readFileSync11, rmSync as rmSync3, statSync as statSync5 } from "node:fs";
-import { join as join9 } from "node:path";
+import { appendFileSync, mkdirSync as mkdirSync8, readdirSync as readdirSync6, readFileSync as readFileSync11, rmSync as rmSync3, statSync as statSync5 } from "node:fs";
+import { join as join11 } from "node:path";
 var JOURNAL_MAX_AGE_DAYS = 30;
 var JOURNAL_MAX_BYTES = 50 * 1024 * 1024;
 var JOURNAL_MESSAGE_MAX = 300;
@@ -2186,7 +2273,7 @@ var appendJournal = (projectRoot, entry) => {
   }
   const dir = jigPaths(projectRoot).journal;
   mkdirSync8(dir, { recursive: true });
-  appendFileSync(join9(dir, `${record.ts.slice(0, 10)}.jsonl`), `${JSON.stringify(record)}
+  appendFileSync(join11(dir, `${record.ts.slice(0, 10)}.jsonl`), `${JSON.stringify(record)}
 `);
   return record;
 };
@@ -2194,7 +2281,7 @@ var listJournalFiles = (projectRoot) => {
   const dir = jigPaths(projectRoot).journal;
   let names;
   try {
-    names = readdirSync5(dir);
+    names = readdirSync6(dir);
   } catch {
     return [];
   }
@@ -2202,7 +2289,7 @@ var listJournalFiles = (projectRoot) => {
   for (const name of names.sort()) {
     const day = JOURNAL_FILE.exec(name)?.[1];
     if (day === void 0) continue;
-    const path = join9(dir, name);
+    const path = join11(dir, name);
     files.push({ name, path, day, size: statSync5(path).size });
   }
   return files;
@@ -2254,9 +2341,9 @@ var readJournal = (projectRoot, sinceMs = 0) => {
 };
 
 // src/tiers/tiers.ts
-import { existsSync as existsSync4, readFileSync as readFileSync12 } from "node:fs";
+import { existsSync as existsSync6, readFileSync as readFileSync12 } from "node:fs";
 import { homedir } from "node:os";
-import { join as join10 } from "node:path";
+import { join as join12 } from "node:path";
 import { parseArgs } from "node:util";
 var TIERS2 = ["deep", "standard", "fast"];
 var UNKNOWN_AGENT = "unknown";
@@ -2340,9 +2427,9 @@ var parseUserConfig = (text2) => {
 };
 var loadUserConfig = (env = process.env) => {
   const override = env[USER_CONFIG_ENV];
-  const path = override || join10(homedir(), ".jig", "config.jsonc");
+  const path = override || join12(homedir(), ".jig", "config.jsonc");
   const label = override || DEFAULT_LABEL;
-  if (!existsSync4(path)) return { path, label, config: emptyUserConfig() };
+  if (!existsSync6(path)) return { path, label, config: emptyUserConfig() };
   return { path, label, ...parseUserConfig(readFileSync12(path, "utf8")) };
 };
 var detectAgent = (flag, env = process.env) => {
@@ -2409,7 +2496,7 @@ var checkNode = () => {
 };
 var checkConfig = (projectRoot) => {
   const path = jigPaths(projectRoot).config;
-  if (!existsSync5(path)) return ok(`config: ${path} absent, defaults apply`);
+  if (!existsSync7(path)) return ok(`config: ${path} absent, defaults apply`);
   const { error } = loadConfig(projectRoot);
   return error === void 0 ? ok(`config: ${path} valid`) : fail2(`config: ${path} invalid: ${error}`);
 };
@@ -2423,7 +2510,7 @@ var checkTiers = () => {
   const pairs = tierEntries(tiers).map(([tier, models]) => `${tier}=${models.join(",")}`);
   return ok(`tiers: ${agent} ${pairs.join(" ")} (${source})`);
 };
-var firstExisting = (projectRoot, names) => names.map((name) => join11(projectRoot, name)).find((path) => existsSync5(path));
+var firstExisting = (projectRoot, names) => names.map((name) => join13(projectRoot, name)).find((path) => existsSync7(path));
 var checkTool = (projectRoot, tools, spec) => {
   const found = tools[spec.key];
   if (found !== void 0) {
@@ -2439,7 +2526,7 @@ var checkTool = (projectRoot, tools, spec) => {
 var checkRuntime = (tools) => CHECKS.map((check) => ok(`check ${check.name}: ${isCheckActive(check, tools) ? `active, proves ${Object.keys(check.hints).join(", ")}` : "not used"}`));
 var checkGitignore = (projectRoot) => {
   const path = jigPaths(projectRoot).gitignore;
-  return existsSync5(path) ? ok(`gitignore: ${path}`) : warn(`gitignore: ${path} missing, jig creates it on first run`);
+  return existsSync7(path) ? ok(`gitignore: ${path}`) : warn(`gitignore: ${path} missing, jig creates it on first run`);
 };
 var readDenyList = (path) => {
   const settings = parseJsonc(readFileSync13(path, "utf8"));
@@ -2447,9 +2534,9 @@ var readDenyList = (path) => {
   return Array.isArray(deny) ? deny.filter((entry) => typeof entry === "string") : [];
 };
 var checkDeny = (projectRoot) => {
-  const path = join11(projectRoot, ".claude", "settings.json");
+  const path = join13(projectRoot, ".claude", "settings.json");
   let deny = [];
-  if (existsSync5(path)) {
+  if (existsSync7(path)) {
     try {
       deny = readDenyList(path);
     } catch (error) {
@@ -2484,7 +2571,7 @@ var checkJournal = (projectRoot) => {
   return bytes > JOURNAL_MAX_BYTES ? warn(`${text2}, above ${JOURNAL_MAX_BYTES / BYTES_PER_MB} MB`) : ok(text2);
 };
 var checkLock = (path) => {
-  if (!existsSync5(path)) return ok(`lock: ${path} free`);
+  if (!existsSync7(path)) return ok(`lock: ${path} free`);
   if (isLockAbandoned(path)) return warn(`lock: ${path} abandoned, remove it`);
   const holder = readLock(path);
   return ok(`lock: ${path} held${holder === void 0 ? "" : ` by pid ${holder.pid}`}`);
@@ -2515,7 +2602,7 @@ var runDoctor = (args) => {
     ...checkAtomPaths(projectRoot, pluginRoot),
     checkJournal(projectRoot),
     checkLock(paths.heavyLock),
-    checkLock(join11(paths.cache, "slot.lock"))
+    checkLock(join13(paths.cache, "slot.lock"))
   ];
   process.stdout.write(`${checks.map(formatCheck).join("\n")}
 `);
@@ -2528,7 +2615,7 @@ import { createHash as createHash4 } from "node:crypto";
 // src/core/snapshot.ts
 import { createHash as createHash3 } from "node:crypto";
 import { statSync as statSync6 } from "node:fs";
-import { join as join12 } from "node:path";
+import { join as join14 } from "node:path";
 var stampOf = (absolutePath) => {
   try {
     const stat = statSync6(absolutePath);
@@ -2542,12 +2629,12 @@ var changedFiles = (projectRoot) => {
   const top = gitToplevel(projectRoot);
   if (top === void 0) return [];
   const entries = gitStatus(top) ?? [];
-  return entries.map((entry) => toProjectPath(projectRoot, join12(top, entry.path))).filter(isInsideProject);
+  return entries.map((entry) => toProjectPath(projectRoot, join14(top, entry.path))).filter(isInsideProject);
 };
 var takeSnapshot = (projectRoot) => {
   const snapshot = {};
   for (const path of changedFiles(projectRoot)) {
-    const stamp = stampOf(join12(projectRoot, path));
+    const stamp = stampOf(join14(projectRoot, path));
     if (stamp !== void 0) {
       snapshot[path] = stamp;
     }
@@ -2562,14 +2649,14 @@ var diffFingerprint = (stamps) => {
 var turnDiff = (projectRoot, snapshot, edits) => {
   const stamps = {};
   for (const { path } of edits) {
-    const stamp = stampOf(join12(projectRoot, path));
+    const stamp = stampOf(join14(projectRoot, path));
     if (stamp !== void 0) {
       stamps[path] = stamp;
     }
   }
   for (const path of changedFiles(projectRoot)) {
     if (Object.hasOwn(stamps, path)) continue;
-    const stamp = stampOf(join12(projectRoot, path));
+    const stamp = stampOf(join14(projectRoot, path));
     if (stamp === void 0 || isSameStamp(snapshot[path], stamp)) continue;
     stamps[path] = stamp;
   }
@@ -2862,7 +2949,7 @@ var runCheck = (args) => {
 
 // src/hook/dispatch.ts
 import { readFileSync as readFileSync15 } from "node:fs";
-import { join as join15 } from "node:path";
+import { join as join17 } from "node:path";
 
 // src/adapters/claude.ts
 import { readFileSync as readFileSync14 } from "node:fs";
@@ -3022,7 +3109,7 @@ var resolveAdapter = (name = DEFAULT_AGENT) => {
 };
 
 // src/rules/comments.ts
-import { join as join13 } from "node:path";
+import { join as join15 } from "node:path";
 
 // src/rules/lexer.ts
 var SCRIPT_EXTENSION = /\.(?:ts|tsx|mts|cts|js|jsx|mjs|cjs)$/i;
@@ -3323,7 +3410,7 @@ var skipShebang = (source) => {
   return newline === -1 ? source.length : newline;
 };
 var lexJs = (source) => new JsLexer(source, source.length, skipShebang(source), 1).run();
-var lineAt2 = (source, offset) => countNewlines(source, 0, offset) + 1;
+var lineAt3 = (source, offset) => countNewlines(source, 0, offset) + 1;
 var isInside = (offset, ranges) => ranges.some((range) => offset >= range.start && offset < range.end);
 var lexVue = (source) => {
   const comments = SFC_TAG.test(source) ? [] : lexJs(source);
@@ -3331,7 +3418,7 @@ var lexVue = (source) => {
   for (const match of source.matchAll(SCRIPT_BLOCK)) {
     const start = match.index + (match[1]?.length ?? 0);
     const end = start + (match[2]?.length ?? 0);
-    comments.push(...new JsLexer(source, end, start, lineAt2(source, start)).run());
+    comments.push(...new JsLexer(source, end, start, lineAt3(source, start)).run());
     skipped.push({ start: match.index, end: match.index + match[0].length });
   }
   for (const match of source.matchAll(STYLE_BLOCK)) {
@@ -3340,7 +3427,7 @@ var lexVue = (source) => {
   for (const match of source.matchAll(HTML_COMMENT)) {
     if (isInside(match.index, skipped)) continue;
     const end = match.index + match[0].length;
-    comments.push({ text: match[0], line: lineAt2(source, match.index), kind: "block", start: match.index, end, isExportMember: false });
+    comments.push({ text: match[0], line: lineAt3(source, match.index), kind: "block", start: match.index, end, isExportMember: false });
   }
   return comments.sort((left, right) => left.end - right.end);
 };
@@ -3477,7 +3564,7 @@ var checkComments = (file, edits, config) => {
   if (severity === void 0) return [];
   if (lexComments(file, "") === void 0) return [];
   const existing = countExisting(file, edits);
-  const atom = toSlash(join13(resolvePluginRoot(), "atoms", "comments.md"));
+  const atom = toSlash(join15(resolvePluginRoot(), "atoms", "comments.md"));
   const findings = [];
   for (const edit of edits) {
     for (const { comment, line, source } of addedComments(file, edit)) {
@@ -3497,7 +3584,7 @@ var checkComments = (file, edits, config) => {
 
 // src/rules/no-verify.ts
 import { createHash as createHash5 } from "node:crypto";
-import { join as join14 } from "node:path";
+import { join as join16 } from "node:path";
 
 // src/rules/shell.ts
 var SEGMENT_BREAKS = /* @__PURE__ */ new Set([";", "&", "|", "\n", "(", ")"]);
@@ -3689,7 +3776,7 @@ var consumeAllowance = (projectRoot, sessionId, now) => {
   writeState(projectRoot, state);
   return true;
 };
-var jigCommand = () => toSlash(join14(resolvePluginRoot(), "bin", "jig.mjs"));
+var jigCommand = () => toSlash(join16(resolvePluginRoot(), "bin", "jig.mjs"));
 var checkNoVerify = (command, ctx) => {
   const severity = activeSeverity(ctx.config, RULE3);
   if (severity === void 0) return void 0;
@@ -3764,7 +3851,7 @@ ${hook.stderr}`, projectRoot, new Set(gitLsFiles(projectRoot)));
 };
 
 // src/rules/protected.ts
-import { isAbsolute as isAbsolute4, posix } from "node:path";
+import { isAbsolute as isAbsolute4, posix as posix2 } from "node:path";
 var RULE4 = "jig/protected-paths";
 var PROTECTED_GLOBS = [
   ".jig/config.jsonc",
@@ -3843,7 +3930,7 @@ var pathSuffixes = (token) => {
 };
 var protectedSuffix = (target) => pathSuffixes(target).find((suffix) => isProtected(suffix));
 var insideProject = (path) => {
-  const normalized = posix.normalize(toSlash(path));
+  const normalized = posix2.normalize(toSlash(path));
   const isOutside = normalized === ".." || normalized.startsWith("../") || isAbsolute4(normalized);
   return isOutside ? void 0 : normalized.replace(/^\.\//, "");
 };
@@ -4015,7 +4102,7 @@ var readCurrent2 = (path) => {
 };
 var locateEdits = (event, projectRoot) => {
   if (event.wholeFile !== void 0) return event.edits.map((edit) => ({ ...edit, line: 1, prefix: "" }));
-  const current = readCurrent2(join15(projectRoot, event.file));
+  const current = readCurrent2(join17(projectRoot, event.file));
   return event.edits.map((edit) => {
     const at = edit.before === "" ? -1 : current.indexOf(edit.before);
     if (at === -1) return edit;
@@ -4194,7 +4281,7 @@ var runHook = async (args) => {
 
 // src/loop/loop.ts
 import { mkdirSync as mkdirSync9, writeFileSync as writeFileSync5 } from "node:fs";
-import { join as join16 } from "node:path";
+import { join as join18 } from "node:path";
 var DEFAULT_DAYS = 7;
 var DAY_MS2 = 24 * 60 * 60 * 1e3;
 var MIN_TURNS = 2;
@@ -4290,9 +4377,9 @@ var runLoop = (args) => {
   const to = /* @__PURE__ */ new Date();
   const from = new Date(to.getTime() - days * DAY_MS2);
   const records = readJournal(projectRoot, from.getTime());
-  const dir = join16(ensureJigDir(projectRoot).runs, "_loop", to.toISOString().slice(0, 10));
+  const dir = join18(ensureJigDir(projectRoot).runs, "_loop", to.toISOString().slice(0, 10));
   mkdirSync9(dir, { recursive: true });
-  const path = join16(dir, "candidates.md");
+  const path = join18(dir, "candidates.md");
   writeFileSync5(path, formatCandidates(records, from, to, days));
   process.stdout.write(`${path}
 `);
@@ -4301,8 +4388,8 @@ var runLoop = (args) => {
 
 // src/slot/slot.ts
 import { spawnSync as spawnSync2 } from "node:child_process";
-import { cpSync, existsSync as existsSync6, mkdirSync as mkdirSync10, readdirSync as readdirSync6, readFileSync as readFileSync16, rmSync as rmSync4, writeFileSync as writeFileSync6 } from "node:fs";
-import { basename as basename4, dirname as dirname7, isAbsolute as isAbsolute5, join as join17, relative as relative4, resolve as resolve7 } from "node:path";
+import { cpSync, existsSync as existsSync8, mkdirSync as mkdirSync10, readdirSync as readdirSync7, readFileSync as readFileSync16, rmSync as rmSync4, writeFileSync as writeFileSync6 } from "node:fs";
+import { basename as basename4, dirname as dirname7, isAbsolute as isAbsolute5, join as join19, relative as relative4, resolve as resolve7 } from "node:path";
 import { parseArgs as parseArgs2 } from "node:util";
 var SLOT_LOCK = "slot.lock";
 var AGENT_VIEW_CONFIG2 = "agent-view.config.json";
@@ -4408,7 +4495,7 @@ var loadContext = () => {
 var formatDuplicates = (duplicates) => [...duplicates].map(([slot, group]) => `s${slot}: ${group.map((worktree) => toSlash(worktree.path)).join(", ")}`).join("; ");
 var isTracked = (dir, file) => git(["ls-files", "--error-unmatch", "--", file], dir).ok;
 var writeLocalFile = (dir, file, content) => {
-  const path = join17(dir, file);
+  const path = join19(dir, file);
   mkdirSync10(dirname7(path), { recursive: true });
   writeFileSync6(path, content);
   if (isTracked(dir, file)) {
@@ -4422,10 +4509,10 @@ var insideDir = (dir, file) => {
   return path;
 };
 var copyFromMain = (mainRoot, dir, copyFiles) => {
-  const rootEnvFiles = readdirSync6(mainRoot, { withFileTypes: true }).filter((entry) => entry.isFile() && ENV_FILE.test(entry.name)).map((entry) => entry.name);
+  const rootEnvFiles = readdirSync7(mainRoot, { withFileTypes: true }).filter((entry) => entry.isFile() && ENV_FILE.test(entry.name)).map((entry) => entry.name);
   for (const file of /* @__PURE__ */ new Set([...rootEnvFiles, ...copyFiles])) {
-    const source = join17(mainRoot, file);
-    if (!existsSync6(source)) {
+    const source = join19(mainRoot, file);
+    if (!existsSync8(source)) {
       process.stderr.write(`jig: copyFiles ${file} is missing in ${toSlash(mainRoot)}
 `);
       continue;
@@ -4436,19 +4523,19 @@ var copyFromMain = (mainRoot, dir, copyFiles) => {
 var writePorts = (dir, slots, slot) => {
   for (const [key, port] of Object.entries(slots.ports ?? {})) {
     const path = insideDir(dir, port.target);
-    const text2 = existsSync6(path) ? readFileSync16(path, "utf8") : "";
+    const text2 = existsSync8(path) ? readFileSync16(path, "utf8") : "";
     writeLocalFile(dir, port.target, setEnvValue(text2, key, String(port.base + slot * port.step)));
   }
 };
 var readJsonObject = (path) => {
-  if (!existsSync6(path)) return {};
+  if (!existsSync8(path)) return {};
   const value = parseJsonc(readFileSync16(path, "utf8"));
   const isObject3 = typeof value === "object" && value !== null && !Array.isArray(value);
   return isObject3 ? value : {};
 };
 var writeAgentView = (mainRoot, dir, slots, cdpPort) => {
-  const own = join17(dir, AGENT_VIEW_CONFIG2);
-  const base = readJsonObject(existsSync6(own) ? own : join17(mainRoot, AGENT_VIEW_CONFIG2));
+  const own = join19(dir, AGENT_VIEW_CONFIG2);
+  const base = readJsonObject(existsSync8(own) ? own : join19(mainRoot, AGENT_VIEW_CONFIG2));
   writeLocalFile(dir, AGENT_VIEW_CONFIG2, `${JSON.stringify(agentViewConfig(base, slots, cdpPort), null, 2)}
 `);
 };
@@ -4458,7 +4545,7 @@ var worktreeAddArgs = (cwd, dir, branch) => {
   return branchExists(cwd, branch) ? ["worktree", "add", dir, branch] : ["worktree", "add", dir, "-b", branch];
 };
 var reserveSlot = async (context, slots, options) => {
-  const lock = await acquireLock(join17(ensureJigDir(context.mainRoot).cache, SLOT_LOCK));
+  const lock = await acquireLock(join19(ensureJigDir(context.mainRoot).cache, SLOT_LOCK));
   if (lock === void 0) return fail3("slot new is running elsewhere, retry", 1);
   try {
     git(["worktree", "prune"], context.projectRoot);

@@ -5,6 +5,7 @@ import { matchGlob } from '../core/glob'
 import { ensureJigDir, resolvePluginRoot, resolveProjectRoot, toSlash } from '../core/paths'
 import { buildPlan, readAtomIndex, writePlan, type PlanAtom } from '../core/plan'
 import { listMarkdown, parseMarkdownFile, readText } from './markdown'
+import { validateDocRefs } from './doc-refs'
 import { validateSkillDocs } from './skill-docs'
 
 type Command = (args: string[]) => number | Promise<number>
@@ -146,7 +147,7 @@ export const runBuild: Command = (args) => {
     return 2
   }
   const pluginRoot = resolvePluginRoot()
-  const errors = [...validateAtoms(pluginRoot), ...validateSkillDocs(pluginRoot)]
+  const errors = [...validateAtoms(pluginRoot), ...validateSkillDocs(pluginRoot), ...validateDocRefs(pluginRoot)]
   if (errors.length > 0) {
     process.stdout.write(`${errors.join('\n')}\n`)
     return 1
