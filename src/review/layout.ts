@@ -290,7 +290,7 @@ export interface JudgeModel {
 }
 
 export const judgeModels = (finderModels: readonly string[], verifyModels: readonly string[]): JudgeModel[] =>
-  [...new Set(finderModels)].flatMap((finderModel) => {
+  [...new Set(finderModels)].flatMap((finderModel): JudgeModel[] => {
     const other = verifyModels.find((model) => model !== finderModel)
     const first = verifyModels[0]
     if (other !== undefined) return [{ finderModel, judgeModel: other, same: false }]
