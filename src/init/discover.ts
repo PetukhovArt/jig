@@ -4,6 +4,7 @@ import { CATALOG, catalogMarkers, type CatalogEntry } from '../catalog'
 import type { JigConfig, ToolSetting } from '../core/config'
 import { git } from '../core/git'
 import { resolveBin } from '../core/proc'
+import { detectTypeCheck, type TypeCheckDetection } from './typecheck'
 
 export type FoundStatus = 'ready' | 'needs-setup'
 
@@ -19,6 +20,7 @@ export interface Found {
 }
 
 export interface Discovery {
+  typeCheck: TypeCheckDetection
   found: Found[]
   packages: string[]
   packageFiles: string[]
@@ -98,7 +100,7 @@ export const discover = (projectRoot: string): Discovery => {
   const packageFiles = files.filter((file) => posix.basename(file) === 'package.json')
   const declared = new Set(packageFiles.flatMap((file) => readDependencies(join(projectRoot, file))))
   const found = CATALOG.map((entry) => inspect(projectRoot, entry, files, declared)).filter((item): item is Found => item !== undefined)
-  return { found, packages: [...declared].sort(), packageFiles }
+  return { found, packages: [...declared].sort(), packageFiles, typeCheck: detectTypeCheck(projectRoot, files) }
 }
 
 const settingsOf = (config: Pick<JigConfig, 'tools' | 'proofs'>, kind: CatalogEntry['kind']): Readonly<Record<string, ToolSetting>> =>

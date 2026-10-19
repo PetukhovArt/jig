@@ -36,6 +36,7 @@ found:
   agent-view   ready; markers agent-view.config.json; binary C:\Program Files\nodejs\node.exe C:\Users\me\AppData\Roaming\npm\node_modules\@petukhovart\agent-view\dist\cli\index.js
 not found: oxlint, stratum
 eslint-plugin-boundaries: absent
+type check: no type-check script in package.json, jig runs tsc
 
 ask the user (code cannot know):
   - App run command (slots.dev) and install command (slots.install), if the project runs an app.
@@ -50,6 +51,8 @@ proposal for .jig/config.jsonc:
   "agent-view": {}
 }
 ```
+
+Type checking is the project's job when it declares one: a root `package.json` script whose command runs `ts-decl-check` (it takes a file list) makes `jig init` propose `"tsc": false` and a check `{ "name": "types", "files": [<the project's .ts/.tsx/.mts/.cts/.vue globs>], "on": "stop", "run": "<the script's command> {files}" }`. A script named like `typecheck` that takes no file list (`vue-tsc --noEmit`) or needs a shell (`&&`, `|`) is reported and not proposed; jig's `tsc` stays.
 
 ## Install
 

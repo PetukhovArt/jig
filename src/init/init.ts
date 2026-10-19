@@ -5,6 +5,7 @@ import { parseJsonc } from '../core/jsonc'
 import { jigPaths, resolveProjectRoot } from '../core/paths'
 import { configDrift, resolveTools } from '../core/plan'
 import { discover, isListed, type Discovery, type Found } from './discover'
+import { typesCheck, TYPES_CHECK_NAME, type TypeCheckDetection } from './typecheck'
 
 type Command = (args: string[]) => number | Promise<number>
 
@@ -50,7 +51,29 @@ export const buildProposal = (base: Json, discovery: Discovery, config: Pick<Loa
       proposal[found.name] = proposedSetting(found)
     }
   }
+  return withTypesCheck(proposal, discovery, config)
+}
+
+const withTypesCheck = (proposal: Json, discovery: Discovery, config: Pick<LoadedConfig, 'tools' | 'proofs'>): Json => {
+  const check = typesCheck(discovery.typeCheck)
+  const command = discovery.typeCheck.script?.command
+  if (check === undefined || command === undefined) return proposal
+  if (!isListed(config, { name: 'tsc', kind: 'tool' })) proposal['tsc'] = false
+  const checks = Array.isArray(proposal['checks']) ? proposal['checks'] : []
+  const isCovered = checks.some(
+    (entry: unknown) => isObject(entry) && (entry['name'] === TYPES_CHECK_NAME || (typeof entry['run'] === 'string' && entry['run'].startsWith(command))),
+  )
+  if (!isCovered) proposal['checks'] = [...checks, check]
   return proposal
+}
+
+const typeCheckLine = (detection: TypeCheckDetection): string => {
+  const { script } = detection
+  if (script === undefined) return 'type check: no type-check script in package.json, jig runs tsc'
+  const named = `script "${script.script}" (${script.command})`
+  if (!script.takesFiles) return `type check: ${named} is not proposed as a check: ${script.reason ?? 'it takes no file list'}`
+  if (detection.globs.length === 0) return `type check: ${named} takes files, but the project has no .ts, .tsx or .vue files`
+  return `type check: ${named} takes files: proposed as check "${TYPES_CHECK_NAME}" with "tsc": false`
 }
 
 const questionsFor = (discovery: Discovery, boundaries: boolean): string[] => {
@@ -66,6 +89,12 @@ const questionsFor = (discovery: Discovery, boundaries: boolean): string[] => {
   const stratumState = stratum === undefined ? 'not installed' : stratum.status === 'ready' ? 'configured' : 'installed, no stratum.config.jsonc'
   const port = boundaries ? ` ${BOUNDARIES_PLUGIN} is present: port its rules to stratum, then "eslint": { "ignoreRules": ["${BOUNDARIES_IGNORE}"] }.` : ''
   questions.push(`stratum for module layers (${stratumState}): needed? Setup: ${setupOf('stratum')}.${port}`)
+  const typeCheck = discovery.typeCheck.script
+  if (typeCheck?.takesFiles === true && !typeCheck.command.includes('--unchecked-ok')) {
+    questions.push(
+      `ts-decl-check exits 2 for a file no tsconfig covers, and check "${TYPES_CHECK_NAME}" then fails: add --unchecked-ok to script "${typeCheck.script}" if such files are fine.`,
+    )
+  }
   return questions
 }
 
@@ -101,6 +130,7 @@ export const formatInitReport = (report: InitReport): string => {
     ...report.discovery.found.map(foundLine),
     ...(missing.length > 0 ? [`not found: ${missing.join(', ')}`] : []),
     `${BOUNDARIES_PLUGIN}: ${report.boundaries ? 'declared in package.json' : 'absent'}`,
+    typeCheckLine(report.discovery.typeCheck),
   ]
   if (report.update) {
     lines.push('', 'drift:', ...(report.drift.length > 0 ? report.drift.map((reason) => `  ${reason}`) : ['  none']))

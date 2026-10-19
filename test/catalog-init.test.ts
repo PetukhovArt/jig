@@ -10,7 +10,7 @@ import { configDrift, configDriftLine, resolveTools } from '../src/core/plan'
 import { doctorChecks } from '../src/doctor'
 import { checkArgv, runCustomCheck } from '../src/gates/custom'
 import { discover } from '../src/init/discover'
-import { buildInitReport, SCHEMA_URL } from '../src/init/init'
+import { buildInitReport, formatInitReport, SCHEMA_URL } from '../src/init/init'
 import { groupByMarker, nearestMarker } from '../src/tools/tool'
 
 let root: string
@@ -170,6 +170,48 @@ describe('discovery and drift', () => {
       tsc: { command: 'vue-tsc' },
     })
     expect(update.drift).toContain('found tsc, not in config')
+  })
+})
+
+describe('jig init: the project type-check script', () => {
+  const manifest = (scripts: Record<string, string>): void =>
+    write('package.json', JSON.stringify({ scripts, devDependencies: { typescript: '5' } }))
+
+  beforeEach(() => {
+    write('tsconfig.json', '{}')
+    write('src/a.ts', '')
+    write('src/view.vue', '')
+    write('src/env.d.ts', '')
+  })
+
+  it('proposes "tsc": false and a stop check running the ts-decl-check script on the typed files', () => {
+    manifest({ lint: 'eslint .', 'check:types': 'node tools/ts-decl-check.mjs --unchecked-ok' })
+    const report = buildInitReport(root, false)
+    const check = { name: 'types', files: ['**/*.ts', '**/*.vue'], on: 'stop', run: 'node tools/ts-decl-check.mjs --unchecked-ok {files}' }
+    expect(report.proposal).toEqual({ $schema: SCHEMA_URL, tsc: false, checks: [check] })
+    expect(validateConfig(report.proposal).errors).toEqual([])
+    expect(checkArgv(root, check, ['src/a.ts']).slice(-3)).toEqual(['tools/ts-decl-check.mjs', '--unchecked-ok', 'src/a.ts'])
+    expect(report.questions.join('\n')).not.toMatch(/--unchecked-ok/)
+    manifest({ typecheck: 'ts-decl-check' })
+    expect(buildInitReport(root, false).questions.join('\n')).toMatch(/add --unchecked-ok to script "typecheck"/)
+  })
+
+  it('reports, never proposes, a type-check script that takes no file list or needs a shell', () => {
+    manifest({ typecheck: 'vue-tsc --noEmit' })
+    const plain = buildInitReport(root, false)
+    expect(plain.proposal['tsc']).toEqual({})
+    expect(plain.proposal['checks']).toBeUndefined()
+    expect(formatInitReport(plain)).toContain('type check: script "typecheck" (vue-tsc --noEmit) is not proposed as a check: it takes no file list')
+    manifest({ typecheck: 'node ts-decl-check.mjs && echo ok' })
+    expect(buildInitReport(root, false).discovery.typeCheck.script).toMatchObject({ takesFiles: false, reason: expect.stringMatching(/shell/) })
+  })
+
+  it('keeps a configured tsc and an existing types check on --update', () => {
+    manifest({ typecheck: 'node ts-decl-check.mjs' })
+    write('.jig/config.jsonc', '{ "tsc": {}, "checks": [{ "name": "types", "files": "**/*.ts", "on": "edit", "run": "x {files}" }] }')
+    const update = buildInitReport(root, true)
+    expect(update.proposal['tsc']).toEqual({})
+    expect(update.proposal['checks']).toEqual([{ name: 'types', files: '**/*.ts', on: 'edit', run: 'x {files}' }])
   })
 })
 

@@ -16,6 +16,7 @@ Read `<root>/atoms/questions.md` before the first question and follow it. Ask in
 ## Procedure
 
 1. Discover. Run `init` (or `init --update` when `.jig/config.jsonc` exists or the argument says so). It prints what the catalog found (marker configs, packages, binaries), the drift against the current config, the questions code cannot answer, and a proposed config. It writes nothing.
+   Its `type check:` line names the project's type-check script; when it takes files, the proposal already holds `"tsc": false` and the `types` check: keep them, the project owns type checking and jig only calls its command.
 2. Read the repo for the rest: `package.json` scripts, the README, CI files, workspace layout. A fact found there is not a question: the dev and install commands usually are in the scripts.
 3. Ask what is left, one question block per choice, each with a recommendation:
    - the command that runs the app (`slots.dev`) and installs packages (`slots.install`), when the repo did not say;
