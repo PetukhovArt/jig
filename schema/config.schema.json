@@ -14,7 +14,7 @@
       "properties": {
         "jig/comments": { "$ref": "#/$defs/severity" },
         "jig/tests": { "$ref": "#/$defs/severity" },
-        "jig/todos": { "$ref": "#/$defs/severity", "description": "End of turn: block once while the agent's todo list has an item neither completed nor starting with skip: or n/a:" }
+        "jig/todos": { "$ref": "#/$defs/severity", "description": "End of turn: block once while the agent's todo list has an item neither completed nor starting with skip: or n/a:, or a /jig turn has no todo list" }
       }
     },
     "oxlint": { "$ref": "#/$defs/tool" },

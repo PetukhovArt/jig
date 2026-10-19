@@ -1,0 +1,21 @@
+{
+  "name": "user-prompt-submit",
+  "input": {
+    "session_id": "s1",
+    "transcript_path": "/tmp/t.jsonl",
+    "cwd": "${PROJECT}",
+    "permission_mode": "default",
+    "prompt_id": "p1",
+    "hook_event_name": "UserPromptSubmit",
+    "prompt": "/jig:jig Add a status filter\n"
+  },
+  "expected": {
+    "base": {
+      "sessionId": "s1"
+    },
+    "event": {
+      "kind": "prompt",
+      "command": "jig:jig"
+    }
+  }
+}

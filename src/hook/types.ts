@@ -7,7 +7,7 @@ export interface EditPair {
 
 export type JigEvent =
   | { kind: 'session-start'; source: SessionSource }
-  | { kind: 'prompt' }
+  | { kind: 'prompt'; command?: string }
   | { kind: 'pre-edit'; file: string; edits: EditPair[]; wholeFile?: string }
   | { kind: 'post-edit'; file: string }
   | { kind: 'subagent-start'; agentId: string; agentType: string; prompt?: string }

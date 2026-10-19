@@ -191,7 +191,7 @@ export const readTodos = (raw: string, env: NodeJS.ProcessEnv = process.env): re
     if (stored !== undefined && stored.length > 0) return stored
     const transcriptPath = text(input, 'transcript_path')
     const transcript = transcriptPath === undefined ? undefined : readTail(transcriptPath, TRANSCRIPT_TAIL_BYTES)
-    return transcript === undefined ? undefined : replayTranscript(transcript)
+    return (transcript === undefined ? undefined : replayTranscript(transcript)) ?? []
   } catch {
     return undefined
   }

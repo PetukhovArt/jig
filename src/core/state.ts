@@ -33,6 +33,7 @@ export interface SessionState {
   edits: EditRecord[]
   stop: StopState
   todos?: TodoGateState
+  flowTurn?: number
 }
 
 export const MAIN_AGENT = 'main'

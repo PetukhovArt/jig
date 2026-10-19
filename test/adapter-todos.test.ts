@@ -59,8 +59,8 @@ describe('claude todos from the transcript', () => {
     expect(todosOf(join(FIXTURES, 'todowrite.jsonl'))).toEqual(TODO_WRITE_LIST)
   })
 
-  it('is undefined without any todo tool call', () => {
-    expect(todosOf(writeTranscript('plain.jsonl', '{"type":"user","message":{"content":"hi"}}\nnot json\n'))).toBeUndefined()
+  it('is an empty list without any todo tool call', () => {
+    expect(todosOf(writeTranscript('plain.jsonl', '{"type":"user","message":{"content":"hi"}}\nnot json\n'))).toEqual([])
   })
 
   it('reads a native or a forward-slash path with spaces', () => {
@@ -83,11 +83,15 @@ describe('claude todos from the transcript', () => {
     expect(todosOf(path)).toEqual([{ text: 'late step', status: 'pending' }])
   })
 
-  it('is undefined for a missing transcript, a folder or bad hook input', () => {
-    expect(todosOf(join(dir, 'missing.jsonl'))).toBeUndefined()
-    expect(todosOf(dir)).toBeUndefined()
-    expect(readTodos(hookInput({}), env())).toBeUndefined()
+  it('is an empty list for a missing transcript or a folder, as with --no-session-persistence', () => {
+    expect(todosOf(join(dir, 'missing.jsonl'))).toEqual([])
+    expect(todosOf(dir)).toEqual([])
+    expect(readTodos(hookInput({}), env())).toEqual([])
+  })
+
+  it('is undefined for hook input that is not a JSON object', () => {
     expect(readTodos('not json', env())).toBeUndefined()
+    expect(readTodos('[]', env())).toBeUndefined()
   })
 })
 
@@ -112,6 +116,6 @@ describe('claude todos from the task store', () => {
 
   it('does not leave the tasks folder for an unsafe session id', () => {
     writeTask('escape', '1.json', JSON.stringify({ id: '1', subject: 'outside', status: 'pending' }))
-    expect(readTodos(hookInput({ session_id: '../tasks/escape' }), env())).toBeUndefined()
+    expect(readTodos(hookInput({ session_id: '../tasks/escape' }), env())).toEqual([])
   })
 })

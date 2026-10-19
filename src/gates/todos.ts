@@ -9,6 +9,12 @@ export const TODO_TEXT_LIMIT = 120
 export const MAX_TODO_BLOCKS_PER_TURN = 3
 
 const CLOSED_PREFIX = /^\s*(?:skip|n\/a)\s*:/i
+const NO_LIST = 'no todo list'
+const CLOSE_HINT = 'Finish each, or rewrite its text as `skip: <reason>` and mark it completed, then stop.'
+const NO_LIST_REASON = [
+  `${TODO_RULE}: this /jig task has no todo list.`,
+  'Put each numbered step of the flow into your todo tool as its own item. Do each step, or rewrite its text as `skip: <reason>` and mark it completed, then stop.',
+].join('\n')
 
 export interface TodoVerdict {
   outcome: Outcome
@@ -37,35 +43,52 @@ export const todoReason = (open: readonly TodoItem[]): string => {
     `${TODO_RULE}: ${open.length} todo item(s) still open:`,
     ...shown,
     ...(hidden > 0 ? [`- … and ${hidden} more`] : []),
-    'Finish each, or rewrite its text as `skip: <reason>` and mark it completed, then stop.',
+    CLOSE_HINT,
   ].join('\n')
 }
 
-const passNote = (kind: 'gate-unresolved' | 'gate-giveup', open: readonly TodoItem[]): TodoVerdict => ({
+interface Gap {
+  fingerprint: string
+  reason: string
+  summary: string
+}
+
+const gapOf = (todos: readonly TodoItem[], isFlowTurn: boolean): Gap | undefined => {
+  if (todos.length === 0) return isFlowTurn ? { fingerprint: NO_LIST, reason: NO_LIST_REASON, summary: NO_LIST } : undefined
+  const open = openTodos(todos)
+  if (open.length === 0) return undefined
+  return {
+    fingerprint: fingerprintOf(open),
+    reason: todoReason(open),
+    summary: `${open.length} todo item(s) left open: ${open.map((todo) => clip(todo.text)).join('; ')}`,
+  }
+}
+
+const passNote = (kind: 'gate-unresolved' | 'gate-giveup', gap: Gap): TodoVerdict => ({
   outcome: { type: 'none' },
-  notes: [{ kind, tool: 'jig', rule: TODO_RULE, message: `${open.length} todo item(s) left open: ${open.map((todo) => clip(todo.text)).join('; ')}` }],
+  notes: [{ kind, tool: 'jig', rule: TODO_RULE, message: gap.summary }],
 })
 
 export const todoGate = (todos: readonly TodoItem[] | undefined, state: SessionState, isOn: () => boolean): TodoVerdict => {
   if (todos === undefined) return PASS
-  const open = openTodos(todos)
-  if (open.length === 0 || !isOn()) return PASS
-  const fingerprint = fingerprintOf(open)
+  const gap = gapOf(todos, state.flowTurn === state.turn)
+  if (gap === undefined || !isOn()) return PASS
+  const { fingerprint } = gap
   const prior = state.todos
-  if (prior?.accepted === fingerprint) return PASS
+  if (prior?.accepted === fingerprint && fingerprint !== NO_LIST) return PASS
   const isSameTurn = prior !== undefined && prior.turn === state.turn
   if (isSameTurn && prior.fingerprint === fingerprint) {
     state.todos = { ...prior, accepted: fingerprint }
-    return passNote('gate-unresolved', open)
+    return passNote('gate-unresolved', gap)
   }
   const blocks = isSameTurn ? prior.blocks + 1 : 1
   if (blocks > MAX_TODO_BLOCKS_PER_TURN) {
     state.todos = { turn: state.turn, fingerprint, blocks, accepted: fingerprint }
-    return passNote('gate-giveup', open)
+    return passNote('gate-giveup', gap)
   }
   state.todos = { turn: state.turn, fingerprint, blocks, ...(prior?.accepted === undefined ? {} : { accepted: prior.accepted }) }
   return {
-    outcome: { type: 'block', reason: todoReason(open) },
-    notes: [{ kind: 'gate-block', tool: 'jig', rule: TODO_RULE, message: `${open.length} open todo item(s)` }],
+    outcome: { type: 'block', reason: gap.reason },
+    notes: [{ kind: 'gate-block', tool: 'jig', rule: TODO_RULE, message: gap.summary }],
   }
 }

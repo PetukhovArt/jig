@@ -103,6 +103,19 @@ describe('stop gate: open todo items', () => {
     expect((await stop([...FLOW, { text: '6. New step', status: 'pending' }])).type).toBe('block')
   })
 
+  it('blocks a /jig turn that has no todo list once, and never a plain turn', async () => {
+    expect(await stop([])).toEqual({ type: 'none' })
+    await dispatch({ kind: 'prompt', command: 'jig' }, base, pluginRoot)
+    const first = await stop([])
+    expect(first.type === 'block' && first.reason.split('\n')[0]).toBe('jig/todos: this /jig task has no todo list.')
+    expect(await stop([], true)).toEqual({ type: 'none' })
+    await prompt()
+    expect(await stop([])).toEqual({ type: 'none' })
+    await dispatch({ kind: 'prompt', command: 'jig:jig' }, base, pluginRoot)
+    expect((await stop([])).type).toBe('block')
+    expect(await stop(undefined)).toEqual({ type: 'none' })
+  })
+
   it('passes with the rule off', async () => {
     write('.jig/config.jsonc', '{ "rules": { "jig/todos": "off" } }\n')
     expect(await stop(FLOW)).toEqual({ type: 'none' })

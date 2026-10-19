@@ -100,11 +100,16 @@ const sessionStart = (event: EventOf<'session-start'>, ctx: HookContext): Outcom
   return contextOf(parts)
 }
 
-const prompt = (ctx: HookContext): Outcome => {
+const FLOW_COMMANDS: ReadonlySet<string> = new Set(['jig', 'jig:jig'])
+
+const prompt = (event: EventOf<'prompt'>, ctx: HookContext): Outcome => {
   const state = openSession(ctx)
   resetSnapshot(state, takeSnapshot(ctx.projectRoot))
   state.turn += 1
   ctx.turn = state.turn
+  if (event.command !== undefined && FLOW_COMMANDS.has(event.command)) {
+    state.flowTurn = state.turn
+  }
   writeState(ctx.projectRoot, state)
   return NONE
 }
@@ -202,7 +207,7 @@ const route = (event: JigEvent, ctx: HookContext): Outcome | Promise<Outcome> =>
     case 'session-start':
       return sessionStart(event, ctx)
     case 'prompt':
-      return prompt(ctx)
+      return prompt(event, ctx)
     case 'pre-edit':
       return preEdit(event, ctx)
     case 'post-edit':
