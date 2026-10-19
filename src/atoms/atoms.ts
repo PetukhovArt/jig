@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { basename, join } from 'node:path'
 import { parseFrontmatter, type FrontmatterValue } from '../core/frontmatter'
 import { matchGlob } from '../core/glob'
@@ -18,13 +18,19 @@ const MAX_ATOMS_PER_EVENT = 3
 const MAX_SESSION_ATOMS = 10
 const ATOMS_LINE = /^\s*Atoms:(.*)$/gm
 
+const skillMarkdown = (pluginRoot: string): string[] => {
+  const skillsDir = join(pluginRoot, 'skills')
+  try {
+    return readdirSync(skillsDir, { recursive: true, encoding: 'utf8' })
+      .filter((path) => path.endsWith('.md'))
+      .map((path) => join(skillsDir, path))
+  } catch {
+    return []
+  }
+}
+
 const reachableNames = (pluginRoot: string): Set<string> => {
-  const skillDir = join(pluginRoot, 'skills', 'jig')
-  const flowsDir = join(skillDir, 'flows')
-  const texts = [
-    readText(join(skillDir, 'SKILL.md')),
-    ...listMarkdown(flowsDir).map((name) => readText(join(flowsDir, name))),
-  ].map((text) => text.replace(/\r\n/g, '\n'))
+  const texts = skillMarkdown(pluginRoot).map((path) => readText(path).replace(/\r\n/g, '\n'))
   const names = new Set<string>()
   for (const text of texts) {
     for (const match of text.matchAll(/atom `([^`]+)`/g)) {
@@ -97,7 +103,7 @@ const checkAtom = (path: string, seen: Set<string>, reachable: Set<string>): str
   }
   const name = typeof data['name'] === 'string' ? data['name'] : fileName
   if (!hasPaths && !reachable.has(name)) {
-    problems.push(`atom is unreachable: name it as atom \`${name}\` or in an "Atoms:" line of skills/jig/SKILL.md or a flow, or add paths`)
+    problems.push(`atom is unreachable: name it as atom \`${name}\` or in an "Atoms:" line of a skill file under skills/, or add paths`)
   }
   return problems
 }
