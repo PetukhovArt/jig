@@ -1,6 +1,8 @@
 ---
 name: dead-code
 description: "Apply when deleting code believed unused, or reviewing a diff that leaves an export, file or branch nothing reaches. Code is dead only when every reachability signal agrees."
+metadata:
+  group: Code
 ---
 # Dead code
 

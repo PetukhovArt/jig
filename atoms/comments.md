@@ -1,6 +1,8 @@
 ---
 name: comments
 description: "Apply when you add, keep or review a code comment. The code is the source of truth: a new comment is allowed only if it is a license header, a TODO with a ticket id, JSDoc that says more than the signature of a public API, a constraint forced by external code with a link, or a tool directive."
+metadata:
+  group: Code
 ---
 # Comments
 

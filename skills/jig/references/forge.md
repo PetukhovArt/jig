@@ -5,7 +5,7 @@
 `git remote get-url origin`:
 - contains `gitlab` → `glab`;
 - contains `github.com` → `gh`;
-- anything else: `dash ask "Which forge CLI does this repo use?" "glab"` and continue with the answer.
+- anything else: ask the user in your reply which forge CLI the repository uses, recommending `glab`.
 
 Run every command from inside the repository: both CLIs take the host and project from its `origin`. Bodies go through a temp file (`mktemp`), never inline `-f body=`: quoting breaks the text. Remove the file once the call succeeds.
 
@@ -27,11 +27,15 @@ Run every command from inside the repository: both CLIs take the host and projec
 | Resolve a thread | `glab api --method PUT projects/:fullpath/merge_requests/<iid>/discussions/<discussion-id> -f resolved=true` | `gh api graphql -f query='mutation { resolveReviewThread(input: {threadId: "<thread-node-id>"}) { thread { isResolved } } }'` (thread ids: `reviewThreads` of the pull request) |
 | Post or update a general note | POST or PUT `projects/:fullpath/merge_requests/<iid>/notes[/<note-id>]` with `--input <payload.json>` | `gh api --method POST repos/{owner}/{repo}/issues/<n>/comments --input <payload.json>`; update: `--method PATCH repos/{owner}/{repo}/issues/comments/<id>` |
 | Update a note | `glab api --method PUT projects/:fullpath/merge_requests/<iid>/notes/<note-id> -H "Content-Type: application/json" --input <payload.json>` | `gh api --method PATCH repos/{owner}/{repo}/pulls/comments/<id> --input <payload.json>` |
+| Change the target branch | `glab mr update <iid> --target-branch <t>` | `gh pr edit <n> --base <t>` |
+| Merge (only on the user's command) | `glab mr merge <iid> --yes` | `gh pr merge <n> --squash` |
+| Read back after a merge | `glab mr view <iid> --output json` (`state`, `target_branch`) | `gh pr view <n> --json state,mergedAt,baseRefName` |
 | CI status | `glab ci status` (current branch), `glab ci view <pipeline-id>` (job tree) | `gh pr checks <n>` |
 | Log of a failed job | `glab ci trace <job-id>` | `gh run view <run-id> --log-failed` |
 
 ## Notes
 
+- A merge command can report success when a merge queue only queued the request, and an armed auto-merge is not a merge: read the request back.
 - The create commands without `--no-editor --yes` (`glab`) wait in an editor.
 - Before replacing a description, read the current one: a human may have edited it by hand.
 - `glab api` with `--input` needs `-H "Content-Type: application/json"`: without it GitLab answers HTTP 415.

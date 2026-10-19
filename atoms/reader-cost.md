@@ -1,6 +1,8 @@
 ---
 name: reader-cost
 description: "Apply when shaping or reviewing code that is hard to trace. Count the layers between a question and its answer and the state a reader must hold; collapse one-caller wrappers and shrink mutable scope."
+metadata:
+  group: Review
 ---
 # Reader cost
 

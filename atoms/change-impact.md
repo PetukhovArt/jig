@@ -1,6 +1,8 @@
 ---
 name: change-impact
 description: "Apply before you change code other code depends on. Find what the change could break outside the diff, name the one fact the change is safe because of, and prove that fact as far as the risk demands."
+metadata:
+  group: Proof
 ---
 # Change impact
 

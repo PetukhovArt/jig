@@ -1,6 +1,8 @@
 ---
 name: do-less
 description: "Apply when sizing a change, adding an option or abstraction, or sequencing an addition. Bias toward deletion and the smallest change that solves the problem; remove dead weight first, then build on the simpler base."
+metadata:
+  group: Design
 ---
 # Do less
 

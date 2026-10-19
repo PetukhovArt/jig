@@ -1,6 +1,8 @@
 ---
 name: effects
 description: "Apply when writing or reviewing reactive code (Vue, React, Solid, signals, stores). Derive state instead of syncing it with effects; an effect is for talking to the outside world, not for wiring one piece of state to another."
+metadata:
+  group: Code
 ---
 # Effects
 

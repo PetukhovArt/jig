@@ -1,6 +1,8 @@
 ---
 name: module-depth
 description: "Apply before you write code that crosses a function boundary: a new or changed signature, exported type or module surface. Design a deep module: a small interface over much hidden behavior, a seam only where behavior varies, the caller's usage first, two shapes compared by depth."
+metadata:
+  group: Design
 ---
 # Module depth
 

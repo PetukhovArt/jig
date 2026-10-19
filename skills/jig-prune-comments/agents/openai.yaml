@@ -1,0 +1,5 @@
+interface:
+  display_name: "jig-prune-comments"
+  short_description: "Remove code comments the comments rule does not allow"
+policy:
+  allow_implicit_invocation: false

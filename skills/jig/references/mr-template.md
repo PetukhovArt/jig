@@ -58,7 +58,9 @@ flowchart TD
 ## Verification
 
 - {The commands you ran and their output, verbatim or trimmed to the lines that prove the point.}
-- {The act scenarios replayed, by name.}
+- {The use cases replayed, by name, with the screenshots of the key screens.}
+- **Bug-bash:** {bugs found and fixed, what could not be tested and why} | {"UI not touched"}.
+- **Verification level:** {"full" when `jig pre-mr` passed | the `jig skip-verify` level and its reason}.
 - **Before:** {the screenshot, output or test run that failed}
   **After:** {the same, passing}
 

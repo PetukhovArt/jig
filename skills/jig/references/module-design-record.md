@@ -42,4 +42,4 @@ The page that ships with the sketch. One page, plain headings, no boilerplate. R
 {Path of the sketch files (types, signatures, `not implemented` bodies) and the base candidate's location.}
 ````
 
-The summary for `dash decision` and the merge request: the chosen shape in one line, the strongest losing shape and why it lost, the sketch path.
+The summary for the reply and the merge request: the chosen shape in one line, the strongest losing shape and why it lost, the sketch path.

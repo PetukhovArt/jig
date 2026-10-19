@@ -6,7 +6,7 @@ description: "change structure, keep behavior, prove equivalence."
 
 **You own the contract. The structure changes. The behavior does not.**
 
-Atoms: reader-cost, do-less, one-way, dead-code, automate-repeats, patterns, domain-model, effects, change-impact, small-steps, prove-shippable.
+Atoms: reader-cost, smells, do-less, one-way, dead-code, automate-repeats, patterns, domain-model, effects, change-impact, small-steps, prove-shippable.
 
 1. Pin the behavior: an existing test, a characterization test, or an act replay that passes now.
 2. Name the missing structure: what makes the code hard to change (atoms reader-cost, domain-model, patterns).

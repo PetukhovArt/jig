@@ -1,7 +1,8 @@
 ---
 name: docs
 description: "Apply when writing, editing or reviewing a Markdown document (README, docs, ADR, glossary). A document earns its place by saying what the code cannot; every claim in it must match the code today."
-paths: ["**/*.md"]
+metadata:
+  group: Code
 ---
 # Docs
 

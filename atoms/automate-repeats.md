@@ -1,6 +1,8 @@
 ---
 name: automate-repeats
 description: "Apply to any non-trivial edit, migration, analysis or check. Build the tool that does it or proves it (codemod, script, generator) instead of working by hand; the tool is the artifact a reviewer can rerun."
+metadata:
+  group: Process
 ---
 # Automate repeats
 

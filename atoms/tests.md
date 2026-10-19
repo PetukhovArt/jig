@@ -1,7 +1,8 @@
 ---
 name: tests
 description: "Apply when you write, change, keep or review a test. Assert what the code's users can observe, so the test fails when that behavior breaks and keeps passing when only the internals change. No test is the default."
-paths: ["**/*.{test,spec}.*", "**/__tests__/**", "**/tests/**", "**/e2e/**"]
+metadata:
+  group: Code
 ---
 # Tests
 
