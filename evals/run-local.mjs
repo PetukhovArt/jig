@@ -3,6 +3,7 @@ import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSyn
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { basename, isAbsolute, join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 const DEFAULT_TOOLS = ['Write', 'Edit', 'MultiEdit', 'Bash', 'Read', 'Glob', 'Grep', 'Agent']
 const TRACE_CAP = 400_000
@@ -280,7 +281,9 @@ const readTarget = (target, context) => {
   if (target === 'trace') return context.trace
   if (target === 'last_message' || target === 'final_message') return context.lastMessage
   if (target === 'files') return context.diff()
+  if (target === 'tool_calls') return context.toolCalls
   if (typeof target !== 'object' || target === null) return undefined
+  if (target.source === 'files') return context.diff(target.exclude)
   if (target.source === 'file') {
     const path = join(context.runDir, target.path)
     return existsSync(path) ? readFileSync(path, 'utf8') : undefined
@@ -346,9 +349,10 @@ const gradeLlm = async (grader, context, options) => {
   return { passed: firstWord === 'PASS', reason: cap(text, 600), costUsd: verdict.total_cost_usd ?? 0 }
 }
 
-const diffAgainstBase = (runDir, base) => () => {
+const diffAgainstBase = (runDir, base) => (exclude = []) => {
   git(runDir, ['add', '-A'])
-  return git(runDir, ['diff', '--cached', base, '--', '.', ':(exclude)ci-result.log', ':(exclude)package-lock.json']).stdout
+  const skipped = [exclude].flat().map((glob) => `:(exclude,glob)${glob}`)
+  return git(runDir, ['diff', '--cached', base, '--', '.', ':(exclude)ci-result.log', ':(exclude)package-lock.json', ...skipped]).stdout
 }
 
 const allowedTools = (testCase) => {
@@ -499,6 +503,7 @@ const runOne = async ({ testCase, arm, index, options, outDir }) => {
   const started = Date.now()
   try {
     const context = await runAgent(testCase, arm, index, options, outDir, runDir, tempDir, record)
+    writeFileSync(join(outDir, 'diffs', `${testCase.name}-${arm}-${index + 1}.diff`), context.diff())
     record.graders = await gradeAll(testCase, arm, context, options)
     record.score = weightedScore(record.graders)
     record.judgeCostUsd = record.graders.reduce((sum, verdict) => sum + verdict.costUsd, 0)
@@ -609,6 +614,7 @@ const main = async () => {
   const outDir = resolve(options.out ?? join(suiteDir, 'results', `local-${stamp}`))
   mkdirSync(join(outDir, 'runs'), { recursive: true })
   mkdirSync(join(outDir, 'traces'), { recursive: true })
+  mkdirSync(join(outDir, 'diffs'), { recursive: true })
 
   const jobs = cases.flatMap((testCase) =>
     Array.from({ length: options.runs ?? testCase.runs }, (_, index) => arms.map((arm) => ({ testCase, arm, index, options, outDir }))).flat(),
@@ -635,7 +641,10 @@ const main = async () => {
   process.stdout.write(`\n${summary}\nwritten ${join(outDir, 'summary.md')}\n`)
 }
 
-main().catch((error) => {
-  process.stderr.write(`${error.stack ?? error}\n`)
-  process.exit(1)
-})
+export { BASH, TRACE_CAP, cap, diffAgainstBase, git, gradeAll, lastMessage, loadCases, parseStream, removeDir, run, toolCallText, traceText, weightedScore }
+
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url))
+  main().catch((error) => {
+    process.stderr.write(`${error.stack ?? error}\n`)
+    process.exit(1)
+  })

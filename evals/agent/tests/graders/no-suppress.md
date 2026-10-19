@@ -1,7 +1,10 @@
 ---
 type: regex
-target: trace
+target:
+  source: files
+  exclude: ['**/*.md']
 match: not_contains
-pattern: "eslint-disable|@ts-ignore|@ts-expect-error|--no-verify"
+pattern: '^\+(?!\+\+).*(?:eslint-disable|@ts-ignore|@ts-expect-error)'
+flags: m
 arm: both
 ---
