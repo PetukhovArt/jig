@@ -1,7 +1,7 @@
 ---
 name: jig-review
 description: "Review a diff with finders, a separate judge and proven findings. Mode review: someone else's merge request, threads, --post, re-review. Mode pre-mr: your own diff before the merge request, a verdict in four buckets."
-argument-hint: "[pre-mr] [<merge request URL or number>] [quick|full|<selector>] [--post] [--no-state] [<focus note>]"
+argument-hint: "[pre-mr] [<merge request URL or number>] [quick|full|<selector>] [--layout <name>] [--post] [--no-state] [<focus note>]"
 ---
 
 # jig-review
@@ -24,7 +24,8 @@ Plugin root: `${CLAUDE_PLUGIN_ROOT}`; below, `<root>` means this path and `<skil
 
 - `pre-mr`: the mode above. Without it the mode is `review`.
 - Merge request URL or number: the review target (mode `review`). None: the current branch.
-- Selector: `full` (every angle), `quick` (only what blocks a merge), or comma-separated tokens (`important,architecture,tests`, `auto`). No selector: `quick` when `jig review-plan` gives `N = 1`, `full` otherwise. Vocabulary: `<skill>/references/selector.md`, only when the argument is not `full` or `quick`.
+- Selector: `full` (every angle), `quick` (only what blocks a merge), or comma-separated tokens (`important,architecture,tests`, `auto`). No selector: `quick` on the inline path, `full` otherwise.
+- `--layout <auto|inline|fanout|lean|solo>`: who hunts and who judges ([paths](#paths)); passed to `jig review-plan`. Vocabulary: `<skill>/references/selector.md`, only when the argument is not `full` or `quick`.
 - `--post`: post the findings right after the review, without asking (mode `review` with a merge request only).
 - `--no-state`: do not read or write state: always a first run, no outcome check, no learnings, no posting. Diagnostic mode.
 - Any other text after these: the focus note (step 01).
@@ -33,8 +34,12 @@ Needs on `PATH`: `git`, `node`; with a merge request also the forge CLI of the r
 
 ## Paths
 
-- **Inline** (`N = 1`, a small diff): you hunt and judge in this session; one judge subagent on another model only when an `Important` candidate survives your gates.
-- **Subagents** (`N > 1`): finder subagents, then judge subagents per cluster, on a different model than the finder.
+`jig review-plan` prints the layout; the default `auto` picks by size:
+
+- **Inline** (`N ≤ 2`, up to 300 counted lines; layout `inline` at any size): you hunt and judge in this session; one judge subagent on another model only when an `Important` candidate survives your gates.
+- **Lean** (`N > 2`): finder subagents on the standard tier, one per angle group; you judge every candidate, one deep judge subagent only for the `Important` ones.
+
+Other layouts, by `--layout <name>`, `JIG_REVIEW_LAYOUT` or the project config: `fanout` (finders split by tier, a judge subagent per cluster on the other model) and `solo` (deep finders that prove their own candidates, no judges). On the reference merge requests both cost 6-7 times `inline` on a 212-line diff and found nothing it missed.
 
 ## Rules for the whole run
 

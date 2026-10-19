@@ -8,7 +8,9 @@
 
 Every finder gets **the whole diff**. The questions are split, not the files: the more readers, the fewer angles each carries and the deeper it goes into its own. The cost is the number of readers, not the number of angles: a finder with several angles reads the diff once.
 
-**`N = 1`: no finders.** Below this size a split does not pay, and neither does a finder subagent: the session reviews [inline](04-inline.md). This step covers `N ≠ 1`.
+**The inline path: no finders.** At `N = 1`, and up to `N = 2` under the default layout `auto`, a finder subagent does not pay: the session reviews [inline](04-inline.md). This step covers the layouts with finders: `lean`, `fanout`, `solo`.
+
+**One finder, one tier, unless the layout says otherwise.** `lean` puts every finder on the standard tier, `solo` on the deep tier; each keeps its token's effort, so a group does not split by grade. `fanout` applies the per-token tiers below.
 
 **Rules 6, 10, 13, documents 11 and spec 15: one finder (`rules`) on top of `N`.** It reads the diff against the project's documents: the review document block, the smell vocabulary, the architecture document, the ADR table of contents and the owning glossary ([step 02](02-rules.md)) go into its personal tail; other finders do not get them. Angle 11 sits here, not in cleanup: it judges changed ADRs and glossaries, which this finder reads anyway.
 
@@ -76,5 +78,9 @@ None of your subagents is running and the spawn is still refused: the phase stop
 Two angles on one line for different reasons: report both.
 
 **The report did not arrive: ask for a resend, not for work.** The subagent finished and its report is not in the session (an environment defect, not the skill's): wake it with the literal request "send your report again, do no new work". A wake-up without that clause restarts the search and costs a second run.
+
+## Layout solo
+
+Only when `jig review-plan` printed `layout: solo`. No judge subagent follows: each finder proves its own candidates. Its brief gets, after item 9, the gate file paths of its angle classes (`<skill>/gates/bugs.md` for bug angles, `<skill>/gates/shape.md` for the rest, `<skill>/gates/severity.md` always) and this instruction: "Before returning a candidate, judge it by these gate files: try to reproduce it (the type checker, a test, a one-off script outside the repository; no edits to the repository), then return a verdict per candidate in the verifier's fields: verdict, severity, `severity_class`, `severity_gate`, `blocks`, angle, category, a one-sentence summary with the evidence. A `CONFIRMED` bug names initiator, path and effect, each with a quote." A finder still reads only.
 
 **No quota, either way.** Zero findings is a successful review: budgets are ceilings, there is no floor. But the rule binds reporting, not hunting: a finder hunts at full aggression, a candidate costs nothing and dies at verify. No hunk is skipped, no reading cut short, no candidate held back because "that is enough".

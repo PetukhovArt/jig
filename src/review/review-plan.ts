@@ -10,14 +10,17 @@ import { isTestFile } from '../catalog/languages'
 import { lexComments } from '../catalog/languages'
 import { detectAgent, loadUserConfig, resolveTiers, type TierMap } from '../tiers/tiers'
 import {
+  AUTO_INLINE_MAX_N,
   CEILINGS,
   EFFORTS,
   GRADE_KEYS,
+  LAYOUTS,
   LINES_PER_FINDER,
   MAX_FINDERS,
   MAX_PARALLEL,
   MODES,
   angleNumber,
+  isLayout,
   isTier,
   judgeModels,
   planReview,
@@ -26,6 +29,8 @@ import {
   type AngleSettings,
   type Grade,
   type JudgeModel,
+  type ConcreteLayout,
+  type Layout,
   type Mode,
   type Plan,
   type SelectorSource,
@@ -122,12 +127,13 @@ export const hasAddedComment = (file: string, source: string, added: ReadonlySet
 }
 
 export interface ProjectReviewConfig {
+  layout: Layout | undefined
   angles: Partial<Record<Angle, AngleSettings>>
   grades: Record<string, Grade>
   maxParallel: number
 }
 
-const PROJECT_KEYS = ['$schema', 'iterationsMemory', 'discover', 'review', 'severity', 'route', 'angles', 'tiers', 'maxParallel']
+const PROJECT_KEYS = ['$schema', 'iterationsMemory', 'discover', 'review', 'severity', 'route', 'angles', 'tiers', 'maxParallel', 'layout']
 
 const readAngles = (validator: Validator, value: unknown): Partial<Record<Angle, AngleSettings>> => {
   const object = validator.object(value, '$.angles', undefined)
@@ -178,8 +184,9 @@ export const parseProjectConfig = (text: string, label: string): ProjectReviewCo
   const angles = root?.['angles'] === undefined ? {} : readAngles(validator, root['angles'])
   const grades = root?.['tiers'] === undefined ? {} : readGrades(validator, root['tiers'])
   const maxParallel = root?.['maxParallel'] === undefined ? MAX_PARALLEL : validator.integer(root['maxParallel'], '$.maxParallel', 1)
+  const layout = root?.['layout'] === undefined ? undefined : validator.oneOf(root['layout'], '$.layout', LAYOUTS)
   if (validator.errors.length > 0) throw new Error(`${label}: ${validator.errors.join('; ')}`)
-  return { angles, grades, maxParallel: maxParallel ?? MAX_PARALLEL }
+  return { layout, angles, grades, maxParallel: maxParallel ?? MAX_PARALLEL }
 }
 
 const loadProjectConfig = (root: string): { label: string; config: ProjectReviewConfig } | undefined => {
@@ -261,6 +268,7 @@ export interface ReviewPlanReport {
   base: { ref: string; mergeBase: string; source: Base['source'] }
   files: { counted: number; excluded: Record<Exclusion, number>; untracked: number }
   formula: string
+  layout: { name: Layout; source: LayoutSource }
   shape: Shape
   plan: Plan
   mode: Mode
@@ -277,6 +285,23 @@ export interface ReviewPlanReport {
 }
 
 export const INLINE_READER = 'inline'
+export const LAYOUT_ENV = 'JIG_REVIEW_LAYOUT'
+export const DEFAULT_LAYOUT: Layout = 'auto'
+
+export type LayoutSource = 'argument' | 'env' | 'config' | 'default'
+
+export const resolveLayout = (argument: string | undefined, env: string | undefined, config: Layout | undefined): { name: Layout; source: LayoutSource } => {
+  const given: [string | undefined, LayoutSource, string][] = [
+    [argument, 'argument', '--layout'],
+    [env, 'env', LAYOUT_ENV],
+  ]
+  for (const [value, source, label] of given) {
+    if (value === undefined || value === '') continue
+    if (!isLayout(value)) throw new Error(`unknown layout ${value} in ${label}; expected one of ${LAYOUTS.join(', ')}`)
+    return { name: value, source }
+  }
+  return config === undefined ? { name: DEFAULT_LAYOUT, source: 'default' } : { name: config, source: 'config' }
+}
 
 /** The atom names an angle file declares in its `**Atom:**` / `**Atoms:**` header. */
 export const angleAtoms = (text: string): string[] => {
@@ -303,7 +328,23 @@ const gradeText = (grade: Grade, models: TierMap | undefined): string => {
 const SELECTOR_NOTES: Readonly<Record<SelectorSource, string>> = {
   argument: '',
   default: ' (default)',
-  'small-diff': ' (default for N = 1; --selector full for every angle)',
+  'small-diff': ' (default on the inline path; --selector full for every angle)',
+}
+
+const LAYOUT_SOURCE_TEXT: Readonly<Record<LayoutSource, string>> = { argument: '--layout', env: LAYOUT_ENV, config: `.jig/${PROJECT_CONFIG}`, default: 'default' }
+
+const LAYOUT_TEXT: Readonly<Record<ConcreteLayout, string>> = {
+  inline: 'the session hunts and judges; a judge subagent only for Important',
+  fanout: 'finders by LINES on their angle tiers, a judge per cluster on the other model',
+  lean: 'finders by LINES on the standard tier; you judge, a deep judge only for Important',
+  solo: 'finders by LINES on the deep tier prove their own candidates; no judge subagents',
+}
+
+const layoutLine = (report: ReviewPlanReport): string => {
+  const { name, source } = report.layout
+  const resolved = report.plan.layout
+  const chosen = name === 'auto' ? `auto → ${resolved} (inline up to N = ${AUTO_INLINE_MAX_N}, lean above)` : resolved
+  return `layout: ${chosen}${source === 'default' ? ' (default)' : ` (from ${LAYOUT_SOURCE_TEXT[source]})`} · ${LAYOUT_TEXT[resolved]}`
 }
 
 const stateText = (report: ReviewPlanReport): string => {
@@ -324,6 +365,7 @@ export const formatReport = (report: ReviewPlanReport): string => {
     `base: ${report.base.ref} (merge base ${report.base.mergeBase.slice(0, 8)}, from ${report.base.source})`,
     `lines: ${plan.lines} in ${report.files.counted} files${excluded.length > 0 ? `; excluded: ${excluded.join(', ')}` : ''}${report.files.untracked > 0 ? `; untracked files not counted: ${report.files.untracked} (git add -N to count them)` : ''}`,
     `finders: ${report.formula}`,
+    layoutLine(report),
     `shape: tests ${report.shape.tests ? 'yes' : 'no'} · added comments ${report.shape.comments ? 'yes' : 'no'} · markdown ${report.shape.docs ? 'yes' : 'no'} · new source files ${report.shape.newSourceFiles} · spec ${report.shape.spec ? 'yes' : 'no'}`,
     `selector: ${plan.selection.input}${plan.selection.tokens.length > 0 && plan.selection.input !== plan.selection.tokens.join(',') ? ` → ${plan.selection.tokens.join(',')}` : ''}${SELECTOR_NOTES[plan.selection.source]}`,
     `config: ${report.config ?? 'default'} · agent: ${report.agent} · max parallel subagents: ${report.maxParallel}`,
@@ -345,13 +387,20 @@ export const formatReport = (report: ReviewPlanReport): string => {
     for (const judge of report.judge) {
       lines.push(`  your model ${judge.finderModel} → judge ${judge.judgeModel}${judge.same ? ' (same model: one model in the tier)' : ''}`)
     }
+  } else if (plan.judging === 'self') {
+    lines.push('verify: no judge subagents; every finder proves its own candidates, you dedup and apply the verdicts')
+  } else if (plan.judging === 'important') {
+    lines.push(`verify: you judge every candidate by the gate files; one judge subagent for the Important ones, ${plan.verify.tier}/${plan.verify.effort}`)
+    for (const judge of report.judge) {
+      lines.push(`  candidates from ${judge.finderModel} → judge ${judge.judgeModel}${judge.same ? ' (same model: one model in the tier)' : ''}`)
+    }
   } else {
     lines.push(`verify: ${plan.verify.tier}/${plan.verify.effort}`)
     for (const judge of report.judge) {
       lines.push(`  candidates from ${judge.finderModel} → judge ${judge.judgeModel}${judge.same ? ' (same model: one model in the tier)' : ''}`)
     }
   }
-  if (report.judge.length === 0) lines.push(`  judge: a ${plan.verify.tier} model other than the finder's`)
+  if (report.judge.length === 0 && plan.judging !== 'self') lines.push(`  judge: a ${plan.verify.tier} model other than the finder's`)
   lines.push(`outcome check: ${gradeText(plan.outcome, models)} · composer: ${gradeText(plan.composer, models)}`)
   if (plan.skipped.length > 0) {
     lines.push(`skipped angles: ${plan.skipped.map((skip) => `${skip.angle} (${skip.reason})`).join(', ')}`)
@@ -365,6 +414,8 @@ export const formatReport = (report: ReviewPlanReport): string => {
 export interface ReportOptions {
   base?: string | undefined
   selector?: string | undefined
+  layout?: string | undefined
+  layoutEnv?: string | undefined
   spec: boolean
   agent?: string | undefined
   mode?: Mode
@@ -385,9 +436,11 @@ export const buildReport = (root: string, options: ReportOptions): ReviewPlanRep
     spec: options.spec,
   }
   const project = loadProjectConfig(root)
+  const layout = resolveLayout(options.layout, options.layoutEnv, project?.config.layout)
   const plan = planReview({
     lines,
     shape,
+    layout: layout.name,
     selector: options.selector,
     angles: project?.config.angles ?? {},
     grades: project?.config.grades ?? {},
@@ -407,6 +460,7 @@ export const buildReport = (root: string, options: ReportOptions): ReviewPlanRep
     base: { ref: base.ref, mergeBase: base.mergeBase, source: base.source },
     files: { counted, excluded, untracked: untrackedCount(root) },
     formula: `ceil(${lines}/${LINES_PER_FINDER}) = ${Math.ceil(lines / LINES_PER_FINDER)}, max ${MAX_FINDERS} → N = ${plan.n}`,
+    layout,
     shape,
     plan,
     mode,
@@ -419,12 +473,12 @@ export const buildReport = (root: string, options: ReportOptions): ReviewPlanRep
     agent,
     models,
     finderModels,
-    judge: judgeModels(usedModels, verifyModels),
+    judge: plan.judging === 'self' ? [] : judgeModels(usedModels, verifyModels),
   }
 }
 
 const isMode = (value: string): value is Mode => (MODES as readonly string[]).includes(value)
-const USAGE = 'usage: jig review-plan [<base>] [--selector full|quick|auto|<tokens>] [--spec] [--mode review|pre-mr] [--mr] [--no-state] [--agent <id>] [--json]'
+const USAGE = 'usage: jig review-plan [<base>] [--selector full|quick|auto|<tokens>] [--layout auto|inline|fanout|lean|solo] [--spec] [--mode review|pre-mr] [--mr] [--no-state] [--agent <id>] [--json]'
 
 export const runReviewPlan: Command = (args) => {
   const { values, positionals } = parseArgs({
@@ -433,6 +487,7 @@ export const runReviewPlan: Command = (args) => {
     strict: true,
     options: {
       selector: { type: 'string' },
+      layout: { type: 'string' },
       spec: { type: 'boolean' },
       agent: { type: 'string' },
       mode: { type: 'string' },
@@ -449,6 +504,8 @@ export const runReviewPlan: Command = (args) => {
   const report = buildReport(root, {
     base: positionals[0],
     selector: values.selector,
+    layout: values.layout,
+    layoutEnv: process.env[LAYOUT_ENV],
     spec: values.spec === true,
     agent: values.agent,
     mode,

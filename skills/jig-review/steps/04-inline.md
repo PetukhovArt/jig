@@ -1,6 +1,6 @@
 # Inline review
 
-The inline path: `jig review-plan` printed `path: inline` (`N = 1`). On a diff this small a finder subagent and a judge per cluster cost more than they find: you hunt and judge in this session, and a second model judges only what would block the merge. Steps 04-finders and 05-verify do not apply.
+The inline path: `jig review-plan` printed `path: inline` (`N = 1`, or layout `inline` at any size). On a small diff a finder subagent and a judge per cluster cost more than they find: you hunt and judge in this session, and a second model judges only what would block the merge. Steps 04-finders and 05-verify do not apply.
 
 ## Hunt
 

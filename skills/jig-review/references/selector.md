@@ -6,12 +6,12 @@ An optional argument: comma-separated tokens without spaces, `important,architec
 
 The first word after the mode, target and flags is the selector only when it is a preset or **every** token is in the table below. Otherwise it is the start of the focus note ([step 01](../steps/01-prepare.md#focus-note)). An unknown token in a selector whose other tokens are known is an error: name it and stop, do not guess.
 
-No selector: `quick` when `N = 1` (the [inline path](../steps/04-inline.md): a small diff reviewed in the session), otherwise everything runs (`full`), plus `deepening` when the diff adds source files. An explicit `full` on a small diff runs every angle inline.
+No selector: `quick` on the [inline path](../steps/04-inline.md) (`N = 1`, or `N ≤ 2` under the default layout `auto`), otherwise everything runs (`full`), plus `deepening` when the diff adds source files. An explicit `full` on a small diff runs every angle inline.
 
 ## Presets
 
-- `full` (default for `N > 1`): every angle, plus `deepening` when the diff adds source files;
-- `quick` → `important` (default for `N = 1`): only what a merge waits for (bugs, security, layers and placement, spread across modules, structural smells), without cleanup and `deepening`.
+- `full` (default when finders run): every angle, plus `deepening` when the diff adds source files. Cost: on the inline path it adds the cleanup and rules angles to your own reading; with finders it adds the cleanup, rules and tests-and-comments finders (on the 784-line reference merge request the lean layout ran 7 finders on `full` for $10.7, inline on `quick` cost $2.4-2.6);
+- `quick` → `important` (default on the inline path): only what a merge waits for (bugs, security, layers and placement, spread across modules, structural smells), without cleanup and `deepening`.
 
 ## Tokens
 
