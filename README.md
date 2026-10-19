@@ -1,17 +1,55 @@
 # jig
 
-jig is a harness plugin for AI coding agents. What code can check, code checks: hooks deny an action before it happens, report findings after an edit and block the end of a turn until the change passes the project's own tools. The model keeps what code cannot check, and jig gives it a thin layer for that: knowledge atoms delivered when they apply, and flows you start explicitly with `/jig`. The core is a single CLI, `bin/jig.mjs` (Node >= 20, no runtime dependencies); the agent connects to it through a thin adapter. v1 ships the Claude Code adapter only.
+[![CI](https://github.com/PetukhovArt/jig/actions/workflows/ci.yml/badge.svg)](https://github.com/PetukhovArt/jig/actions/workflows/ci.yml) [![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE) [![node](https://img.shields.io/badge/node-%3E%3D20-339933.svg)](package.json) [![Claude Code plugin](https://img.shields.io/badge/Claude_Code-plugin-D97757.svg)](.claude-plugin/plugin.json)
+
+jig is a harness plugin for AI coding agents. What code can check, code checks: hooks deny an edit before it is written, report findings after an edit and block the end of a turn until the change passes the project's own tools, and `jig pre-mr` holds the merge request until a UI change is proven on the running app. The model keeps what code cannot check, and jig gives it a thin layer for that: knowledge atoms read when their trigger applies, and flows you start explicitly with `/jig`. The core is a single CLI, `bin/jig.mjs` (Node >= 20, no runtime dependencies); the agent connects to it through a thin adapter. v1 ships the Claude Code adapter only.
 
 The harness pyramid: the bottom layers (execution, safety, verification) are durable and get the investment; the top layers (context, orchestration, evolution) get thinner as models absorb them, so jig keeps them small.
 
 | Layer | jig part |
 | --- | --- |
-| Verification | end-of-turn gate over the project's tsc, ESLint, oxlint, stratum; runtime checks that ask for proof on the running app (`src/checks/`, agent-view for now) |
-| Safety | deny before action: protected paths, suppressions, comments, `--no-verify` |
-| Execution | worktree slots (`jig slot`) |
-| Context | atoms (`atoms/*.md`) |
-| Orchestration | `/jig`, flows, the decision trail (`jig task-status`) |
+| Verification | checks after an edit and at the end of a turn over the tools named in `.jig/config.jsonc` (tsc, ESLint, oxlint, stratum, the project's own `checks`); UI proof before the merge request (`jig pre-mr`, agent-view for now) |
+| Safety | deny before an edit: suppressions always, new comments and new test cases once with their rules |
+| Execution | feature worktrees (`jig worktree`) and slots with a warm dev server (`jig slot`) |
+| Context | atoms (`atoms/*.md`), indexed in `skills/jig/SKILL.md` |
+| Orchestration | `/jig`, flows, review (`jig-review`, `jig review-plan`), the decision trail (`jig task-status`) |
 | Evolution | the journal and the weekly loop (`jig loop`) |
+
+## Quick start
+
+In Claude Code:
+
+```text
+/plugin install jig --marketplace PetukhovArt/jig
+/jig-init
+/jig <task>
+```
+
+`/jig-init` starts from `jig init`, which discovers the tools by the jig catalog and writes nothing; the skill then asks what code cannot know, writes `.jig/config.jsonc` and runs `jig doctor`. `jig init` on a Vue demo project:
+
+```text
+jig init: discovery by the jig catalog; nothing is written.
+
+found:
+  tsc          ready; markers tsconfig.json; packages typescript; binary not installed
+  eslint       ready; markers eslint.config.mjs; packages eslint; binary not installed
+  agent-view   ready; markers agent-view.config.json; binary C:\Program Files\nodejs\node.exe C:\Users\me\AppData\Roaming\npm\node_modules\@petukhovart\agent-view\dist\cli\index.js
+not found: oxlint, stratum
+eslint-plugin-boundaries: absent
+
+ask the user (code cannot know):
+  - App run command (slots.dev) and install command (slots.install), if the project runs an app.
+  - agent-view for UI proof (configured): needed? Setup: agent-view init.
+  - stratum for module layers (not installed): needed? Setup: stratum-lint init, then stratum-lint baseline.
+
+proposal for .jig/config.jsonc:
+{
+  "$schema": "https://raw.githubusercontent.com/PetukhovArt/jig/main/schema/config.schema.json",
+  "tsc": {},
+  "eslint": {},
+  "agent-view": {}
+}
+```
 
 ## Install
 
@@ -28,61 +66,88 @@ claude plugin marketplace add PetukhovArt/jig
 claude plugin install jig@petukhovart
 ```
 
-Then run `node <plugin root>/bin/jig.mjs doctor` in your project: it lists the tools jig found and prints anything missing.
+Then run `/jig-init` in your project, or `node <plugin root>/bin/jig.mjs doctor` to see the config, each catalog tool and anything missing.
 
 ## What works without configuration
 
 The hooks run in every project once the plugin is installed:
 
-- **Before an edit or a Bash command** (fails closed): edits to protected paths (`tsconfig*.json`, `eslint.config.*`, `.oxlintrc.json`, `stratum.config.jsonc`, `.jig/config.jsonc`, CI files, `.husky/`), new suppressions (`eslint-disable`, `@ts-ignore`, `@ts-expect-error`, `@ts-nocheck`, `oxlint-disable`, `biome-ignore`, `stratum-ignore`), comments outside the allowed list, and `git commit`/`git push` with `--no-verify` or its equivalents are denied with a one-line reason.
-- **After an edit**: atoms whose `paths` match the file (`typescript`, `tests`, `docs`), once per agent. Whether a test is worth writing and whether it is any good is the agent's judgment by the `tests` atom; no hook blocks on tests.
-- **Subagent start**: the subagent gets the index of atoms delivered in the session.
+- **Before an edit** (fails closed): a new suppression directive of ESLint, oxlint, Biome, TypeScript or stratum is always denied; fix the cause, only a human adds one. An edit that adds a comment or a test case is denied once with the rules: the full `comments` or `tests` atom the first time per agent and after each compaction, a one-line reminder later. The same call passes on retry, and removing a comment or a test never stops. Tool directives a build needs (`/// <reference>`, `@vite-ignore`, webpack magic comments, `__PURE__`) are not comments for the gate.
+- **After an edit**: the edit-time tools and `checks` from the config report findings on the file.
+- **End of turn**: the heavy tools and `checks` from the config run over the turn's files and block the turn on an error, the chain stopping at the first failing tool.
+- **Session start**: one line when the config is invalid or the project drifted from it (a tool found but not named, a named tool without its binary), pointing to `jig init`, or `jig init --update` when a config exists.
+
+The comment gate is on by default; a project turns it off with `"jig/comments": "off"` (suppressions stay denied), and the test gate with `"jig/tests": "off"`.
 
 ## What needs project configuration
 
-Tool gates switch on by themselves when the project has the tool's config and binary; with neither, the gate stays silent.
+At runtime jig reads only `.jig/config.jsonc` and `.jig/config.local.jsonc`; a tool runs only when the config names it, so without a config no tool runs. `jig init` proposes the entries from the markers it finds. Each tool resolves its marker config from the edited file upward, so a monorepo package uses its own.
 
-| Tool | Config | When it runs |
+| Tool | Marker config | When it runs |
 | --- | --- | --- |
-| oxlint | `.oxlintrc.json`, `oxlint.json` or `oxlintrc.json` | after each edit, errors on changed lines |
-| stratum | `stratum.config.jsonc` | after each edit and at the end of a turn |
-| tsc / vue-tsc | nearest `tsconfig.json` | end of turn, errors in the turn's files only |
-| ESLint | `eslint.config.*` or `.eslintrc*` | end of turn, changed lines only |
-| agent-view | `agent-view.config.json` | end of turn, runtime check: a changed file needs proof on the running app after its last edit |
+| `oxlint` | `.oxlintrc.json`, `oxlint.json` or `oxlintrc.json` | after each edit, errors on changed lines |
+| `stratum` | `stratum.config.jsonc` | after each edit and at the end of a turn |
+| `tsc` (or `"command": "vue-tsc"`) | nearest `tsconfig.json` | end of turn, errors in the turn's files only |
+| `eslint` | `eslint.config.*` or `.eslintrc*` | end of turn, errors on changed lines only |
+| `agent-view` | `agent-view.config.json` | `jig pre-mr`: UI proof before the merge request |
 
 `jig check edit <file>` and `jig check stop` run the same paths by hand.
 
-A runtime check maps each changed file to the proof kinds it needs: `behavior` (the use case still works) and `look` (what the user sees). For agent-view, components and markup (`.vue`, `.tsx`, `.jsx`, `.svelte`, `.html`, not tests) need both, styles (`.css`, `.scss`, `.less`) need `look`. Only a successful `agent-view act replay` proves `behavior`, only `agent-view screenshot` or `snap` proves `look`; `dom`, `eval`, `click` and the like prove nothing. When a kind is not needed, record why in the task-status journal: `jig task-status log verify "skip-verify:behavior" --why "<reason>"` (or `skip-verify:look`, or `skip-verify` for all kinds) lifts it for the turn.
+## UI proof before the merge request
+
+The `mr` step runs `jig pre-mr [<base>]`, which diffs the branch against its base. A UI file needs proof kinds: `behavior` (the use case still works) and `look` (what the user sees). For agent-view, components and markup (`.vue`, `.tsx`, `.jsx`, `.svelte`, `.html`, not tests) need both, styles (`.css`, `.scss`, `.less`) need `look`. `jig pre-mr proof "<command>"` runs the command and records the proof when it exits 0: only `agent-view act replay` proves `behavior`, only `agent-view screenshot` or `snap` proves `look`; other commands are refused. A proof counts when no UI file it covers changed after it. A branch that touches UI also needs a bug-bash record: `jig pre-mr bug-bash "<bugs found and fixed, what could not be tested>"`. Without them `jig pre-mr` lists what is missing and exits 1.
+
+When the proof cannot run, `jig skip-verify --level unit-test|type-check|none --why "<reason>"` lets `jig pre-mr` pass until the next edit; the level goes to the journal and into the merge request description.
 
 ## `/jig` and flows
 
-Without `/jig`, only the hooks and path-matched atoms run, and a small task goes in one shot. `/jig <task>` (fallback `/jig:jig`) is invoked by the user only. It restates the task with a done check, picks a flow and copies the flow's steps into the todo list.
+Without `/jig`, only the hooks run, and a small task goes in one shot. `/jig <task>` (fallback `/jig:jig`) is invoked by the user only. It restates the task with a done check, picks a flow and copies the flow's steps into the todo list. Its rules for evidence, autonomy and questions sit in `skills/jig/SKILL.md` itself, next to the atom index: one line per atom with its trigger, grouped by the moment of work. An atom file is read when a flow step names it or its trigger matches.
 
-Flows (`skills/jig/flows/`): `investigation`, `bug-fix`, `feature`, `module-design`, `refactoring`, `perf`, `prototype`, `ui-match`, `review`, `bug-bash`, `mr-watching`, `afk-mode`, `session-resume`, `session-pause`. Every code-changing flow ends with the shared `mr` step. Subagent roles are templates in `skills/jig/references/roles/`; each template names a model tier and an effort (`metadata.tier`, `metadata.effort`), and `jig tiers` maps the tier to the agent's models (built-in for Claude Code, overridable in `~/.jig/config.jsonc`).
+Flows (`skills/jig/flows/`): `investigation`, `diagnose`, `bug-fix`, `feature`, `module-design`, `refactoring`, `perf`, `metric-climb`, `prototype`, `ui-match`, `bug-bash`, `custom-flow`, `eval`, `mr-watching`, `afk-mode`, `session-resume`, `session-pause`. Every code-changing flow ends with the shared `mr` step: the `jig-review` skill in mode `pre-mr`, UI proof in a slot, `jig pre-mr`, then the merge request. Subagent roles are templates in `skills/jig/references/roles/`; each template names a model tier and an effort (`metadata.tier`, `metadata.effort`), and `jig tiers` maps the tier to the agent's models (built-in for Claude Code, overridable in `~/.jig/config.jsonc`).
 
-Flows and role templates carry frontmatter, `name` and a one-line `description`, so an agent sees what each is for without opening it. `npm run build` generates the flow list in `skills/jig/SKILL.md` and the role index `skills/jig/references/roles.md` from it, next to the atom index `skills/jig/references/atoms.md`; `jig build` rejects a role or flow mention that names no file and a role no flow or reference spawns.
+Flows and role templates carry frontmatter, `name` and a one-line `description`, so an agent sees what each is for without opening it. `npm run build` generates the flow list and the atom index in `skills/jig/SKILL.md` and the role index `skills/jig/references/roles.md` from it; `jig build` rejects a role or flow mention that names no file and a role no flow or reference spawns.
 
-Other skills: `jig-slots` (model or user), `jig-task-status`, `jig-explain` and `jig-video` (user only). `jig-task-status` keeps the decision trail of a long or unattended run: one TSV row per decision, step or question in `.jig/runs/<branch>/task-status.tsv`, and a page built from it on demand; `afk-mode` follows it.
+Other skills:
+
+| Skill | Invoked by | What it does |
+| --- | --- | --- |
+| `jig-review` | model or user | reviews a diff with finders, a separate judge and proven findings; mode `review` for someone else's merge request (threads, `--post`, re-review), mode `pre-mr` for your own diff before the merge request; `jig review-plan` prints the finder layout |
+| `jig-slots` | model or user | a feature worktree per task, and finished branches shown in a slot with a warm dev server on offset ports |
+| `jig-init` | user | discovery by the catalog, questions code cannot answer, an explicit `.jig/config.jsonc`, agent-view and stratum setup, `jig doctor` |
+| `jig-task-status` | user | the decision trail of a long or unattended run |
+| `jig-grill` | user | interviews you about a plan or a decision, one question at a time |
+| `jig-prune-comments` | user | removes comments the `comments` atom does not allow across a merge request, a folder or the repo, with a swarm of cheap agents |
+| `jig-explain` | user | explains the current topic visually |
+| `jig-video` | user | records a narrated demo video of a change's use cases |
+
+`jig-task-status` keeps the decision trail of a long or unattended run: one TSV row per decision, step or question in `.jig/runs/<branch>/task-status.tsv`, and a page built from it on demand; `afk-mode` follows it.
 
 ## Configuration
 
-`.jig/config.jsonc` is optional; without it all rules use their defaults. It holds only rule levels and the `slots` section ([schema](schema/config.schema.json)):
+`.jig/config.jsonc` names what runs ([schema](schema/config.schema.json)); `.jig/config.local.jsonc`, outside git, is laid over it: objects merge key by key, `checks` merge by name, any other value replaces the shared one.
 
 ```jsonc
 {
   "$schema": "https://raw.githubusercontent.com/PetukhovArt/jig/main/schema/config.schema.json",
-  "rules": {
-    "jig/comments": "warn",
-    "gate/eslint": "off"
-  }
+  "rules": { "jig/comments": "off" },
+  "tsc": { "command": "vue-tsc" },
+  "eslint": { "ignoreRules": ["boundaries/*"] },
+  "oxlint": false,
+  "agent-view": {},
+  "checks": [
+    { "name": "i18n-keys", "files": ["src/**/*.vue", "src/**/*.ts"], "on": "stop", "run": "node scripts/check-i18n.mjs {files}" }
+  ]
 }
 ```
 
-Rules: `jig/comments`, `jig/suppressions`, `jig/protected-paths`, `jig/no-verify`, `jig/verify-fact` (runtime checks: `behavior` and `look` proof), `gate/oxlint`, `gate/stratum`, `gate/tsc`, `gate/eslint`; levels `off`, `warn`, `error`. The agent may not edit this file.
+- `rules`: `jig/comments` and `jig/tests`, levels `off`, `warn`, `error` (default `error`); any level but `off` keeps the gate on.
+- A catalog name (`oxlint`, `tsc`, `eslint`, `stratum`, `agent-view`) turns that tool on; `false` turns it off. Its settings: `level`, `command`, `ignoreRules`. A name outside the catalog is an unknown key.
+- `checks`: the project's own commands, run after an edit (`"on": "edit"`) or at the end of a turn (`"on": "stop"`) on the files matching `files` (a glob or a list). `run` needs the `{files}` token, which becomes one argument per file; `format` reads the output (`exit` by default: a non-zero exit is one finding; `jsonl`, or a tool name for its parser); `level` as for rules. Findings carry the rule `check/<name>`.
+- `slots` and `worktree`: see [Commands](#commands).
 
-jig creates only `.jig/` in your project: `config.jsonc` goes to git, `journal/`, `runs/` and `cache/` are ignored by `.jig/.gitignore`.
+jig creates only `.jig/` in your project: `config.jsonc` goes to git, `config.local.jsonc`, `journal/`, `runs/` and `cache/` are ignored by `.jig/.gitignore`.
 
-A plugin cannot write permission rules into your project, so add this deny block to `.claude/settings.json` as a second layer. `jig doctor` warns when it is incomplete:
+jig does not guard config files itself. A plugin cannot write permission rules into your project, so add this deny block to `.claude/settings.json`; `jig doctor` warns when it is incomplete:
 
 ```json
 {
@@ -110,20 +175,27 @@ Run as `node <plugin root>/bin/jig.mjs <command>`.
 | `check edit <file>` / `check stop` | findings for one file / the end-of-turn gate against HEAD |
 | `build [--atoms-only] [--check]` | validates atoms, role templates and flows; without `--atoms-only`, writes the tool plan to `.jig/cache/plan.json` |
 | `atom <name>` | prints an atom |
-| `slot new [--slug <s>] [--branch <b>]` | creates a worktree slot with offset ports and its own `agent-view.config.json` |
+| `init [--update] [--json]` | discovery by the catalog: found tools, what to ask the user, a proposed `.jig/config.jsonc` (with `--update`, the current config plus what it does not name); writes nothing |
+| `slot new [--slug <s>] [--branch <b>]` | creates a slot worktree with offset ports and its own `agent-view.config.json`, seeded from the main checkout |
+| `slot show <N> <branch\|commit>` | checks the branch out detached in slot N (refuses on tracked changes) and runs the install command when a lock file changed |
 | `slot ls [--json]` | slots and their ports |
 | `slot rm <N> [--force]` | removes a slot's worktree; without `--force`, refuses on tracked changes |
-| `slot sweep [--json]` | sorts all worktrees into `hold-wip`, `hold-open-mr`, `recent`, `safe`; deletes nothing |
+| `worktree seed <dir>` | copies the main checkout's ignored files and recreates its ignored symlinks in another worktree; never overwrites tracked files |
+| `worktree sweep [--json] [--ask] [--yes <path\|slot>]...` | sorts every worktree but the main checkout into `hold-current`, `hold-locked`, `hold-wip`, `hold-open-mr`, `prunable`, `recent`, `safe`; removes only those confirmed at the `--ask` prompt or named by `--yes`, never a `hold-current`, `hold-locked` or `hold-wip` one |
+| `review-plan [<base>] [--selector full\|quick\|auto\|<tokens>] [--spec] [--agent <id>] [--json]` | the review layout for the diff against the base: counted lines, finders, their models and the judge |
+| `pre-mr [<base>]` | exit 0 when the branch's UI changes are proven or skipped with a level, else lists what is missing and exits 1 |
+| `pre-mr proof "<command>"` / `pre-mr bug-bash "<result>"` | runs a proof command and records it when it exits 0 / records the bug-bash result |
+| `skip-verify --level unit-test\|type-check\|none --why "<reason>"` | lets `pre-mr` pass with that level until the next edit |
 | `task-status log <phase> <decision> [--why <text>] [--evidence <text>] [--result <text>]` | appends a row to the decision journal `.jig/runs/<branch>/task-status.tsv` |
 | `task-status open [--lang en\|ru]` / `task-status path` | builds the HTML page from the journal and prints its path / prints the journal path |
+| `tiers [--agent <id>] [--json]` | the models of each tier for the agent |
 | `loop [--days 7]` | aggregates the journal into improvement candidates |
-| `allow-no-verify` | allows `--no-verify` for one commit within 10 minutes, only when the pre-commit hook fails on files outside the staged change |
-| `doctor` | diagnostics: Node, config, found tools, active runtime checks, deny block, atom globs, locks |
+| `doctor` | diagnostics: Node, config, each catalog tool, agent-view setup, deny block, journal size, locks |
 | `version` | plugin version |
 
 `hook <name>` is the entry point for `hooks/hooks.json`, not for people.
 
-Slots need a `slots` section; `worktreesDir` is required:
+Slots need a `slots` section; `worktreesDir` is required. The `worktree` section tunes seeding: `seedExclude` skips ignored paths, `copyFiles` adds files inside ignored folders:
 
 ```jsonc
 {
@@ -132,7 +204,8 @@ Slots need a `slots` section; `worktreesDir` is required:
     "install": "npm ci",
     "ports": { "VITE_PORT": { "base": 5173, "step": 10 } },
     "cdp": { "base": 9222, "step": 1 }
-  }
+  },
+  "worktree": { "seedExclude": ["coverage"] }
 }
 ```
 
