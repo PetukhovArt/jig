@@ -246,6 +246,13 @@ const lastMessage = (events) => {
 const tokenTotal = (usage) =>
   ['input_tokens', 'output_tokens', 'cache_read_input_tokens', 'cache_creation_input_tokens'].reduce((sum, key) => sum + (typeof usage?.[key] === 'number' ? usage[key] : 0), 0)
 
+const MODEL_USAGE_KEYS = ['inputTokens', 'outputTokens', 'cacheReadInputTokens', 'cacheCreationInputTokens']
+const modelUsageTotal = (modelUsage) => {
+  if (typeof modelUsage !== 'object' || modelUsage === null) return undefined
+  const total = Object.values(modelUsage).reduce((sum, entry) => sum + MODEL_USAGE_KEYS.reduce((inner, key) => inner + (typeof entry?.[key] === 'number' ? entry[key] : 0), 0), 0)
+  return total > 0 ? total : undefined
+}
+
 const readTarget = (target, context) => {
   if (target === 'trace') return context.trace
   if (target === 'last_message' || target === 'final_message') return context.lastMessage
@@ -401,7 +408,8 @@ const runAgent = async (testCase, arm, index, options, outDir, runDir, record) =
     costUsd: result?.total_cost_usd,
     agentDurationMs: result?.duration_ms ?? agent.durationMs,
     usage: result?.usage,
-    tokens: result ? tokenTotal(result.usage) : undefined,
+    modelUsage: result?.modelUsage,
+    tokens: result ? (modelUsageTotal(result.modelUsage) ?? tokenTotal(result.usage)) : undefined,
   })
   if (!result) record.error = `no result event (exit ${agent.code}${agent.timedOut ? ', timed out' : ''}): ${cap(agent.stderr, 500)}`
   return { runDir, trace: cap(traceText(events), TRACE_CAP), lastMessage: lastMessage(events), diff: diffAgainstBase(runDir, base) }

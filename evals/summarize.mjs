@@ -35,6 +35,12 @@ const tokenTotal = (record) => {
   return counts.reduce((sum, count) => sum + (typeof count === 'number' ? count : 0), 0)
 }
 
+const modelUsageTotal = (modelUsage) =>
+  Object.values(modelUsage).reduce(
+    (sum, entry) => sum + tokenTotal({ input_tokens: entry?.inputTokens, output_tokens: entry?.outputTokens, cache_read_input_tokens: entry?.cacheReadInputTokens, cache_creation_input_tokens: entry?.cacheCreationInputTokens }),
+    0,
+  )
+
 const traceTokens = (run) => {
   if (typeof run.tracePath !== 'string' || run.tracePath === '' || !existsSync(run.tracePath)) return undefined
   let assistantTotal = 0
@@ -47,7 +53,9 @@ const traceTokens = (run) => {
     } catch {
       continue
     }
-    if (event?.type === 'result' && typeof event.usage === 'object' && event.usage !== null) {
+    if (event?.type === 'result' && typeof event.modelUsage === 'object' && event.modelUsage !== null) {
+      resultTotal = modelUsageTotal(event.modelUsage)
+    } else if (event?.type === 'result' && typeof event.usage === 'object' && event.usage !== null) {
       resultTotal = tokenTotal(event.usage)
     } else if (typeof event?.message?.usage === 'object' && event.message.usage !== null) {
       assistantTotal += tokenTotal(event.message.usage)
