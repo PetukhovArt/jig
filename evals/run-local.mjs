@@ -258,8 +258,8 @@ const toolCallText = (events) =>
     .join('\n')
 
 const lastMessage = (events) => {
-  const result = events.findLast((event) => event.type === 'result')
-  if (typeof result?.result === 'string' && result.result.trim() !== '') return result.result
+  const reply = events.find((event) => event.type === 'result')
+  if (typeof reply?.result === 'string' && reply.result.trim() !== '') return reply.result
   const assistant = events.findLast(
     (event) => event.type === 'assistant' && !event.parent_tool_use_id && Array.isArray(event.message?.content) && event.message.content.some((block) => block.type === 'text'),
   )
@@ -470,7 +470,9 @@ const runAgent = async (testCase, arm, index, options, outDir, runDir, tempDir, 
   writeFileSync(tracePath, agent.stdout)
   const events = parseStream(agent.stdout)
   const init = events.find((event) => event.type === 'system' && event.subtype === 'init')
-  const result = events.findLast((event) => event.type === 'result')
+  const results = events.filter((event) => event.type === 'result')
+  const result = results.at(-1)
+  const sum = (key) => (results.some((entry) => typeof entry[key] === 'number') ? results.reduce((total, entry) => total + (entry[key] ?? 0), 0) : undefined)
   Object.assign(record, {
     tracePath,
     model: init?.model,
@@ -478,9 +480,10 @@ const runAgent = async (testCase, arm, index, options, outDir, runDir, tempDir, 
     exitCode: agent.code,
     timedOut: agent.timedOut,
     resultSubtype: result?.subtype,
-    turns: result?.num_turns,
+    resultEvents: results.length,
+    turns: sum('num_turns'),
     costUsd: result?.total_cost_usd,
-    agentDurationMs: result?.duration_ms ?? agent.durationMs,
+    agentDurationMs: sum('duration_ms') ?? agent.durationMs,
     usage: result?.usage,
     modelUsage: result?.modelUsage,
     tokens: result ? (modelUsageTotal(result.modelUsage) ?? tokenTotal(result.usage)) : undefined,
