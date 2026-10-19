@@ -109,9 +109,16 @@ export interface AngleSettings {
   severityCeiling?: Ceiling
 }
 
+export const LAYOUTS = ['inline', 'fanout', 'lean', 'solo'] as const
+export type Layout = (typeof LAYOUTS)[number]
+export const isLayout = (value: string): value is Layout => (LAYOUTS as readonly string[]).includes(value)
+
+export type Judging = 'clusters' | 'important' | 'self'
+
 export interface PlanInput {
   lines: number
   shape: Shape
+  layout?: Layout | undefined
   selector?: string | undefined
   angles?: Readonly<Partial<Record<Angle, AngleSettings>>>
   grades?: Readonly<Record<string, Grade>>
@@ -144,7 +151,9 @@ export type ReviewPath = 'inline' | 'subagents' | 'none'
 export interface Plan {
   lines: number
   n: number
+  layout: Layout
   path: ReviewPath
+  judging: Judging
   selection: Selection
   outputTokens: string[]
   angles: Angle[]
@@ -172,10 +181,10 @@ export const autoTokens = (shape: Shape, n: number): string[] => {
 }
 
 /** No selector: `quick` on a single-finder diff (N = 1), where the session reviews inline; `full` otherwise. */
-export const parseSelector = (input: string | undefined, shape: Shape, n: number): Selection => {
+export const parseSelector = (input: string | undefined, shape: Shape, n: number, inline = n === 1): Selection => {
   const given = input !== undefined && input !== ''
-  const source: SelectorSource = given ? 'argument' : n === 1 ? 'small-diff' : 'default'
-  const raw = given ? input : n === 1 ? 'quick' : 'full'
+  const source: SelectorSource = given ? 'argument' : inline ? 'small-diff' : 'default'
+  const raw = given ? input : inline ? 'quick' : 'full'
   if (Object.hasOwn(PRESETS, raw)) {
     const expanded = PRESETS[raw]
     return { input: raw, tokens: expanded === undefined ? [] : [expanded], source }
@@ -249,10 +258,21 @@ const layoutFinders = (n: number, angles: readonly Angle[], grades: Readonly<Rec
   return groups.filter((group) => group.angles.length > 0).flatMap((group) => splitByGrade(group.name, group.kind, group.angles, grades))
 }
 
+const FINDER_TIER: Readonly<Partial<Record<Layout, Tier>>> = { lean: 'standard', solo: 'deep' }
+const ANGLE_TOKEN_NAMES: readonly string[] = Object.values(ANGLE_TOKENS)
+
+const finderGrades = (layout: Layout, grades: Readonly<Record<string, Grade>>): Record<string, Grade> => {
+  const tier = FINDER_TIER[layout]
+  if (tier === undefined) return { ...grades }
+  return Object.fromEntries(Object.entries(grades).map(([key, grade]) => [key, ANGLE_TOKEN_NAMES.includes(key) ? { ...grade, tier } : grade]))
+}
+
 export const planReview = (input: PlanInput): Plan => {
   const n = finderCount(input.lines)
-  const grades = { ...DEFAULT_GRADES, ...input.grades }
-  const selection = parseSelector(input.selector, input.shape, n)
+  const layout = input.layout ?? 'fanout'
+  const inline = n === 1 || (n > 1 && layout === 'inline')
+  const grades = finderGrades(layout, { ...DEFAULT_GRADES, ...input.grades })
+  const selection = parseSelector(input.selector, input.shape, n, inline)
   const wanted = selectedAngles(selection.tokens, input.angles)
   const skipped: Skipped[] = []
   const angles = ANGLES.filter((angle) => {
@@ -266,11 +286,14 @@ export const planReview = (input: PlanInput): Plan => {
     skipped.push({ angle, reason: 'no counted code lines' }),
   )
   const wantsDeepening = selection.tokens.length === 0 ? input.shape.newSourceFiles > 0 : selection.tokens.includes('deepening')
-  const path: ReviewPath = usedForCode.length === 0 ? 'none' : n === 1 ? 'inline' : 'subagents'
+  const path: ReviewPath = usedForCode.length === 0 ? 'none' : inline ? 'inline' : 'subagents'
+  const judging: Judging = path !== 'subagents' || layout === 'lean' ? 'important' : layout === 'solo' ? 'self' : 'clusters'
   return {
     lines: input.lines,
     n,
+    layout,
     path,
+    judging,
     selection,
     outputTokens: selection.tokens.filter((token) => token !== 'deepening'),
     angles: usedForCode,
@@ -314,7 +337,11 @@ export const stepsFor = (plan: Plan, mode: Mode, state: boolean): StepRef[] => {
     )
   }
   if (plan.path === 'inline') steps.push({ file: 'steps/04-inline.md' }, ...gateFiles(plan.angles).map((file) => ({ file })))
-  else steps.push({ file: 'steps/04-finders.md' }, { file: 'steps/05-verify.md' })
+  else if (plan.judging === 'important') {
+    steps.push({ file: 'steps/04-finders.md' }, { file: 'steps/05-verify.md', when: 'sections "Dedup" and "Layout lean"' }, ...gateFiles(plan.angles).map((file) => ({ file })))
+  } else if (plan.judging === 'self') {
+    steps.push({ file: 'steps/04-finders.md', when: 'with section "Layout solo"' }, { file: 'steps/05-verify.md', when: 'sections "Dedup" and "Layout solo"' })
+  } else steps.push({ file: 'steps/04-finders.md', when: 'without section "Layout solo"' }, { file: 'steps/05-verify.md', when: 'without sections "Layout lean" and "Layout solo"' })
   steps.push({ file: 'steps/06-rank.md' })
   if (state) steps.push({ file: 'steps/07-comments.md' })
   steps.push(output)

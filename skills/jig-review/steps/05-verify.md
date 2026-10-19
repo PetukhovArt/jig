@@ -48,6 +48,22 @@ In this order: the diff (or the command that prints it), the files the cluster n
 
 **Returned per candidate, in one go:** verdict, severity, `severity_class`, `severity_gate`, `blocks` (a blocking finding only), angle, category, and a one-sentence `summary` naming the defect plus the evidence the verdict rests on: the quoted line, the input, the state. **No comment prose**: verify judges, it does not write. Texts come in a [separate step](07-comments.md), after the gate, so nothing is written for a candidate that dies.
 
+## Layout lean
+
+Only when `jig review-plan` printed `layout: lean`: the finders ran on the standard tier, and instead of a judge per cluster you judge, as on the [inline path](04-inline.md#judge-yourself). Head before verify and clusters do not apply.
+
+1. Judge every deduped candidate yourself by the gate files the steps list, the self-check of `gates/bugs.md` asked literally before each bug `CONFIRMED`; refute with a quoted line, not with doubt.
+2. No `CONFIRMED` `Important`: no subagent; the output says `judge: you only (no Important candidate)`.
+3. One or more: **one** judge subagent for all of them, role `verifier`, on the model and grade `jig review-plan` printed (`candidates from sonnet → judge opus`), briefed as the [inline judge](04-inline.md#second-model-only-for-important). Its verdict stands, as there.
+
+## Layout solo
+
+Only when `jig review-plan` printed `layout: solo`: every finder returned a verdict per candidate ([finders](04-finders.md#layout-solo)). No judge subagents, no clusters.
+
+- A `CONFIRMED` that lacks a field the gates require (a bug without initiator, path or effect quoted; a rule without its quote) is `REFUTED: not proven`, unless you prove the missing part yourself with a quoted line.
+- Two finders that judged one deduped candidate differently: read the cited lines and decide; name the disagreement in the output.
+- `REFUTED` candidates go to the refuted list with the finder's reason.
+
 ## Check the class codes
 
 Before [ranking](06-rank.md): a class outside the taxonomy in force, or a severity below the class level without `severity_gate` ([class code](../gates/severity.md#class-code)): the candidate goes back once to the same judge with the mismatch named. A repeat: the severity of the class level, and the mismatch goes into the summary.

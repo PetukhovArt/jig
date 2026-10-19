@@ -59,7 +59,7 @@ The merge request description is only a source of references for item 1: the aut
 ## Layout
 
 ```bash
-node <root>/bin/jig.mjs review-plan <base> [--selector <selector>] [--spec] [--mode pre-mr] [--mr] [--no-state]
+node <root>/bin/jig.mjs review-plan <base> [--selector <selector>] [--layout <layout>] [--spec] [--mode pre-mr] [--mr] [--no-state]
 ```
 
 `--spec` when a spec was found. `--mode pre-mr` in mode `pre-mr`. `--mr` in mode `review` when a merge request is known: it turns state, comment texts, re-review and posting on. `--no-state` passes the flag of the same name. No selector argument: pass none; the command picks the default. It prints, and with `--json` returns as data:
