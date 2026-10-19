@@ -70,6 +70,14 @@ export interface WorktreeConfig {
   copyFiles?: string[]
 }
 
+export const FORGES = ['gitlab', 'github'] as const
+export type ForgeName = (typeof FORGES)[number]
+
+export interface ReviewCycleConfig {
+  processAdapter?: string
+  forge?: ForgeName
+}
+
 export interface JigConfig {
   rules: Record<JigRuleId, Severity>
   tools: Record<string, ToolSetting>
@@ -77,6 +85,7 @@ export interface JigConfig {
   checks: CustomCheck[]
   slots?: SlotsConfig
   worktree?: WorktreeConfig
+  reviewCycle?: ReviewCycleConfig
 }
 
 export interface LoadedConfig extends JigConfig {
@@ -315,8 +324,26 @@ const readWorktree = (validator: Validator, value: unknown): WorktreeConfig | un
   return worktree
 }
 
+const REVIEW_CYCLE_KEYS = ['processAdapter', 'forge'] as const
 
-export const defaultRules = (): Record<JigRuleId, Severity> => {
+const readReviewCycle = (validator: Validator, value: unknown): ReviewCycleConfig | undefined => {
+  const path = '$.reviewCycle'
+  const object = validator.object(value, path, REVIEW_CYCLE_KEYS)
+  if (object === undefined) return undefined
+  const reviewCycle: ReviewCycleConfig = {}
+  if (object['processAdapter'] !== undefined) {
+    const adapter = validator.string(object['processAdapter'], childPath(path, 'processAdapter'))
+    if (adapter !== undefined && adapter.trim() === '') validator.report(childPath(path, 'processAdapter'), 'is empty')
+    else if (adapter !== undefined) reviewCycle.processAdapter = adapter
+  }
+  if (object['forge'] !== undefined) {
+    const forge = validator.oneOf(object['forge'], childPath(path, 'forge'), FORGES)
+    if (forge !== undefined) reviewCycle.forge = forge
+  }
+  return reviewCycle
+}
+
+export const defaultRules =(): Record<JigRuleId, Severity> => {
   const rules = {} as Record<JigRuleId, Severity>
   for (const rule of RULE_IDS) {
     rules[rule] = DEFAULT_SEVERITIES[rule] ?? DEFAULT_SEVERITY
@@ -326,7 +353,7 @@ export const defaultRules = (): Record<JigRuleId, Severity> => {
 
 export const defaultConfig = (): JigConfig => ({ rules: defaultRules(), tools: {}, proofs: {}, checks: [] })
 
-const SECTION_KEYS = ['$schema', 'rules', 'checks', 'slots', 'worktree'] as const
+const SECTION_KEYS = ['$schema', 'rules', 'checks', 'slots', 'worktree', 'reviewCycle'] as const
 
 /** Root keys: the fixed sections plus every catalog name, so a tool outside the catalog is an unknown key. */
 export const ROOT_KEYS: readonly string[] = [...SECTION_KEYS, ...TOOL_NAMES, ...PROOF_NAMES]
@@ -344,6 +371,7 @@ export const validateConfig = (value: unknown): { config: JigConfig; errors: str
   const checks = readChecks(validator, root['checks'])
   const slots = root['slots'] === undefined ? undefined : readSlots(validator, root['slots'])
   const worktree = root['worktree'] === undefined ? undefined : readWorktree(validator, root['worktree'])
+  const reviewCycle = root['reviewCycle'] === undefined ? undefined : readReviewCycle(validator, root['reviewCycle'])
   const config: JigConfig = {
     rules,
     tools,
@@ -351,6 +379,7 @@ export const validateConfig = (value: unknown): { config: JigConfig; errors: str
     checks,
     ...(slots === undefined ? {} : { slots }),
     ...(worktree === undefined ? {} : { worktree }),
+    ...(reviewCycle === undefined ? {} : { reviewCycle }),
   }
   return { config, errors: validator.errors }
 }
