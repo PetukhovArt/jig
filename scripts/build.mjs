@@ -7,13 +7,15 @@ const root = dirname(dirname(fileURLToPath(import.meta.url)))
 const bundlePath = join(root, 'bin', 'jig.mjs')
 const atomsDir = join(root, 'atoms')
 const skillDir = join(root, 'skills', 'jig')
-const atomIndexPath = join(skillDir, 'references', 'atoms.md')
 const rolesDir = join(skillDir, 'references', 'roles')
 const roleIndexPath = join(skillDir, 'references', 'roles.md')
 const flowsDir = join(skillDir, 'flows')
 const skillPath = join(skillDir, 'SKILL.md')
 const FLOWS_START = '<!-- flows:start -->'
 const FLOWS_END = '<!-- flows:end -->'
+const ATOMS_START = '<!-- atoms:start -->'
+const ATOMS_END = '<!-- atoms:end -->'
+const ATOM_GROUPS = ['Process', 'Design', 'Code', 'Proof', 'Review']
 const SHARED_FLOW = 'mr'
 const isCheck = process.argv.includes('--check')
 
@@ -73,11 +75,24 @@ const readEntries = (dir, label) =>
     return { file, ...fields }
   })
 
-const atomIndex = () => {
-  const lines = readEntries(atomsDir, 'atoms').map(
-    ({ file, name, description }) => `- \`${name}\` (\`atoms/${file}\`): ${description}`,
-  )
-  return ['# Atom index', '', ...lines].join('\n').trimEnd() + '\n'
+const triggerOf = (file, description) => {
+  const match = /^(.*?)\.(\s|$)/.exec(description)
+  if (!match) throw new Error(`atoms/${file}: description needs a first sentence ending with a period`)
+  return match[1]
+}
+
+const atomIndexLines = () => {
+  const atoms = readEntries(atomsDir, 'atoms').map(({ file, name, description, metadata }) => {
+    const group = metadata?.group
+    if (!ATOM_GROUPS.includes(group)) {
+      throw new Error(`atoms/${file}: metadata.group must be one of ${ATOM_GROUPS.join(', ')}`)
+    }
+    return { group, line: `- \`${name}\`: ${triggerOf(file, description)}` }
+  })
+  return ATOM_GROUPS.flatMap((group) => {
+    const lines = atoms.filter((atom) => atom.group === group).map((atom) => atom.line)
+    return lines.length === 0 ? [] : ['', `**${group}**`, ...lines]
+  }).slice(1)
 }
 
 const roleIndex = () => {
@@ -91,17 +106,22 @@ const roleIndex = () => {
   return ['# Role index', '', ...lines].join('\n').trimEnd() + '\n'
 }
 
-const skillWithFlowIndex = () => {
-  const text = normalizeEol(readFileSync(skillPath, 'utf8'))
-  const start = text.indexOf(`${FLOWS_START}\n`)
-  const end = text.indexOf(`${FLOWS_END}\n`)
+const replaceBlock = (text, startMarker, endMarker, lines) => {
+  const start = text.indexOf(`${startMarker}\n`)
+  const end = text.indexOf(`${endMarker}\n`)
   if (start === -1 || end < start) {
-    throw new Error(`skills/jig/SKILL.md: needs the lines ${FLOWS_START} and ${FLOWS_END}, in that order`)
+    throw new Error(`skills/jig/SKILL.md: needs the lines ${startMarker} and ${endMarker}, in that order`)
   }
-  const lines = readEntries(flowsDir, 'flows')
+  return [text.slice(0, start), startMarker, '\n', ...lines.map((line) => `${line}\n`), text.slice(end)].join('')
+}
+
+const skillWithIndexes = () => {
+  const text = normalizeEol(readFileSync(skillPath, 'utf8'))
+  const flowLines = readEntries(flowsDir, 'flows')
     .filter(({ name }) => name !== SHARED_FLOW)
     .map(({ name, description }) => `- \`${name}\`: ${description}`)
-  return [text.slice(0, start), FLOWS_START, '\n', ...lines.map((line) => `${line}\n`), text.slice(end)].join('')
+  const withAtoms = replaceBlock(text, ATOMS_START, ATOMS_END, atomIndexLines())
+  return replaceBlock(withAtoms, FLOWS_START, FLOWS_END, flowLines)
 }
 
 const isStale = (path, expected) => {
@@ -117,9 +137,8 @@ const writeOutput = (path, text) => {
 const main = async () => {
   const outputs = [
     [bundlePath, await bundle()],
-    [atomIndexPath, atomIndex()],
     [roleIndexPath, roleIndex()],
-    [skillPath, skillWithFlowIndex()],
+    [skillPath, skillWithIndexes()],
   ]
 
   if (isCheck) {
