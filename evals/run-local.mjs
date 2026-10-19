@@ -1,5 +1,6 @@
 import { spawn, spawnSync } from 'node:child_process'
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, rmdirSync, unlinkSync, writeFileSync } from 'node:fs'
+import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { basename, isAbsolute, join, resolve } from 'node:path'
 
@@ -87,6 +88,19 @@ const parseFrontMatter = (source) => {
   return { meta: parseYaml(match[1]), body: match[2].trim() }
 }
 
+const parseFlowSteps = (body, path) => {
+  const fenced = /```(?:json)?\r?\n([\s\S]*?)```/.exec(body)
+  let steps
+  try {
+    steps = JSON.parse(fenced ? fenced[1] : body)
+  } catch (error) {
+    throw new Error(`${path}: a flow grader body is a JSON array of {step, evidence, skip?}: ${error.message}`)
+  }
+  const isStep = (step) => typeof step?.step === 'string' && typeof step.evidence === 'string' && (step.skip === undefined || typeof step.skip === 'string')
+  if (!Array.isArray(steps) || steps.length === 0 || !steps.every(isStep)) throw new Error(`${path}: a flow grader body is a JSON array of {step, evidence, skip?}`)
+  return steps
+}
+
 const loadGraders = (graderDir) =>
   existsSync(graderDir)
     ? readdirSync(graderDir)
@@ -94,7 +108,8 @@ const loadGraders = (graderDir) =>
         .sort()
         .map((file) => {
           const { meta, body } = parseFrontMatter(readFileSync(join(graderDir, file), 'utf8'))
-          return { name: basename(file, '.md'), ...meta, criteria: meta.criteria ?? body, weight: meta.weight ?? 1 }
+          const steps = meta.type === 'flow' ? parseFlowSteps(body, join(graderDir, file)) : undefined
+          return { name: basename(file, '.md'), ...meta, criteria: meta.criteria ?? body, steps, weight: meta.weight ?? 1 }
         })
     : []
 
@@ -234,6 +249,14 @@ const traceText = (events) =>
     .filter(Boolean)
     .join('\n')
 
+const toolCallText = (events) =>
+  events
+    .filter((event) => event.type === 'assistant')
+    .flatMap((event) => (Array.isArray(event.message?.content) ? event.message.content : []))
+    .filter((block) => block?.type === 'tool_use')
+    .map((block) => `${block.name} ${JSON.stringify(block.input)}`)
+    .join('\n')
+
 const lastMessage = (events) => {
   const result = events.findLast((event) => event.type === 'result')
   if (typeof result?.result === 'string' && result.result.trim() !== '') return result.result
@@ -273,6 +296,18 @@ const gradeRegex = (grader, context) => {
   const passed = match === 'not_contains' ? found === null : found !== null
   const reason = found ? `matched ${JSON.stringify(found[0].slice(0, 120))}` : 'no match'
   return { passed, reason: `${match}: ${reason}` }
+}
+
+const gradeFlow = (grader, context) => {
+  const said = `${context.trace}\n${context.lastMessage}`
+  const steps = grader.steps.map(({ step, evidence, skip }) => {
+    const done = new RegExp(evidence, 'im').exec(context.toolCalls)
+    if (done) return { step, passed: true, how: `done ${JSON.stringify(done[0].slice(0, 80))}` }
+    const skipped = skip === undefined ? null : new RegExp(skip, 'im').exec(said)
+    if (skipped) return { step, passed: true, how: `skipped ${JSON.stringify(skipped[0].slice(0, 80))}` }
+    return { step, passed: false, how: skip === undefined ? 'not done (no skip allowed)' : 'neither done nor skipped' }
+  })
+  return { passed: steps.every((entry) => entry.passed), reason: steps.map((entry) => `${entry.step}: ${entry.how}`).join('; '), steps }
 }
 
 const cap = (text, limit) => (text.length > limit ? `${text.slice(0, limit)}\n[... truncated ${text.length - limit} chars]` : text)
@@ -366,11 +401,13 @@ const gradeAll = async (testCase, arm, context, options) => {
     try {
       if (grader.type === 'regex') verdict = gradeRegex(grader, context)
       else if (grader.type === 'llm') verdict = await gradeLlm(grader, context, options)
+      else if (grader.type === 'flow') verdict = gradeFlow(grader, context)
       else verdict = { passed: false, reason: `unsupported grader type ${grader.type}` }
     } catch (error) {
       verdict = { passed: false, reason: `grader error: ${error.message}` }
     }
-    verdicts.push({ name: grader.name, type: grader.type, weight: grader.weight, passed: verdict.passed, reason: verdict.reason, costUsd: verdict.costUsd ?? 0 })
+    const steps = verdict.steps ? { steps: verdict.steps.map(({ step, passed }) => ({ step, passed })) } : {}
+    verdicts.push({ name: grader.name, type: grader.type, weight: grader.weight, passed: verdict.passed, reason: verdict.reason, costUsd: verdict.costUsd ?? 0, ...steps })
   }
   return verdicts
 }
@@ -380,15 +417,52 @@ const weightedScore = (verdicts) => {
   return total === 0 ? 0 : verdicts.reduce((sum, verdict) => sum + (verdict.passed ? verdict.weight : 0), 0) / total
 }
 
-const runAgent = async (testCase, arm, index, options, outDir, runDir, record) => {
+const claimedPorts = new Set()
+
+const freePort = () =>
+  new Promise((resolvePort, reject) => {
+    const server = createServer()
+    server.unref()
+    server.on('error', reject)
+    server.listen(0, '127.0.0.1', () => {
+      const { port } = server.address()
+      server.close(() => resolvePort(port))
+    })
+  })
+
+const claimPort = async () => {
+  for (;;) {
+    const port = await freePort()
+    if (claimedPorts.has(port)) continue
+    claimedPorts.add(port)
+    return port
+  }
+}
+
+const AGENT_VIEW_CONFIG = 'agent-view.config.json'
+
+const ownCdpPort = async (runDir) => {
+  const configPath = join(runDir, AGENT_VIEW_CONFIG)
+  if (!existsSync(configPath)) return undefined
+  const port = await claimPort()
+  const config = JSON.parse(readFileSync(configPath, 'utf8'))
+  writeFileSync(configPath, `${JSON.stringify({ ...config, port }, null, 2)}\n`)
+  git(runDir, ['add', AGENT_VIEW_CONFIG])
+  git(runDir, ['-c', 'user.email=eval@jig', '-c', 'user.name=eval', 'commit', '-qm', `eval: CDP port ${port}`])
+  return port
+}
+
+const runAgent = async (testCase, arm, index, options, outDir, runDir, tempDir, record) => {
   if (testCase.scaffold) {
     const scaffold = await run(BASH, [testCase.scaffold.replace(/\\/g, '/')], { cwd: runDir, timeoutMs: 600_000 })
     if (scaffold.code !== 0) throw new Error(`scaffold failed (${scaffold.code}): ${cap(scaffold.stderr, 1000)}`)
   }
+  record.cdpPort = await ownCdpPort(runDir)
   const base = git(runDir, ['rev-parse', 'HEAD']).stdout.trim()
   const tracePath = join(outDir, 'traces', `${testCase.name}-${arm}-${index + 1}.jsonl`)
   const agent = await run('claude', agentArgs(testCase, arm, options), {
     cwd: runDir,
+    env: { ...isolatedEnv(), TMPDIR: tempDir, TEMP: tempDir, TMP: tempDir },
     input: testCase.prompt,
     timeoutMs: testCase.timeoutSeconds * 1000,
     onStdoutLine: trackUtilization,
@@ -412,15 +486,16 @@ const runAgent = async (testCase, arm, index, options, outDir, runDir, record) =
     tokens: result ? (modelUsageTotal(result.modelUsage) ?? tokenTotal(result.usage)) : undefined,
   })
   if (!result) record.error = `no result event (exit ${agent.code}${agent.timedOut ? ', timed out' : ''}): ${cap(agent.stderr, 500)}`
-  return { runDir, trace: cap(traceText(events), TRACE_CAP), lastMessage: lastMessage(events), diff: diffAgainstBase(runDir, base) }
+  return { runDir, trace: cap(traceText(events), TRACE_CAP), toolCalls: toolCallText(events), lastMessage: lastMessage(events), diff: diffAgainstBase(runDir, base) }
 }
 
 const runOne = async ({ testCase, arm, index, options, outDir }) => {
   const runDir = mkdtempSync(join(tmpdir(), 'jig-eval-'))
-  const record = { case: testCase.name, arm, run: index + 1, runDir, score: 0, graders: [] }
+  const tempDir = mkdtempSync(join(tmpdir(), 'jig-eval-tmp-'))
+  const record = { case: testCase.name, arm, run: index + 1, runDir, tempDir, score: 0, graders: [] }
   const started = Date.now()
   try {
-    const context = await runAgent(testCase, arm, index, options, outDir, runDir, record)
+    const context = await runAgent(testCase, arm, index, options, outDir, runDir, tempDir, record)
     record.graders = await gradeAll(testCase, arm, context, options)
     record.score = weightedScore(record.graders)
     record.judgeCostUsd = record.graders.reduce((sum, verdict) => sum + verdict.costUsd, 0)
@@ -432,6 +507,7 @@ const runOne = async ({ testCase, arm, index, options, outDir }) => {
   else {
     try {
       removeDir(runDir)
+      removeDir(tempDir)
     } catch (error) {
       record.cleanupError = error.message
     }
@@ -472,6 +548,10 @@ const summarize = (records, cases, arms) => {
         const runs = runsOf(records, testCase.name, arm)
         const passed = runs.filter((run) => run.graders.some((verdict) => verdict.name === grader.name && verdict.passed)).length
         graders.push(`| ${testCase.name} | ${arm} | ${grader.name} | ${passed}/${runs.length} |`)
+        for (const { step } of grader.steps ?? []) {
+          const stepPassed = runs.filter((run) => run.graders.some((verdict) => verdict.name === grader.name && verdict.steps?.some((entry) => entry.step === step && entry.passed))).length
+          graders.push(`| ${testCase.name} | ${arm} | ${grader.name}: ${step} | ${stepPassed}/${runs.length} |`)
+        }
       }
     }
     if (stats.with && stats.without) {
