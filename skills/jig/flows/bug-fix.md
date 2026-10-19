@@ -4,19 +4,21 @@ description: "reproduce, find the root cause, fix, prove."
 ---
 # bug-fix
 
-**You own this task. Plan, review, verify.**
+**You own this task. Loop first, cause second, fix last.**
 
 Atoms: root-causes, prove-shippable, change-impact, tests.
 
-1. Reproduce the bug yourself on the surface where the user sees it. Runtime-visible: drive the app (agent-view) and save the path as an act scenario. Otherwise: a failing test or a script. Build the loop so it goes red on the bug.
-2. Understand the area first: the how and why steps of `flows/investigation.md`, as deep as the bug needs.
-3. Minimise the reproduction, write hypotheses down, instrument instead of guessing, until you reach the first place the system went wrong.
-4. The fix crosses a function boundary (changes a signature, an exported type or a module's public surface): `flows/module-design.md` first. Otherwise `skip: the fix stays inside one function`.
-5. Name the fact the fix is safe because of (atom change-impact).
-6. Fix it at the root. Fix every instance of the same mistake.
-7. Re-run the same reproduction: red before, green after. A regression test only when the bug has a cheap local test path and the test passes atom tests: write it before the fix, see it fail for the bug's reason, commit it before the fix. Expensive, integration-heavy or unclear: `skip: <reason>`, the reproduction is the proof. A unit test shows branch behavior, not that the bug is gone.
-8. Update the feature's behaviour catalog and its act scenario when the project keeps them.
-9. Runtime-visible change: run `flows/bug-bash.md` in final-step mode on your own diff. Otherwise `skip: not runtime-visible`.
-10. `flows/mr.md`.
+Discipline for steps 1 to 4 and 7: `references/diagnosis.md`.
 
-Reply: what was broken, the root cause with `file:line`, the fix, how you verified it. Paste the failing-then-passing reproduction output verbatim.
+1. Feedback loop: build a tight loop that goes red on the bug, on the surface where the user sees it (diagnosis phase 1). Done when you have run one command that shows the user's exact symptom.
+2. UI touched? The bug shows in the UI, or the fix will change files the user sees. Yes: `agent-view act list <section>`; reuse the feature's use case, or have agent-view's act-decider record the reproduction path and save it with `agent-view act save-use-case`. No: `skip: UI not touched`.
+3. Understand the area: the how and why steps of `flows/investigation.md`, as deep as the bug needs.
+4. Minimize, hypothesize, instrument (diagnosis phases 2 to 4) until you reach the first place the system went wrong.
+5. The fix crosses a function boundary (a signature, an exported type or a module's public surface): `flows/module-design.md` first. Otherwise `skip: the fix stays inside one function`.
+6. Name the fact the fix is safe because of (atom change-impact).
+7. Fix it at the root, every instance of the same mistake. A fix that spans several modules goes to a delegate with a brief, as in `flows/feature.md` step 7; you review its diff. A regression test only when the bug has a cheap local test path and the test passes atom tests: write it before the fix, see it fail for the bug's reason, commit it before the fix. Otherwise `skip: <reason>`, the loop is the proof.
+8. Rerun the same loop: red before, green after. Then clean up (diagnosis phase 6).
+9. Update the feature's behavior catalog and its use case when the project keeps them.
+10. Pre-MR stage: `flows/mr.md` (review in mode `pre-mr`, use case replay with screenshots and a bug-bash when UI is touched, `jig pre-mr`, the merge request).
+
+Reply: what was broken, the root cause with `file:line` and the hypothesis that held, the fix, how you verified it. Paste the failing-then-passing loop output verbatim.
