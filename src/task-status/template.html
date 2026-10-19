@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>jig task status</title>
+<style>
+body {
+  --paper: #faf9f5; --card: #fff; --sunk: #f0eee6;
+  --ink: #141413; --ink-2: #3d3d3a; --ink-3: #73726c; --line: rgba(31,30,29,.15); --line-2: rgba(31,30,29,.08);
+  --accent: #c6613f; --accent-soft: #f6e7df; --green: #2c7a39; --green-soft: #e2efdf;
+  --red: #b3261e; --red-soft: #f7dfdc; --blue: #2a69b8; --blue-soft: #dde8f5; --float: 0 2px 8px rgba(0,0,0,.08);
+  --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; --serif: ui-serif, Georgia, "Times New Roman", serif; --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) { body:not(.light) { color-scheme: dark;
+  --paper: #262624; --card: #30302e; --sunk: #1f1e1d;
+  --ink: #faf9f5; --ink-2: #c2c0b6; --ink-3: #9c9a92; --line: rgba(222,220,209,.15); --line-2: rgba(222,220,209,.08);
+  --accent: #d97757; --accent-soft: #46302a; --green: #6fb37a; --green-soft: #26372a;
+  --red: #e5776e; --red-soft: #432725; --blue: #7aa7e0; --blue-soft: #25313f; --float: 0 2px 8px rgba(0,0,0,.3);
+} }
+body.dark { color-scheme: dark;
+  --paper: #262624; --card: #30302e; --sunk: #1f1e1d;
+  --ink: #faf9f5; --ink-2: #c2c0b6; --ink-3: #9c9a92; --line: rgba(222,220,209,.15); --line-2: rgba(222,220,209,.08);
+  --accent: #d97757; --accent-soft: #46302a; --green: #6fb37a; --green-soft: #26372a;
+  --red: #e5776e; --red-soft: #432725; --blue: #7aa7e0; --blue-soft: #25313f; --float: 0 2px 8px rgba(0,0,0,.3);
+}
+:where(*) { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { margin: 0; min-height: 100vh; background: var(--paper); color: var(--ink); font: 430 16px/1.6 var(--sans); -webkit-text-size-adjust: 100%; overflow-x: clip; }
+h1, h2, p, ol { margin: 0; }
+ol { padding: 0; list-style: none; }
+h1 { font: 500 26px/1.15 var(--serif); margin-bottom: 8px; text-wrap: balance; overflow-wrap: anywhere; }
+h2 { font: 500 22px/1.25 var(--serif); margin-bottom: 12px; display: flex; align-items: baseline; gap: 10px; }
+a { color: var(--accent); text-underline-offset: 3px; }
+button { font: inherit; color: inherit; cursor: pointer; }
+a:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+time, .mono { font: 12px/1.5 var(--mono); color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.pill { display: inline-block; font: 550 12px/1 var(--sans); padding: 4px 8px; border-radius: 99px; background: var(--sunk); color: var(--ink-2); border: 1px solid var(--line); white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.pill.accent { background: var(--accent-soft); color: var(--accent); border-color: transparent; }
+.pill.green { background: var(--green-soft); color: var(--green); border-color: transparent; }
+.pill.red { background: var(--red-soft); color: var(--red); border-color: transparent; }
+
+.page { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 40px; max-width: 1180px; margin: 0 auto; padding: 32px 24px 120px; }
+.rail { position: sticky; top: 24px; align-self: start; max-height: calc(100vh - 48px); overflow: auto; }
+.meta { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: center; margin-bottom: 12px; overflow-wrap: anywhere; }
+.live { display: inline-flex; gap: 6px; align-items: center; }
+.big { font: 500 44px/1 var(--serif); margin: 6px 0 10px; }
+.big small { font: 430 16px/1 var(--sans); color: var(--ink-3); }
+.seg { display: flex; gap: 3px; margin-bottom: 8px; }
+.seg i { flex: 1; height: 6px; border-radius: 3px; background: var(--line); }
+.seg i.done { background: var(--green); } .seg i.active { background: var(--accent); } .seg i.blocked { background: var(--red); }
+.dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; flex: none; border: 1.5px solid var(--ink-3); background: var(--paper); }
+.dot.done { background: var(--green); border-color: var(--green); }
+.dot.active { background: var(--accent); border-color: var(--accent); box-shadow: 0 0 0 4px var(--accent-soft); }
+.dot.blocked { background: var(--red); border-color: var(--red); }
+.line { position: relative; margin-top: 12px; }
+.line::before { content: ""; position: absolute; left: 4px; top: 10px; bottom: 10px; width: 2px; background: var(--line); }
+.line li { position: relative; display: flex; gap: 12px; align-items: flex-start; padding: 5px 0; font-size: 14px; line-height: 1.45; }
+.line li .dot { margin-top: 5px; }
+.line li > div { min-width: 0; overflow-wrap: anywhere; }
+.line li.done > div { color: var(--ink-3); }
+.line li.blocked > div { color: var(--red); }
+.line li.active > div { font-weight: 600; }
+.line small { display: block; font-size: 12px; font-weight: 430; color: var(--ink-3); }
+.line li.blocked small { color: var(--red); }
+.runs { margin-top: 24px; font-size: 13px; color: var(--ink-3); }
+.runs li { padding: 2px 0; overflow-wrap: anywhere; }
+
+.inbox { margin-bottom: 32px; }
+.ask { padding: 16px; background: var(--card); border: 1px solid var(--accent); border-radius: 12px; margin-bottom: 14px; }
+.ask .k { font-size: 12px; font-weight: 550; color: var(--ink-3); margin-bottom: 8px; }
+.ask .q { font-weight: 600; margin-bottom: 6px; overflow-wrap: anywhere; }
+.ask .def { font-size: 14px; color: var(--ink-2); overflow-wrap: anywhere; }
+
+.chips { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 18px; position: sticky; top: 0; z-index: 4; background: var(--paper); padding: 10px 0; border-bottom: 1px solid var(--line-2); }
+.chips button { font-size: 13px; font-weight: 550; line-height: 1; padding: 7px 11px; border-radius: 99px; border: 1px solid var(--line); background: var(--card); color: var(--ink-2); }
+.chips button[aria-pressed="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.feed[data-f="d"] .ev:not(.d), .feed[data-f="s"] .ev:not(.s), .feed[data-f="q"] .ev:not(.q) { display: none; }
+.ev { display: grid; grid-template-columns: 48px 26px minmax(0, 1fr); gap: 0 10px; position: relative; }
+.ev::before { content: ""; position: absolute; left: 70px; top: 0; bottom: 0; width: 1px; background: var(--line); }
+.ev > time { padding-top: 14px; text-align: right; }
+.ev .ico { width: 26px; height: 26px; margin-top: 12px; border-radius: 50%; display: grid; place-items: center; font: 600 12px/1 var(--mono); position: relative; }
+.ev.d .ico { background: var(--blue-soft); color: var(--blue); }
+.ev.s .ico { background: var(--green-soft); color: var(--green); }
+.ev.q .ico { background: var(--accent-soft); color: var(--accent); }
+.ev.start .ico { background: var(--ink); color: var(--paper); }
+.ev.start .item { border-color: var(--ink-3); background: var(--sunk); }
+.item { padding: 12px 14px; background: var(--card); border: 1px solid var(--line); border-radius: 12px; margin: 6px 0; min-width: 0; }
+.item .top { display: flex; gap: 8px; align-items: center; margin-bottom: 4px; flex-wrap: wrap; }
+.item .top time { display: none; }
+.item p { font-size: 15px; overflow-wrap: anywhere; }
+.item.reverted p { text-decoration: line-through; color: var(--ink-3); }
+.item dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 2px 14px; margin: 8px 0 0; font-size: 14px; }
+.item dt { font-size: 12px; line-height: 1.9; color: var(--ink-3); } .item dd { margin: 0; color: var(--ink-2); overflow-wrap: anywhere; }
+.empty { color: var(--ink-3); font-size: 14px; }
+
+.bar { position: fixed; z-index: 10; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom)); display: flex; gap: 8px; align-items: center; }
+.theme { width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--line); background: var(--card); box-shadow: var(--float); color: var(--ink-2); }
+
+@media (max-width: 900px) {
+  .page { grid-template-columns: minmax(0, 1fr); gap: 0; padding: 0 16px 110px; }
+  .rail { position: static; max-height: none; overflow: visible; padding: 14px 0 6px; border-bottom: 1px solid var(--line); }
+  h1 { font-size: 20px; margin-bottom: 4px; }
+  .big { font: 600 15px/1.4 var(--sans); margin: 0; } .big small { font-size: 13px; }
+  .chips { position: static; }
+  .feed { padding-top: 16px; }
+  .ev { grid-template-columns: 40px 22px minmax(0, 1fr); gap: 0 8px; }
+  .ev::before { left: 58px; }
+  .ev .ico { width: 22px; height: 22px; font-size: 11px; }
+}
+@media (max-width: 480px) {
+  .ev { grid-template-columns: 22px minmax(0, 1fr); }
+  .ev > time { display: none; }
+  .ev::before { left: 11px; }
+  .item .top time { display: inline; }
+}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script type="application/json" id="status">
+{"branch":"","journal":"","builtAt":"","lang":"en","rows":[]}
+</script>
+<script>
+const S = JSON.parse(document.getElementById('status').textContent);
+const LIVE_MS = 15 * 60e3;
+const LABELS = {
+  en: {
+    locale: 'en-GB',
+    title: 'jig task status',
+    branch: 'branch',
+    live: ago => `live, last row ${ago}`,
+    quiet: ago => `no rows ${ago}`,
+    built: at => `page built at ${at}, rebuild: jig task-status open`,
+    stepsDone: total => `/ ${total} steps done`,
+    steps: 'Steps',
+    runs: 'Runs in this journal',
+    runItem: (at, count) => `${at}, ${count} rows`,
+    theme: 'Light or dark theme',
+    open: 'Open questions',
+    taken: 'went with',
+    journal: 'Journal',
+    all: 'All',
+    decisions: 'Decisions',
+    stepRows: 'Steps',
+    questions: 'Questions',
+    start: 'run start',
+    why: 'why',
+    evidence: 'evidence',
+    nothing: 'Nothing yet.',
+    justNow: 'just now',
+    minAgo: m => `${m} min ago`,
+    hoursAgo: (h, m) => `${h} h ${m} min ago`,
+    daysAgo: d => `${d} d ago`,
+  },
+  ru: {
+    locale: 'ru-RU',
+    title: 'Статус задачи jig',
+    branch: 'ветка',
+    live: ago => `живой, последняя строка ${ago}`,
+    quiet: ago => `нет строк ${ago}`,
+    built: at => `страница собрана в ${at}, пересобрать: jig task-status open --lang ru`,
+    stepsDone: total => `/ ${total} шагов готово`,
+    steps: 'Шаги',
+    runs: 'Прогоны в журнале',
+    runItem: (at, count) => `${at}, строк: ${count}`,
+    theme: 'Светлая или тёмная тема',
+    open: 'Открытые вопросы',
+    taken: 'выбрано',
+    journal: 'Журнал',
+    all: 'Всё',
+    decisions: 'Решения',
+    stepRows: 'Шаги',
+    questions: 'Вопросы',
+    start: 'начало прогона',
+    why: 'почему',
+    evidence: 'доказательство',
+    nothing: 'Пока пусто.',
+    justNow: 'только что',
+    minAgo: m => `${m} мин назад`,
+    hoursAgo: (h, m) => `${h} ч ${m} мин назад`,
+    daysAgo: d => `${d} дн назад`,
+  },
+};
+const lang = Object.hasOwn(LABELS, S.lang) ? S.lang : 'en';
+const L = LABELS[lang];
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
+const hm = t => {
+  const d = new Date(t);
+  return Number.isNaN(d.getTime()) ? '' : d.toLocaleString(L.locale, {hour: '2-digit', minute: '2-digit'});
+};
+const dayHm = t => {
+  const d = new Date(t);
+  return Number.isNaN(d.getTime()) ? '' : d.toLocaleString(L.locale, {day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit'});
+};
+const ago = t => {
+  const m = Math.round((Date.now() - new Date(t)) / 60e3);
+  return m < 1 ? L.justNow : m < 60 ? L.minAgo(m) : m < 1440 ? L.hoursAgo(Math.floor(m / 60), m % 60) : L.daysAgo(Math.floor(m / 1440));
+};
+
+const kindOf = row => row.phase === 'start' ? 'start' : row.phase === 'step' ? 's' : row.phase === 'question' ? 'q' : 'd';
+const toneOf = result => {
+  if (/\b(reverted|blocked|failed|fail|red|not verified|inconclusive)\b/i.test(result)) return 'red';
+  if (/\b(kept|done|verified|green|passed|pass|answered)\b/i.test(result)) return 'green';
+  if (/^(open|active)\b/i.test(result)) return 'accent';
+  return '';
+};
+const stepStatus = result => {
+  const word = (/^\s*(\w+)/.exec(result) || [])[1]?.toLowerCase();
+  return ['done', 'active', 'blocked'].includes(word) ? word : 'todo';
+};
+const latestBy = rows => [...rows.reduce((map, row) => map.set(row.decision, row), new Map()).values()];
+
+const rows = S.rows;
+const starts = rows.map((row, i) => ({row, i})).filter(({row}) => row.phase === 'start');
+const runFrom = starts.length ? starts[starts.length - 1].i : 0;
+const runRows = rows.slice(runFrom);
+const title = starts.length ? starts[starts.length - 1].row.decision : L.title;
+const last = rows[rows.length - 1];
+const isLive = last !== undefined && Date.now() - new Date(last.ts) < LIVE_MS;
+const steps = latestBy(runRows.filter(row => row.phase === 'step')).map(row => ({...row, status: stepStatus(row.result)}));
+const done = steps.filter(s => s.status === 'done').length;
+const openQuestions = latestBy(runRows.filter(row => row.phase === 'question')).filter(row => row.result === '' || /^open\b/i.test(row.result));
+const runs = (starts.length && starts[0].i === 0 ? starts : [{row: rows[0], i: 0}, ...starts]).filter(({row}) => row !== undefined)
+  .map(({row, i}, n, all) => ({row, count: (all[n + 1]?.i ?? rows.length) - i}));
+
+const link = text => /^https?:\/\/\S+$/.test(text) ? `<a href="${esc(text)}">${esc(text)}</a>` : esc(text);
+const rowItem = row => {
+  const tone = toneOf(row.result);
+  const tags = [
+    row.phase === 'start' ? `<span class="pill">${L.start}</span>` : `<span class="pill">${esc(row.phase)}</span>`,
+    row.result ? `<span class="pill ${tone}">${esc(row.result)}</span>` : '',
+  ].join('');
+  const extra = [[L.why, row.why, esc], [L.evidence, row.evidence, link]].filter(([, v]) => v);
+  const more = extra.length ? `<dl>${extra.map(([k, v, show]) => `<dt>${k}</dt><dd>${show(v)}</dd>`).join('')}</dl>` : '';
+  const reverted = /\breverted\b/i.test(row.result) ? ' reverted' : '';
+  return `<div class="item${reverted}"><div class="top"><time>${hm(row.ts)}</time>${tags}</div><p>${esc(row.decision)}</p>${more}</div>`;
+};
+const ICON = {d: '◆', s: '✓', q: '?', start: '▶'};
+const counts = {d: 0, s: 0, q: 0, start: 0};
+for (const row of rows) counts[kindOf(row)]++;
+const FILTERS = [['all', L.all, rows.length], ['d', L.decisions, counts.d], ['s', L.stepRows, counts.s], ['q', L.questions, counts.q]];
+const savedFilter = localStorage.getItem('jig-task-status-filter');
+const filter = FILTERS.some(([k, , count]) => k === savedFilter && count) ? savedFilter : 'all';
+
+const stepLine = s => `<li class="${s.status}"><i class="dot ${s.status}"></i><div>${esc(s.decision)}${s.result ? `<small>${esc(s.result)}</small>` : ''}</div></li>`;
+const askCard = q => `<section class="ask"><div class="k">${dayHm(q.ts)}</div><p class="q">${esc(q.decision)}</p>${q.why ? `<p class="def">${L.taken}: ${esc(q.why)}</p>` : ''}</section>`;
+
+document.documentElement.lang = lang;
+const theme = localStorage.getItem('jig-task-status-theme');
+document.body.classList.toggle('light', theme === 'light');
+document.body.classList.toggle('dark', theme === 'dark');
+document.title = title;
+document.getElementById('app').innerHTML = `<div class="page">
+  <aside class="rail">
+    <h1>${esc(title)}</h1>
+    <p class="meta mono"><span>${L.branch} ${esc(S.branch)}</span>${last ? `<span class="live"><i class="dot ${isLive ? 'done' : 'blocked'}"></i>${isLive ? L.live(ago(last.ts)) : L.quiet(ago(last.ts))}</span>` : ''}</p>
+    ${steps.length ? `<p class="big">${done}<small> ${L.stepsDone(steps.length)}</small></p>
+    <div class="seg">${steps.map(s => `<i class="${s.status}" title="${esc(s.decision)}"></i>`).join('')}</div>
+    <ol class="line" aria-label="${L.steps}">${steps.map(stepLine).join('')}</ol>` : ''}
+    ${runs.length > 1 ? `<ol class="runs" aria-label="${L.runs}"><li><b>${L.runs}</b></li>${runs.map(({row, count}) => `<li>${esc(row.phase === 'start' ? row.decision : row.phase)} · ${L.runItem(dayHm(row.ts), count)}</li>`).join('')}</ol>` : ''}
+    <p class="runs mono">${L.built(dayHm(S.builtAt))}<br>${esc(S.journal)}</p>
+  </aside>
+  <main class="feed" data-f="${filter}">
+    ${openQuestions.length ? `<section class="inbox"><h2>${L.open} <span class="pill accent">${openQuestions.length}</span></h2>${openQuestions.map(askCard).join('')}</section>` : ''}
+    <h2>${L.journal}</h2>
+    ${rows.length ? `<div class="chips" role="toolbar">${FILTERS.filter(([, , count]) => count).map(([k, label, count]) => `<button type="button" data-f="${k}" aria-pressed="${filter === k}">${label} · ${count}</button>`).join('')}</div>
+    ${[...rows].reverse().map(row => `<div class="ev ${kindOf(row)}"><time>${hm(row.ts)}</time><span class="ico">${ICON[kindOf(row)]}</span>${rowItem(row)}</div>`).join('')}` : `<p class="empty">${L.nothing}</p>`}
+  </main>
+</div>
+<div class="bar"><button class="theme" type="button" aria-label="${L.theme}">&#9680;</button></div>`;
+
+for (const chip of document.querySelectorAll('.chips button')) {
+  chip.addEventListener('click', () => {
+    document.querySelector('.feed').dataset.f = chip.dataset.f;
+    for (const other of document.querySelectorAll('.chips button')) other.setAttribute('aria-pressed', String(other === chip));
+    localStorage.setItem('jig-task-status-filter', chip.dataset.f);
+  });
+}
+
+document.querySelector('.theme').addEventListener('click', () => {
+  const isDark = getComputedStyle(document.body).colorScheme === 'dark';
+  const next = isDark ? 'light' : 'dark';
+  document.body.classList.toggle('light', next === 'light');
+  document.body.classList.toggle('dark', next === 'dark');
+  localStorage.setItem('jig-task-status-theme', next);
+});
+</script>
+</body>
+</html>

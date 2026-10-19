@@ -1,12 +1,12 @@
 import { version } from '../../package.json'
 import { runAtom, runBuild } from '../atoms/atoms'
-import { runDash } from '../dash/dash'
 import { runDoctor } from '../doctor'
 import { runCheck } from '../gates/stop'
 import { runHook } from '../hook/dispatch'
 import { runLoop } from '../loop/loop'
 import { runAllowNoVerify } from '../rules/no-verify'
 import { runSlot } from '../slot/slot'
+import { runTaskStatus } from '../task-status/task-status'
 import { runTiers } from '../tiers/tiers'
 
 type Command = (args: string[]) => number | Promise<number>
@@ -25,7 +25,7 @@ const commands = new Map<string, Command>([
   ['build', runBuild],
   ['atom', runAtom],
   ['slot', runSlot],
-  ['dash', runDash],
+  ['task-status', runTaskStatus],
   ['loop', runLoop],
   ['allow-no-verify', runAllowNoVerify],
   ['doctor', runDoctor],

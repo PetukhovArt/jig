@@ -6,8 +6,8 @@ import { git } from '../src/core/git'
 import { readJournal } from '../src/core/journal'
 import { buildPlan, writePlan } from '../src/core/plan'
 import { readState } from '../src/core/state'
-import { addRunDecision, runDash } from '../src/dash/dash'
 import { dispatch, type EventBase, type JigEvent, type Outcome } from '../src/hook/dispatch'
+import { logToActiveJournal, runTaskStatus } from '../src/task-status/task-status'
 
 const pluginRoot = resolve(__dirname, '..')
 const SESSION = 'verify'
@@ -43,11 +43,11 @@ const enableAgentView = (): void => {
 const startRun = (): void => {
   vi.stubEnv('CLAUDE_PROJECT_DIR', root)
   vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
-  expect(runDash(['init', '--lang', 'en', 'Verify', 'Build'])).toBe(0)
+  expect(runTaskStatus(['log', 'start', 'Verify'])).toBe(0)
 }
 
 const decide = (text: string, why: string): void => {
-  expect(addRunDecision(root, text, why, {}, new Date(Date.now() + 1000))).toBe(true)
+  expect(logToActiveJournal(root, { phase: 'verify', decision: text, why }, new Date(Date.now() + 1000))).toBe(true)
 }
 
 beforeEach(async () => {

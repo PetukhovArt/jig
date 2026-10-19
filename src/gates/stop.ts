@@ -6,7 +6,7 @@ import { loadPlan, type Plan } from '../core/plan'
 import { acquireLock, transferLock } from '../core/proc'
 import { takeSnapshot, turnDiff, type TurnDiff } from '../core/snapshot'
 import { resetSnapshot, type SessionState } from '../core/state'
-import { addRunDecision, readActiveRun } from '../dash/dash'
+import { logToActiveJournal, readActiveJournal } from '../task-status/task-status'
 import type { Outcome } from '../hook/types'
 import { TOOLS, type RegisteredTool } from '../tools'
 import { collapseFindings, formatFindings, POST_EDIT_LINE_LIMIT, STOP_LINE_LIMIT, type Finding } from '../tools/finding'
@@ -117,13 +117,13 @@ const skipScope = (text: string): SkipDecision['scope'] | undefined => {
 }
 
 const readSkipDecisions = (projectRoot: string): SkipDecision[] => {
-  const active = readActiveRun(projectRoot)
+  const active = readActiveJournal(projectRoot)
   if (active === undefined) return []
   const skips: SkipDecision[] = []
-  for (const decision of active.run.decisions) {
-    const scope = skipScope(decision.text)
-    if (scope !== undefined && (decision.why ?? '').trim() !== '') {
-      skips.push({ scope, at: Date.parse(decision.at) })
+  for (const row of active.rows) {
+    const scope = skipScope(row.decision)
+    if (scope !== undefined && row.why.trim() !== '') {
+      skips.push({ scope, at: Date.parse(row.ts) })
     }
   }
   return skips
@@ -158,7 +158,7 @@ const missingProofs = (check: CheckDefinition, input: StopChecksInput, times: Ga
 
 const verifyFactMessage = (check: CheckDefinition, missing: readonly MissingProof[], pluginRoot: string): string => {
   const files = [...new Set(missing.flatMap((proof) => proof.files))]
-  const skip = `node ${toSlash(pluginRoot)}/bin/jig.mjs dash decision`
+  const skip = `node ${toSlash(pluginRoot)}/bin/jig.mjs task-status log verify`
   const options = missing.map((proof) => {
     const hint = check.hints[proof.kind]
     const run = hint === undefined ? '' : `run ${hint}, or `
@@ -251,7 +251,7 @@ export const stopGate = async (input: StopGateInput): Promise<StopVerdict> => {
   if (isQuiet) return { outcome: NONE, notes: [] }
   const isUnresolved = input.stopHookActive && diff.fingerprint === state.stop.lastBlockDiffFingerprint
   if (isUnresolved) {
-    addRunDecision(projectRoot, 'gate unresolved', UNRESOLVED_WHY)
+    logToActiveJournal(projectRoot, { phase: 'gate', decision: 'gate unresolved', why: UNRESOLVED_WHY })
     return { outcome: NONE, notes: [{ kind: 'gate-unresolved', tool: 'jig', message: UNRESOLVED_WHY }] }
   }
   const plan = loadPlan(projectRoot, pluginRoot)
