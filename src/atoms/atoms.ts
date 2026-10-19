@@ -9,7 +9,7 @@ import { validateSkillDocs } from './skill-docs'
 
 type Command = (args: string[]) => number | Promise<number>
 
-const ALLOWED_KEYS = new Set(['name', 'description', 'metadata', 'paths'])
+const ALLOWED_KEYS = new Set(['name', 'description', 'metadata'])
 const KEBAB_CASE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 const DESCRIPTION_START = /^Apply (when|before|after|to) /
 const MAX_DESCRIPTION_LENGTH = 300

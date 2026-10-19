@@ -2192,7 +2192,7 @@ var validateSkillDocs = (pluginRoot) => {
 };
 
 // src/atoms/atoms.ts
-var ALLOWED_KEYS = /* @__PURE__ */ new Set(["name", "description", "metadata", "paths"]);
+var ALLOWED_KEYS = /* @__PURE__ */ new Set(["name", "description", "metadata"]);
 var KEBAB_CASE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 var DESCRIPTION_START = /^Apply (when|before|after|to) /;
 var MAX_DESCRIPTION_LENGTH2 = 300;

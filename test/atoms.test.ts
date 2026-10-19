@@ -36,8 +36,8 @@ afterEach(() => {
 })
 
 describe('validateAtoms', () => {
-  it('accepts all 27 atoms of the repository', () => {
-    expect(readAtomIndex(REPO_ROOT)).toHaveLength(27)
+  it('accepts all 28 atoms of the repository', () => {
+    expect(readAtomIndex(REPO_ROOT)).toHaveLength(28)
     expect(validateAtoms(REPO_ROOT)).toEqual([])
   })
 
