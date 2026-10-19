@@ -117,7 +117,7 @@ export interface PlanInput {
   grades?: Readonly<Record<string, Grade>>
 }
 
-export type FinderKind = 'single' | 'bugs' | 'cleanup' | 'rules' | 'mechanical'
+export type FinderKind = 'bugs' | 'cleanup' | 'rules' | 'mechanical'
 
 export interface Finder extends Grade {
   name: string
@@ -130,14 +130,21 @@ export interface Skipped {
   reason: string
 }
 
+export type SelectorSource = 'argument' | 'default' | 'small-diff'
+
 export interface Selection {
   input: string
   tokens: string[]
+  source: SelectorSource
 }
+
+/** `inline`: the main session is the finder and its own first judge (N = 1); `subagents`: finder and judge subagents; `none`: nothing to review. */
+export type ReviewPath = 'inline' | 'subagents' | 'none'
 
 export interface Plan {
   lines: number
   n: number
+  path: ReviewPath
   selection: Selection
   outputTokens: string[]
   angles: Angle[]
@@ -164,11 +171,14 @@ export const autoTokens = (shape: Shape, n: number): string[] => {
   return tokens
 }
 
+/** No selector: `quick` on a single-finder diff (N = 1), where the session reviews inline; `full` otherwise. */
 export const parseSelector = (input: string | undefined, shape: Shape, n: number): Selection => {
-  const raw = input === undefined || input === '' ? 'full' : input
+  const given = input !== undefined && input !== ''
+  const source: SelectorSource = given ? 'argument' : n === 1 ? 'small-diff' : 'default'
+  const raw = given ? input : n === 1 ? 'quick' : 'full'
   if (Object.hasOwn(PRESETS, raw)) {
     const expanded = PRESETS[raw]
-    return { input: raw, tokens: expanded === undefined ? [] : [expanded] }
+    return { input: raw, tokens: expanded === undefined ? [] : [expanded], source }
   }
   const tokens = raw.split(',').map((token) => token.trim())
   const unknown = tokens.filter((token) => !SELECTOR_TOKENS.includes(token))
@@ -176,7 +186,7 @@ export const parseSelector = (input: string | undefined, shape: Shape, n: number
     throw new Error(`unknown selector token ${unknown.join(', ')}; expected full, quick or tokens of: ${SELECTOR_TOKENS.join(', ')}`)
   }
   const expanded = tokens.flatMap((token) => (token === 'auto' ? autoTokens(shape, n) : [token]))
-  return { input: raw, tokens: [...new Set(expanded)] }
+  return { input: raw, tokens: [...new Set(expanded)], source }
 }
 
 const selectedAngles = (tokens: readonly string[], settings: PlanInput['angles']): Set<Angle> => {
@@ -197,20 +207,11 @@ const inapplicable = (angle: Angle, shape: Shape): string | undefined => {
   return undefined
 }
 
-const TIER_RANK: Readonly<Record<Tier, number>> = { fast: 0, standard: 1, deep: 2 }
-const EFFORT_RANK: Readonly<Record<Effort, number>> = { low: 0, medium: 1, high: 2 }
-
 const gradeOf = (angle: Angle, grades: Readonly<Record<string, Grade>>): Grade =>
   grades[ANGLE_TOKENS[angle]] ?? DEFAULT_GRADES[ANGLE_TOKENS[angle]] ?? { tier: 'standard', effort: 'high' }
 
 const roleGrade = (key: string, grades: Readonly<Record<string, Grade>>): Grade =>
   grades[key] ?? { tier: 'deep', effort: 'medium' }
-
-const strongest = (angles: readonly Angle[], grades: Readonly<Record<string, Grade>>): Grade =>
-  angles.map((angle) => gradeOf(angle, grades)).reduce((best, grade) => ({
-    tier: TIER_RANK[grade.tier] > TIER_RANK[best.tier] ? grade.tier : best.tier,
-    effort: EFFORT_RANK[grade.effort] > EFFORT_RANK[best.effort] ? grade.effort : best.effort,
-  }))
 
 const splitByGrade = (name: string, kind: FinderKind, angles: readonly Angle[], grades: Readonly<Record<string, Grade>>): Finder[] => {
   const byGrade = new Map<string, { grade: Grade; angles: Angle[] }>()
@@ -232,9 +233,6 @@ const splitByGrade = (name: string, kind: FinderKind, angles: readonly Angle[], 
 
 const layoutFinders = (n: number, angles: readonly Angle[], grades: Readonly<Record<string, Grade>>): Finder[] => {
   const has = (angle: Angle): boolean => angles.includes(angle)
-  if (n === 1) {
-    return angles.length === 0 ? [] : [{ name: 'single', kind: 'single', angles: [...angles], ...strongest(angles, grades) }]
-  }
   const groups: { name: string; kind: FinderKind; angles: Angle[] }[] = []
   if (n >= 2) {
     const bugGroups = BUG_GROUPS[Math.min(n - 1, MAX_BUG_FINDERS)] ?? []
@@ -268,19 +266,60 @@ export const planReview = (input: PlanInput): Plan => {
     skipped.push({ angle, reason: 'no counted code lines' }),
   )
   const wantsDeepening = selection.tokens.length === 0 ? input.shape.newSourceFiles > 0 : selection.tokens.includes('deepening')
+  const path: ReviewPath = usedForCode.length === 0 ? 'none' : n === 1 ? 'inline' : 'subagents'
   return {
     lines: input.lines,
     n,
+    path,
     selection,
     outputTokens: selection.tokens.filter((token) => token !== 'deepening'),
     angles: usedForCode,
     skipped: skipped.sort((left, right) => left.angle - right.angle),
-    finders: layoutFinders(n, usedForCode, grades),
+    finders: path === 'subagents' ? layoutFinders(n, usedForCode, grades) : [],
     deepening: wantsDeepening && n > 0 ? roleGrade('deepening', grades) : undefined,
     verify: roleGrade('verify', grades),
     outcome: roleGrade('outcome', grades),
     composer: roleGrade('composer', grades),
   }
+}
+
+export const MODES = ['review', 'pre-mr'] as const
+export type Mode = (typeof MODES)[number]
+
+const BUG_ANGLES: readonly Angle[] = [1, 2, 3, 4, 5, 12, 14]
+
+/** A file under the skill directory the main session reads for this run, with the part of it that applies. */
+export interface StepRef {
+  file: string
+  when?: string
+}
+
+/** Gate files for the angle classes present: bug angles prove initiator, path and effect; rule and cleanup angles pass the shape gate. */
+export const gateFiles = (angles: readonly Angle[]): string[] => [
+  ...(angles.some((angle) => BUG_ANGLES.includes(angle)) ? ['gates/bugs.md'] : []),
+  ...(angles.some((angle) => !BUG_ANGLES.includes(angle)) ? ['gates/shape.md'] : []),
+  'gates/severity.md',
+]
+
+/** The steps after prepare that apply to this run, in order; `state` is mode `review` with a known merge request and state on. */
+export const stepsFor = (plan: Plan, mode: Mode, state: boolean): StepRef[] => {
+  const output: StepRef = { file: 'steps/08-output.md', when: mode === 'pre-mr' ? 'section "Pre-mr verdict"' : state ? 'sections "Write state" and "Output"' : 'section "Output"' }
+  if (plan.path === 'none') return [output]
+  const steps: StepRef[] = [{ file: 'steps/02-rules.md' }]
+  if (state) {
+    steps.push(
+      { file: 'steps/03-state.md' },
+      { file: 'references/state-schema.md' },
+      { file: 'steps/09-rereview.md', when: 'only when the state file exists: replaces the next steps up to rank for its scope' },
+    )
+  }
+  if (plan.path === 'inline') steps.push({ file: 'steps/04-inline.md' }, ...gateFiles(plan.angles).map((file) => ({ file })))
+  else steps.push({ file: 'steps/04-finders.md' }, { file: 'steps/05-verify.md' })
+  steps.push({ file: 'steps/06-rank.md' })
+  if (state) steps.push({ file: 'steps/07-comments.md' })
+  steps.push(output)
+  if (state) steps.push({ file: 'references/posting.md', when: 'only with --post or an explicit request' })
+  return steps
 }
 
 export interface JudgeModel {

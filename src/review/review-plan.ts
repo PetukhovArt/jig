@@ -1,11 +1,11 @@
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { parseArgs } from 'node:util'
 import { Validator, childPath } from '../core/config'
 import { git, gitStatus, gitToplevel } from '../core/git'
 import { createMatcher } from '../core/glob'
 import { parseJsonc } from '../core/jsonc'
-import { jigPaths } from '../core/paths'
+import { jigPaths, resolvePluginRoot, toSlash } from '../core/paths'
 import { isTestFile } from '../catalog/languages'
 import { lexComments } from '../catalog/languages'
 import { detectAgent, loadUserConfig, resolveTiers, type TierMap } from '../tiers/tiers'
@@ -16,16 +16,21 @@ import {
   LINES_PER_FINDER,
   MAX_FINDERS,
   MAX_PARALLEL,
+  MODES,
   angleNumber,
   isTier,
   judgeModels,
   planReview,
+  stepsFor,
   type Angle,
   type AngleSettings,
   type Grade,
   type JudgeModel,
+  type Mode,
   type Plan,
+  type SelectorSource,
   type Shape,
+  type StepRef,
 } from './layout'
 
 type Command = (args: string[]) => number | Promise<number>
@@ -246,12 +251,23 @@ const anyAddedComment = (root: string, mergeBase: string, stats: readonly FileSt
 
 const untrackedCount = (root: string): number => (gitStatus(root) ?? []).filter((entry) => entry.status === '??').length
 
+/** Files a reader of some angles reads before the hunt: the angle files and the atoms they name, absolute. */
+export interface Reads {
+  angles: string[]
+  atoms: string[]
+}
+
 export interface ReviewPlanReport {
   base: { ref: string; mergeBase: string; source: Base['source'] }
   files: { counted: number; excluded: Record<Exclusion, number>; untracked: number }
   formula: string
   shape: Shape
   plan: Plan
+  mode: Mode
+  state: boolean
+  skill: string
+  steps: StepRef[]
+  reads: Record<string, Reads>
   maxParallel: number
   config: string | null
   agent: string
@@ -260,12 +276,44 @@ export interface ReviewPlanReport {
   judge: JudgeModel[]
 }
 
+export const INLINE_READER = 'inline'
+
+/** The atom names an angle file declares in its `**Atom:**` / `**Atoms:**` header. */
+export const angleAtoms = (text: string): string[] => {
+  const header = /\*\*Atoms?:\*\*([^\n]*)/.exec(text)?.[1] ?? ''
+  return [...header.matchAll(/`([^`]+)`/g)].map((match) => match[1] ?? '').filter((name) => name !== '')
+}
+
+export const readsFor = (pluginRoot: string, angles: readonly Angle[]): Reads => {
+  const angleDir = join(pluginRoot, 'skills', 'jig-review', 'angles')
+  const atomDir = join(pluginRoot, 'atoms')
+  const names = existsSync(angleDir) ? readdirSync(angleDir) : []
+  const files = angles.flatMap((angle) => names.filter((name) => name.startsWith(`${angle}.`) && name.endsWith('.md')).map((name) => join(angleDir, name)))
+  const atoms = [...new Set(files.flatMap((file) => angleAtoms(readFileSync(file, 'utf8'))))].map((name) => join(atomDir, `${name}.md`)).filter((path) => existsSync(path))
+  return { angles: files.map(toSlash), atoms: atoms.map(toSlash) }
+}
+
 const angleList = (angles: readonly number[]): string => angles.join('+')
 
 const gradeText = (grade: Grade, models: TierMap | undefined): string => {
   const model = models?.[grade.tier]?.[0]
   return `${grade.tier}/${grade.effort}${model === undefined ? '' : ` ${model}`}`
 }
+
+const SELECTOR_NOTES: Readonly<Record<SelectorSource, string>> = {
+  argument: '',
+  default: ' (default)',
+  'small-diff': ' (default for N = 1; --selector full for every angle)',
+}
+
+const stateText = (report: ReviewPlanReport): string => {
+  if (report.state) return 'on (merge request known: state file, comment texts, re-review)'
+  if (report.mode === 'pre-mr') return 'off (mode pre-mr: track progress in your todo list)'
+  return 'off (no merge request or --no-state: no state file, no comment texts, no posting)'
+}
+
+const readLines = (reads: Reads | undefined): string[] =>
+  reads === undefined ? [] : [`  read: ${reads.angles.join(' ')}`, ...(reads.atoms.length > 0 ? [`  atoms: ${reads.atoms.join(' ')}`] : [])]
 
 export const formatReport = (report: ReviewPlanReport): string => {
   const { plan, models } = report
@@ -277,18 +325,31 @@ export const formatReport = (report: ReviewPlanReport): string => {
     `lines: ${plan.lines} in ${report.files.counted} files${excluded.length > 0 ? `; excluded: ${excluded.join(', ')}` : ''}${report.files.untracked > 0 ? `; untracked files not counted: ${report.files.untracked} (git add -N to count them)` : ''}`,
     `finders: ${report.formula}`,
     `shape: tests ${report.shape.tests ? 'yes' : 'no'} · added comments ${report.shape.comments ? 'yes' : 'no'} · markdown ${report.shape.docs ? 'yes' : 'no'} · new source files ${report.shape.newSourceFiles} · spec ${report.shape.spec ? 'yes' : 'no'}`,
-    `selector: ${plan.selection.input}${plan.selection.tokens.length > 0 && plan.selection.input !== plan.selection.tokens.join(',') ? ` → ${plan.selection.tokens.join(',')}` : ''}`,
+    `selector: ${plan.selection.input}${plan.selection.tokens.length > 0 && plan.selection.input !== plan.selection.tokens.join(',') ? ` → ${plan.selection.tokens.join(',')}` : ''}${SELECTOR_NOTES[plan.selection.source]}`,
     `config: ${report.config ?? 'default'} · agent: ${report.agent} · max parallel subagents: ${report.maxParallel}`,
+    `mode: ${report.mode} · state: ${stateText(report)}`,
     '',
   ]
-  if (plan.finders.length === 0) lines.push('finders: none (nothing to review)')
+  if (plan.path === 'none') lines.push('finders: none (nothing to review)')
+  if (plan.path === 'inline') {
+    lines.push(`path: inline: review in this session, angles ${angleList(plan.angles)}; no finder subagents; no judge subagents unless an Important candidate survives your own gates`)
+    lines.push(...readLines(report.reads[INLINE_READER]))
+  }
   for (const finder of plan.finders) {
     lines.push(`finder ${finder.name}: angles ${angleList(finder.angles)} · ${gradeText(finder, models)}`)
+    lines.push(...readLines(report.reads[finder.name]))
   }
   if (plan.deepening !== undefined) lines.push(`deepening: ${gradeText(plan.deepening, models)}`)
-  lines.push(`verify: ${plan.verify.tier}/${plan.verify.effort}`)
-  for (const judge of report.judge) {
-    lines.push(`  candidates from ${judge.finderModel} → judge ${judge.judgeModel}${judge.same ? ' (same model: one model in the tier)' : ''}`)
+  if (plan.path === 'inline') {
+    lines.push(`judge for Important candidates: one subagent, ${plan.verify.tier}/${plan.verify.effort}`)
+    for (const judge of report.judge) {
+      lines.push(`  your model ${judge.finderModel} → judge ${judge.judgeModel}${judge.same ? ' (same model: one model in the tier)' : ''}`)
+    }
+  } else {
+    lines.push(`verify: ${plan.verify.tier}/${plan.verify.effort}`)
+    for (const judge of report.judge) {
+      lines.push(`  candidates from ${judge.finderModel} → judge ${judge.judgeModel}${judge.same ? ' (same model: one model in the tier)' : ''}`)
+    }
   }
   if (report.judge.length === 0) lines.push(`  judge: a ${plan.verify.tier} model other than the finder's`)
   lines.push(`outcome check: ${gradeText(plan.outcome, models)} · composer: ${gradeText(plan.composer, models)}`)
@@ -296,10 +357,23 @@ export const formatReport = (report: ReviewPlanReport): string => {
     lines.push(`skipped angles: ${plan.skipped.map((skip) => `${skip.angle} (${skip.reason})`).join(', ')}`)
   }
   lines.push(`output filter: ${plan.outputTokens.length > 0 ? plan.outputTokens.join(',') : 'all findings'}`)
+  lines.push('', 'steps for this run (read each when you reach it; no other step file applies):')
+  lines.push(...report.steps.map((step) => `  ${report.skill}/${step.file}${step.when === undefined ? '' : ` · ${step.when}`}`))
   return lines.join('\n')
 }
 
-export const buildReport = (root: string, options: { base?: string | undefined; selector?: string | undefined; spec: boolean; agent?: string | undefined }): ReviewPlanReport => {
+export interface ReportOptions {
+  base?: string | undefined
+  selector?: string | undefined
+  spec: boolean
+  agent?: string | undefined
+  mode?: Mode
+  mergeRequest?: boolean
+  noState?: boolean
+  pluginRoot?: string
+}
+
+export const buildReport = (root: string, options: ReportOptions): ReviewPlanReport => {
   const base = resolveBase(root, options.base)
   const { lines, counted, excluded } = countLines(base.stats)
   const changed = base.stats.filter((stat) => stat.added > 0)
@@ -323,21 +397,34 @@ export const buildReport = (root: string, options: { base?: string | undefined; 
   const agent = detectAgent(options.agent)
   const models = resolveTiers(agent, loaded.config)
   const finderModels = Object.fromEntries(plan.finders.map((finder) => [finder.name, models?.[finder.tier]?.[0]]))
-  const usedModels = Object.values(finderModels).filter((model): model is string => model !== undefined)
+  const verifyModels = models?.[plan.verify.tier] ?? []
+  const usedModels = plan.path === 'inline' ? verifyModels : Object.values(finderModels).filter((model): model is string => model !== undefined)
+  const mode = options.mode ?? 'review'
+  const state = mode === 'review' && options.mergeRequest === true && options.noState !== true
+  const pluginRoot = options.pluginRoot ?? resolvePluginRoot()
+  const readers: [string, readonly Angle[]][] = plan.path === 'inline' ? [[INLINE_READER, plan.angles]] : plan.finders.map((finder) => [finder.name, finder.angles])
   return {
     base: { ref: base.ref, mergeBase: base.mergeBase, source: base.source },
     files: { counted, excluded, untracked: untrackedCount(root) },
     formula: `ceil(${lines}/${LINES_PER_FINDER}) = ${Math.ceil(lines / LINES_PER_FINDER)}, max ${MAX_FINDERS} → N = ${plan.n}`,
     shape,
     plan,
+    mode,
+    state,
+    skill: toSlash(join(pluginRoot, 'skills', 'jig-review')),
+    steps: stepsFor(plan, mode, state),
+    reads: Object.fromEntries(readers.map(([name, angles]) => [name, readsFor(pluginRoot, angles)])),
     maxParallel: project?.config.maxParallel ?? MAX_PARALLEL,
     config: project?.label ?? null,
     agent,
     models,
     finderModels,
-    judge: judgeModels(usedModels, models?.[plan.verify.tier] ?? []),
+    judge: judgeModels(usedModels, verifyModels),
   }
 }
+
+const isMode = (value: string): value is Mode => (MODES as readonly string[]).includes(value)
+const USAGE = 'usage: jig review-plan [<base>] [--selector full|quick|auto|<tokens>] [--spec] [--mode review|pre-mr] [--mr] [--no-state] [--agent <id>] [--json]'
 
 export const runReviewPlan: Command = (args) => {
   const { values, positionals } = parseArgs({
@@ -348,13 +435,26 @@ export const runReviewPlan: Command = (args) => {
       selector: { type: 'string' },
       spec: { type: 'boolean' },
       agent: { type: 'string' },
+      mode: { type: 'string' },
+      mr: { type: 'boolean' },
+      'no-state': { type: 'boolean' },
       json: { type: 'boolean' },
     },
   })
-  if (positionals.length > 1) throw new Error('usage: jig review-plan [<base>] [--selector full|quick|auto|<tokens>] [--spec] [--agent <id>] [--json]')
+  if (positionals.length > 1) throw new Error(USAGE)
+  const mode = values.mode ?? 'review'
+  if (!isMode(mode)) throw new Error(`unknown mode ${mode}; ${USAGE}`)
   const root = gitToplevel(process.cwd())
   if (root === undefined) throw new Error('not inside a git repository')
-  const report = buildReport(root, { base: positionals[0], selector: values.selector, spec: values.spec === true, agent: values.agent })
+  const report = buildReport(root, {
+    base: positionals[0],
+    selector: values.selector,
+    spec: values.spec === true,
+    agent: values.agent,
+    mode,
+    mergeRequest: values.mr === true,
+    noState: values['no-state'] === true,
+  })
   process.stdout.write(`${values.json ? JSON.stringify(report) : formatReport(report)}\n`)
   return 0
 }

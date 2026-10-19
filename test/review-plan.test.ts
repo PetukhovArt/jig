@@ -3,8 +3,8 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { git } from '../src/core/git'
-import { finderCount, judgeModels, planReview, type Shape } from '../src/review/layout'
-import { addedLines, buildReport, countLines, parseNumstat, parseProjectConfig } from '../src/review/review-plan'
+import { finderCount, gateFiles, judgeModels, planReview, stepsFor, type Mode, type Shape } from '../src/review/layout'
+import { addedLines, buildReport, countLines, parseNumstat, parseProjectConfig, readsFor } from '../src/review/review-plan'
 
 const CODE_ONLY: Shape = { tests: false, comments: false, docs: false, newSourceFiles: 0, spec: false }
 const EVERY_SHAPE: Shape = { tests: true, comments: true, docs: true, newSourceFiles: 1, spec: true }
@@ -27,8 +27,16 @@ describe('finder count', () => {
 })
 
 describe('layout', () => {
-  it('gives one finder every angle at N = 1, on the strongest grade of its angles', () => {
-    expect(layout(120)).toEqual(['single:1+2+3+4+5+6+7+8+9+10+11+12+13+14+15+16+17:deep/high'])
+  it('reviews N = 1 inline, without finders, on quick unless a selector is given', () => {
+    const plan = planReview({ lines: 120, shape: EVERY_SHAPE })
+    expect([plan.path, plan.finders, plan.selection.input, plan.selection.source]).toEqual(['inline', [], 'quick', 'small-diff'])
+    expect(plan.angles).toEqual([1, 2, 3, 4, 5, 8, 10, 12, 13, 14, 15])
+    const full = planReview({ lines: 120, shape: EVERY_SHAPE, selector: 'full' })
+    expect([full.path, full.angles.length, full.selection.source]).toEqual(['inline', 17, 'argument'])
+  })
+
+  it('keeps full as the default selector above N = 1', () => {
+    expect(planReview({ lines: 400, shape: CODE_ONLY }).selection).toEqual({ input: 'full', tokens: [], source: 'default' })
   })
 
   it('splits N = 3 into two bug finders and cleanup, plus rules and mechanical, one grade per finder', () => {
@@ -60,8 +68,44 @@ describe('layout', () => {
   })
 
   it('applies a project grade override per token', () => {
-    const plan = planReview({ lines: 120, shape: CODE_ONLY, grades: { bugs: { tier: 'standard', effort: 'medium' }, architecture: { tier: 'standard', effort: 'high' }, altitude: { tier: 'standard', effort: 'high' } } })
-    expect(plan.finders.map((finder) => `${finder.tier}/${finder.effort}`)).toEqual(['standard/high'])
+    const plan = planReview({ lines: 400, shape: CODE_ONLY, grades: { bugs: { tier: 'standard', effort: 'medium' } } })
+    const bugs = plan.finders.filter((finder) => finder.kind === 'bugs')
+    expect(bugs.map((finder) => `${finder.angles.join('+')}:${finder.tier}/${finder.effort}`)).toEqual(['1+4:standard/medium', '8+14:standard/high', '2+3+5+12:standard/medium'])
+  })
+})
+
+describe('steps', () => {
+  const files = (lines: number, mode: Mode, state: boolean) => stepsFor(planReview({ lines, shape: CODE_ONLY }), mode, state).map((step) => step.file)
+
+  it('a small pre-mr review reads no state, no comment texts and no finder or verify steps', () => {
+    expect(files(40, 'pre-mr', false)).toEqual(['steps/02-rules.md', 'steps/04-inline.md', 'gates/bugs.md', 'gates/shape.md', 'gates/severity.md', 'steps/06-rank.md', 'steps/08-output.md'])
+  })
+
+  it('a review of a merge request with state reads state, re-review, comment texts and posting', () => {
+    expect(files(400, 'review', true)).toEqual([
+      'steps/02-rules.md',
+      'steps/03-state.md',
+      'references/state-schema.md',
+      'steps/09-rereview.md',
+      'steps/04-finders.md',
+      'steps/05-verify.md',
+      'steps/06-rank.md',
+      'steps/07-comments.md',
+      'steps/08-output.md',
+      'references/posting.md',
+    ])
+  })
+
+  it('names only the gate files of the angle classes present', () => {
+    expect(gateFiles([16, 17])).toEqual(['gates/shape.md', 'gates/severity.md'])
+  })
+})
+
+describe('reads', () => {
+  it('gives every angle file and the atoms it names as paths, so a reader does not search', () => {
+    const reads = readsFor(process.cwd(), [4, 16])
+    expect(reads.angles.map((path) => path.split('/').pop())).toEqual(['4.language-traps.md', '16.tests.md'])
+    expect(reads.atoms.map((path) => path.split('/').pop())).toEqual(['typescript.md', 'effects.md', 'tests.md'])
   })
 })
 

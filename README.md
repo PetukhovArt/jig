@@ -182,7 +182,7 @@ Run as `node <plugin root>/bin/jig.mjs <command>`.
 | `slot rm <N> [--force]` | removes a slot's worktree; without `--force`, refuses on tracked changes |
 | `worktree seed <dir>` | copies the main checkout's ignored files and recreates its ignored symlinks in another worktree; never overwrites tracked files |
 | `worktree sweep [--json] [--ask] [--yes <path\|slot>]...` | sorts every worktree but the main checkout into `hold-current`, `hold-locked`, `hold-wip`, `hold-open-mr`, `prunable`, `recent`, `safe`; removes only those confirmed at the `--ask` prompt or named by `--yes`, never a `hold-current`, `hold-locked` or `hold-wip` one |
-| `review-plan [<base>] [--selector full\|quick\|auto\|<tokens>] [--spec] [--agent <id>] [--json]` | the review layout for the diff against the base: counted lines, finders, their models and the judge |
+| `review-plan [<base>] [--selector full\|quick\|auto\|<tokens>] [--spec] [--mode review\|pre-mr] [--mr] [--no-state] [--agent <id>] [--json]` | the review layout for the diff against the base: counted lines, the inline path or the finders, their models and the judge, and the step files that apply to the run |
 | `pre-mr [<base>]` | exit 0 when the branch's UI changes are proven or skipped with a level, else lists what is missing and exits 1 |
 | `pre-mr proof "<command>"` / `pre-mr bug-bash "<result>"` | runs a proof command and records it when it exits 0 / records the bug-bash result |
 | `skip-verify --level unit-test\|type-check\|none --why "<reason>"` | lets `pre-mr` pass with that level until the next edit |
