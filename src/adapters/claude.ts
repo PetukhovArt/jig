@@ -3,6 +3,7 @@ import { isAbsolute, resolve } from 'node:path'
 import { resolveProjectRoot, toProjectPath } from '../core/paths'
 import type { EditPair, EventBase, JigEvent, Outcome, SessionSource } from '../hook/types'
 import type { AgentAdapter, ParsedHook } from './adapter'
+import { readTodos } from './claude-todos'
 
 type Json = Record<string, unknown>
 
@@ -150,4 +151,4 @@ export const formatOutcome = (kind: JigEvent['kind'], outcome: Outcome): string 
   }
 }
 
-export const claude: AgentAdapter = { name: 'claude', parseHookInput, formatOutcome }
+export const claude: AgentAdapter = { name: 'claude', parseHookInput, formatOutcome, readTodos }

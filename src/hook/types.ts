@@ -11,7 +11,14 @@ export type JigEvent =
   | { kind: 'pre-edit'; file: string; edits: EditPair[]; wholeFile?: string }
   | { kind: 'post-edit'; file: string }
   | { kind: 'subagent-start'; agentId: string; agentType: string; prompt?: string }
-  | { kind: 'stop'; stopHookActive: boolean }
+  | { kind: 'stop'; stopHookActive: boolean; todos?: readonly TodoItem[] }
+
+export type TodoStatus = 'pending' | 'in_progress' | 'completed'
+
+export interface TodoItem {
+  text: string
+  status: TodoStatus
+}
 
 export interface EventBase {
   sessionId: string
