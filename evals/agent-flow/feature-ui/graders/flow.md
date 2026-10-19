@@ -3,14 +3,14 @@ type: flow
 arm: with
 ---
 
-Steps of `skills/jig/flows/feature.md` and `flows/mr.md`. `evidence` matches a tool call (`<tool> <input as JSON>`, one per line); `skip` matches the trace or the reply.
+Steps of `skills/jig/flows/feature.md` and `flows/mr.md`. `evidence` matches a tool call (`<tool> <input as JSON>`, one per line); `skip` matches the trace or the reply. The last step also counts as skipped when the agent says the repo has no remote.
 
 ```json
 [
   {
     "step": "3 use case",
     "evidence": "agent-view\\s+act\\s+(?:list|save-use-case)\\b|agent-view:act-decider",
-    "skip": "skip:[^\\n\"]{0,80}(?:agent-view|UI|use case)"
+    "skip": "skip:[^\\n\"`]{0,80}(?:agent-view|UI|use case)"
   },
   {
     "step": "7 delegate",
@@ -19,7 +19,7 @@ Steps of `skills/jig/flows/feature.md` and `flows/mr.md`. `evidence` matches a t
   {
     "step": "8 drive the app",
     "evidence": "agent-view\\s+(?:click|fill|key|drag|act\\s+replay|screenshot|snap|wait)\\b",
-    "skip": "skip:[^\\n\"]{0,80}(?:agent-view|UI)"
+    "skip": "skip:[^\\n\"`]{0,80}(?:agent-view|UI)"
   },
   {
     "step": "10 own review",
@@ -28,7 +28,7 @@ Steps of `skills/jig/flows/feature.md` and `flows/mr.md`. `evidence` matches a t
   {
     "step": "10 pre-mr or skip",
     "evidence": "jig(?:\\.mjs)?\\S{0,2}\\s+(?:pre-mr|skip-verify)\\b",
-    "skip": "skip:[^\\n\"]{0,100}(?:merge request|remote|\\bMR\\b)"
+    "skip": "skip:[^\\n\"`]{0,100}(?:merge request|remote|\\bMR\\b)|\\bno (?:git )?remote\\b"
   }
 ]
 ```
