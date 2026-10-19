@@ -62,6 +62,13 @@ describe('validateAtoms', () => {
     expect(errors[0]).toContain(expected)
   })
 
+  it('accepts an atom named only by another skill', () => {
+    const root = makePluginRoot({ 'elsewhere.md': validAtom('elsewhere') })
+    mkdirSync(join(root, 'skills', 'other', 'steps'), { recursive: true })
+    writeFileSync(join(root, 'skills', 'other', 'steps', 'one.md'), 'Read atom `elsewhere` first.\n')
+    expect(validateAtoms(root)).toEqual([])
+  })
+
   it('2. reports a duplicate name', () => {
     const root = makePluginRoot({ 'probe.md': validAtom('probe'), 'z-copy.md': validAtom('probe') })
     expect(validateAtoms(root)).toContain('atoms/z-copy.md: duplicate name "probe"')

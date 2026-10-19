@@ -4,6 +4,7 @@ import { runDoctor } from '../doctor'
 import { runCheck } from '../gates/stop'
 import { runHook } from '../hook/dispatch'
 import { runLoop } from '../loop/loop'
+import { runReviewPlan } from '../review/review-plan'
 import { runSlot } from '../slot/slot'
 import { runTaskStatus } from '../task-status/task-status'
 import { runTiers } from '../tiers/tiers'
@@ -30,6 +31,7 @@ const commands = new Map<string, Command>([
   ['loop', runLoop],
   ['doctor', runDoctor],
   ['tiers', runTiers],
+  ['review-plan', runReviewPlan],
   ['version', runVersion],
 ])
 

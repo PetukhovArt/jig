@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { basename, join } from 'node:path'
 import { parseFrontmatter, type FrontmatterValue } from '../core/frontmatter'
 import { ensureJigDir, resolvePluginRoot, resolveProjectRoot } from '../core/paths'
@@ -17,13 +17,19 @@ const MAX_BODY_LINES = 35
 const ATOMS_LINE = /^\s*Atoms:(.*)$/gm
 const INDEX_LINE = /^\s*- `([a-z0-9-]+)`/gm
 
+const skillMarkdown = (pluginRoot: string): string[] => {
+  const skillsDir = join(pluginRoot, 'skills')
+  try {
+    return readdirSync(skillsDir, { recursive: true, encoding: 'utf8' })
+      .filter((path) => path.endsWith('.md'))
+      .map((path) => join(skillsDir, path))
+  } catch {
+    return []
+  }
+}
+
 const reachableNames = (pluginRoot: string): Set<string> => {
-  const skillDir = join(pluginRoot, 'skills', 'jig')
-  const flowsDir = join(skillDir, 'flows')
-  const texts = [
-    readText(join(skillDir, 'SKILL.md')),
-    ...listMarkdown(flowsDir).map((name) => readText(join(flowsDir, name))),
-  ].map((text) => text.replace(/\r\n/g, '\n'))
+  const texts = skillMarkdown(pluginRoot).map((path) => readText(path).replace(/\r\n/g, '\n'))
   const names = new Set<string>(GATE_ATOMS)
   for (const text of texts) {
     for (const match of text.matchAll(/atom `([^`]+)`/g)) {
@@ -91,7 +97,7 @@ const checkAtom = (path: string, seen: Set<string>, reachable: Set<string>): str
   }
   const name = typeof data['name'] === 'string' ? data['name'] : fileName
   if (!reachable.has(name)) {
-    problems.push(`atom is unreachable: name it as atom \`${name}\`, in an "Atoms:" line or an index line of skills/jig/SKILL.md or a flow, or deliver it from a hook gate`)
+    problems.push(`atom is unreachable: name it as atom \`${name}\`, in an "Atoms:" line or an index line of a skill file under skills/, or deliver it from a hook gate`)
   }
   return problems
 }

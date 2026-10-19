@@ -1,0 +1,32 @@
+{
+  "$comment": "Reference merge requests for the jig-review eval (references/eval.md). A project keeps its own entries in .jig/review-corpus.json with the same shape; repo is then a clone path or remote and range a base..head pair.",
+  "entries": [
+    {
+      "id": "jig-evals-review",
+      "repo": { "scaffold": "evals/agent/review/scaffold.sh", "plugin": true },
+      "range": "main..feature",
+      "mode": "review",
+      "description": "evals/agent/review/fixture/REVIEW_TARGET.md",
+      "mustFind": [
+        {
+          "where": "src/features/camera-settings/save-settings.ts:30",
+          "mechanism": "api.put is not awaited: a failed or slow save is reported as success and its rejection goes unhandled",
+          "severity": "Important"
+        },
+        {
+          "where": "src/features/camera-alerts/alert-level.ts:7",
+          "mechanism": "the switch in alertLevel does not handle 'maintenance', so maintenance cameras get 'none' instead of the promised 'warning'",
+          "severity": "Important"
+        }
+      ],
+      "mustNotPost": [
+        {
+          "where": "src/features/camera-alerts/alert-level.ts:18",
+          "mechanism": "isCritical returns true/false through an if/else",
+          "why": "style only, no behavior: at most an optional simplification, never a bug thread"
+        }
+      ],
+      "source": "evals/agent/review"
+    }
+  ]
+}
