@@ -109,9 +109,16 @@ export interface AngleSettings {
   severityCeiling?: Ceiling
 }
 
-export const LAYOUTS = ['inline', 'fanout', 'lean', 'solo'] as const
+export const LAYOUTS = ['auto', 'inline', 'fanout', 'lean', 'solo'] as const
 export type Layout = (typeof LAYOUTS)[number]
+export type ConcreteLayout = Exclude<Layout, 'auto'>
 export const isLayout = (value: string): value is Layout => (LAYOUTS as readonly string[]).includes(value)
+
+export const AUTO_INLINE_MAX_N = 2
+export const resolveAuto = (layout: Layout, n: number): ConcreteLayout => {
+  if (layout !== 'auto') return layout
+  return n <= AUTO_INLINE_MAX_N ? 'inline' : 'lean'
+}
 
 export type Judging = 'clusters' | 'important' | 'self'
 
@@ -151,7 +158,7 @@ export type ReviewPath = 'inline' | 'subagents' | 'none'
 export interface Plan {
   lines: number
   n: number
-  layout: Layout
+  layout: ConcreteLayout
   path: ReviewPath
   judging: Judging
   selection: Selection
@@ -258,10 +265,10 @@ const layoutFinders = (n: number, angles: readonly Angle[], grades: Readonly<Rec
   return groups.filter((group) => group.angles.length > 0).flatMap((group) => splitByGrade(group.name, group.kind, group.angles, grades))
 }
 
-const FINDER_TIER: Readonly<Partial<Record<Layout, Tier>>> = { lean: 'standard', solo: 'deep' }
+const FINDER_TIER: Readonly<Partial<Record<ConcreteLayout, Tier>>> = { lean: 'standard', solo: 'deep' }
 const ANGLE_TOKEN_NAMES: readonly string[] = Object.values(ANGLE_TOKENS)
 
-const finderGrades = (layout: Layout, grades: Readonly<Record<string, Grade>>): Record<string, Grade> => {
+const finderGrades = (layout: ConcreteLayout, grades: Readonly<Record<string, Grade>>): Record<string, Grade> => {
   const tier = FINDER_TIER[layout]
   if (tier === undefined) return { ...grades }
   return Object.fromEntries(Object.entries(grades).map(([key, grade]) => [key, ANGLE_TOKEN_NAMES.includes(key) ? { ...grade, tier } : grade]))
@@ -269,7 +276,7 @@ const finderGrades = (layout: Layout, grades: Readonly<Record<string, Grade>>): 
 
 export const planReview = (input: PlanInput): Plan => {
   const n = finderCount(input.lines)
-  const layout = input.layout ?? 'fanout'
+  const layout = resolveAuto(input.layout ?? 'auto', n)
   const inline = n === 1 || (n > 1 && layout === 'inline')
   const grades = finderGrades(layout, { ...DEFAULT_GRADES, ...input.grades })
   const selection = parseSelector(input.selector, input.shape, n, inline)

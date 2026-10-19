@@ -3,14 +3,14 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { git } from '../src/core/git'
-import { finderCount, gateFiles, judgeModels, planReview, stepsFor, type Mode, type Shape } from '../src/review/layout'
-import { addedLines, buildReport, countLines, parseNumstat, parseProjectConfig, readsFor } from '../src/review/review-plan'
+import { LAYOUTS, finderCount, gateFiles, judgeModels, planReview, stepsFor, type Layout, type Mode, type Shape } from '../src/review/layout'
+import { addedLines, buildReport, countLines, parseNumstat, parseProjectConfig, readsFor, resolveLayout } from '../src/review/review-plan'
 
 const CODE_ONLY: Shape = { tests: false, comments: false, docs: false, newSourceFiles: 0, spec: false }
 const EVERY_SHAPE: Shape = { tests: true, comments: true, docs: true, newSourceFiles: 1, spec: true }
 
 const layout = (lines: number, shape: Shape = EVERY_SHAPE, selector?: string) =>
-  planReview({ lines, shape, selector }).finders.map((finder) => `${finder.name}:${finder.angles.join('+')}:${finder.tier}/${finder.effort}`)
+  planReview({ lines, shape, selector, layout: 'fanout' }).finders.map((finder) => `${finder.name}:${finder.angles.join('+')}:${finder.tier}/${finder.effort}`)
 
 describe('finder count', () => {
   it.each([
@@ -53,7 +53,7 @@ describe('layout', () => {
   })
 
   it('caps bug finders at four groups', () => {
-    const bugs = planReview({ lines: 10_000, shape: CODE_ONLY }).finders.filter((finder) => finder.kind === 'bugs')
+    const bugs = planReview({ lines: 10_000, shape: CODE_ONLY, layout: 'fanout' }).finders.filter((finder) => finder.kind === 'bugs')
     expect(bugs.map((finder) => finder.angles.join('+'))).toEqual(['1+4', '8', '14', '2+3', '5+12'])
   })
 
@@ -74,6 +74,50 @@ describe('layout', () => {
   })
 })
 
+describe('layouts', () => {
+  const finders = (name: Layout) =>
+    planReview({ lines: 212, shape: { ...CODE_ONLY, comments: true }, layout: name }).finders.map((finder) => `${finder.name}:${finder.angles.join('+')}:${finder.tier}/${finder.effort}`)
+
+  it.each([
+    [300, 'inline'],
+    [301, 'lean'],
+    [5000, 'lean'],
+  ])('auto, the default, lays out %i lines as %s', (lines, expected) => {
+    expect(planReview({ lines, shape: CODE_ONLY }).layout).toBe(expected)
+  })
+
+  it('fanout splits every group by grade: seven finders on 212 lines with added comments; lean keeps four on one tier', () => {
+    expect(finders('fanout')).toHaveLength(7)
+    expect(finders('lean')).toEqual(['bugs-1:1+2+3+4+5+8+12+14:standard/high', 'cleanup:7+9:standard/high', 'rules:6+10+13:standard/high', 'mechanical:17:standard/medium'])
+    expect(finders('solo').every((finder) => finder.includes(':deep/'))).toBe(true)
+  })
+
+  it('judges by layout: clusters for fanout, the session plus one Important judge for lean and inline, the finders for solo', () => {
+    const judging = (name: Layout) => {
+      const plan = planReview({ lines: 900, shape: CODE_ONLY, layout: name })
+      return `${plan.path}/${plan.judging}`
+    }
+    expect(LAYOUTS.filter((name) => name !== 'auto').map(judging)).toEqual(['inline/important', 'subagents/clusters', 'subagents/important', 'subagents/self'])
+  })
+
+  it('names the 05-verify sections and gate files each judging reads', () => {
+    const steps = (name: Layout) => stepsFor(planReview({ lines: 400, shape: CODE_ONLY, layout: name }), 'review', false).map((step) => `${step.file}${step.when === undefined ? '' : ` · ${step.when}`}`)
+    expect(steps('lean')).toContain('steps/05-verify.md · sections "Dedup" and "Layout lean"')
+    expect(steps('lean')).toContain('gates/bugs.md')
+    expect(steps('solo')).toContain('steps/05-verify.md · sections "Dedup" and "Layout solo"')
+    expect(steps('solo').some((step) => step.startsWith('gates/'))).toBe(false)
+  })
+
+  it('takes --layout over the environment over the project config over the default, and rejects an unknown name', () => {
+    expect(resolveLayout('solo', 'lean', 'fanout')).toEqual({ name: 'solo', source: 'argument' })
+    expect(resolveLayout(undefined, 'lean', 'fanout')).toEqual({ name: 'lean', source: 'env' })
+    expect(resolveLayout(undefined, '', 'fanout')).toEqual({ name: 'fanout', source: 'config' })
+    expect(resolveLayout(undefined, undefined, undefined)).toEqual({ name: 'auto', source: 'default' })
+    expect(() => resolveLayout(undefined, 'wide', undefined)).toThrow('unknown layout wide in JIG_REVIEW_LAYOUT')
+    expect(() => parseProjectConfig('{ "layout": "wide" }', '.jig/review.jsonc')).toThrow('$.layout')
+  })
+})
+
 describe('steps', () => {
   const files = (lines: number, mode: Mode, state: boolean) => stepsFor(planReview({ lines, shape: CODE_ONLY }), mode, state).map((step) => step.file)
 
@@ -89,6 +133,9 @@ describe('steps', () => {
       'steps/09-rereview.md',
       'steps/04-finders.md',
       'steps/05-verify.md',
+      'gates/bugs.md',
+      'gates/shape.md',
+      'gates/severity.md',
       'steps/06-rank.md',
       'steps/07-comments.md',
       'steps/08-output.md',

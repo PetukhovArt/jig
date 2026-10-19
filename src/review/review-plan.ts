@@ -10,6 +10,7 @@ import { isTestFile } from '../catalog/languages'
 import { lexComments } from '../catalog/languages'
 import { detectAgent, loadUserConfig, resolveTiers, type TierMap } from '../tiers/tiers'
 import {
+  AUTO_INLINE_MAX_N,
   CEILINGS,
   EFFORTS,
   GRADE_KEYS,
@@ -28,6 +29,7 @@ import {
   type AngleSettings,
   type Grade,
   type JudgeModel,
+  type ConcreteLayout,
   type Layout,
   type Mode,
   type Plan,
@@ -284,7 +286,7 @@ export interface ReviewPlanReport {
 
 export const INLINE_READER = 'inline'
 export const LAYOUT_ENV = 'JIG_REVIEW_LAYOUT'
-export const DEFAULT_LAYOUT: Layout = 'fanout'
+export const DEFAULT_LAYOUT: Layout = 'auto'
 
 export type LayoutSource = 'argument' | 'env' | 'config' | 'default'
 
@@ -331,11 +333,18 @@ const SELECTOR_NOTES: Readonly<Record<SelectorSource, string>> = {
 
 const LAYOUT_SOURCE_TEXT: Readonly<Record<LayoutSource, string>> = { argument: '--layout', env: LAYOUT_ENV, config: `.jig/${PROJECT_CONFIG}`, default: 'default' }
 
-const LAYOUT_TEXT: Readonly<Record<Layout, string>> = {
-  inline: 'the session hunts and judges at every size; a judge subagent only for Important',
+const LAYOUT_TEXT: Readonly<Record<ConcreteLayout, string>> = {
+  inline: 'the session hunts and judges; a judge subagent only for Important',
   fanout: 'finders by LINES on their angle tiers, a judge per cluster on the other model',
   lean: 'finders by LINES on the standard tier; you judge, a deep judge only for Important',
   solo: 'finders by LINES on the deep tier prove their own candidates; no judge subagents',
+}
+
+const layoutLine = (report: ReviewPlanReport): string => {
+  const { name, source } = report.layout
+  const resolved = report.plan.layout
+  const chosen = name === 'auto' ? `auto → ${resolved} (inline up to N = ${AUTO_INLINE_MAX_N}, lean above)` : resolved
+  return `layout: ${chosen}${source === 'default' ? ' (default)' : ` (from ${LAYOUT_SOURCE_TEXT[source]})`} · ${LAYOUT_TEXT[resolved]}`
 }
 
 const stateText = (report: ReviewPlanReport): string => {
@@ -356,7 +365,7 @@ export const formatReport = (report: ReviewPlanReport): string => {
     `base: ${report.base.ref} (merge base ${report.base.mergeBase.slice(0, 8)}, from ${report.base.source})`,
     `lines: ${plan.lines} in ${report.files.counted} files${excluded.length > 0 ? `; excluded: ${excluded.join(', ')}` : ''}${report.files.untracked > 0 ? `; untracked files not counted: ${report.files.untracked} (git add -N to count them)` : ''}`,
     `finders: ${report.formula}`,
-    `layout: ${report.layout.name}${report.layout.source === 'default' ? ' (default)' : ` (from ${LAYOUT_SOURCE_TEXT[report.layout.source]})`} · ${LAYOUT_TEXT[report.layout.name]}`,
+    layoutLine(report),
     `shape: tests ${report.shape.tests ? 'yes' : 'no'} · added comments ${report.shape.comments ? 'yes' : 'no'} · markdown ${report.shape.docs ? 'yes' : 'no'} · new source files ${report.shape.newSourceFiles} · spec ${report.shape.spec ? 'yes' : 'no'}`,
     `selector: ${plan.selection.input}${plan.selection.tokens.length > 0 && plan.selection.input !== plan.selection.tokens.join(',') ? ` → ${plan.selection.tokens.join(',')}` : ''}${SELECTOR_NOTES[plan.selection.source]}`,
     `config: ${report.config ?? 'default'} · agent: ${report.agent} · max parallel subagents: ${report.maxParallel}`,
@@ -469,7 +478,7 @@ export const buildReport = (root: string, options: ReportOptions): ReviewPlanRep
 }
 
 const isMode = (value: string): value is Mode => (MODES as readonly string[]).includes(value)
-const USAGE = 'usage: jig review-plan [<base>] [--selector full|quick|auto|<tokens>] [--layout inline|fanout|lean|solo] [--spec] [--mode review|pre-mr] [--mr] [--no-state] [--agent <id>] [--json]'
+const USAGE = 'usage: jig review-plan [<base>] [--selector full|quick|auto|<tokens>] [--layout auto|inline|fanout|lean|solo] [--spec] [--mode review|pre-mr] [--mr] [--no-state] [--agent <id>] [--json]'
 
 export const runReviewPlan: Command = (args) => {
   const { values, positionals } = parseArgs({

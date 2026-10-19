@@ -8,7 +8,9 @@
 
 Every finder gets **the whole diff**. The questions are split, not the files: the more readers, the fewer angles each carries and the deeper it goes into its own. The cost is the number of readers, not the number of angles: a finder with several angles reads the diff once.
 
-**`N = 1`: no finders.** Below this size a split does not pay, and neither does a finder subagent: the session reviews [inline](04-inline.md). This step covers `N ≠ 1`.
+**The inline path: no finders.** At `N = 1`, and up to `N = 2` under the default layout `auto`, a finder subagent does not pay: the session reviews [inline](04-inline.md). This step covers the layouts with finders: `lean`, `fanout`, `solo`.
+
+**One finder, one tier, unless the layout says otherwise.** `lean` puts every finder on the standard tier, `solo` on the deep tier; each keeps its token's effort, so a group does not split by grade. `fanout` applies the per-token tiers below.
 
 **Rules 6, 10, 13, documents 11 and spec 15: one finder (`rules`) on top of `N`.** It reads the diff against the project's documents: the review document block, the smell vocabulary, the architecture document, the ADR table of contents and the owning glossary ([step 02](02-rules.md)) go into its personal tail; other finders do not get them. Angle 11 sits here, not in cleanup: it judges changed ADRs and glossaries, which this finder reads anyway.
 
