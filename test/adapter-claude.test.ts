@@ -1,18 +1,11 @@
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { formatOutcome, parseHookInput } from '../src/adapters/claude'
+import { readJournal } from '../src/core/journal'
 import { toSlash } from '../src/core/paths'
 import { handleHook, type JigEvent, type Outcome } from '../src/hook/dispatch'
-import { checkComments } from '../src/rules/comments'
-import { checkSuppressions } from '../src/rules/suppressions'
-
-vi.mock('../src/rules/suppressions', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../src/rules/suppressions')>()),
-  checkSuppressions: vi.fn(() => []),
-}))
-vi.mock('../src/rules/comments', () => ({ checkComments: vi.fn(() => []) }))
 
 interface HookFixture {
   name: string
@@ -96,75 +89,52 @@ describe('hook input that cannot be read', () => {
   })
 })
 
-describe('guards fail closed', () => {
-  const denial = (reason: string): string =>
-    JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason } })
+describe('pre-edit and subagent-start through the adapter', () => {
+  const TS_IGNORE = '@ts-' + 'ignore'
 
-  const editInput = (): string =>
+  const editInput = (sessionId: string, file: string, before: string, after: string): string =>
     JSON.stringify({
-      session_id: 's-guard',
+      session_id: sessionId,
       cwd: project,
       hook_event_name: 'PreToolUse',
       tool_name: 'Edit',
-      tool_input: { file_path: join(project, 'src', 'a.ts'), old_string: 'a', new_string: 'b' },
+      tool_input: { file_path: file, old_string: before, new_string: after },
     })
 
-  beforeEach(() => {
-    vi.mocked(checkComments).mockReset().mockReturnValue([])
-    vi.mocked(checkSuppressions).mockReset().mockReturnValue([])
-  })
+  const reasonOf = (output: string): string | undefined =>
+    output === '' ? undefined : (JSON.parse(output) as { hookSpecificOutput: { permissionDecisionReason: string } }).hookSpecificOutput.permissionDecisionReason
 
-  it('lets the edit through when the comments check throws', async () => {
-    vi.mocked(checkComments).mockImplementation(() => {
-      throw new Error('lexer bug')
-    })
-
-    await expect(handleHook('pre-edit', editInput(), env())).resolves.toBe('')
-  })
-
-  it('passes the file line where the edited text starts to the open checks', async () => {
-    const file = join(project, 'src', 'a.ts')
+  it('denies a suppression at the file line where the edited text starts', async () => {
+    const file = join(project, 'src', 'marker.ts')
     mkdirSync(dirname(file), { recursive: true })
     writeFileSync(file, 'x\nx\nx\nconst marker = 1\n')
-    const input = JSON.stringify({
-      session_id: 's-guard',
-      cwd: project,
-      hook_event_name: 'PreToolUse',
-      tool_name: 'Edit',
-      tool_input: { file_path: file, old_string: 'const marker = 1', new_string: 'const marker = 2' },
-    })
 
-    await handleHook('pre-edit', input, env())
+    const output = await handleHook('pre-edit', editInput('s-line', file, 'const marker = 1', `// ${TS_IGNORE}\nconst marker = 1`), env())
 
-    expect(vi.mocked(checkComments).mock.calls[0]?.[1]).toEqual([
-      { before: 'const marker = 1', after: 'const marker = 2', line: 4, prefix: 'x\nx\nx\n' },
-    ])
-    expect(vi.mocked(checkSuppressions).mock.calls[0]?.[1]?.[0]?.line).toBe(4)
+    expect(reasonOf(output)).toContain(`"${TS_IGNORE}" at src/marker.ts:4 silences a check`)
   })
 
-  it('allows JSDoc on a member of an exported interface when the edit omits the declaration line', async () => {
-    const actual = await vi.importActual<typeof import('../src/rules/comments')>('../src/rules/comments')
-    vi.mocked(checkComments).mockReset().mockImplementation(actual.checkComments)
-    const file = join(project, 'src', 'options.ts')
-    mkdirSync(dirname(file), { recursive: true })
-    writeFileSync(file, 'export interface Options {\n  size: number\n}\n')
-    const input = JSON.stringify({
-      session_id: 's-guard',
-      cwd: project,
-      hook_event_name: 'PreToolUse',
-      tool_name: 'Edit',
-      tool_input: { file_path: file, old_string: '  size: number', new_string: '  /** Width in pixels. */\n  width: number' },
-    })
+  it('denies the first new test case and lets the same call pass', async () => {
+    const file = join(project, 'src', 'sum.test.ts')
+    writeFileSync(file, "it('adds', () => {})\n")
+    const input = editInput('s-tests', file, "it('adds', () => {})", "it('adds', () => {})\nit('subtracts', () => {})")
 
-    await expect(handleHook('pre-edit', input, env())).resolves.toBe('')
+    expect(reasonOf(await handleHook('pre-edit', input, env()))).toMatch(/^jig\/tests: the edit adds 1 test case/)
+    expect(await handleHook('pre-edit', input, env())).toBe('')
   })
 
-  it('denies with the rule text when a guard finds an error', async () => {
-    const message = 'jig/suppressions: a directive at src/a.ts:1 silences a check.'
-    vi.mocked(checkSuppressions).mockReturnValue([
-      { tool: 'jig', rule: 'jig/suppressions', severity: 'error', file: 'src/a.ts', line: 1, message },
-    ])
+  it('journals a subagent start with role paths cut to role names', async () => {
+    const input = JSON.stringify({
+      session_id: 's-sub',
+      cwd: project,
+      hook_event_name: 'SubagentStart',
+      agent_id: 'ag-1',
+      agent_type: 'general-purpose',
+      prompt: 'Read /p/skills/jig/references/roles/implementer.md, then fix src/a.ts',
+    })
 
-    await expect(handleHook('pre-edit', editInput(), env())).resolves.toBe(denial(message))
+    expect(await handleHook('subagent-start', input, env())).toBe('')
+    const record = readJournal(project).find((entry) => entry.kind === 'subagent-start')
+    expect(record).toMatchObject({ agent: 'ag-1', rule: 'general-purpose', message: 'Read role implementer, then fix src/a.ts' })
   })
 })

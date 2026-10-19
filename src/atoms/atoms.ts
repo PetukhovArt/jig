@@ -3,6 +3,7 @@ import { basename, join } from 'node:path'
 import { parseFrontmatter, type FrontmatterValue } from '../core/frontmatter'
 import { ensureJigDir, resolvePluginRoot, resolveProjectRoot } from '../core/paths'
 import { buildPlan, readAtomIndex, writePlan } from '../core/plan'
+import { GATE_ATOMS } from '../rules/gate'
 import { listMarkdown, parseMarkdownFile, readText } from './markdown'
 import { validateSkillDocs } from './skill-docs'
 
@@ -23,7 +24,7 @@ const reachableNames = (pluginRoot: string): Set<string> => {
     readText(join(skillDir, 'SKILL.md')),
     ...listMarkdown(flowsDir).map((name) => readText(join(flowsDir, name))),
   ].map((text) => text.replace(/\r\n/g, '\n'))
-  const names = new Set<string>()
+  const names = new Set<string>(GATE_ATOMS)
   for (const text of texts) {
     for (const match of text.matchAll(/atom `([^`]+)`/g)) {
       names.add(match[1] ?? '')
@@ -90,7 +91,7 @@ const checkAtom = (path: string, seen: Set<string>, reachable: Set<string>): str
   }
   const name = typeof data['name'] === 'string' ? data['name'] : fileName
   if (!reachable.has(name)) {
-    problems.push(`atom is unreachable: name it as atom \`${name}\`, in an "Atoms:" line or an index line of skills/jig/SKILL.md or a flow`)
+    problems.push(`atom is unreachable: name it as atom \`${name}\`, in an "Atoms:" line or an index line of skills/jig/SKILL.md or a flow, or deliver it from a hook gate`)
   }
   return problems
 }
@@ -104,7 +105,7 @@ export const validateAtoms = (pluginRoot: string): string[] => {
   )
 }
 
-export const readAtomBody = (file: string): string => {
+const readAtomBody = (file: string): string => {
   const text = readFileSync(file, 'utf8')
   const body = parseFrontmatter(text)?.body ?? text.replace(/\r\n/g, '\n')
   return body.replace(/^\n+/, '').replace(/\s+$/, '')

@@ -73,6 +73,10 @@ export const runEslint = (tool: ToolWithConfig, projectRoot: string, files: read
 export const eslintTool = defineTool({
   name: 'eslint',
   binaries: [{ key: 'eslint', label: 'eslint', command: 'eslint', packages: ['eslint'], configs: ESLINT_CONFIGS, requiresConfig: true }],
+  comments: {
+    suppressions: [/\beslint-disable(?:-next-line|-line)?\b/, /^\/\*\s*eslint\s+[\w@/-]+\s*:/],
+    allowed: [/\beslint-enable\b/],
+  },
   stop: async (tools, input) => {
     const files = input.files.filter(isCodeFile)
     const timeoutMs = input.budget(ESLINT_TIMEOUT_MS)

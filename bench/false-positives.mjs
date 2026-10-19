@@ -20,9 +20,8 @@ const loadRules = async () => {
   const result = await build({
     stdin: {
       contents: [
-        "export { checkComments } from './src/rules/comments'",
-        "export { checkSuppressions } from './src/rules/suppressions'",
-        "export { defaultConfig } from './src/core/config'",
+        "export { addedComments } from './src/rules/comments'",
+        "export { findSuppression, isToolDirective } from './src/rules/suppressions'",
       ].join('\n'),
       resolveDir: jigRoot,
       loader: 'ts',
@@ -44,8 +43,12 @@ const loadRules = async () => {
   }
 }
 
-const { checkComments, checkSuppressions, defaultConfig } = await loadRules()
-const config = defaultConfig()
+const { addedComments, findSuppression, isToolDirective } = await loadRules()
+
+const ruleOf = (text) => {
+  if (findSuppression(text) !== undefined) return 'suppression'
+  return isToolDirective(text) ? undefined : 'comment gate'
+}
 
 const files = execFileSync('git', ['ls-files', '-z', '--', '*.ts', '*.vue'], { cwd: repo, encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 })
   .split('\0')
@@ -63,8 +66,10 @@ for (const file of files) {
   const edits = [{ before: '', after: source, line: 1 }]
   const lines = source.split(LINE_BREAK)
   try {
-    for (const finding of [...checkSuppressions(file, edits, config), ...checkComments(file, edits, config)]) {
-      hits.push({ file, line: finding.line, rule: finding.rule, text: (lines[finding.line - 1] ?? '').trim().slice(0, SNIPPET_MAX) })
+    for (const comment of addedComments(file, edits) ?? []) {
+      const rule = ruleOf(comment.text)
+      if (rule === undefined) continue
+      hits.push({ file, line: comment.line, rule, text: (lines[comment.line - 1] ?? '').trim().slice(0, SNIPPET_MAX) })
     }
   } catch (error) {
     lexerErrors.push({ file, message: error instanceof Error ? error.message : String(error) })

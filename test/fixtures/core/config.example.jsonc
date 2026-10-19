@@ -1,9 +1,9 @@
 {
   "$schema": "https://raw.githubusercontent.com/PetukhovArt/jig/main/schema/config.schema.json",
-  // Severity per rule: off | warn | error. Missing keys use the default (error).
+  // Severity per rule: off | warn | error. Missing keys use the default: error, jig/comments off.
   "rules": {
     "jig/comments": "error",
-    "jig/suppressions": "error",
+    "jig/tests": "error",
     "gate/oxlint": "error",
     "gate/stratum": "error",
     "gate/tsc": "error",

@@ -71,6 +71,7 @@ export const runOxlint = (tool: ToolWithConfig, projectRoot: string, file: strin
 export const oxlintTool = defineTool({
   name: 'oxlint',
   binaries: [{ key: 'oxlint', label: 'oxlint', command: 'oxlint', packages: ['oxlint'], configs: OXLINT_CONFIGS, requiresConfig: true }],
+  comments: { suppressions: [/\boxlint-disable(?:-next-line|-line)?\b/], allowed: [/\boxlint-enable\b/] },
   edit: async (tools, projectRoot, file, timeoutMs) => {
     const entry = tools.oxlint
     if (!hasConfig(entry)) return undefined

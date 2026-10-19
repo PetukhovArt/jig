@@ -6,15 +6,14 @@ import { jigPaths } from './paths'
 export const SEVERITIES = ['off', 'warn', 'error'] as const
 export type Severity = (typeof SEVERITIES)[number]
 
-export const JIG_RULE_IDS = [
-  'jig/comments',
-  'jig/suppressions',
-] as const
+export const JIG_RULE_IDS = ['jig/comments', 'jig/tests'] as const
 export type RuleId = (typeof JIG_RULE_IDS)[number] | GateRuleId
 
 export const RULE_IDS: readonly RuleId[] = [...JIG_RULE_IDS, ...TOOLS.map((tool) => tool.rule)]
 
 export const DEFAULT_SEVERITY: Severity = 'error'
+
+const DEFAULT_SEVERITIES: Partial<Record<RuleId, Severity>> = { 'jig/comments': 'off' }
 
 const RUNTIMES = ['electron', 'tauri', 'browser', 'none'] as const
 const VERIFY_RUNTIMES = ['electron', 'tauri', 'browser'] as const
@@ -196,7 +195,7 @@ const readSlots = (validator: Validator, value: unknown): SlotsConfig | undefine
 }
 
 export const defaultRules = (): Record<RuleId, Severity> =>
-  Object.fromEntries(RULE_IDS.map((rule) => [rule, DEFAULT_SEVERITY])) as Record<RuleId, Severity>
+  Object.fromEntries(RULE_IDS.map((rule) => [rule, DEFAULT_SEVERITIES[rule] ?? DEFAULT_SEVERITY])) as Record<RuleId, Severity>
 
 export const defaultConfig = (): JigConfig => ({ rules: defaultRules() })
 

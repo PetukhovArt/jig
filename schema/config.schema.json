@@ -11,7 +11,7 @@
       "additionalProperties": false,
       "properties": {
         "jig/comments": { "$ref": "#/$defs/severity" },
-        "jig/suppressions": { "$ref": "#/$defs/severity" },
+        "jig/tests": { "$ref": "#/$defs/severity" },
         "gate/oxlint": { "$ref": "#/$defs/severity" },
         "gate/stratum": { "$ref": "#/$defs/severity" },
         "gate/tsc": { "$ref": "#/$defs/severity" },

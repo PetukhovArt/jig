@@ -1,0 +1,1 @@
+it('sums two numbers', () => {})

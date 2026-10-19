@@ -48,7 +48,17 @@ export interface ToolResult {
   findings: Finding[]
 }
 
-export interface ToolDefinition<N extends string = string> {
+export interface CommentDirectives {
+  suppressions: readonly RegExp[]
+  allowed: readonly RegExp[]
+}
+
+export interface DirectiveSource {
+  name: string
+  comments?: CommentDirectives
+}
+
+export interface ToolDefinition<N extends string = string> extends DirectiveSource {
   name: N
   rule: `gate/${N}`
   binaries: readonly ToolBinary[]

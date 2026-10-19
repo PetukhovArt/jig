@@ -16,8 +16,6 @@ export const STOP_LINE_LIMIT = 20
 export const formatFinding = (finding: Finding): string =>
   `${finding.file}:${finding.line} ${finding.rule} → ${finding.fix ?? finding.message}`
 
-export const formatDenial = (finding: Finding): string => finding.message
-
 interface FindingGroup {
   first: Finding
   count: number

@@ -217,6 +217,7 @@ export const tscTool = defineTool({
     { key: 'tsc', label: 'tsc', command: 'tsc', packages: ['typescript'], configs: [TSCONFIG], requiresConfig: false },
     { key: 'vueTsc', label: 'vue-tsc', command: 'vue-tsc', packages: ['vue-tsc'], configs: [], requiresConfig: false },
   ],
+  comments: { suppressions: [/@ts-(?:ignore|expect-error|nocheck)\b/], allowed: [/^\/\/\/\s*<reference\b/] },
   stop: async (tools, input) => {
     const { groups, skipped } = groupByTsconfig(input.projectRoot, input.files)
     for (const file of skipped) {

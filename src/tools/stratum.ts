@@ -62,6 +62,7 @@ export const stratumTool = defineTool({
       requiresConfig: true,
     },
   ],
+  comments: { suppressions: [/\bstratum-ignore\b/], allowed: [/@stratum-purity\s+\d/] },
   edit: async (tools, projectRoot, file, timeoutMs) => {
     const entry = tools.stratum
     if (!hasConfig(entry)) return undefined

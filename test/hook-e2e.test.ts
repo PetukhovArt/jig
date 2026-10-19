@@ -66,8 +66,17 @@ afterEach(() => {
 })
 
 describe('hooks through bin/jig.mjs', () => {
-  it('denies a narrating comment', () => {
-    expect(denialOf(preWrite('src/b.ts', 'let i = 0\n// increments i\ni++\n'))).toBe('deny')
+  it('denies a new suppression every time', () => {
+    const content = `// @ts-${'nocheck'}\nexport const b = 2\n`
+    expect(denialOf(preWrite('src/b.ts', content))).toBe('deny')
+    expect(denialOf(preWrite('src/b.ts', content))).toBe('deny')
+  })
+
+  it('denies the first narrating comment once the comment gate is on, then lets the same call pass', () => {
+    write('.jig/config.jsonc', '{ "rules": { "jig/comments": "error" } }\n')
+    const content = 'let i = 0\n// increments i\ni++\n'
+    expect(denialOf(preWrite('src/b.ts', content))).toBe('deny')
+    expect(preWrite('src/b.ts', content)).toBe('')
   })
 
   it('answers nothing to a clean edit', () => {
