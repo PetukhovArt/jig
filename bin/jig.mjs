@@ -4091,7 +4091,7 @@ import { join as join19, resolve as resolve9 } from "node:path";
 import { parseArgs as parseArgs3 } from "node:util";
 
 // src/review/review-plan.ts
-import { existsSync as existsSync7, readFileSync as readFileSync20 } from "node:fs";
+import { existsSync as existsSync7, readFileSync as readFileSync20, readdirSync as readdirSync9 } from "node:fs";
 import { join as join18 } from "node:path";
 import { parseArgs as parseArgs2 } from "node:util";
 
@@ -4188,10 +4188,12 @@ var autoTokens = (shape, n) => {
   return tokens;
 };
 var parseSelector = (input, shape, n) => {
-  const raw = input === void 0 || input === "" ? "full" : input;
+  const given = input !== void 0 && input !== "";
+  const source = given ? "argument" : n === 1 ? "small-diff" : "default";
+  const raw = given ? input : n === 1 ? "quick" : "full";
   if (Object.hasOwn(PRESETS, raw)) {
     const expanded2 = PRESETS[raw];
-    return { input: raw, tokens: expanded2 === void 0 ? [] : [expanded2] };
+    return { input: raw, tokens: expanded2 === void 0 ? [] : [expanded2], source };
   }
   const tokens = raw.split(",").map((token) => token.trim());
   const unknown = tokens.filter((token) => !SELECTOR_TOKENS.includes(token));
@@ -4199,7 +4201,7 @@ var parseSelector = (input, shape, n) => {
     throw new Error(`unknown selector token ${unknown.join(", ")}; expected full, quick or tokens of: ${SELECTOR_TOKENS.join(", ")}`);
   }
   const expanded = tokens.flatMap((token) => token === "auto" ? autoTokens(shape, n) : [token]);
-  return { input: raw, tokens: [...new Set(expanded)] };
+  return { input: raw, tokens: [...new Set(expanded)], source };
 };
 var selectedAngles = (tokens, settings) => {
   if (tokens.length === 0) return new Set(ANGLES);
@@ -4217,14 +4219,8 @@ var inapplicable = (angle, shape) => {
   if (angle === 17 && !shape.comments) return "no added comments";
   return void 0;
 };
-var TIER_RANK = { fast: 0, standard: 1, deep: 2 };
-var EFFORT_RANK = { low: 0, medium: 1, high: 2 };
 var gradeOf = (angle, grades) => grades[ANGLE_TOKENS[angle]] ?? DEFAULT_GRADES[ANGLE_TOKENS[angle]] ?? { tier: "standard", effort: "high" };
 var roleGrade = (key, grades) => grades[key] ?? { tier: "deep", effort: "medium" };
-var strongest = (angles, grades) => angles.map((angle) => gradeOf(angle, grades)).reduce((best, grade) => ({
-  tier: TIER_RANK[grade.tier] > TIER_RANK[best.tier] ? grade.tier : best.tier,
-  effort: EFFORT_RANK[grade.effort] > EFFORT_RANK[best.effort] ? grade.effort : best.effort
-}));
 var splitByGrade = (name, kind, angles, grades) => {
   const byGrade = /* @__PURE__ */ new Map();
   for (const angle of angles) {
@@ -4244,9 +4240,6 @@ var splitByGrade = (name, kind, angles, grades) => {
 };
 var layoutFinders = (n, angles, grades) => {
   const has = (angle) => angles.includes(angle);
-  if (n === 1) {
-    return angles.length === 0 ? [] : [{ name: "single", kind: "single", angles: [...angles], ...strongest(angles, grades) }];
-  }
   const groups = [];
   if (n >= 2) {
     const bugGroups = BUG_GROUPS[Math.min(n - 1, MAX_BUG_FINDERS)] ?? [];
@@ -4276,19 +4269,47 @@ var planReview = (input) => {
     (angle) => skipped.push({ angle, reason: "no counted code lines" })
   );
   const wantsDeepening = selection.tokens.length === 0 ? input.shape.newSourceFiles > 0 : selection.tokens.includes("deepening");
+  const path = usedForCode.length === 0 ? "none" : n === 1 ? "inline" : "subagents";
   return {
     lines: input.lines,
     n,
+    path,
     selection,
     outputTokens: selection.tokens.filter((token) => token !== "deepening"),
     angles: usedForCode,
     skipped: skipped.sort((left, right) => left.angle - right.angle),
-    finders: layoutFinders(n, usedForCode, grades),
+    finders: path === "subagents" ? layoutFinders(n, usedForCode, grades) : [],
     deepening: wantsDeepening && n > 0 ? roleGrade("deepening", grades) : void 0,
     verify: roleGrade("verify", grades),
     outcome: roleGrade("outcome", grades),
     composer: roleGrade("composer", grades)
   };
+};
+var MODES = ["review", "pre-mr"];
+var BUG_ANGLES = [1, 2, 3, 4, 5, 12, 14];
+var gateFiles = (angles) => [
+  ...angles.some((angle) => BUG_ANGLES.includes(angle)) ? ["gates/bugs.md"] : [],
+  ...angles.some((angle) => !BUG_ANGLES.includes(angle)) ? ["gates/shape.md"] : [],
+  "gates/severity.md"
+];
+var stepsFor = (plan, mode, state) => {
+  const output = { file: "steps/08-output.md", when: mode === "pre-mr" ? 'section "Pre-mr verdict"' : state ? 'sections "Write state" and "Output"' : 'section "Output"' };
+  if (plan.path === "none") return [output];
+  const steps = [{ file: "steps/02-rules.md" }];
+  if (state) {
+    steps.push(
+      { file: "steps/03-state.md" },
+      { file: "references/state-schema.md" },
+      { file: "steps/09-rereview.md", when: "only when the state file exists: replaces the next steps up to rank for its scope" }
+    );
+  }
+  if (plan.path === "inline") steps.push({ file: "steps/04-inline.md" }, ...gateFiles(plan.angles).map((file) => ({ file })));
+  else steps.push({ file: "steps/04-finders.md" }, { file: "steps/05-verify.md" });
+  steps.push({ file: "steps/06-rank.md" });
+  if (state) steps.push({ file: "steps/07-comments.md" });
+  steps.push(output);
+  if (state) steps.push({ file: "references/posting.md", when: "only with --post or an explicit request" });
+  return steps;
 };
 var judgeModels = (finderModels, verifyModels) => [...new Set(finderModels)].flatMap((finderModel) => {
   const other = verifyModels.find((model) => model !== finderModel);
@@ -4477,11 +4498,35 @@ var anyAddedComment = (root, mergeBase, stats) => {
   return false;
 };
 var untrackedCount = (root) => (gitStatus(root) ?? []).filter((entry) => entry.status === "??").length;
+var INLINE_READER = "inline";
+var angleAtoms = (text2) => {
+  const header = /\*\*Atoms?:\*\*([^\n]*)/.exec(text2)?.[1] ?? "";
+  return [...header.matchAll(/`([^`]+)`/g)].map((match) => match[1] ?? "").filter((name) => name !== "");
+};
+var readsFor = (pluginRoot, angles) => {
+  const angleDir = join18(pluginRoot, "skills", "jig-review", "angles");
+  const atomDir = join18(pluginRoot, "atoms");
+  const names = existsSync7(angleDir) ? readdirSync9(angleDir) : [];
+  const files = angles.flatMap((angle) => names.filter((name) => name.startsWith(`${angle}.`) && name.endsWith(".md")).map((name) => join18(angleDir, name)));
+  const atoms = [...new Set(files.flatMap((file) => angleAtoms(readFileSync20(file, "utf8"))))].map((name) => join18(atomDir, `${name}.md`)).filter((path) => existsSync7(path));
+  return { angles: files.map(toSlash), atoms: atoms.map(toSlash) };
+};
 var angleList = (angles) => angles.join("+");
 var gradeText = (grade, models) => {
   const model = models?.[grade.tier]?.[0];
   return `${grade.tier}/${grade.effort}${model === void 0 ? "" : ` ${model}`}`;
 };
+var SELECTOR_NOTES = {
+  argument: "",
+  default: " (default)",
+  "small-diff": " (default for N = 1; --selector full for every angle)"
+};
+var stateText = (report) => {
+  if (report.state) return "on (merge request known: state file, comment texts, re-review)";
+  if (report.mode === "pre-mr") return "off (mode pre-mr: track progress in your todo list)";
+  return "off (no merge request or --no-state: no state file, no comment texts, no posting)";
+};
+var readLines = (reads) => reads === void 0 ? [] : [`  read: ${reads.angles.join(" ")}`, ...reads.atoms.length > 0 ? [`  atoms: ${reads.atoms.join(" ")}`] : []];
 var formatReport = (report) => {
   const { plan, models } = report;
   const excluded = Object.entries(report.files.excluded).filter(([, count]) => count > 0).map(([kind, count]) => `${count} ${kind}`);
@@ -4490,18 +4535,31 @@ var formatReport = (report) => {
     `lines: ${plan.lines} in ${report.files.counted} files${excluded.length > 0 ? `; excluded: ${excluded.join(", ")}` : ""}${report.files.untracked > 0 ? `; untracked files not counted: ${report.files.untracked} (git add -N to count them)` : ""}`,
     `finders: ${report.formula}`,
     `shape: tests ${report.shape.tests ? "yes" : "no"} \xB7 added comments ${report.shape.comments ? "yes" : "no"} \xB7 markdown ${report.shape.docs ? "yes" : "no"} \xB7 new source files ${report.shape.newSourceFiles} \xB7 spec ${report.shape.spec ? "yes" : "no"}`,
-    `selector: ${plan.selection.input}${plan.selection.tokens.length > 0 && plan.selection.input !== plan.selection.tokens.join(",") ? ` \u2192 ${plan.selection.tokens.join(",")}` : ""}`,
+    `selector: ${plan.selection.input}${plan.selection.tokens.length > 0 && plan.selection.input !== plan.selection.tokens.join(",") ? ` \u2192 ${plan.selection.tokens.join(",")}` : ""}${SELECTOR_NOTES[plan.selection.source]}`,
     `config: ${report.config ?? "default"} \xB7 agent: ${report.agent} \xB7 max parallel subagents: ${report.maxParallel}`,
+    `mode: ${report.mode} \xB7 state: ${stateText(report)}`,
     ""
   ];
-  if (plan.finders.length === 0) lines.push("finders: none (nothing to review)");
+  if (plan.path === "none") lines.push("finders: none (nothing to review)");
+  if (plan.path === "inline") {
+    lines.push(`path: inline: review in this session, angles ${angleList(plan.angles)}; no finder subagents; no judge subagents unless an Important candidate survives your own gates`);
+    lines.push(...readLines(report.reads[INLINE_READER]));
+  }
   for (const finder of plan.finders) {
     lines.push(`finder ${finder.name}: angles ${angleList(finder.angles)} \xB7 ${gradeText(finder, models)}`);
+    lines.push(...readLines(report.reads[finder.name]));
   }
   if (plan.deepening !== void 0) lines.push(`deepening: ${gradeText(plan.deepening, models)}`);
-  lines.push(`verify: ${plan.verify.tier}/${plan.verify.effort}`);
-  for (const judge of report.judge) {
-    lines.push(`  candidates from ${judge.finderModel} \u2192 judge ${judge.judgeModel}${judge.same ? " (same model: one model in the tier)" : ""}`);
+  if (plan.path === "inline") {
+    lines.push(`judge for Important candidates: one subagent, ${plan.verify.tier}/${plan.verify.effort}`);
+    for (const judge of report.judge) {
+      lines.push(`  your model ${judge.finderModel} \u2192 judge ${judge.judgeModel}${judge.same ? " (same model: one model in the tier)" : ""}`);
+    }
+  } else {
+    lines.push(`verify: ${plan.verify.tier}/${plan.verify.effort}`);
+    for (const judge of report.judge) {
+      lines.push(`  candidates from ${judge.finderModel} \u2192 judge ${judge.judgeModel}${judge.same ? " (same model: one model in the tier)" : ""}`);
+    }
   }
   if (report.judge.length === 0) lines.push(`  judge: a ${plan.verify.tier} model other than the finder's`);
   lines.push(`outcome check: ${gradeText(plan.outcome, models)} \xB7 composer: ${gradeText(plan.composer, models)}`);
@@ -4509,6 +4567,8 @@ var formatReport = (report) => {
     lines.push(`skipped angles: ${plan.skipped.map((skip) => `${skip.angle} (${skip.reason})`).join(", ")}`);
   }
   lines.push(`output filter: ${plan.outputTokens.length > 0 ? plan.outputTokens.join(",") : "all findings"}`);
+  lines.push("", "steps for this run (read each when you reach it; no other step file applies):");
+  lines.push(...report.steps.map((step) => `  ${report.skill}/${step.file}${step.when === void 0 ? "" : ` \xB7 ${step.when}`}`));
   return lines.join("\n");
 };
 var buildReport = (root, options) => {
@@ -4535,21 +4595,33 @@ var buildReport = (root, options) => {
   const agent = detectAgent(options.agent);
   const models = resolveTiers(agent, loaded.config);
   const finderModels = Object.fromEntries(plan.finders.map((finder) => [finder.name, models?.[finder.tier]?.[0]]));
-  const usedModels = Object.values(finderModels).filter((model) => model !== void 0);
+  const verifyModels = models?.[plan.verify.tier] ?? [];
+  const usedModels = plan.path === "inline" ? verifyModels : Object.values(finderModels).filter((model) => model !== void 0);
+  const mode = options.mode ?? "review";
+  const state = mode === "review" && options.mergeRequest === true && options.noState !== true;
+  const pluginRoot = options.pluginRoot ?? resolvePluginRoot();
+  const readers = plan.path === "inline" ? [[INLINE_READER, plan.angles]] : plan.finders.map((finder) => [finder.name, finder.angles]);
   return {
     base: { ref: base.ref, mergeBase: base.mergeBase, source: base.source },
     files: { counted, excluded, untracked: untrackedCount(root) },
     formula: `ceil(${lines}/${LINES_PER_FINDER}) = ${Math.ceil(lines / LINES_PER_FINDER)}, max ${MAX_FINDERS} \u2192 N = ${plan.n}`,
     shape,
     plan,
+    mode,
+    state,
+    skill: toSlash(join18(pluginRoot, "skills", "jig-review")),
+    steps: stepsFor(plan, mode, state),
+    reads: Object.fromEntries(readers.map(([name, angles]) => [name, readsFor(pluginRoot, angles)])),
     maxParallel: project?.config.maxParallel ?? MAX_PARALLEL,
     config: project?.label ?? null,
     agent,
     models,
     finderModels,
-    judge: judgeModels(usedModels, models?.[plan.verify.tier] ?? [])
+    judge: judgeModels(usedModels, verifyModels)
   };
 };
+var isMode = (value) => MODES.includes(value);
+var USAGE2 = "usage: jig review-plan [<base>] [--selector full|quick|auto|<tokens>] [--spec] [--mode review|pre-mr] [--mr] [--no-state] [--agent <id>] [--json]";
 var runReviewPlan = (args) => {
   const { values, positionals } = parseArgs2({
     args,
@@ -4559,13 +4631,26 @@ var runReviewPlan = (args) => {
       selector: { type: "string" },
       spec: { type: "boolean" },
       agent: { type: "string" },
+      mode: { type: "string" },
+      mr: { type: "boolean" },
+      "no-state": { type: "boolean" },
       json: { type: "boolean" }
     }
   });
-  if (positionals.length > 1) throw new Error("usage: jig review-plan [<base>] [--selector full|quick|auto|<tokens>] [--spec] [--agent <id>] [--json]");
+  if (positionals.length > 1) throw new Error(USAGE2);
+  const mode = values.mode ?? "review";
+  if (!isMode(mode)) throw new Error(`unknown mode ${mode}; ${USAGE2}`);
   const root = gitToplevel(process.cwd());
   if (root === void 0) throw new Error("not inside a git repository");
-  const report = buildReport(root, { base: positionals[0], selector: values.selector, spec: values.spec === true, agent: values.agent });
+  const report = buildReport(root, {
+    base: positionals[0],
+    selector: values.selector,
+    spec: values.spec === true,
+    agent: values.agent,
+    mode,
+    mergeRequest: values.mr === true,
+    noState: values["no-state"] === true
+  });
   process.stdout.write(`${values.json ? JSON.stringify(report) : formatReport(report)}
 `);
   return 0;
@@ -4911,7 +4996,7 @@ var installSteps = (changed, install, lockfiles = LOCKFILES) => {
 };
 
 // src/worktree/seed.ts
-import { copyFileSync as copyFileSync2, lstatSync, mkdirSync as mkdirSync11, readdirSync as readdirSync9, readlinkSync, realpathSync as realpathSync3, statSync as statSync9, symlinkSync } from "node:fs";
+import { copyFileSync as copyFileSync2, lstatSync, mkdirSync as mkdirSync11, readdirSync as readdirSync10, readlinkSync, realpathSync as realpathSync3, statSync as statSync9, symlinkSync } from "node:fs";
 import nodePath from "node:path";
 var exists = (path) => {
   try {
@@ -4990,7 +5075,7 @@ var place = (main, worktree, rel) => {
 };
 var linksInside = (main, dir) => {
   try {
-    return readdirSync9(nodePath.join(main, dir), { withFileTypes: true }).filter((entry) => entry.isSymbolicLink()).map((entry) => `${dir}${entry.name}`);
+    return readdirSync10(nodePath.join(main, dir), { withFileTypes: true }).filter((entry) => entry.isSymbolicLink()).map((entry) => `${dir}${entry.name}`);
   } catch {
     return [];
   }
