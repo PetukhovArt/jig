@@ -1,22 +1,21 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { CHECKS, isCheckActive } from './checks'
-import { loadConfig } from './core/config'
-import { gitLsFiles } from './core/git'
+import { CATALOG, type CatalogEntry } from './catalog'
+import { AGENT_VIEW_CONFIG, agentViewCheck } from './catalog/proofs'
+import { loadConfig, type LoadedConfig, type ToolSettings } from './core/config'
 import { JOURNAL_MAX_BYTES, listJournalFiles } from './core/journal'
 import { parseJsonc } from './core/jsonc'
 import { jigPaths, resolvePluginRoot, resolveProjectRoot } from './core/paths'
-import { detectTools, PLAN_BINARIES, readAtomIndex, type PlanTools } from './core/plan'
-import { createMatcher } from './core/glob'
+import { resolveTools, type PlanTools } from './core/plan'
 import { findUnresolvedShim, isLockAbandoned, readLock } from './core/proc'
+import { discover, type Discovery } from './init/discover'
 import { detectAgent, isUserMapped, loadUserConfig, resolveTiers, tierEntries } from './tiers/tiers'
-import type { ToolBinary } from './tools/tool'
 
 type Command = (args: string[]) => number | Promise<number>
 
 type Status = 'ok' | 'warn' | 'fail'
 
-interface Check {
+export interface Check {
   status: Status
   text: string
   block?: string
@@ -54,11 +53,10 @@ const checkNode = (): Check => {
   return major >= MIN_NODE_MAJOR ? ok(`node: ${version}`) : fail(`node: ${version}, Node >= ${MIN_NODE_MAJOR} required`)
 }
 
-const checkConfig = (projectRoot: string): Check => {
-  const path = jigPaths(projectRoot).config
-  if (!existsSync(path)) return ok(`config: ${path} absent, defaults apply`)
-  const { error } = loadConfig(projectRoot)
-  return error === undefined ? ok(`config: ${path} valid`) : fail(`config: ${path} invalid: ${error}`)
+const checkConfig = (config: LoadedConfig): Check => {
+  if (config.files.length === 0) return warn('config: no .jig/config.jsonc, no tool runs; run jig init')
+  const files = config.files.join(' + ')
+  return config.error === undefined ? ok(`config: ${files} valid`) : fail(`config: ${files} invalid: ${config.error}; run jig init --update`)
 }
 
 const checkTiers = (): Check => {
@@ -72,24 +70,36 @@ const checkTiers = (): Check => {
   return ok(`tiers: ${agent} ${pairs.join(' ')} (${source})`)
 }
 
-const firstExisting =(projectRoot: string, names: readonly string[]): string | undefined =>
-  names.map((name) => join(projectRoot, name)).find((path) => existsSync(path))
-
-const checkTool = (projectRoot: string, tools: PlanTools, spec: ToolBinary): Check => {
-  const found = tools[spec.key]
-  if (found !== undefined) {
-    const config = 'config' in found ? ` config ${found.config}` : ''
-    return ok(`${spec.label}: ${found.bin.join(' ')}${config}`)
-  }
-  const shim = findUnresolvedShim(spec.command)
-  if (shim !== undefined) return warn(`${spec.label}: shim ${shim} has no recognizable target, tool not used`)
-  const config = firstExisting(projectRoot, spec.configs)
-  if (config === undefined) return ok(`${spec.label}: not used`)
-  return warn(`${spec.label}: ${config} found, binary not found, tool not used`)
+const settingText = (setting: ToolSettings): string => {
+  const parts = [setting.level, ...(setting.command === undefined ? [] : [`command "${setting.command}"`])]
+  return setting.ignoreRules.length === 0 ? parts.join(', ') : `${parts.join(', ')}, ignores ${setting.ignoreRules.join(' ')}`
 }
 
-const checkRuntime = (tools: PlanTools): Check[] =>
-  CHECKS.map((check) => ok(`check ${check.name}: ${isCheckActive(check, tools) ? `active, proves ${Object.keys(check.hints).join(', ')}` : 'not used'}`))
+const checkCatalogEntry = (entry: CatalogEntry, config: LoadedConfig, tools: PlanTools, discovery: Discovery): Check => {
+  const settings = entry.kind === 'tool' ? config.tools : config.proofs
+  const setting = settings[entry.name]
+  const found = discovery.found.find((item) => item.name === entry.name)
+  if (setting === false) return ok(`${entry.name}: off in config`)
+  if (setting === undefined) {
+    return found?.status === 'ready' ? warn(`${entry.name}: found in the project, not in config; run jig init --update`) : ok(`${entry.name}: not used`)
+  }
+  const bins = entry.binaries.flatMap((binary) => tools[binary.key]?.bin ?? [])
+  if (bins.length > 0) return ok(`${entry.name}: ${bins.join(' ')} (${settingText(setting)})`)
+  if (setting.level === 'off') return ok(`${entry.name}: off in config`)
+  const shim = entry.binaries.map((binary) => findUnresolvedShim(binary.command)).find((path) => path !== undefined)
+  if (shim !== undefined) return warn(`${entry.name}: shim ${shim} has no recognizable target, tool not used`)
+  return warn(`${entry.name}: on in config, binary not installed, tool not used`)
+}
+
+const checkAgentViewSetup = (discovery: Discovery): Check | undefined => {
+  const agentView = discovery.found.find((item) => item.name === agentViewCheck.name)
+  if (agentView?.status === 'ready') return undefined
+  const setup = agentViewCheck.setup?.join(', then ') ?? 'agent-view init'
+  return warn(`agent-view: no ${AGENT_VIEW_CONFIG}; UI changes cannot be proven in the running app. Set it up: ${setup}`)
+}
+
+const checkCustom = (config: LoadedConfig): Check[] =>
+  config.checks.map((check) => ok(`check ${check.name}: on ${check.on}, ${check.level}, files ${check.files.join(' ')}, run ${check.run}`))
 
 const checkGitignore = (projectRoot: string): Check => {
   const path = jigPaths(projectRoot).gitignore
@@ -138,28 +148,34 @@ const formatCheck = (check: Check): string => {
   return check.block === undefined ? line : `${line}\n${check.block}`
 }
 
-export const runDoctor: Command = (args) => {
-  if (args.length > 0) {
-    throw new Error('usage: jig doctor')
-  }
-  const projectRoot = resolveProjectRoot(process.cwd())
-  const pluginRoot = resolvePluginRoot()
+export const doctorChecks = (projectRoot: string, pluginRoot: string): Check[] => {
   const paths = jigPaths(projectRoot)
-  const tools = detectTools(projectRoot)
-  const checks: Check[] = [
+  const config = loadConfig(projectRoot)
+  const { tools } = resolveTools(projectRoot, config)
+  const discovery = discover(projectRoot)
+  const agentViewSetup = checkAgentViewSetup(discovery)
+  return [
     checkNode(),
     ok(`plugin: ${pluginRoot}`),
     ok(`project: ${projectRoot}`),
-    checkConfig(projectRoot),
+    checkConfig(config),
     checkTiers(),
-    ...PLAN_BINARIES.map((spec) => checkTool(projectRoot, tools, spec)),
-    ...checkRuntime(tools),
+    ...CATALOG.map((entry) => checkCatalogEntry(entry, config, tools, discovery)),
+    ...(agentViewSetup === undefined ? [] : [agentViewSetup]),
+    ...checkCustom(config),
     checkGitignore(projectRoot),
     checkDeny(projectRoot),
     checkJournal(projectRoot),
     checkLock(paths.heavyLock),
     checkLock(join(paths.cache, 'slot.lock')),
   ]
+}
+
+export const runDoctor: Command = (args) => {
+  if (args.length > 0) {
+    throw new Error('usage: jig doctor')
+  }
+  const checks = doctorChecks(resolveProjectRoot(process.cwd()), resolvePluginRoot())
   process.stdout.write(`${checks.map(formatCheck).join('\n')}\n`)
   return checks.some((check) => check.status === 'fail') ? 1 : 0
 }

@@ -1,8 +1,9 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { toProjectPath } from '../core/paths'
-import type { Finding } from './finding'
-import { changedLines, defineTool, hasConfig, isOnChangedLine, runTool, type ToolRun, type ToolWithConfig } from './tool'
+import { toProjectPath } from '../../core/paths'
+import type { Finding } from '../../tools/finding'
+import { changedLines, defineTool, isOnChangedLine, nearestMarker, runTool, withMarker, type ToolRun, type ToolWithConfig } from '../../tools/tool'
+import { SCRIPT_FILES } from '../languages'
 
 interface OxlintSpan {
   offset?: number
@@ -71,10 +72,12 @@ export const runOxlint = (tool: ToolWithConfig, projectRoot: string, file: strin
 export const oxlintTool = defineTool({
   name: 'oxlint',
   binaries: [{ key: 'oxlint', label: 'oxlint', command: 'oxlint', packages: ['oxlint'], configs: OXLINT_CONFIGS, requiresConfig: true }],
+  files: SCRIPT_FILES,
+  parse: parseOxlint,
   comments: { suppressions: [/\boxlint-disable(?:-next-line|-line)?\b/], allowed: [/\boxlint-enable\b/] },
   edit: async (tools, projectRoot, file, timeoutMs) => {
-    const entry = tools.oxlint
-    if (!hasConfig(entry)) return undefined
+    const entry = withMarker(tools.oxlint, nearestMarker(projectRoot, file, OXLINT_CONFIGS))
+    if (entry === undefined) return undefined
     const result = await runOxlint(entry, projectRoot, file, timeoutMs)
     const errors = result.findings.filter((finding) => finding.severity === 'error')
     if (errors.length === 0) return { ...result, findings: [] }

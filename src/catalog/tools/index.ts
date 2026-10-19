@@ -1,8 +1,8 @@
+import type { DirectiveSource } from '../../tools/tool'
 import { DIRECTIVE_ONLY_TOOLS } from './directives'
 import { eslintTool } from './eslint'
 import { oxlintTool } from './oxlint'
 import { stratumTool } from './stratum'
-import type { DirectiveSource } from './tool'
 import { tscTool } from './tsc'
 
 export const TOOLS = [oxlintTool, tscTool, eslintTool, stratumTool] as const

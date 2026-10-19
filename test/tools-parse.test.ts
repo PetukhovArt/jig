@@ -1,10 +1,10 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { parseEslint } from '../src/tools/eslint'
-import { parseOxlint } from '../src/tools/oxlint'
-import { parseStratum } from '../src/tools/stratum'
-import { parseTscOutput } from '../src/tools/tsc'
+import { parseEslint } from '../src/catalog/tools/eslint'
+import { parseOxlint } from '../src/catalog/tools/oxlint'
+import { parseStratum } from '../src/catalog/tools/stratum'
+import { parseTscOutput } from '../src/catalog/tools/tsc'
 
 const fixture = (name: string): string => readFileSync(join(__dirname, 'fixtures', 'tools', name), 'utf8')
 const root = join(__dirname, 'fixtures', 'tools', 'project')

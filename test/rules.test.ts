@@ -2,7 +2,7 @@ import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
-import { defaultConfig, type JigConfig, type RuleId, type Severity } from '../src/core/config'
+import { defaultConfig, type JigConfig, type JigRuleId, type Severity } from '../src/core/config'
 import { addedComments } from '../src/rules/comments'
 import { gateEdit, resetGateAtoms, type GateInput } from '../src/rules/gate'
 import type { Edit } from '../src/rules/rule'
@@ -26,7 +26,7 @@ afterAll(() => {
   rmSync(sandbox, { recursive: true, force: true })
 })
 
-const withRules = (rules: Partial<Record<RuleId, Severity>>): JigConfig => {
+const withRules = (rules: Partial<Record<JigRuleId, Severity>>): JigConfig => {
   const config = defaultConfig()
   return { ...config, rules: { ...config.rules, ...rules } }
 }
@@ -104,9 +104,11 @@ describe('deny once, then let the same call pass', () => {
     expect(gate('src/a.spec.ts', [{ before: "it('a', f)\nit('b', f)\n", after: "it('a', f)\n" }], defaultConfig())).toEqual({ hits: [] })
   })
 
-  it('lets new comments through while the comment gate is off by default', () => {
+  it('gates new comments by default and lets them through once the project turns the gate off', () => {
     sessions++
-    expect(gate('src/a.ts', add('// explains a'), defaultConfig()).reason).toBeUndefined()
+    expect(gate('src/a.ts', add('// explains a'), defaultConfig()).reason).toMatch(/^jig\/comments: the edit adds 1 comment/)
+    sessions++
+    expect(gate('src/a.ts', add('// explains a'), withRules({ 'jig/comments': 'off' })).reason).toBeUndefined()
   })
 
   it('gives the full tests atom on the first new test case and passes the retry', () => {

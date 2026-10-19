@@ -6,8 +6,8 @@ import { git, gitStatus, gitToplevel } from '../core/git'
 import { createMatcher } from '../core/glob'
 import { parseJsonc } from '../core/jsonc'
 import { jigPaths } from '../core/paths'
-import { isTestFile } from '../core/test-files'
-import { lexComments } from '../rules/lexer'
+import { isTestFile } from '../catalog/languages'
+import { lexComments } from '../catalog/languages'
 import { detectAgent, loadUserConfig, resolveTiers, type TierMap } from '../tiers/tiers'
 import {
   CEILINGS,

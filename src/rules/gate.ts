@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import { mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import type { JigConfig, RuleId } from '../core/config'
+import type { JigConfig, JigRuleId, RuleId } from '../core/config'
 import { parseFrontmatter } from '../core/frontmatter'
 import { jigPaths, toSlash } from '../core/paths'
 import { STATE_MAX_AGE_MS } from '../core/state'
@@ -37,7 +37,7 @@ export interface GateVerdict {
 const RETRY = 'Read the rules first, then repeat the same call — it will pass.'
 const LEADING_HEADING = /^#[^\n]*\n+/
 
-const isOn = (config: JigConfig, rule: RuleId): boolean => (config.rules[rule] ?? 'off') !== 'off'
+const isOn = (config: JigConfig, rule: JigRuleId): boolean => (config.rules[rule] ?? 'off') !== 'off'
 
 const sessionDir = (projectRoot: string, sessionId: string): string =>
   join(jigPaths(projectRoot).cache, 'gates', sessionId.replace(/[^A-Za-z0-9._-]/g, '_'))

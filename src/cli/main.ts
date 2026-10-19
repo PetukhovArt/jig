@@ -3,6 +3,7 @@ import { runAtom, runBuild } from '../atoms/atoms'
 import { runDoctor } from '../doctor'
 import { runCheck } from '../gates/stop'
 import { runHook } from '../hook/dispatch'
+import { runInit } from '../init/init'
 import { runLoop } from '../loop/loop'
 import { runPreMr, runSkipVerify } from '../pre-mr/pre-mr'
 import { runReviewPlan } from '../review/review-plan'
@@ -30,6 +31,7 @@ const commands = new Map<string, Command>([
   ['worktree', runWorktree],
   ['task-status', runTaskStatus],
   ['loop', runLoop],
+  ['init', runInit],
   ['doctor', runDoctor],
   ['tiers', runTiers],
   ['review-plan', runReviewPlan],

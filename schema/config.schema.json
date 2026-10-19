@@ -2,6 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://raw.githubusercontent.com/PetukhovArt/jig/main/schema/config.schema.json",
   "title": "jig project config",
+  "description": ".jig/config.jsonc (in git) and .jig/config.local.jsonc (outside git, laid over it: objects merge by key, checks by name, other values replace). jig reads only these files; nothing outside them runs.",
   "type": "object",
   "additionalProperties": false,
   "properties": {
@@ -9,13 +10,39 @@
     "rules": {
       "type": "object",
       "additionalProperties": false,
+      "description": "jig's own rules. Suppression directives are always denied; these levels set the gates for new comments and new test cases (default error for both).",
       "properties": {
         "jig/comments": { "$ref": "#/$defs/severity" },
-        "jig/tests": { "$ref": "#/$defs/severity" },
-        "gate/oxlint": { "$ref": "#/$defs/severity" },
-        "gate/stratum": { "$ref": "#/$defs/severity" },
-        "gate/tsc": { "$ref": "#/$defs/severity" },
-        "gate/eslint": { "$ref": "#/$defs/severity" }
+        "jig/tests": { "$ref": "#/$defs/severity" }
+      }
+    },
+    "oxlint": { "$ref": "#/$defs/tool" },
+    "tsc": { "$ref": "#/$defs/tool" },
+    "eslint": { "$ref": "#/$defs/tool" },
+    "stratum": { "$ref": "#/$defs/tool" },
+    "agent-view": { "$ref": "#/$defs/tool", "description": "Proof of UI changes in the running app, read by jig pre-mr" },
+    "checks": {
+      "type": "array",
+      "description": "The project's own checks, run after an edit or at the end of a turn on the matching files.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "files", "on", "run"],
+        "properties": {
+          "name": { "type": "string", "pattern": "^[\\w.-]+$", "description": "Unique; findings use the rule check/<name>" },
+          "files": {
+            "oneOf": [{ "type": "string" }, { "type": "array", "items": { "type": "string" } }],
+            "description": "Glob or globs, repo-relative with forward slashes"
+          },
+          "on": { "enum": ["edit", "stop"] },
+          "run": { "type": "string", "pattern": "\\{files\\}", "description": "Command without a shell; the token {files} becomes one argument per file" },
+          "format": {
+            "enum": ["exit", "jsonl", "oxlint", "tsc", "eslint", "stratum"],
+            "default": "exit",
+            "description": "exit: a non-zero exit is one finding; jsonl: jig finding lines; a tool name: that tool's output parser"
+          },
+          "level": { "$ref": "#/$defs/severity", "default": "error" }
+        }
       }
     },
     "slots": {
@@ -65,6 +92,21 @@
     }
   },
   "$defs": {
-    "severity": { "enum": ["off", "warn", "error"] }
+    "severity": { "enum": ["off", "warn", "error"] },
+    "tool": {
+      "description": "A catalog tool or proof by name. {} turns it on, false turns it off; a name missing from the config never runs.",
+      "oneOf": [
+        { "const": false },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "level": { "$ref": "#/$defs/severity", "default": "error" },
+            "command": { "type": "string", "minLength": 1, "description": "Replaces the catalog command, e.g. vue-tsc for tsc" },
+            "ignoreRules": { "type": "array", "items": { "type": "string" }, "description": "Rule globs whose findings are dropped, e.g. boundaries/*" }
+          }
+        }
+      ]
+    }
   }
 }

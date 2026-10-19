@@ -1,4 +1,5 @@
-import { extname } from 'node:path'
+import { statSync } from 'node:fs'
+import { dirname, join, relative, resolve } from 'node:path'
 import { git } from '../core/git'
 import type { JournalEntry } from '../core/journal'
 import { run } from '../core/proc'
@@ -58,10 +59,15 @@ export interface DirectiveSource {
   comments?: CommentDirectives
 }
 
+export type OutputParser = (stdout: string, projectRoot: string, cwd: string) => Finding[]
+
 export interface ToolDefinition<N extends string = string> extends DirectiveSource {
   name: N
   rule: `gate/${N}`
   binaries: readonly ToolBinary[]
+  files: readonly string[]
+  setup?: readonly string[]
+  parse?: OutputParser
   edit?: (tools: PlanTools, projectRoot: string, file: string, timeoutMs: number) => Promise<ToolRun | undefined>
   stop?: (tools: PlanTools, input: StopToolInput) => Promise<ToolResult>
 }
@@ -71,11 +77,51 @@ export const defineTool = <const N extends string>(definition: Omit<ToolDefiniti
   rule: `gate/${definition.name}`,
 })
 
-export const hasConfig = (entry: ToolEntry | undefined): entry is ToolWithConfig => entry?.config !== undefined
+const isFile = (path: string): boolean => {
+  try {
+    return statSync(path).isFile()
+  } catch {
+    return false
+  }
+}
 
-export const CODE_EXTENSIONS: ReadonlySet<string> = new Set(['.ts', '.tsx', '.mts', '.cts', '.js', '.jsx', '.mjs', '.cjs', '.vue'])
+export const nearestMarker = (projectRoot: string, file: string, markers: readonly string[]): string | undefined => {
+  const top = resolve(projectRoot)
+  let dir = dirname(resolve(top, file))
+  for (;;) {
+    const found = markers.map((name) => join(dir, name)).find(isFile)
+    if (found !== undefined) return found
+    const parent = dirname(dir)
+    if (relative(top, dir) === '' || parent === dir || relative(top, parent).startsWith('..')) return undefined
+    dir = parent
+  }
+}
 
-export const isCodeFile = (file: string): boolean => CODE_EXTENSIONS.has(extname(file))
+export interface MarkerGroup {
+  marker: string
+  files: string[]
+}
+
+export const groupByMarker = (
+  projectRoot: string,
+  files: readonly string[],
+  markers: readonly string[],
+): { groups: MarkerGroup[]; skipped: string[] } => {
+  const byMarker = new Map<string, string[]>()
+  const skipped: string[] = []
+  for (const file of files) {
+    const marker = nearestMarker(projectRoot, file, markers)
+    if (marker === undefined) {
+      skipped.push(file)
+      continue
+    }
+    byMarker.set(marker, [...(byMarker.get(marker) ?? []), file])
+  }
+  return { groups: [...byMarker].map(([marker, groupFiles]) => ({ marker, files: groupFiles })), skipped }
+}
+
+export const withMarker = (entry: ToolEntry | undefined, marker: string | undefined): ToolWithConfig | undefined =>
+  entry === undefined || marker === undefined ? undefined : { bin: entry.bin, config: marker }
 
 export interface ToolInvocation {
   tool: string

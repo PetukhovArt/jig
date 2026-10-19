@@ -1,12 +1,13 @@
 import { createHash } from 'node:crypto'
 import { mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, extname, join, relative, resolve } from 'node:path'
-import { matchGlob } from '../core/glob'
-import { parseJsonc } from '../core/jsonc'
-import { jigPaths, toProjectPath, toSlash } from '../core/paths'
-import type { Finding } from './finding'
-import { runDetachable, type DetachableRun } from './detach'
-import { defineTool, keepOnChangedLines, type ToolBin, type ToolRun } from './tool'
+import { matchGlob } from '../../core/glob'
+import { parseJsonc } from '../../core/jsonc'
+import { jigPaths, toProjectPath, toSlash } from '../../core/paths'
+import type { Finding } from '../../tools/finding'
+import { runDetachable, type DetachableRun } from '../../tools/detach'
+import { defineTool, keepOnChangedLines, type ToolBin, type ToolRun } from '../../tools/tool'
+import { TYPED_FILES } from '../languages'
 
 interface TsconfigShape {
   files?: unknown
@@ -177,7 +178,8 @@ export const keepGroupFindings = (findings: readonly Finding[], files: readonly 
 
 const checkerFor = (checkers: TypeCheckers, group: TscGroup): { tool: 'tsc' | 'vue-tsc'; bin: string[]; files: string[] } | undefined => {
   const hasVue = group.files.some((file) => file.endsWith('.vue'))
-  if (hasVue && checkers.vueTsc !== undefined) return { tool: 'vue-tsc', bin: checkers.vueTsc.bin, files: group.files }
+  const isVueTscFirst = hasVue || checkers.tsc === undefined
+  if (isVueTscFirst && checkers.vueTsc !== undefined) return { tool: 'vue-tsc', bin: checkers.vueTsc.bin, files: group.files }
   if (checkers.tsc === undefined) return undefined
   const files = group.files.filter((file) => !file.endsWith('.vue'))
   return files.length === 0 ? undefined : { tool: 'tsc', bin: checkers.tsc.bin, files }
@@ -215,8 +217,10 @@ export const tscTool = defineTool({
   name: 'tsc',
   binaries: [
     { key: 'tsc', label: 'tsc', command: 'tsc', packages: ['typescript'], configs: [TSCONFIG], requiresConfig: false },
-    { key: 'vueTsc', label: 'vue-tsc', command: 'vue-tsc', packages: ['vue-tsc'], configs: [], requiresConfig: false },
+    { key: 'vueTsc', label: 'vue-tsc', command: 'vue-tsc', packages: ['vue-tsc'], configs: [TSCONFIG], requiresConfig: false },
   ],
+  files: TYPED_FILES,
+  parse: (stdout, projectRoot, cwd) => parseTscOutput(stdout, 'tsc', projectRoot, cwd),
   comments: { suppressions: [/@ts-(?:ignore|expect-error|nocheck)\b/], allowed: [/^\/\/\/\s*<reference\b/] },
   stop: async (tools, input) => {
     const { groups, skipped } = groupByTsconfig(input.projectRoot, input.files)

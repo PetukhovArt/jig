@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { lexComments, lexJs, lexVue } from '../src/rules/lexer'
+import { lexComments } from '../src/catalog/languages'
+import { lexJs, lexVue } from '../src/catalog/languages/js-lexer'
 
 const texts = (source: string): string[] => lexJs(source).map((comment) => comment.text)
 
