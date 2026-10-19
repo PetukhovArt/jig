@@ -253,7 +253,7 @@ export interface ReviewPlanReport {
   shape: Shape
   plan: Plan
   maxParallel: number
-  config: string | undefined
+  config: string | null
   agent: string
   models: TierMap | undefined
   finderModels: Record<string, string | undefined>
@@ -331,7 +331,7 @@ export const buildReport = (root: string, options: { base?: string | undefined; 
     shape,
     plan,
     maxParallel: project?.config.maxParallel ?? MAX_PARALLEL,
-    config: project?.label,
+    config: project?.label ?? null,
     agent,
     models,
     finderModels,
