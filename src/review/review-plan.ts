@@ -191,7 +191,7 @@ const gitLine = (args: string[], root: string): string | undefined => {
   return result.ok ? firstLine(result.stdout) : undefined
 }
 
-interface Base {
+export interface Base {
   ref: string
   mergeBase: string
   source: 'argument' | 'upstream' | 'origin-head'
@@ -204,7 +204,7 @@ const diffStats = (root: string, mergeBase: string): FileStat[] => {
   return parseNumstat(result.stdout)
 }
 
-const resolveBase = (root: string, given: string | undefined): Base => {
+export const resolveBase = (root: string, given: string | undefined, command = 'review-plan'): Base => {
   const candidates: { ref: string | undefined; source: Base['source'] }[] = given
     ? [{ ref: given, source: 'argument' }]
     : [
@@ -223,7 +223,7 @@ const resolveBase = (root: string, given: string | undefined): Base => {
     if (last.stats.length > 0) return last
   }
   if (last !== undefined) return last
-  throw new Error('no base: pass the merge request target, e.g. jig review-plan origin/main')
+  throw new Error(`no base: pass the merge request target, e.g. jig ${command} origin/main`)
 }
 
 const addedNewSourceFiles = (root: string, mergeBase: string): number => {

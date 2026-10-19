@@ -14,6 +14,8 @@ export type JournalKind =
   | 'tool-failure'
   | 'hook-failure'
   | 'skip-verify'
+  | 'proof'
+  | 'bug-bash'
 
 export type JournalTool = string
 
@@ -30,6 +32,8 @@ export interface JournalRecord {
   line?: number
   message?: string
   durationMs?: number
+  head?: string
+  tree?: string
 }
 
 export type JournalEntry = Omit<JournalRecord, 'v' | 'ts'> & { ts?: string }
