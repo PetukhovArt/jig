@@ -11,7 +11,7 @@ Three filters, all before the comment texts:
 - **Selector** ([selector](../references/selector.md)): a proven finding that matches no output token (a Nit of an angle run only for `important`) is not printed, written to state or posted; it counts in `tally.suppressed_selector`. `jig review-plan` prints the output filter.
 - **Rework:** proven `Nit` and `Pre-existing` in files from `blocks` of a blocking finding that still stands (new in this run, or earlier with status `open`, `skipped`, `unverified`) go nowhere either, because their code goes under the rework; they count in `tally.suppressed_blocked`. A closed blocking finding mutes nothing: re-review reads its files again ([lifting `blocks`](09-rereview.md#round-rules)). `Important` in those files stays: the bug moves with the code unless someone says so. The skill has no third state "proven but did not fit".
 
-A simplification (`status: "optional"`, [shape gate](../gates/shape.md#shape-gate)) is not ranked with findings: it is an item of one optional note, not a thread, and counts in `tally.optional`, not in `nit`.
+A simplification (`status: "optional"`, [shape gate](../gates/shape.md#shape-gate)) is not ranked with findings: it is an item of the one FYI note, not a thread, and counts in `tally.optional`, not in `nit`.
 
 ## Merge per file
 

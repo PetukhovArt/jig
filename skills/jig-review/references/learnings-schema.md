@@ -1,6 +1,6 @@
 # Learnings file schema
 
-`<project>/.jig/runs/review/learnings.json`: repository level, no KEY. Rules derived from disputes the developer won apply to every merge request of the repository.
+`<main checkout>/.jig/runs/review/learnings.json`: repository level, no KEY. Rules derived from disputes the developer won apply to every merge request of the repository.
 
 ```json
 {

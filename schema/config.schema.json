@@ -89,6 +89,19 @@
         "seedExclude": { "type": "array", "items": { "type": "string" }, "description": "Globs (repo-relative, forward slashes) that jig worktree seed skips" },
         "copyFiles": { "type": "array", "items": { "type": "string" }, "description": "Files inside fully ignored folders that jig worktree seed copies as well" }
       }
+    },
+    "reviewCycle": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "jig review-cycle: the team's review process and the forge. Usually in .jig/config.local.jsonc, since the queue is per reviewer.",
+      "properties": {
+        "processAdapter": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Executable answering queue, rules, spec, base-check and transition (skills/jig/references/process-adapter.md). Relative to the project root; ~/ is the home directory. .mjs/.js/.cjs run with node, .sh with bash (Git Bash on Windows), .ps1 with PowerShell. Absent: the forge's open merge requests where you are a reviewer, no tracker transitions."
+        },
+        "forge": { "enum": ["gitlab", "github"], "description": "Overrides detection by the origin remote (github in the host → github, otherwise gitlab)" }
+      }
     }
   },
   "$defs": {

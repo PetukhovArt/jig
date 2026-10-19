@@ -13,13 +13,15 @@ You write short comments yourself from the judge's evidence, without a subagent 
 - **Important architectural**: angles 6, 7, 9, 10, 13, or a named pattern from the project's review vocabulary → expanded.
 - **Spec (angle 15)** → short; instead of the triggering input, the quote of the spec line.
 - **A merged finding of angle 16 or 17** ([merge per file](06-rank.md#merge-per-file)) → `**[🟡 Nit]**` and one sentence with the number of instances, then a list: one line per instance (the test name or the first words of the comment in backticks) and the criterion item. The list is outside the limit, no suggestion. One defect, several instances, so "one defect per comment" holds.
-- **Simplification** (`status: "optional"`) → one sentence: what to simplify and how. No severity badge, no suggestion: it becomes a checklist item of the optional note, not a thread.
+- **Simplification** (`status: "optional"`) → one sentence: what to simplify and how. No severity badge, no suggestion: it becomes a checklist item of the FYI note, not a thread.
 
 ## Short form
 
 `**[🔴 Important｜🟡 Nit｜🟣 Pre-existing]**` plus one sentence with the problem, an empty line, one sentence with the cause and the risk: a concrete failure scenario (input → wrong result).
 
 The suggestion block is outside the limit.
+
+**The chip opens the body**, every form, counter-replies aside: nothing before `**[`, not a path, not a heading. A review cycle tells an optional thread (Nit, Pre-existing) from a blocking one by the first line of its opening note, read off the forge: an open Nit never withholds the merge, and a Nit whose chip is not first counts as blocking.
 
 - **Nit / Pre-existing: up to 4 lines / ~350 characters.** No fix in prose, only a ` ```suggestion ` block.
 - **Important: up to 8 lines / ~800 characters**, and two things are required that the author gets nowhere else:

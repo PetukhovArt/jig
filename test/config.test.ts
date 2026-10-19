@@ -104,6 +104,8 @@ describe('validateConfig', () => {
     ['copyFiles item not a string', { worktree: { copyFiles: ['a', 2] } }, ['$.worktree.copyFiles[1]: expected a string']],
     ['copyFiles moved out of slots', { slots: { worktreesDir: '..', copyFiles: [] } }, ['$.slots.copyFiles: unknown key']],
     ['instance not an object', { slots: { worktreesDir: '..', instance: 1 } }, ['$.slots.instance: expected an object']],
+    ['empty process adapter', { reviewCycle: { processAdapter: ' ' } }, ['$.reviewCycle.processAdapter: is empty']],
+    ['unknown forge', { reviewCycle: { forge: 'gitea' } }, ['$.reviewCycle.forge: expected one of gitlab, github']],
     ['$schema not a string', { $schema: 1 }, ['$.$schema: expected a string']],
   ])('%s', (_name, value, expected) => {
     expect(errorsOf(value)).toEqual(expected)

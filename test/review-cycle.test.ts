@@ -1,0 +1,325 @@
+import { spawnSync } from 'node:child_process'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { adapterCommand, nativePath, parseQueue } from '../src/review-cycle/adapter'
+import type { Exec, ExecResult } from '../src/review-cycle/exec'
+import { runReviewCycleWith } from '../src/review-cycle/review-cycle'
+import { reviewStatePath } from '../src/review-cycle/state'
+
+const ME = 7
+const DEV = 9
+const REMOTE = 'https://gitlab.example.com/team/app.git'
+const URL = (iid: number): string => `https://gitlab.example.com/team/app/-/merge_requests/${iid}`
+
+interface NoteFixture {
+  author: number
+  at: string
+  body?: string
+  open?: boolean
+  system?: boolean
+}
+
+const note = ({ author, at, body = 'text', open, system = false }: NoteFixture): Record<string, unknown> => ({
+  id: Math.floor(Math.random() * 1e9),
+  author: { id: author },
+  system,
+  resolvable: open !== undefined,
+  resolved: open === false,
+  created_at: at,
+  body,
+})
+
+const thread = (id: string, ...notes: NoteFixture[]): Record<string, unknown> => ({ id, notes: notes.map(note) })
+
+interface MrFixture {
+  sha?: string
+  commits?: string[]
+  discussions?: Record<string, unknown>[]
+  approvedBy?: number[]
+}
+
+interface World {
+  mrs: Record<number, MrFixture>
+  reviewerQueue?: Record<string, unknown>[]
+  adapter?: Partial<Record<string, ExecResult>>
+  glabDown?: boolean
+}
+
+const ok = (stdout: string): ExecResult => ({ code: 0, stdout, stderr: '' })
+
+let root: string
+let adapterPath: string
+let calls: string[][]
+
+const glab = (world: World, args: readonly string[]): ExecResult => {
+  if (world.glabDown) return { code: 1, stdout: '', stderr: 'connection refused' }
+  const path = args[1] ?? ''
+  if (path === 'user') return ok(JSON.stringify({ id: ME }))
+  if (path.startsWith('projects/:fullpath/merge_requests?')) return ok(JSON.stringify(world.reviewerQueue ?? []))
+  const match = /merge_requests\/(\d+)(\/[a-z]+)?/.exec(path)
+  const mr = world.mrs[Number(match?.[1])]
+  if (mr === undefined) return { code: 1, stdout: '{"message":"404 Not Found"}', stderr: '' }
+  switch (match?.[2]) {
+    case undefined:
+      return ok(JSON.stringify({ sha: mr.sha ?? 'head' }))
+    case '/approvals':
+      return ok(JSON.stringify({ approved_by: (mr.approvedBy ?? []).map((id) => ({ user: { id } })) }))
+    case '/commits': {
+      const [first, ...rest] = (mr.commits ?? []).map((at) => [{ created_at: at }])
+      return ok([JSON.stringify(first ?? []), ...rest.map((page) => JSON.stringify(page))].join(''))
+    }
+    case '/discussions':
+      return ok(JSON.stringify(mr.discussions ?? []))
+    default:
+      return { code: 1, stdout: '', stderr: `unexpected ${path}` }
+  }
+}
+
+const fakeExec =
+  (world: World): Exec =>
+  (command, args) => {
+    calls.push([command, ...args])
+    if (command === 'glab') return glab(world, args)
+    if (args[0] === adapterPath) return world.adapter?.[args.slice(1).join(' ')] ?? world.adapter?.[args[1] ?? ''] ?? ok('')
+    return { code: null, stdout: '', stderr: '', error: `unexpected command ${command}` }
+  }
+
+const run = (world: World, args: string[]): { code: number; out: string[] } => {
+  const out: string[] = []
+  const code = runReviewCycleWith(args, { exec: fakeExec(world), cwd: root, print: (line) => out.push(line) })
+  return { code, out }
+}
+
+const row = (iid: number, extra: { draft?: boolean; approved?: boolean; refs?: string; repoDir?: string } = {}): string =>
+  ['ROW', extra.refs ?? `!${iid}`, extra.repoDir ?? root, iid, `feature-${iid}`, extra.draft ?? false, extra.approved ? 'APPROVED' : 'pending', URL(iid)].join('\t')
+
+const adapterQueue = (rows: string[], stale: 'on' | 'off' = 'on'): Partial<Record<string, ExecResult>> => ({
+  queue: ok(`${rows.join('\n')}\n`),
+  rules: ok(`stale=${stale}\n`),
+})
+
+const queueLines = (world: World): string[] => {
+  const result = run(world, ['queue', '--adapter', adapterPath])
+  expect(result.code).toBe(0)
+  return result.out.filter((line) => /^(ACTIONABLE|SKIP|BLOCKED)\t/.test(line))
+}
+
+const decisionOf = (line: string | undefined): string => {
+  const [kind, reason] = (line ?? '').split('\t')
+  return kind === 'SKIP' ? `SKIP ${reason}` : (kind ?? '')
+}
+
+const writeState = (iid: number, state: Record<string, unknown>): string => {
+  const path = reviewStatePath(root, REMOTE, String(iid))
+  mkdirSync(join(root, '.jig', 'runs', 'review'), { recursive: true })
+  writeFileSync(path, JSON.stringify(state))
+  return path
+}
+
+beforeEach(() => {
+  root = mkdtempSync(join(tmpdir(), 'jig-review-cycle-'))
+  spawnSync('git', ['init', '-q', root])
+  spawnSync('git', ['remote', 'add', 'origin', REMOTE], { cwd: root })
+  adapterPath = join(root, 'adapter.mjs')
+  writeFileSync(adapterPath, '')
+  calls = []
+})
+
+afterEach(() => {
+  rmSync(root, { recursive: true, force: true })
+})
+
+const MY_OPEN_THREAD = thread('d1', { author: ME, at: '2026-10-10T10:00:00Z', body: '**[🔴 Important]** bug', open: true })
+
+describe('jig review-cycle queue: filter rules', () => {
+  it('skips a merge request approved by anyone, from the adapter row or from the forge', () => {
+    expect(queueLines({ mrs: { 1: {} }, adapter: adapterQueue([row(1, { approved: true })]) }).map(decisionOf)).toEqual(['SKIP approved'])
+    const forgeQueue = { mrs: { 2: { approvedBy: [DEV] } }, reviewerQueue: [{ iid: 2, source_branch: 'b', draft: false, web_url: URL(2) }] }
+    const result = run(forgeQueue, ['queue'])
+    expect(result.out.filter((line) => line.startsWith('SKIP')).map(decisionOf)).toEqual(['SKIP approved'])
+  })
+
+  it('skips a draft', () => {
+    expect(queueLines({ mrs: { 1: {} }, adapter: adapterQueue([row(1, { draft: true })]) }).map(decisionOf)).toEqual(['SKIP draft'])
+  })
+
+  it('skips a stale re-review only when the adapter says stale=on', () => {
+    const mrs = { 1: { commits: ['2026-10-09T10:00:00Z'], discussions: [MY_OPEN_THREAD] } }
+    expect(queueLines({ mrs, adapter: adapterQueue([row(1)], 'on') }).map(decisionOf)).toEqual(['SKIP stale'])
+    expect(queueLines({ mrs, adapter: adapterQueue([row(1)], 'off') }).map(decisionOf)).toEqual(['ACTIONABLE'])
+  })
+
+  it('does not call a re-review stale when a commit landed after my last note, or when my only open thread is a Nit', () => {
+    const newerCommit = { commits: ['2026-10-11T10:00:00Z'], discussions: [MY_OPEN_THREAD] }
+    const nitOnly = {
+      commits: ['2026-10-09T10:00:00Z'],
+      discussions: [thread('d2', { author: ME, at: '2026-10-10T10:00:00Z', body: '**[🟡 Nit]** name', open: true })],
+    }
+    expect(queueLines({ mrs: { 1: newerCommit, 2: nitOnly }, adapter: adapterQueue([row(1), row(2)]) }).map(decisionOf)).toEqual([
+      'ACTIONABLE',
+      'ACTIONABLE',
+    ])
+  })
+
+  it('skips an unchanged head, unless a developer answered in my open thread after my last note', () => {
+    writeState(1, { last_reviewed_sha: 'abc', findings: [] })
+    writeState(2, { last_reviewed_sha: 'abc', findings: [] })
+    const answered = thread(
+      'd3',
+      { author: ME, at: '2026-10-10T10:00:00Z', body: '**[🔴 Important]** bug', open: true },
+      { author: DEV, at: '2026-10-10T12:00:00Z', body: 'fixed', open: true },
+    )
+    const mrs = { 1: { sha: 'abc', discussions: [] }, 2: { sha: 'abc', discussions: [answered] } }
+    expect(queueLines({ mrs, adapter: adapterQueue([row(1), row(2)]) }).map(decisionOf)).toEqual(['SKIP unchanged', 'ACTIONABLE'])
+  })
+
+  it('reviews a head the state has not seen and reports the standing findings of its state', () => {
+    writeState(1, {
+      last_reviewed_sha: 'old',
+      findings: [
+        { id: 'a', status: 'open' },
+        { id: 'b', status: 'skipped' },
+        { id: 'c', status: 'fixed' },
+        { id: 'd', status: 'optional' },
+      ],
+    })
+    const [line] = queueLines({ mrs: { 1: { sha: 'new' } }, adapter: adapterQueue([row(1)]) })
+    expect(decisionOf(line)).toBe('ACTIONABLE')
+    expect(line).toContain('standing=2')
+  })
+
+  it('skips a merge request whose review worktree is live', () => {
+    mkdirSync(join(root, '..', `${root.split(/[\\/]/).pop() ?? ''}-review-1`), { recursive: true })
+    try {
+      expect(queueLines({ mrs: { 1: {} }, adapter: adapterQueue([row(1)]) }).map(decisionOf)).toEqual(['SKIP busy'])
+    } finally {
+      rmSync(join(root, '..', `${root.split(/[\\/]/).pop() ?? ''}-review-1`), { recursive: true, force: true })
+    }
+  })
+
+  it('aborts with exit 3 when the adapter queue cannot answer, and blocks one merge request when its forge call fails', () => {
+    const down = run({ mrs: {}, adapter: { queue: { code: 3, stdout: '', stderr: 'ERROR projects/x' } } }, ['queue', '--adapter', adapterPath])
+    expect(down.code).toBe(3)
+    const lines = queueLines({ mrs: {}, adapter: adapterQueue([row(5)]) })
+    expect(lines.map(decisionOf)).toEqual(['BLOCKED'])
+  })
+
+  it('blocks a merge request whose refs the adapter blocks (exit 4 on rules)', () => {
+    const adapter = { queue: ok(`${row(1)}\n`), rules: { code: 4, stdout: '', stderr: 'ref parked on a human' } }
+    const [line] = queueLines({ mrs: { 1: {} }, adapter })
+    expect(line).toMatch(/^BLOCKED\t.*ref parked on a human$/)
+  })
+})
+
+describe('jig review-cycle unresolved', () => {
+  it('counts open threads by anyone and ignores those opened with a Nit or Pre-existing chip', () => {
+    const discussions = [
+      MY_OPEN_THREAD,
+      thread('d2', { author: ME, at: '2026-10-10T10:00:00Z', body: '**[🟡 Nit]** rename', open: true }),
+      thread('d3', { author: ME, at: '2026-10-10T10:00:00Z', body: '**[🟣 Pre-existing]** old bug', open: true }),
+      thread('d4', { author: DEV, at: '2026-10-10T10:00:00Z', body: 'question', open: true }),
+      thread('d5', { author: ME, at: '2026-10-10T10:00:00Z', body: '**[🔴 Important]** fixed', open: false }),
+      thread('d6', { author: ME, at: '2026-10-10T10:00:00Z', body: 'FYI note' }),
+    ]
+    expect(run({ mrs: { 1: { discussions } } }, ['unresolved', '1']).out).toEqual(['2'])
+  })
+
+  it('exits 3 when the forge cannot answer, never 0', () => {
+    expect(run({ mrs: {}, glabDown: true }, ['unresolved', '1']).code).toBe(3)
+  })
+})
+
+describe('jig review-cycle reconcile', () => {
+  const before = (): string =>
+    writeState(1, { last_reviewed_sha: 'x', findings: [{ id: 'a', status: 'open' }, { id: 'b', status: 'unverified' }, { id: 'c', status: 'fixed' }] })
+
+  it('passes a tally that accounts for every standing finding', () => {
+    const result = run({ mrs: {} }, ['reconcile', before(), '{"important":0,"prior_fixed":1,"prior_skipped":1}'])
+    expect(result).toEqual({ code: 0, out: ['OK\tstanding=2\taccounted=2'] })
+  })
+
+  it('blocks a short tally', () => {
+    const result = run({ mrs: {} }, ['reconcile', before(), '{"prior_fixed":1}'])
+    expect(result.code).toBe(1)
+    expect(result.out[0]).toBe('BLOCKED\ttally accounts for 1 of 2 standing findings')
+  })
+
+  it('blocks a degraded run, and on a first run asks to delete the state it wrote', () => {
+    const tally = join(root, 'tally.json')
+    writeFileSync(tally, '{"prior_fixed":0,"degraded":"spawn refused"}')
+    const result = run({ mrs: {} }, ['reconcile', 'none', tally])
+    expect(result.code).toBe(1)
+    expect(result.out[0]).toBe('BLOCKED\tdegraded: spawn refused')
+    expect(result.out[1]).toContain('delete the state file')
+  })
+})
+
+describe('jig review-cycle verdict', () => {
+  const transitions = (): string[] => calls.filter((call) => call[2] === 'transition').map((call) => call.slice(3).join(' '))
+
+  it('folds outcomes per ref: any returned wins, all ready is ready, a held merge request keeps the ref where it is', () => {
+    const result = run({ mrs: {}, adapter: {} }, [
+      'verdict',
+      '--adapter',
+      adapterPath,
+      'PROJ-1=ready',
+      'PROJ-1,PROJ-2=returned',
+      'PROJ-3=ready',
+      'PROJ-4=ready',
+      'PROJ-4=stale',
+      'PROJ-5=approved',
+    ])
+    expect(result.code).toBe(0)
+    expect(transitions()).toEqual(['PROJ-1 returned', 'PROJ-2 returned', 'PROJ-3 ready', 'PROJ-5 none'])
+    expect(result.out).toContain('PROJ-4: no transition (an MR of it was skipped, blocked or still open)')
+  })
+
+  it('reports an adapter exit 4 as the ref reason and an exit 3 as a status not recorded, and goes on', () => {
+    const adapter = {
+      'transition PROJ-1 returned': { code: 4, stdout: '', stderr: 'no open MR, check by hand' },
+      'transition PROJ-2 ready': { code: 3, stdout: '', stderr: 'ERROR tracker down' },
+      'transition PROJ-3 ready': ok('PROJ-3 → Ready to merge\n'),
+    }
+    const result = run({ mrs: {}, adapter }, ['verdict', '--adapter', adapterPath, 'PROJ-1=returned', 'PROJ-2=ready', 'PROJ-3=ready'])
+    expect(result.code).toBe(3)
+    expect(result.out).toEqual(['PROJ-1: no open MR, check by hand', 'PROJ-2: status not recorded, adapter transition: tracker down', 'PROJ-3 → Ready to merge'])
+  })
+})
+
+describe('jig review-cycle spec-hold', () => {
+  it('holds open unposted spec findings whose quote is not in the spec', () => {
+    const state = writeState(1, {
+      findings: [
+        { id: 'quoted', status: 'open', category: 'spec', spec_quote: 'The button  is hidden\nfor guests.' },
+        { id: 'invented', status: 'open', category: 'spec', spec_quote: 'Guests see nothing.' },
+        { id: 'posted', status: 'open', category: 'spec', spec_quote: 'nope', discussion_id: 'd1' },
+        { id: 'bug', status: 'open', category: 'correctness' },
+      ],
+    })
+    const spec = join(root, 'spec.md')
+    writeFileSync(spec, '# Task\nThe button is hidden for guests. Admins see it.\n')
+    expect(run({ mrs: {} }, ['spec-hold', state, spec]).out).toEqual(['invented'])
+  })
+})
+
+describe('Windows paths', () => {
+  it('reads a Git Bash repo_dir from an adapter row as a Windows path on Windows only', () => {
+    const line = ['ROW', '!1', '/c/Users/dev/app', '1', 'b', 'false', 'pending', URL(1)].join('\t')
+    expect(parseQueue(line, 'win32').rows[0]?.repoDir).toBe('C:/Users/dev/app')
+    expect(parseQueue(line, 'linux').rows[0]?.repoDir).toBe('/c/Users/dev/app')
+    expect(nativePath('C:/Users/dev/app', 'win32')).toBe('C:/Users/dev/app')
+  })
+
+  it('runs a shell adapter with Git for Windows bash, not the bash of System32', () => {
+    const git = join(root, 'Git')
+    mkdirSync(join(git, 'cmd'), { recursive: true })
+    mkdirSync(join(git, 'bin'), { recursive: true })
+    writeFileSync(join(git, 'cmd', 'git.exe'), '')
+    writeFileSync(join(git, 'bin', 'bash.exe'), '')
+    const env = { PATH: join(git, 'cmd'), PATHEXT: '.EXE' }
+    expect(adapterCommand('C:/repo/process.sh', env, 'win32')).toEqual([join(git, 'bin', 'bash.exe'), 'C:/repo/process.sh'])
+    expect(adapterCommand('C:/repo/process.mjs', env, 'win32')).toEqual([process.execPath, 'C:/repo/process.mjs'])
+  })
+})

@@ -25,7 +25,7 @@ Field rules (allowed `category` slugs and the rest): [`../references/state-schem
 prior_fixed + prior_skipped + prior_unverified + prior_no_change_needed == entered
 ```
 
-Entered = every finding with an open thread: status not `fixed`, not `no_change_needed`, not `optional` (a simplification has no thread). The rule holds on the [short path](09-rereview.md#re-review) too, where the diff did not change and nothing was rechecked: each such finding enters `prior_*` with its carried status; zeros there are a hole. A consumer that counts open threads compares this sum with its own count.
+Entered = every finding with an open thread: status not `fixed`, not `no_change_needed`, not `optional` (a simplification has no thread). The rule holds on the [short path](09-rereview.md#re-review) too, where the diff did not change and nothing was rechecked: each such finding enters `prior_*` with its carried status; zeros there are a hole. A consumer that counts open threads compares this sum with its own count: `jig review-cycle reconcile` counts the standing findings of the state as it was before the run and blocks the merge request when the sum is short.
 
 It does not add up: the run lost findings. Say so, name the ones without a status, **do not move `last_reviewed_sha` / `base_sha` / `diff_hash`** and do not increment `runs`: the next run rechecks the same range instead of inheriting the hole. A tally that does not add up is not published.
 

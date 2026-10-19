@@ -7,6 +7,7 @@ import { runInit } from '../init/init'
 import { runLoop } from '../loop/loop'
 import { runPreMr, runSkipVerify } from '../pre-mr/pre-mr'
 import { runReviewPlan } from '../review/review-plan'
+import { runReviewCycle } from '../review-cycle/review-cycle'
 import { runSlot } from '../slot/slot'
 import { runTaskStatus } from '../task-status/task-status'
 import { runTiers } from '../tiers/tiers'
@@ -35,6 +36,7 @@ const commands = new Map<string, Command>([
   ['doctor', runDoctor],
   ['tiers', runTiers],
   ['review-plan', runReviewPlan],
+  ['review-cycle', runReviewCycle],
   ['pre-mr', runPreMr],
   ['skip-verify', runSkipVerify],
   ['version', runVersion],
