@@ -140,6 +140,8 @@ The skill never schedules itself (`jig loop` is the weekly journal loop, not thi
 - Claude Code: `/loop 2h /jig-review-cycle`. A new focus later: run `/jig-review-cycle <focus>` once; it is stored in `.jig/runs/review-cycle/focus.md` and every later firing reads it.
 - cron, a CI schedule or Task Scheduler: a headless agent run of the skill in the repository, e.g. `claude -p "/jig-review-cycle"` every two hours. The pass is idempotent, so an overlapping firing skips what the previous one is still reviewing.
 
+Coming from review skills that kept their state under the OS temp folder (`<temp>/claude-review/<repo>-<key>.json`): `jig review-cycle import-state [--from <dir>] [--dry-run]`, run in the repository, copies the files of its `origin` into `.jig/runs/review/`, so the first pass skips what they already reviewed. A file jig's state parser rejects is skipped with the reason, fields outside jig's schema are dropped and listed, and a jig state that finished at the same time or later is never replaced. It writes nothing unless `.jig/runs/` is gitignored.
+
 ## Configuration
 
 `.jig/config.jsonc` names what runs ([schema](schema/config.schema.json)); `.jig/config.local.jsonc`, outside git, is laid over it: objects merge key by key, `checks` merge by name, any other value replaces the shared one.
@@ -202,7 +204,7 @@ Run as `node <plugin root>/bin/jig.mjs <command>`.
 | `worktree seed <dir>` | copies the main checkout's ignored files and recreates its ignored symlinks in another worktree; never overwrites tracked files |
 | `worktree sweep [--json] [--ask] [--yes <path\|slot>]...` | sorts every worktree but the main checkout into `hold-current`, `hold-locked`, `hold-wip`, `hold-open-mr`, `prunable`, `recent`, `safe`; removes only those confirmed at the `--ask` prompt or named by `--yes`, never a `hold-current`, `hold-locked` or `hold-wip` one |
 | `review-plan [<base>] [--selector full\|quick\|auto\|<tokens>] [--spec] [--mode review\|pre-mr] [--mr] [--no-state] [--agent <id>] [--json]` | the review layout for the diff against the base: counted lines, the inline path or the finders, their models and the judge, and the step files that apply to the run |
-| `review-cycle queue\|state-path\|base-check\|spec\|reconcile\|unresolved\|spec-hold\|withdraw\|verdict` | the deterministic half of the [review cycle](#review-cycle): the filtered queue, the state path of a merge request, the adapter's base-check and spec, the tally check, the count of unresolved threads without Nit and Pre-existing ones, the spec hold, withdrawing threads, the per-ref verdict; exit 3 when the forge or the adapter cannot answer |
+| `review-cycle queue\|state-path\|import-state\|base-check\|spec\|reconcile\|unresolved\|spec-hold\|withdraw\|verdict` | the deterministic half of the [review cycle](#review-cycle): the filtered queue, the state path of a merge request, importing the old skills' state, the adapter's base-check and spec, the tally check, the count of unresolved threads without Nit and Pre-existing ones, the spec hold, withdrawing threads, the per-ref verdict; exit 3 when the forge or the adapter cannot answer |
 | `pre-mr [<base>]` | exit 0 when the branch's UI changes are proven or skipped with a level, else lists what is missing and exits 1 |
 | `pre-mr proof "<command>"` / `pre-mr bug-bash "<result>"` | runs a proof command and records it when it exits 0 / records the bug-bash result |
 | `skip-verify --level unit-test\|type-check\|none --why "<reason>"` | lets `pre-mr` pass with that level until the next edit |

@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from 'node:fs'
-import { basename, resolve } from 'node:path'
+import { basename, relative, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 import { loadConfig, type ForgeName } from '../core/config'
 import { git } from '../core/git'
@@ -20,6 +20,7 @@ import {
   type ThreadFacts,
 } from './filter'
 import { createForge, detectForge, type Forge } from './forge'
+import { defaultImportDir, importLegacyStates } from './import-state'
 import { parseReviewState, parseTally, readReviewState, reconcile, reviewStatePath, specHold, standingFindings, withdrawFromState } from './state'
 import { applyVerdicts, foldVerdicts, OUTCOMES, type MrOutcome, type Outcome } from './verdict'
 
@@ -35,6 +36,7 @@ const USAGE = [
   'usage: jig review-cycle <subcommand>',
   '  queue [--adapter <path>] [--json]',
   '  state-path <mr> [--repo <dir>]',
+  '  import-state [--from <dir>] [--repo <dir>] [--dry-run]',
   '  base-check [--adapter <path>]',
   '  spec <refs> [--adapter <path>]',
   '  reconcile <state-before|none> <tally-file|tally-json>',
@@ -158,10 +160,16 @@ export const skippedLine = (entries: readonly QueueEntry[]): string | undefined 
   return total === 0 ? undefined : `skipped: ${total} (${counts.map(([reason, count]) => `${reason} ${count}`).join(', ')})`
 }
 
-const flagOptions = { adapter: { type: 'string' }, json: { type: 'boolean' }, repo: { type: 'string' }, 'dry-run': { type: 'boolean' } } as const
+const flagOptions = {
+  adapter: { type: 'string' },
+  json: { type: 'boolean' },
+  repo: { type: 'string' },
+  from: { type: 'string' },
+  'dry-run': { type: 'boolean' },
+} as const
 
 interface Parsed {
-  values: { adapter?: string; json?: boolean; repo?: string; 'dry-run'?: boolean }
+  values: { adapter?: string; json?: boolean; repo?: string; from?: string; 'dry-run'?: boolean }
   positionals: string[]
 }
 
@@ -210,6 +218,20 @@ const statePath = (args: string[], deps: CycleDeps): number => {
   const { values, positionals } = parse(args)
   const repo = repoContext(resolve(deps.cwd, values.repo ?? '.'), deps.exec)
   deps.print(toSlash(reviewStatePath(repo.mainRoot, repo.remote, String(mrNumber(positionals[0])))))
+  return 0
+}
+
+const importState = (args: string[], deps: CycleDeps): number => {
+  const { values, positionals } = parse(args)
+  if (positionals.length > 0) throw new UsageError(`import-state takes no positional arguments, got ${positionals.join(' ')}`)
+  const repo = repoContext(resolve(deps.cwd, values.repo ?? '.'), deps.exec)
+  const dryRun = values['dry-run'] === true
+  const probe = toSlash(relative(repo.mainRoot, reviewStatePath(repo.mainRoot, repo.remote, '0')))
+  if (!dryRun && !git(['check-ignore', '-q', probe], repo.mainRoot).ok) {
+    throw new EnvironmentError(`${probe} is not gitignored in ${toSlash(repo.mainRoot)}: ignore .jig/runs/ first`)
+  }
+  const from = values.from === undefined ? defaultImportDir() : resolve(deps.cwd, values.from)
+  importLegacyStates({ from, mainRoot: repo.mainRoot, remote: repo.remote, dryRun }).lines.forEach((line) => deps.print(line))
   return 0
 }
 
@@ -340,6 +362,7 @@ const verdict = (args: string[], deps: CycleDeps): number => {
 const subcommands = new Map<string, (args: string[], deps: CycleDeps) => number>([
   ['queue', queue],
   ['state-path', statePath],
+  ['import-state', importState],
   ['base-check', baseCheck],
   ['spec', spec],
   ['reconcile', reconcileCommand],

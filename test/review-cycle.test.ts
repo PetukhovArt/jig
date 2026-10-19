@@ -1,12 +1,13 @@
 import { spawnSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { adapterCommand, nativePath, parseQueue } from '../src/review-cycle/adapter'
 import type { Exec, ExecResult } from '../src/review-cycle/exec'
+import { legacyStateKey } from '../src/review-cycle/import-state'
 import { runReviewCycleWith } from '../src/review-cycle/review-cycle'
-import { reviewStatePath } from '../src/review-cycle/state'
+import { reviewStateKey, reviewStatePath } from '../src/review-cycle/state'
 
 const ME = 7
 const DEV = 9
@@ -321,5 +322,76 @@ describe('Windows paths', () => {
     const env = { PATH: join(git, 'cmd'), PATHEXT: '.EXE' }
     expect(adapterCommand('C:/repo/process.sh', env, 'win32')).toEqual([join(git, 'bin', 'bash.exe'), 'C:/repo/process.sh'])
     expect(adapterCommand('C:/repo/process.mjs', env, 'win32')).toEqual([process.execPath, 'C:/repo/process.mjs'])
+  })
+})
+
+describe('jig review-cycle import-state', () => {
+  let legacy: string
+
+  const legacyPath = (iid: number, remote = REMOTE): string => join(legacy, `app-${legacyStateKey(remote, iid)}.json`)
+
+  const legacyFile = (iid: number, state: Record<string, unknown>, remote = REMOTE): void => {
+    writeFileSync(legacyPath(iid, remote), JSON.stringify({ remote, target: String(iid), ...state }))
+  }
+
+  const ignoreJig = (): void => writeFileSync(join(root, '.gitignore'), '.jig/\n')
+
+  beforeEach(() => {
+    legacy = join(root, 'legacy')
+    mkdirSync(legacy)
+  })
+
+  it('copies a compatible state of this repository, converted, and the queue then skips the reviewed head', () => {
+    ignoreJig()
+    legacyFile(5, {
+      key: 'old',
+      last_reviewed_sha: 'abc',
+      degraded: 'spawn refused',
+      replies: [],
+      tally: {},
+      findings: [{ id: 'a', status: 'no_change_needed', withdrawn: true, discussion_id: null }],
+    })
+    legacyFile(6, { findings: [{ id: 'b', status: 'bogus' }] })
+    legacyFile(7, { findings: [] }, 'https://gitlab.example.com/team/other.git')
+    const result = run({ mrs: {} }, ['import-state', '--from', legacy])
+    expect(result.code).toBe(0)
+    expect(result.out[0]).toMatch(/^IMPORTED\t!5\t.*\tdropped findings\[\]\.withdrawn, replies$/)
+    expect(result.out[1]).toMatch(/^SKIP\t!6\t.*no valid status$/)
+    expect(result.out[2]).toMatch(/^import-state: 1 imported, 1 skipped, 1 of other repositories/)
+    const imported = JSON.parse(readFileSync(reviewStatePath(root, REMOTE, '5'), 'utf8')) as Record<string, unknown>
+    expect(imported).toMatchObject({ key: reviewStateKey(REMOTE, '5'), target: '5', tally: { degraded: 'spawn refused' } })
+    expect(imported['findings']).toEqual([{ id: 'a', status: 'no_change_needed', discussion_id: null }])
+    expect(existsSync(reviewStatePath(root, REMOTE, '6'))).toBe(false)
+    expect(queueLines({ mrs: { 5: { sha: 'abc' } }, adapter: adapterQueue([row(5)]) }).map(decisionOf)).toEqual(['SKIP unchanged'])
+  })
+
+  it('finds the merge request by the file key when the target is a URL or names another one', () => {
+    ignoreJig()
+    writeFileSync(legacyPath(42), JSON.stringify({ remote: REMOTE, target: URL(42), findings: [] }))
+    writeFileSync(legacyPath(43), JSON.stringify({ remote: REMOTE, target: '!999', findings: [] }))
+    const out = run({ mrs: {} }, ['import-state', '--from', legacy]).out
+    expect(out.slice(0, 2).map((line) => line.split('\t').slice(0, 2).join(' ')).sort()).toEqual(['IMPORTED !42', 'IMPORTED !43'])
+  })
+
+  it('never replaces a jig state that finished at the same time or later; an older one is backed up, then replaced', () => {
+    ignoreJig()
+    const newer = writeState(1, { last_reviewed_sha: 'jig', timings: { finished_at: '2026-10-19T10:00:00Z' }, findings: [] })
+    const older = writeState(2, { last_reviewed_sha: 'jig', timings: { finished_at: '2026-10-01T10:00:00Z' }, findings: [] })
+    legacyFile(1, { last_reviewed_sha: 'old', timings: { finished_at: '2026-10-10T10:00:00Z' }, findings: [] })
+    legacyFile(2, { last_reviewed_sha: 'old', timings: { finished_at: '2026-10-10T10:00:00Z' }, findings: [] })
+    const out = run({ mrs: {} }, ['import-state', '--from', legacy]).out
+    expect(out[0]).toMatch(/^SKIP\t!1\t.*as new or newer$/)
+    expect(out[1]).toMatch(/^IMPORTED\t!2\t/)
+    expect(JSON.parse(readFileSync(newer, 'utf8'))).toMatchObject({ last_reviewed_sha: 'jig' })
+    expect(JSON.parse(readFileSync(older, 'utf8'))).toMatchObject({ last_reviewed_sha: 'old' })
+    expect(readdirSync(dirname(older)).filter((name) => name.includes('.bak-import-'))).toHaveLength(1)
+    expect(run({ mrs: {} }, ['import-state', '--from', legacy]).out[1]).toMatch(/^SKIP\t!2\t.*already imported$/)
+  })
+
+  it('writes nothing where .jig/runs is not gitignored, and --dry-run writes nothing anywhere', () => {
+    legacyFile(5, { findings: [] })
+    expect(run({ mrs: {} }, ['import-state', '--from', legacy]).code).toBe(3)
+    expect(run({ mrs: {} }, ['import-state', '--from', legacy, '--dry-run']).out[0]).toMatch(/^WOULD IMPORT\t!5\t/)
+    expect(existsSync(join(root, '.jig'))).toBe(false)
   })
 })
