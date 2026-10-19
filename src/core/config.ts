@@ -6,7 +6,7 @@ import { jigPaths } from './paths'
 export const SEVERITIES = ['off', 'warn', 'error'] as const
 export type Severity = (typeof SEVERITIES)[number]
 
-export const JIG_RULE_IDS = ['jig/comments', 'jig/tests', 'jig/todos'] as const
+export const JIG_RULE_IDS = ['jig/comments', 'jig/tests'] as const
 export type JigRuleId = (typeof JIG_RULE_IDS)[number]
 export type RuleId = JigRuleId | `gate/${string}` | `check/${string}`
 
@@ -14,7 +14,7 @@ export const RULE_IDS: readonly JigRuleId[] = JIG_RULE_IDS
 
 export const DEFAULT_SEVERITY: Severity = 'error'
 
-const DEFAULT_SEVERITIES: Partial<Record<JigRuleId, Severity>> = { 'jig/todos': 'off' }
+const DEFAULT_SEVERITIES: Partial<Record<JigRuleId, Severity>> = {}
 
 export interface ToolSettings {
   level: Severity

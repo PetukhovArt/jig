@@ -3,13 +3,10 @@ import { isAbsolute, resolve } from 'node:path'
 import { resolveProjectRoot, toProjectPath } from '../core/paths'
 import type { EditPair, EventBase, JigEvent, Outcome, SessionSource } from '../hook/types'
 import type { AgentAdapter, ParsedHook } from './adapter'
-import { readTodos } from './claude-todos'
 
 type Json = Record<string, unknown>
 
-const SLASH_COMMAND = /^\s*\/([\w.-]+(?::[\w.-]+)?)(?:\s|$)/
-
-const SESSION_SOURCES:readonly SessionSource[] = ['startup', 'resume', 'clear', 'compact', 'fork']
+const SESSION_SOURCES: readonly SessionSource[] = ['startup', 'resume', 'clear', 'compact', 'fork']
 
 const HOOK_EVENT_NAMES: Record<JigEvent['kind'], string> = {
   'session-start': 'SessionStart',
@@ -94,10 +91,7 @@ const toEvent = (name: string, input: Json, paths: PathContext): JigEvent | unde
       return { kind: 'session-start', source }
     }
     case 'user-prompt-submit':
-    {
-      const command = SLASH_COMMAND.exec(text(input, 'prompt') ?? '')?.[1]
-      return command === undefined ? { kind: 'prompt' } : { kind: 'prompt', command }
-    }
+      return { kind: 'prompt' }
     case 'pre-edit':
       return preEditEvent(toolName, toolInput, paths)
     case 'post-edit': {
@@ -156,4 +150,4 @@ export const formatOutcome = (kind: JigEvent['kind'], outcome: Outcome): string 
   }
 }
 
-export const claude: AgentAdapter = { name: 'claude', parseHookInput, formatOutcome, readTodos }
+export const claude: AgentAdapter = { name: 'claude', parseHookInput, formatOutcome }

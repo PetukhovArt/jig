@@ -10,11 +10,10 @@
     "rules": {
       "type": "object",
       "additionalProperties": false,
-      "description": "jig's own rules. Suppression directives are always denied; these levels set the gates for new comments, new test cases and open todo items at the end of a turn (default error for all).",
+      "description": "jig's own rules. Suppression directives are always denied; these levels set the gates for new comments and new test cases (default error for both).",
       "properties": {
         "jig/comments": { "$ref": "#/$defs/severity" },
-        "jig/tests": { "$ref": "#/$defs/severity" },
-        "jig/todos": { "$ref": "#/$defs/severity", "description": "End of turn: block once while the agent's todo list has an item neither completed nor starting with skip: or n/a:, or a /jig turn has no todo list. Default off" }
+        "jig/tests": { "$ref": "#/$defs/severity" }
       }
     },
     "oxlint": { "$ref": "#/$defs/tool" },

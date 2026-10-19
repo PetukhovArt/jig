@@ -7,18 +7,11 @@ export interface EditPair {
 
 export type JigEvent =
   | { kind: 'session-start'; source: SessionSource }
-  | { kind: 'prompt'; command?: string }
+  | { kind: 'prompt' }
   | { kind: 'pre-edit'; file: string; edits: EditPair[]; wholeFile?: string }
   | { kind: 'post-edit'; file: string }
   | { kind: 'subagent-start'; agentId: string; agentType: string; prompt?: string }
-  | { kind: 'stop'; stopHookActive: boolean; todos?: readonly TodoItem[] }
-
-export type TodoStatus = 'pending' | 'in_progress' | 'completed'
-
-export interface TodoItem {
-  text: string
-  status: TodoStatus
-}
+  | { kind: 'stop'; stopHookActive: boolean }
 
 export interface EventBase {
   sessionId: string

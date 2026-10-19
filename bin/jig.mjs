@@ -25,11 +25,11 @@ var fail = (cursor, message) => {
   throw new FrontmatterError(message, cursor.line);
 };
 var readDoubleQuoted = (cursor) => {
-  const { text: text3 } = cursor;
+  const { text: text2 } = cursor;
   let value = "";
   let index = cursor.index + 1;
-  while (index < text3.length) {
-    const char = text3[index] ?? "";
+  while (index < text2.length) {
+    const char = text2[index] ?? "";
     if (char === '"') {
       cursor.index = index + 1;
       return value;
@@ -39,9 +39,9 @@ var readDoubleQuoted = (cursor) => {
       index++;
       continue;
     }
-    const escape = text3[index + 1] ?? "";
+    const escape = text2[index + 1] ?? "";
     if (escape === "u") {
-      const hex = text3.slice(index + 2, index + 6);
+      const hex = text2.slice(index + 2, index + 6);
       if (!/^[0-9a-fA-F]{4}$/.test(hex)) fail(cursor, `invalid escape \\u${hex}`);
       value += String.fromCharCode(Number.parseInt(hex, 16));
       index += 6;
@@ -53,17 +53,17 @@ var readDoubleQuoted = (cursor) => {
   return fail(cursor, "unterminated double-quoted string");
 };
 var readSingleQuoted = (cursor) => {
-  const { text: text3 } = cursor;
+  const { text: text2 } = cursor;
   let value = "";
   let index = cursor.index + 1;
-  while (index < text3.length) {
-    const char = text3[index] ?? "";
+  while (index < text2.length) {
+    const char = text2[index] ?? "";
     if (char !== "'") {
       value += char;
       index++;
       continue;
     }
-    if (text3[index + 1] === "'") {
+    if (text2[index + 1] === "'") {
       value += "'";
       index += 2;
       continue;
@@ -81,9 +81,9 @@ var isRestEmpty = (cursor) => {
   const rest = cursor.text.slice(cursor.index);
   return rest === "" || rest.startsWith("#");
 };
-var stripPlainComment = (text3) => {
-  const match = /(^|\s)#/.exec(text3);
-  return (match ? text3.slice(0, match.index) : text3).trim();
+var stripPlainComment = (text2) => {
+  const match = /(^|\s)#/.exec(text2);
+  return (match ? text2.slice(0, match.index) : text2).trim();
 };
 var readFlowItem = (cursor) => {
   const char = cursor.text[cursor.index];
@@ -125,8 +125,8 @@ var readInlineValue = (cursor) => {
   if (!isRestEmpty(cursor)) fail(cursor, "unexpected text after value");
   return value;
 };
-var readScalar = (text3, line) => {
-  const cursor = { text: text3, index: 0, line };
+var readScalar = (text2, line) => {
+  const cursor = { text: text2, index: 0, line };
   const value = readInlineValue(cursor);
   if (Array.isArray(value)) return fail(cursor, "nested arrays are not supported");
   return value;
@@ -195,8 +195,8 @@ var parseBlock = (lines, firstLine4) => {
   }
   return data;
 };
-var parseFrontmatter = (text3) => {
-  const lines = text3.replace(/^﻿/, "").replace(/\r\n/g, "\n").split("\n");
+var parseFrontmatter = (text2) => {
+  const lines = text2.replace(/^﻿/, "").replace(/\r\n/g, "\n").split("\n");
   if (lines[0]?.trimEnd() !== FENCE) return void 0;
   const closing = lines.findIndex((line, index) => index > 0 && line.trimEnd() === FENCE);
   if (closing === -1) throw new FrontmatterError('missing closing "---"', lines.length);
@@ -224,8 +224,8 @@ var git = (args, cwd, input) => {
   }
   return { ok: result.status === 0, code: result.status, stdout: result.stdout, stderr: result.stderr };
 };
-var firstLine = (text3) => {
-  const line = text3.split("\n")[0]?.trim();
+var firstLine = (text2) => {
+  const line = text2.split("\n")[0]?.trim();
   return line === "" ? void 0 : line;
 };
 var gitToplevel = (cwd) => {
@@ -444,10 +444,10 @@ var SCRIPT_BLOCK = /(<script\b[^>]*>)([\s\S]*?)<\/script\s*>/gi;
 var STYLE_BLOCK = /<style\b[^>]*>[\s\S]*?<\/style\s*>/gi;
 var HTML_COMMENT = /<!--[\s\S]*?-->/g;
 var SFC_TAG = /<(?:script|template|style)\b/i;
-var countNewlines = (text3, from, to) => {
+var countNewlines = (text2, from, to) => {
   let count = 0;
   for (let index = from; index < to; index++) {
-    if (text3[index] === "\n") {
+    if (text2[index] === "\n") {
       count++;
     }
   }
@@ -611,8 +611,8 @@ var JsLexer = class {
     while (this.index < this.end && this.at() !== "\n") {
       this.index++;
     }
-    const text3 = this.source.slice(start, this.index).replace(/\r$/, "");
-    this.comments.push({ text: text3, line: this.line, kind: "line", start, end: this.index });
+    const text2 = this.source.slice(start, this.index).replace(/\r$/, "");
+    this.comments.push({ text: text2, line: this.line, kind: "line", start, end: this.index });
   }
   scanBlockComment() {
     const start = this.index;
@@ -621,8 +621,8 @@ var JsLexer = class {
     const stop2 = close === -1 || close + 2 > this.end ? this.end : close + 2;
     this.line += countNewlines(this.source, start, stop2);
     this.index = stop2;
-    const text3 = this.source.slice(start, stop2);
-    this.comments.push({ text: text3, line, kind: "block", start, end: stop2 });
+    const text2 = this.source.slice(start, stop2);
+    this.comments.push({ text: text2, line, kind: "block", start, end: stop2 });
   }
   scanRegex() {
     let position = this.index + 1;
@@ -854,8 +854,8 @@ var readText = (path) => {
   }
 };
 var resolveShimTarget = (shimPath) => {
-  const text3 = readText(shimPath) ?? "";
-  const targets = [...text3.matchAll(SHIM_TARGET)].map((match) => (match[1] ?? "").replace(/\\/g, "/")).filter((target2) => !NODE_EXECUTABLE.test(basename(target2)));
+  const text2 = readText(shimPath) ?? "";
+  const targets = [...text2.matchAll(SHIM_TARGET)].map((match) => (match[1] ?? "").replace(/\\/g, "/")).filter((target2) => !NODE_EXECUTABLE.test(basename(target2)));
   const target = targets.at(-1);
   if (target === void 0) return void 0;
   const absolute = resolve2(dirname2(shimPath), target);
@@ -1034,7 +1034,7 @@ var groupByMarker = (projectRoot, files, markers) => {
 var withMarker = (entry, marker) => entry === void 0 || marker === void 0 ? void 0 : { bin: entry.bin, config: marker };
 var FAILURE_DETAIL_MAX = 200;
 var HUNK_HEADER = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/;
-var firstOutputLine = (text3) => text3.trim().split("\n")[0]?.slice(0, FAILURE_DETAIL_MAX) ?? "";
+var firstOutputLine = (text2) => text2.trim().split("\n")[0]?.slice(0, FAILURE_DETAIL_MAX) ?? "";
 var settleExit = (invocation, exited) => {
   const { tool, okCodes, parse } = invocation;
   const failed2 = (failure) => ({ tool, findings: [], durationMs: exited.durationMs, failure });
@@ -1311,11 +1311,11 @@ import { dirname as dirname6, extname as extname3, join as join4, relative as re
 // src/core/jsonc.ts
 var BOM = "\uFEFF";
 var isWhitespace = (char) => char === " " || char === "	" || char === "\n" || char === "\r";
-var blank = (text3) => text3.replace(/[^\n]/g, " ");
-var skipString = (text3, start) => {
+var blank = (text2) => text2.replace(/[^\n]/g, " ");
+var skipString = (text2, start) => {
   let index = start + 1;
-  while (index < text3.length) {
-    const char = text3[index];
+  while (index < text2.length) {
+    const char = text2[index];
     if (char === "\\") {
       index += 2;
       continue;
@@ -1325,33 +1325,33 @@ var skipString = (text3, start) => {
   }
   return index;
 };
-var commentEnd = (text3, start) => {
-  const next = text3[start + 1];
+var commentEnd = (text2, start) => {
+  const next = text2[start + 1];
   if (next === "/") {
-    const newline = text3.indexOf("\n", start);
-    return newline === -1 ? text3.length : newline;
+    const newline = text2.indexOf("\n", start);
+    return newline === -1 ? text2.length : newline;
   }
   if (next === "*") {
-    const close = text3.indexOf("*/", start + 2);
+    const close = text2.indexOf("*/", start + 2);
     if (close === -1) throw new SyntaxError("unterminated block comment");
     return close + 2;
   }
   return void 0;
 };
-var stripComments = (text3) => {
+var stripComments = (text2) => {
   let output = "";
   let index = 0;
-  while (index < text3.length) {
-    const char = text3[index];
+  while (index < text2.length) {
+    const char = text2[index];
     if (char === '"') {
-      const end2 = skipString(text3, index);
-      output += text3.slice(index, end2);
+      const end2 = skipString(text2, index);
+      output += text2.slice(index, end2);
       index = end2;
       continue;
     }
-    const end = char === "/" ? commentEnd(text3, index) : void 0;
+    const end = char === "/" ? commentEnd(text2, index) : void 0;
     if (end !== void 0) {
-      output += blank(text3.slice(index, end));
+      output += blank(text2.slice(index, end));
       index = end;
       continue;
     }
@@ -1360,13 +1360,13 @@ var stripComments = (text3) => {
   }
   return output;
 };
-var stripTrailingCommas = (text3) => {
-  const chars = text3.split("");
+var stripTrailingCommas = (text2) => {
+  const chars = text2.split("");
   let index = 0;
   while (index < chars.length) {
     const char = chars[index];
     if (char === '"') {
-      index = skipString(text3, index);
+      index = skipString(text2, index);
       continue;
     }
     if (char === ",") {
@@ -1381,8 +1381,8 @@ var stripTrailingCommas = (text3) => {
   }
   return chars.join("");
 };
-var parseJsonc = (text3) => {
-  const source = text3.startsWith(BOM) ? text3.slice(1) : text3;
+var parseJsonc = (text2) => {
+  const source = text2.startsWith(BOM) ? text2.slice(1) : text2;
   return JSON.parse(stripTrailingCommas(stripComments(source)));
 };
 
@@ -1541,12 +1541,12 @@ var groupByTsconfig = (projectRoot, files) => {
 };
 var tsconfigHash = (configPath) => createHash("sha1").update(configPath).digest("hex").slice(0, HASH_LENGTH);
 var closureConfig = (projectRoot, group) => {
-  const configDir2 = toSlash(dirname6(group.config));
+  const configDir = toSlash(dirname6(group.config));
   const hash = tsconfigHash(group.config);
   return {
     extends: toSlash(group.config),
     files: group.files.map((file) => toSlash(resolve6(projectRoot, file))),
-    include: [`${configDir2}/*.d.ts`, `${configDir2}/src/**/*.d.ts`],
+    include: [`${configDir}/*.d.ts`, `${configDir}/src/**/*.d.ts`],
     compilerOptions: {
       noEmit: true,
       incremental: true,
@@ -1733,16 +1733,16 @@ var unlisted = (config, discovery) => discovery.found.filter((found) => found.st
 
 // src/core/command.ts
 var TOKEN = /"([^"]*)"|'([^']*)'|(\S+)/g;
-var splitCommand = (text3) => [...text3.matchAll(TOKEN)].map((match) => match[1] ?? match[2] ?? match[3] ?? "");
+var splitCommand = (text2) => [...text2.matchAll(TOKEN)].map((match) => match[1] ?? match[2] ?? match[3] ?? "");
 var expandToken = (argv, placeholder, values) => argv.flatMap((token) => token === placeholder ? [...values] : [token]);
 
 // src/core/config.ts
 import { existsSync as existsSync3, readFileSync as readFileSync7 } from "node:fs";
 var SEVERITIES2 = ["off", "warn", "error"];
-var JIG_RULE_IDS = ["jig/comments", "jig/tests", "jig/todos"];
+var JIG_RULE_IDS = ["jig/comments", "jig/tests"];
 var RULE_IDS = JIG_RULE_IDS;
 var DEFAULT_SEVERITY = "error";
-var DEFAULT_SEVERITIES = { "jig/todos": "off" };
+var DEFAULT_SEVERITIES = {};
 var CHECK_STAGES = ["edit", "stop"];
 var RUNTIMES = ["electron", "tauri", "browser", "none"];
 var VERIFY_RUNTIMES = ["electron", "tauri", "browser"];
@@ -2002,9 +2002,9 @@ var mergeConfigValues = (shared, local, path = "$") => {
   return merged;
 };
 var failed = (files, error) => ({ ...defaultConfig(), files, error });
-var parseText = (text3, label) => {
+var parseText = (text2, label) => {
   try {
-    return { value: parseJsonc(text3) };
+    return { value: parseJsonc(text2) };
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
     return { error: `${label}$: ${reason}` };
@@ -2022,8 +2022,8 @@ var loadConfig = (projectRoot) => {
     { path: paths.config, label: ".jig/config.jsonc: " },
     { path: paths.localConfig, label: ".jig/config.local.jsonc: " }
   ].flatMap((source) => {
-    const text3 = readOptional(source.path);
-    return text3 === void 0 ? [] : [{ ...source, text: text3 }];
+    const text2 = readOptional(source.path);
+    return text2 === void 0 ? [] : [{ ...source, text: text2 }];
   });
   const files = sources.map((source) => source.path);
   if (sources.length === 0) return { ...defaultConfig(), files };
@@ -2073,14 +2073,14 @@ var isSessionState = (value) => {
   return candidate.v === 1 && typeof candidate.sessionId === "string" && typeof candidate.snapshot === "object";
 };
 var readState = (projectRoot, sessionId) => {
-  let text3;
+  let text2;
   try {
-    text3 = readFileSync8(sessionStatePath(projectRoot, sessionId), "utf8");
+    text2 = readFileSync8(sessionStatePath(projectRoot, sessionId), "utf8");
   } catch {
     return void 0;
   }
   try {
-    const value = JSON.parse(text3);
+    const value = JSON.parse(text2);
     if (!isSessionState(value)) return void 0;
     return { ...value, turn: typeof value.turn === "number" ? value.turn : 0 };
   } catch {
@@ -2102,10 +2102,10 @@ var renameWithRetry = (from, to) => {
     }
   }
 };
-var writeFileAtomic = (path, text3) => {
+var writeFileAtomic = (path, text2) => {
   tmpCounter++;
   const tmp = `${path}.${process.pid}-${tmpCounter}.tmp`;
-  writeFileSync4(tmp, text3);
+  writeFileSync4(tmp, text2);
   renameWithRetry(tmp, path);
 };
 var writeState = (projectRoot, state, now = /* @__PURE__ */ new Date()) => {
@@ -2259,7 +2259,7 @@ import { join as join8 } from "node:path";
 var fileLine = (edit, fragmentLine) => fragmentLine + (edit.line ?? 1) - 1;
 
 // src/rules/comments.ts
-var normalize = (text3) => text3.replace(/\s+/g, " ").trim();
+var normalize = (text2) => text2.replace(/\s+/g, " ").trim();
 var countExisting = (file, edits) => {
   const counts = /* @__PURE__ */ new Map();
   for (const edit of edits) {
@@ -2296,9 +2296,9 @@ var addedComments = (file, edits) => {
 };
 
 // src/rules/suppressions.ts
-var firstMatch = (patterns, text3) => {
+var firstMatch = (patterns, text2) => {
   for (const pattern of patterns) {
-    const match = pattern.exec(text3);
+    const match = pattern.exec(text2);
     if (match !== null) return match[0];
   }
   return void 0;
@@ -2341,8 +2341,8 @@ var rulesText = (input, atom, reminder) => {
   const path = atomPath(input.pluginRoot, atom);
   if (!claimFirst(input, atomKey(atom))) return `${reminder} Rules: ${path}.`;
   try {
-    const text3 = readFileSync10(path, "utf8");
-    return (parseFrontmatter(text3)?.body ?? text3).replace(/^\s+/, "").replace(LEADING_HEADING, "").trim();
+    const text2 = readFileSync10(path, "utf8");
+    return (parseFrontmatter(text2)?.body ?? text2).replace(/^\s+/, "").replace(LEADING_HEADING, "").trim();
   } catch {
     return `Rules: ${path}.`;
   }
@@ -2438,9 +2438,9 @@ var readText2 = (path) => {
     return "";
   }
 };
-var parseMarkdownFile = (text3) => {
+var parseMarkdownFile = (text2) => {
   try {
-    return parseFrontmatter(text3) ?? "frontmatter is missing";
+    return parseFrontmatter(text2) ?? "frontmatter is missing";
   } catch (error) {
     if (error instanceof FrontmatterError) return `frontmatter is invalid (${error.message})`;
     throw error;
@@ -2459,12 +2459,12 @@ var MAX_DESCRIPTION_LENGTH = 200;
 var ROLE_MENTION = /\b[Rr]oles? `[^`]+`(?:(?:, |,? and |,? or )`[^`]+`)*/g;
 var BACKTICKED = /`([^`]+)`/g;
 var FLOW_MENTION = /\bflows\/([A-Za-z0-9_-]+)\.md/g;
-var lineAt2 = (text3, index) => text3.slice(0, index).split("\n").length;
-var findMentions = (file, text3) => {
-  const roles = [...text3.matchAll(ROLE_MENTION)].flatMap(
-    (match) => [...match[0].matchAll(BACKTICKED)].map((name) => ({ name: name[1] ?? "", file, line: lineAt2(text3, match.index) }))
+var lineAt2 = (text2, index) => text2.slice(0, index).split("\n").length;
+var findMentions = (file, text2) => {
+  const roles = [...text2.matchAll(ROLE_MENTION)].flatMap(
+    (match) => [...match[0].matchAll(BACKTICKED)].map((name) => ({ name: name[1] ?? "", file, line: lineAt2(text2, match.index) }))
   );
-  const flows = [...text3.matchAll(FLOW_MENTION)].map((match) => ({ name: match[1] ?? "", file, line: lineAt2(text3, match.index) }));
+  const flows = [...text2.matchAll(FLOW_MENTION)].map((match) => ({ name: match[1] ?? "", file, line: lineAt2(text2, match.index) }));
   return { roles, flows };
 };
 var listSkillMarkdown = (pluginRoot) => {
@@ -2550,14 +2550,14 @@ var skillMarkdown = (pluginRoot) => {
 var reachableNames = (pluginRoot) => {
   const texts = skillMarkdown(pluginRoot).map((path) => readText2(path).replace(/\r\n/g, "\n"));
   const names = new Set(GATE_ATOMS);
-  for (const text3 of texts) {
-    for (const match of text3.matchAll(/atom `([^`]+)`/g)) {
+  for (const text2 of texts) {
+    for (const match of text2.matchAll(/atom `([^`]+)`/g)) {
       names.add(match[1] ?? "");
     }
-    for (const match of text3.matchAll(INDEX_LINE)) {
+    for (const match of text2.matchAll(INDEX_LINE)) {
       names.add(match[1] ?? "");
     }
-    for (const match of text3.matchAll(ATOMS_LINE)) {
+    for (const match of text2.matchAll(ATOMS_LINE)) {
       for (const item of (match[1] ?? "").split(",")) {
         names.add(item.trim().replace(/[`.]/g, ""));
       }
@@ -2625,8 +2625,8 @@ var validateAtoms = (pluginRoot) => {
   );
 };
 var readAtomBody = (file) => {
-  const text3 = readFileSync12(file, "utf8");
-  const body = parseFrontmatter(text3)?.body ?? text3.replace(/\r\n/g, "\n");
+  const text2 = readFileSync12(file, "utf8");
+  const body = parseFrontmatter(text2)?.body ?? text2.replace(/\r\n/g, "\n");
   return body.replace(/^\n+/, "").replace(/\s+$/, "");
 };
 var BUILD_FLAGS = /* @__PURE__ */ new Set(["--atoms-only", "--check"]);
@@ -2682,7 +2682,7 @@ var JOURNAL_MAX_BYTES = 50 * 1024 * 1024;
 var JOURNAL_MESSAGE_MAX = 300;
 var DAY_MS = 24 * 60 * 60 * 1e3;
 var JOURNAL_FILE = /^(\d{4}-\d{2}-\d{2})\.jsonl$/;
-var truncate = (text3) => text3.length <= JOURNAL_MESSAGE_MAX ? text3 : `${text3.slice(0, JOURNAL_MESSAGE_MAX - 1)}\u2026`;
+var truncate = (text2) => text2.length <= JOURNAL_MESSAGE_MAX ? text2 : `${text2.slice(0, JOURNAL_MESSAGE_MAX - 1)}\u2026`;
 var appendJournal = (projectRoot, entry) => {
   const record2 = { v: 1, ...entry, ts: entry.ts ?? (/* @__PURE__ */ new Date()).toISOString() };
   if (record2.message !== void 0) {
@@ -2830,10 +2830,10 @@ var validateUserConfig = (value) => {
   const tiers = root["tiers"] === void 0 ? {} : readTiers(validator, root["tiers"]);
   return { config: { tiers }, errors: validator.errors };
 };
-var parseUserConfig = (text3) => {
+var parseUserConfig = (text2) => {
   let value;
   try {
-    value = parseJsonc(text3);
+    value = parseJsonc(text2);
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
     return { config: emptyUserConfig(), error: `$: ${reason}` };
@@ -2903,9 +2903,9 @@ var formatDenyBlock = () => {
   const pairs = PROTECTED_FOR_DENY.map((path) => `      "Edit(${path})", "Write(${path})"`);
   return ["{", '  "permissions": {', '    "deny": [', pairs.join(",\n"), "    ]", "  }", "}"].join("\n");
 };
-var ok = (text3) => ({ status: "ok", text: text3 });
-var warn = (text3) => ({ status: "warn", text: text3 });
-var fail2 = (text3) => ({ status: "fail", text: text3 });
+var ok = (text2) => ({ status: "ok", text: text2 });
+var warn = (text2) => ({ status: "warn", text: text2 });
+var fail2 = (text2) => ({ status: "fail", text: text2 });
 var checkNode = () => {
   const version2 = process.versions.node;
   const major = Number(version2.split(".")[0]);
@@ -2974,14 +2974,14 @@ var checkDeny = (projectRoot) => {
   }
   const missing = RECOMMENDED_DENY.filter((entry) => !deny.includes(entry));
   if (missing.length === 0) return ok(`deny: ${path} has the recommended block`);
-  const text3 = `deny: ${path} misses ${missing.length} of ${RECOMMENDED_DENY.length} rules, add the recommended block:`;
-  return { ...warn(text3), block: formatDenyBlock() };
+  const text2 = `deny: ${path} misses ${missing.length} of ${RECOMMENDED_DENY.length} rules, add the recommended block:`;
+  return { ...warn(text2), block: formatDenyBlock() };
 };
 var checkJournal = (projectRoot) => {
   const files = listJournalFiles(projectRoot);
   const bytes = files.reduce((total, file) => total + file.size, 0);
-  const text3 = `journal: ${(bytes / BYTES_PER_MB).toFixed(1)} MB in ${files.length} files`;
-  return bytes > JOURNAL_MAX_BYTES ? warn(`${text3}, above ${JOURNAL_MAX_BYTES / BYTES_PER_MB} MB`) : ok(text3);
+  const text2 = `journal: ${(bytes / BYTES_PER_MB).toFixed(1)} MB in ${files.length} files`;
+  return bytes > JOURNAL_MAX_BYTES ? warn(`${text2}, above ${JOURNAL_MAX_BYTES / BYTES_PER_MB} MB`) : ok(text2);
 };
 var checkLock = (path) => {
   if (!existsSync5(path)) return ok(`lock: ${path} free`);
@@ -3027,7 +3027,7 @@ var runDoctor = (args) => {
 };
 
 // src/gates/stop.ts
-import { createHash as createHash6 } from "node:crypto";
+import { createHash as createHash5 } from "node:crypto";
 
 // src/core/snapshot.ts
 import { createHash as createHash4 } from "node:crypto";
@@ -3127,7 +3127,7 @@ var parseLine = (line) => {
   const [ts = "", phase = "", decision = "", why = "", evidence = "", ...result] = line.split("	");
   return { ts, phase, decision, why, evidence, result: result.join(" ") };
 };
-var parseJournal = (text3) => text3.split("\n").map((line) => line.replace(/\r$/, "")).filter((line) => line.trim() !== "" && line !== HEADER).map(parseLine);
+var parseJournal = (text2) => text2.split("\n").map((line) => line.replace(/\r$/, "")).filter((line) => line.trim() !== "" && line !== HEADER).map(parseLine);
 var readText3 = (path) => {
   try {
     return readFileSync16(path, "utf8");
@@ -3136,8 +3136,8 @@ var readText3 = (path) => {
   }
 };
 var readJournalRows = (path) => {
-  const text3 = readText3(path);
-  return text3 === void 0 ? void 0 : parseJournal(text3);
+  const text2 = readText3(path);
+  return text2 === void 0 ? void 0 : parseJournal(text2);
 };
 var appendRow = (path, input, now) => {
   const row = {
@@ -3299,7 +3299,7 @@ var checkArgv = (projectRoot, check2, files) => {
   const [command = "", ...args] = expandToken(splitCommand(check2.run), FILES_TOKEN2, files);
   return [...resolveBin(projectRoot, [], command) ?? [command], ...args];
 };
-var firstLine2 = (text3) => text3.split("\n").map((line) => line.trim()).find((line) => line !== "")?.slice(0, MESSAGE_MAX) ?? "";
+var firstLine2 = (text2) => text2.split("\n").map((line) => line.trim()).find((line) => line !== "")?.slice(0, MESSAGE_MAX) ?? "";
 var exitFinding = (check2, file, output, code) => ({
   tool: check2.name,
   rule: checkRule(check2),
@@ -3367,74 +3367,6 @@ var checkEdit = async (plan, projectRoot, file) => {
   return runs.filter((toolRun) => toolRun !== void 0);
 };
 
-// src/gates/todos.ts
-import { createHash as createHash5 } from "node:crypto";
-var TODO_RULE = "jig/todos";
-var TODO_LIST_LIMIT = 5;
-var TODO_TEXT_LIMIT = 120;
-var MAX_TODO_BLOCKS_PER_TURN = 3;
-var CLOSED_PREFIX = /^\s*(?:skip|n\/a)\s*:/i;
-var NO_LIST = "no todo list";
-var CLOSE_HINT = "Finish each, or rewrite its text as `skip: <reason>` and mark it completed, then stop.";
-var NO_LIST_REASON = [
-  `${TODO_RULE}: this /jig task has no todo list.`,
-  "Put each numbered step of the flow into your todo tool as its own item. Do each step, or rewrite its text as `skip: <reason>` and mark it completed, then stop."
-].join("\n");
-var PASS = { outcome: { type: "none" }, notes: [] };
-var openTodos = (todos) => todos.filter((todo) => todo.status !== "completed" && !CLOSED_PREFIX.test(todo.text));
-var fingerprintOf = (open) => createHash5("sha1").update(open.map((todo) => todo.text.trim()).sort().join("\n")).digest("hex");
-var clip = (text3) => {
-  const line = text3.replace(/\s+/g, " ").trim();
-  return line.length <= TODO_TEXT_LIMIT ? line : `${line.slice(0, TODO_TEXT_LIMIT - 1)}\u2026`;
-};
-var todoReason = (open) => {
-  const shown = open.slice(0, TODO_LIST_LIMIT).map((todo) => `- [${todo.status}] ${clip(todo.text)}`);
-  const hidden = open.length - shown.length;
-  return [
-    `${TODO_RULE}: ${open.length} todo item(s) still open:`,
-    ...shown,
-    ...hidden > 0 ? [`- \u2026 and ${hidden} more`] : [],
-    CLOSE_HINT
-  ].join("\n");
-};
-var gapOf = (todos, isFlowTurn) => {
-  if (todos.length === 0) return isFlowTurn ? { fingerprint: NO_LIST, reason: NO_LIST_REASON, summary: NO_LIST } : void 0;
-  const open = openTodos(todos);
-  if (open.length === 0) return void 0;
-  return {
-    fingerprint: fingerprintOf(open),
-    reason: todoReason(open),
-    summary: `${open.length} todo item(s) left open: ${open.map((todo) => clip(todo.text)).join("; ")}`
-  };
-};
-var passNote = (kind, gap) => ({
-  outcome: { type: "none" },
-  notes: [{ kind, tool: "jig", rule: TODO_RULE, message: gap.summary }]
-});
-var todoGate = (todos, state, isOn2) => {
-  if (todos === void 0) return PASS;
-  const gap = gapOf(todos, state.flowTurn === state.turn);
-  if (gap === void 0 || !isOn2()) return PASS;
-  const { fingerprint } = gap;
-  const prior = state.todos;
-  if (prior?.accepted === fingerprint && fingerprint !== NO_LIST) return PASS;
-  const isSameTurn = prior !== void 0 && prior.turn === state.turn;
-  if (isSameTurn && prior.fingerprint === fingerprint) {
-    state.todos = { ...prior, accepted: fingerprint };
-    return passNote("gate-unresolved", gap);
-  }
-  const blocks = isSameTurn ? prior.blocks + 1 : 1;
-  if (blocks > MAX_TODO_BLOCKS_PER_TURN) {
-    state.todos = { turn: state.turn, fingerprint, blocks, accepted: fingerprint };
-    return passNote("gate-giveup", gap);
-  }
-  state.todos = { turn: state.turn, fingerprint, blocks, ...prior?.accepted === void 0 ? {} : { accepted: prior.accepted } };
-  return {
-    outcome: { type: "block", reason: gap.reason },
-    notes: [{ kind: "gate-block", tool: "jig", rule: TODO_RULE, message: gap.summary }]
-  };
-};
-
 // src/gates/stop.ts
 var STOP_HARD_LIMIT_MS = 11e4;
 var MAX_CONSECUTIVE_BLOCKS = 3;
@@ -3500,7 +3432,7 @@ var runStopChecks = async (input) => {
   notes.push(...failureNotes(steps.flatMap((step) => step.runs)));
   return { steps, findings, blocking: findings.filter(isBlocking), notes, durationMs: Date.now() - startedAt };
 };
-var findingsFingerprint = (findings) => createHash6("sha1").update(collapseFindings(findings).sort().join("\n")).digest("hex");
+var findingsFingerprint = (findings) => createHash5("sha1").update(collapseFindings(findings).sort().join("\n")).digest("hex");
 var blockReason = (blocking, pluginRoot) => {
   const toolLines = formatFindings(blocking.filter((finding) => finding.tool !== "jig"), STOP_LINE_LIMIT, pluginRoot);
   const jigLines = blocking.filter((finding) => finding.tool === "jig").map((finding) => finding.message);
@@ -3515,7 +3447,7 @@ var blockNotes = (blocking) => blocking.map((finding) => ({
   line: finding.line,
   message: finding.message
 }));
-var checksGate = async (input) => {
+var stopGate = async (input) => {
   const { projectRoot, pluginRoot, state } = input;
   const diff = turnDiff(projectRoot, state.snapshot, state.edits);
   const isQuiet = diff.files.length === 0 || diff.fingerprint === state.stop.lastGreenFingerprint;
@@ -3546,13 +3478,6 @@ var checksGate = async (input) => {
     outcome: { type: "block", reason: blockReason(checks.blocking, pluginRoot) },
     notes: [...checks.notes, ...blockNotes(checks.blocking)]
   };
-};
-var isTodoGateOn = (projectRoot) => () => loadConfig(projectRoot).rules[TODO_RULE] !== "off";
-var stopGate = async (input) => {
-  const todos = todoGate(input.todos, input.state, isTodoGateOn(input.projectRoot));
-  if (todos.outcome.type === "block") return todos;
-  const checks = await checksGate(input);
-  return { outcome: checks.outcome, notes: [...todos.notes, ...checks.notes] };
 };
 var printFailures = (runs) => {
   for (const toolRun of runs) {
@@ -3610,188 +3535,12 @@ var runCheck = (args) => {
 };
 
 // src/hook/dispatch.ts
-import { readFileSync as readFileSync19 } from "node:fs";
-import { join as join17 } from "node:path";
-
-// src/adapters/claude.ts
 import { readFileSync as readFileSync18 } from "node:fs";
-import { isAbsolute as isAbsolute3, resolve as resolve7 } from "node:path";
-
-// src/adapters/claude-todos.ts
-import { closeSync, fstatSync, openSync, readdirSync as readdirSync9, readFileSync as readFileSync17, readSync, statSync as statSync9 } from "node:fs";
-import { homedir as homedir2 } from "node:os";
 import { join as join16 } from "node:path";
-var TRANSCRIPT_TAIL_BYTES = 8 * 1024 * 1024;
-var TASK_FILE_MAX_BYTES = 64 * 1024;
-var TASK_FILES_MAX = 500;
-var STATUSES = ["pending", "in_progress", "completed"];
-var DELETED = "deleted";
-var SAFE_ID = /^[\w.-]+$/;
-var CREATED_ID = /Task #(\S+) created/;
-var isObject2 = (value) => typeof value === "object" && value !== null && !Array.isArray(value);
-var text = (object, key) => {
-  const value = object[key];
-  return typeof value === "string" ? value : void 0;
-};
-var idOf = (value) => typeof value === "string" || typeof value === "number" ? String(value) : void 0;
-var statusOf = (value) => STATUSES.find((status) => status === value);
-var parseJson = (raw) => {
-  try {
-    return JSON.parse(raw);
-  } catch {
-    return void 0;
-  }
-};
-var readTail = (path, maxBytes) => {
-  let fd;
-  try {
-    fd = openSync(path, "r");
-    const size = fstatSync(fd).size;
-    const length = Math.min(size, maxBytes);
-    const buffer = Buffer.alloc(length);
-    readSync(fd, buffer, 0, length, size - length);
-    const tail = buffer.toString("utf8");
-    return length < size ? tail.slice(tail.indexOf("\n") + 1) : tail;
-  } catch {
-    return void 0;
-  } finally {
-    if (fd !== void 0) closeSync(fd);
-  }
-};
-var todoWriteItems = (input) => {
-  const todos = input["todos"];
-  if (!Array.isArray(todos)) return void 0;
-  return todos.flatMap((todo) => {
-    if (!isObject2(todo)) return [];
-    const content = text(todo, "content");
-    const status = statusOf(todo["status"]);
-    return content === void 0 || status === void 0 ? [] : [{ text: content, status }];
-  });
-};
-var blocksOf = (entry) => {
-  const message = entry["message"];
-  const content = isObject2(message) ? message["content"] : void 0;
-  return Array.isArray(content) ? content.filter(isObject2) : [];
-};
-var resultText = (block) => {
-  const content = block["content"];
-  if (typeof content === "string") return content;
-  if (!Array.isArray(content)) return "";
-  return content.map((part) => isObject2(part) ? text(part, "text") ?? "" : "").join("\n");
-};
-var createdTaskId = (entry, block) => {
-  const result = entry["toolUseResult"];
-  const task = isObject2(result) ? result["task"] : void 0;
-  return (isObject2(task) ? idOf(task["id"]) : void 0) ?? CREATED_ID.exec(resultText(block))?.[1];
-};
-var Replay = class {
-  todoWrite;
-  tasks = /* @__PURE__ */ new Map();
-  creates = /* @__PURE__ */ new Map();
-  updates = /* @__PURE__ */ new Map();
-  assistant(entry) {
-    for (const block of blocksOf(entry)) {
-      if (block["type"] !== "tool_use") continue;
-      const useId = text(block, "id");
-      const input = isObject2(block["input"]) ? block["input"] : {};
-      const name = text(block, "name");
-      if (name === "TodoWrite") {
-        this.todoWrite = todoWriteItems(input) ?? this.todoWrite;
-      }
-      const subject = text(input, "subject");
-      if (name === "TaskCreate" && useId !== void 0 && subject !== void 0) {
-        this.creates.set(useId, subject);
-      }
-      if (name === "TaskUpdate" && useId !== void 0) {
-        this.updates.set(useId, input);
-      }
-    }
-  }
-  user(entry) {
-    for (const block of blocksOf(entry)) {
-      const useId = block["type"] === "tool_result" ? text(block, "tool_use_id") : void 0;
-      if (useId === void 0) continue;
-      const subject = this.creates.get(useId);
-      const update = this.updates.get(useId);
-      this.creates.delete(useId);
-      this.updates.delete(useId);
-      if (block["is_error"] === true) continue;
-      const taskId = subject === void 0 ? void 0 : createdTaskId(entry, block);
-      if (subject !== void 0 && taskId !== void 0) {
-        this.tasks.set(taskId, { text: subject, status: "pending" });
-      }
-      if (update !== void 0) {
-        this.update(update);
-      }
-    }
-  }
-  update(input) {
-    const taskId = idOf(input["taskId"]);
-    const task = taskId === void 0 ? void 0 : this.tasks.get(taskId);
-    if (taskId === void 0 || task === void 0) return;
-    if (input["status"] === DELETED) {
-      this.tasks.delete(taskId);
-      return;
-    }
-    this.tasks.set(taskId, { text: text(input, "subject") ?? task.text, status: statusOf(input["status"]) ?? task.status });
-  }
-};
-var replayTranscript = (transcript) => {
-  const replay = new Replay();
-  for (const line of transcript.split("\n")) {
-    const entry = line.trim() === "" ? void 0 : parseJson(line);
-    if (!isObject2(entry) || entry["isSidechain"] === true) continue;
-    if (entry["type"] === "assistant") replay.assistant(entry);
-    if (entry["type"] === "user") replay.user(entry);
-  }
-  if (replay.todoWrite === void 0 && replay.tasks.size === 0) return void 0;
-  return [...replay.todoWrite ?? [], ...replay.tasks.values()];
-};
-var taskFileOrder = (left, right) => left.localeCompare(right, void 0, { numeric: true });
-var readTaskFile = (path) => {
-  if (statSync9(path).size > TASK_FILE_MAX_BYTES) return void 0;
-  const task = parseJson(readFileSync17(path, "utf8"));
-  if (!isObject2(task)) return void 0;
-  const subject = text(task, "subject");
-  const status = statusOf(task["status"]);
-  return subject === void 0 || status === void 0 ? void 0 : { text: subject, status };
-};
-var readTaskStore = (dir) => {
-  try {
-    const names = readdirSync9(dir).filter((name) => name.endsWith(".json")).sort(taskFileOrder).slice(0, TASK_FILES_MAX);
-    return names.flatMap((name) => {
-      try {
-        return readTaskFile(join16(dir, name)) ?? [];
-      } catch {
-        return [];
-      }
-    });
-  } catch {
-    return void 0;
-  }
-};
-var configDir = (env) => {
-  const fromEnv = env["CLAUDE_CONFIG_DIR"];
-  return fromEnv === void 0 || fromEnv === "" ? join16(homedir2(), ".claude") : fromEnv;
-};
-var readTodos = (raw, env = process.env) => {
-  try {
-    const input = parseJson(raw);
-    if (!isObject2(input)) return void 0;
-    const sessionId = text(input, "session_id");
-    const isSafe = sessionId !== void 0 && SAFE_ID.test(sessionId);
-    const stored = isSafe ? readTaskStore(join16(configDir(env), "tasks", sessionId)) : void 0;
-    if (stored !== void 0 && stored.length > 0) return stored;
-    const transcriptPath = text(input, "transcript_path");
-    const transcript = transcriptPath === void 0 ? void 0 : readTail(transcriptPath, TRANSCRIPT_TAIL_BYTES);
-    return (transcript === void 0 ? void 0 : replayTranscript(transcript)) ?? [];
-  } catch {
-    return void 0;
-  }
-};
 
 // src/adapters/claude.ts
-var SLASH_COMMAND = /^\s*\/([\w.-]+(?::[\w.-]+)?)(?:\s|$)/;
+import { readFileSync as readFileSync17 } from "node:fs";
+import { isAbsolute as isAbsolute3, resolve as resolve7 } from "node:path";
 var SESSION_SOURCES = ["startup", "resume", "clear", "compact", "fork"];
 var HOOK_EVENT_NAMES = {
   "session-start": "SessionStart",
@@ -3801,14 +3550,14 @@ var HOOK_EVENT_NAMES = {
   "subagent-start": "SubagentStart",
   stop: "Stop"
 };
-var isObject3 = (value) => typeof value === "object" && value !== null && !Array.isArray(value);
-var text2 = (object, key) => {
+var isObject2 = (value) => typeof value === "object" && value !== null && !Array.isArray(value);
+var text = (object, key) => {
   const value = object[key];
   return typeof value === "string" ? value : void 0;
 };
 var readCurrent = (absolutePath) => {
   try {
-    return readFileSync18(absolutePath, "utf8");
+    return readFileSync17(absolutePath, "utf8");
   } catch {
     return "";
   }
@@ -3818,22 +3567,22 @@ var multiEditPairs = (input) => {
   if (!Array.isArray(edits)) return void 0;
   const pairs = [];
   for (const edit of edits) {
-    if (!isObject3(edit)) return void 0;
-    const before = text2(edit, "old_string");
-    const after = text2(edit, "new_string");
+    if (!isObject2(edit)) return void 0;
+    const before = text(edit, "old_string");
+    const after = text(edit, "new_string");
     if (before === void 0 || after === void 0) return void 0;
     pairs.push({ before, after });
   }
   return pairs;
 };
 var preEditEvent = (toolName, input, paths) => {
-  const rawFile = toolName === "NotebookEdit" ? text2(input, "notebook_path") : text2(input, "file_path");
+  const rawFile = toolName === "NotebookEdit" ? text(input, "notebook_path") : text(input, "file_path");
   if (rawFile === void 0) return void 0;
   const absolute = isAbsolute3(rawFile) ? rawFile : resolve7(paths.cwd, rawFile);
   const file = toProjectPath(paths.projectRoot, absolute);
   if (toolName === "Edit") {
-    const before = text2(input, "old_string");
-    const after = text2(input, "new_string");
+    const before = text(input, "old_string");
+    const after = text(input, "new_string");
     if (before === void 0 || after === void 0) return void 0;
     return { kind: "pre-edit", file, edits: [{ before, after }] };
   }
@@ -3842,31 +3591,29 @@ var preEditEvent = (toolName, input, paths) => {
     return edits === void 0 ? void 0 : { kind: "pre-edit", file, edits };
   }
   if (toolName === "Write") {
-    const content = text2(input, "content");
+    const content = text(input, "content");
     if (content === void 0) return void 0;
     return { kind: "pre-edit", file, edits: [{ before: readCurrent(absolute), after: content }], wholeFile: content };
   }
   if (toolName === "NotebookEdit") {
-    return { kind: "pre-edit", file, edits: [{ before: "", after: text2(input, "new_source") ?? "" }] };
+    return { kind: "pre-edit", file, edits: [{ before: "", after: text(input, "new_source") ?? "" }] };
   }
   return void 0;
 };
 var toolFile = (input, paths) => {
-  const rawFile = text2(input, "file_path") ?? text2(input, "notebook_path");
+  const rawFile = text(input, "file_path") ?? text(input, "notebook_path");
   return rawFile === void 0 ? void 0 : toProjectPath(paths.projectRoot, rawFile, paths.cwd);
 };
 var toEvent = (name, input, paths) => {
-  const toolName = text2(input, "tool_name");
-  const toolInput = isObject3(input["tool_input"]) ? input["tool_input"] : {};
+  const toolName = text(input, "tool_name");
+  const toolInput = isObject2(input["tool_input"]) ? input["tool_input"] : {};
   switch (name) {
     case "session-start": {
       const source = SESSION_SOURCES.find((candidate) => candidate === input["source"]) ?? "startup";
       return { kind: "session-start", source };
     }
-    case "user-prompt-submit": {
-      const command = SLASH_COMMAND.exec(text2(input, "prompt") ?? "")?.[1];
-      return command === void 0 ? { kind: "prompt" } : { kind: "prompt", command };
-    }
+    case "user-prompt-submit":
+      return { kind: "prompt" };
     case "pre-edit":
       return preEditEvent(toolName, toolInput, paths);
     case "post-edit": {
@@ -3874,10 +3621,10 @@ var toEvent = (name, input, paths) => {
       return file === void 0 ? void 0 : { kind: "post-edit", file };
     }
     case "subagent-start": {
-      const agentId = text2(input, "agent_id");
+      const agentId = text(input, "agent_id");
       if (agentId === void 0) return void 0;
-      const prompt2 = text2(input, "prompt");
-      const event = { kind: "subagent-start", agentId, agentType: text2(input, "agent_type") ?? "" };
+      const prompt2 = text(input, "prompt");
+      const event = { kind: "subagent-start", agentId, agentType: text(input, "agent_type") ?? "" };
       return prompt2 === void 0 ? event : { ...event, prompt: prompt2 };
     }
     case "stop":
@@ -3886,7 +3633,7 @@ var toEvent = (name, input, paths) => {
       return void 0;
   }
 };
-var parseJson2 = (raw) => {
+var parseJson = (raw) => {
   try {
     return JSON.parse(raw);
   } catch {
@@ -3894,15 +3641,15 @@ var parseJson2 = (raw) => {
   }
 };
 var parseHookInput = (name, raw, env = process.env) => {
-  const input = parseJson2(raw);
-  if (!isObject3(input)) return void 0;
-  const sessionId = text2(input, "session_id");
+  const input = parseJson(raw);
+  if (!isObject2(input)) return void 0;
+  const sessionId = text(input, "session_id");
   if (sessionId === void 0) return void 0;
-  const cwd = resolve7(text2(input, "cwd") ?? process.cwd());
+  const cwd = resolve7(text(input, "cwd") ?? process.cwd());
   const projectRoot = resolveProjectRoot(cwd, env);
   const event = toEvent(name, input, { projectRoot, cwd });
   if (event === void 0) return void 0;
-  const agentId = text2(input, "agent_id");
+  const agentId = text(input, "agent_id");
   const base = agentId === void 0 ? { sessionId, projectRoot, cwd } : { sessionId, agentId, projectRoot, cwd };
   return { event, base };
 };
@@ -3921,7 +3668,7 @@ var formatOutcome = (kind, outcome) => {
       return JSON.stringify({ decision: "block", reason: outcome.reason });
   }
 };
-var claude = { name: "claude", parseHookInput, formatOutcome, readTodos };
+var claude = { name: "claude", parseHookInput, formatOutcome };
 
 // src/adapters/index.ts
 var ADAPTERS = { claude };
@@ -3987,28 +3734,24 @@ var sessionStart = (event, ctx) => {
   }
   return contextOf(parts);
 };
-var FLOW_COMMANDS = /* @__PURE__ */ new Set(["jig", "jig:jig"]);
-var prompt = (event, ctx) => {
+var prompt = (ctx) => {
   const state = openSession(ctx);
   resetSnapshot(state, takeSnapshot(ctx.projectRoot));
   state.turn += 1;
   ctx.turn = state.turn;
-  if (event.command !== void 0 && FLOW_COMMANDS.has(event.command)) {
-    state.flowTurn = state.turn;
-  }
   writeState(ctx.projectRoot, state);
   return NONE2;
 };
 var readCurrent2 = (path) => {
   try {
-    return readFileSync19(path, "utf8");
+    return readFileSync18(path, "utf8");
   } catch {
     return "";
   }
 };
 var locateEdits = (event, projectRoot) => {
   if (event.wholeFile !== void 0) return event.edits.map((edit) => ({ ...edit, line: 1, prefix: "" }));
-  const current = readCurrent2(join17(projectRoot, event.file));
+  const current = readCurrent2(join16(projectRoot, event.file));
   return event.edits.map((edit) => {
     const at = edit.before === "" ? -1 : current.indexOf(edit.before);
     if (at === -1) return edit;
@@ -4066,13 +3809,7 @@ var subagentStart = (event, ctx) => {
 };
 var stop = async (event, ctx) => {
   const state = openSession(ctx);
-  const verdict = await stopGate({
-    projectRoot: ctx.projectRoot,
-    pluginRoot: ctx.pluginRoot,
-    state,
-    stopHookActive: event.stopHookActive,
-    ...event.todos === void 0 ? {} : { todos: event.todos }
-  });
+  const verdict = await stopGate({ projectRoot: ctx.projectRoot, pluginRoot: ctx.pluginRoot, state, stopHookActive: event.stopHookActive });
   writeState(ctx.projectRoot, state);
   for (const note of verdict.notes) {
     journal(ctx, note);
@@ -4084,7 +3821,7 @@ var route = (event, ctx) => {
     case "session-start":
       return sessionStart(event, ctx);
     case "prompt":
-      return prompt(event, ctx);
+      return prompt(ctx);
     case "pre-edit":
       return preEdit(event, ctx);
     case "post-edit":
@@ -4104,15 +3841,6 @@ var dispatch2 = async (event, base, pluginRoot = resolvePluginRoot()) => {
     return NONE2;
   }
 };
-var withTodos = (event, adapter, raw, env) => {
-  let todos;
-  try {
-    todos = adapter.readTodos?.(raw, env);
-  } catch {
-    return event;
-  }
-  return todos === void 0 ? event : { ...event, todos };
-};
 var handleHook = async (name, raw, env = process.env, adapter = resolveAdapter()) => {
   let parsed;
   try {
@@ -4121,8 +3849,7 @@ var handleHook = async (name, raw, env = process.env, adapter = resolveAdapter()
     return "";
   }
   if (parsed === void 0) return "";
-  const event = parsed.event.kind === "stop" ? withTodos(parsed.event, adapter, raw, env) : parsed.event;
-  const outcome = await dispatch2(event, parsed.base, resolvePluginRoot(env));
+  const outcome = await dispatch2(parsed.event, parsed.base, resolvePluginRoot(env));
   return adapter.formatOutcome(parsed.event.kind, outcome);
 };
 var parseHookArgs = (args) => {
@@ -4154,20 +3881,20 @@ var runHook = async (args) => {
 };
 
 // src/init/init.ts
-import { existsSync as existsSync6, readFileSync as readFileSync20 } from "node:fs";
+import { existsSync as existsSync6, readFileSync as readFileSync19 } from "node:fs";
 var SCHEMA_URL = "https://raw.githubusercontent.com/PetukhovArt/jig/main/schema/config.schema.json";
 var BOUNDARIES_PLUGIN = "eslint-plugin-boundaries";
 var BOUNDARIES_IGNORE = "boundaries/*";
 var USAGE = "usage: jig init [--update] [--json]";
 var EXIT_USAGE3 = 2;
 var NAME_WIDTH = 12;
-var isObject4 = (value) => typeof value === "object" && value !== null && !Array.isArray(value);
+var isObject3 = (value) => typeof value === "object" && value !== null && !Array.isArray(value);
 var readSharedConfig = (projectRoot) => {
   const path = jigPaths(projectRoot).config;
   if (!existsSync6(path)) return {};
   try {
-    const value = parseJsonc(readFileSync20(path, "utf8"));
-    return isObject4(value) ? value : {};
+    const value = parseJsonc(readFileSync19(path, "utf8"));
+    return isObject3(value) ? value : {};
   } catch {
     return {};
   }
@@ -4251,7 +3978,7 @@ var runInit = (args) => {
 
 // src/loop/loop.ts
 import { mkdirSync as mkdirSync10, writeFileSync as writeFileSync6 } from "node:fs";
-import { join as join18 } from "node:path";
+import { join as join17 } from "node:path";
 var DEFAULT_DAYS = 7;
 var DAY_MS2 = 24 * 60 * 60 * 1e3;
 var MIN_TURNS = 2;
@@ -4291,7 +4018,7 @@ var findCandidates = (records) => {
     examples: group.records.slice(0, MAX_EXAMPLES)
   })).sort(compareCandidates);
 };
-var cell = (text3) => text3.replace(/\r?\n/g, " ").replace(/\|/g, "\\|");
+var cell = (text2) => text2.replace(/\r?\n/g, " ").replace(/\|/g, "\\|");
 var formatLocation = (record2) => {
   if (record2.file === void 0) return void 0;
   return record2.line === void 0 ? record2.file : `${record2.file}:${record2.line}`;
@@ -4347,9 +4074,9 @@ var runLoop = (args) => {
   const to = /* @__PURE__ */ new Date();
   const from = new Date(to.getTime() - days * DAY_MS2);
   const records = readJournal(projectRoot, from.getTime());
-  const dir = join18(ensureJigDir(projectRoot).runs, "_loop", to.toISOString().slice(0, 10));
+  const dir = join17(ensureJigDir(projectRoot).runs, "_loop", to.toISOString().slice(0, 10));
   mkdirSync10(dir, { recursive: true });
-  const path = join18(dir, "candidates.md");
+  const path = join17(dir, "candidates.md");
   writeFileSync6(path, formatCandidates(records, from, to, days));
   process.stdout.write(`${path}
 `);
@@ -4360,12 +4087,12 @@ var runLoop = (args) => {
 import { spawnSync as spawnSync2 } from "node:child_process";
 import { copyFileSync, existsSync as existsSync8, mkdtempSync, rmSync as rmSync5 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join as join20, resolve as resolve9 } from "node:path";
+import { join as join19, resolve as resolve9 } from "node:path";
 import { parseArgs as parseArgs3 } from "node:util";
 
 // src/review/review-plan.ts
-import { existsSync as existsSync7, readFileSync as readFileSync21, readdirSync as readdirSync10 } from "node:fs";
-import { join as join19 } from "node:path";
+import { existsSync as existsSync7, readFileSync as readFileSync20, readdirSync as readdirSync9 } from "node:fs";
+import { join as join18 } from "node:path";
 import { parseArgs as parseArgs2 } from "node:util";
 
 // src/review/layout.ts
@@ -4710,9 +4437,9 @@ var readGrades = (validator, value) => {
   }
   return grades;
 };
-var parseProjectConfig = (text3, label) => {
+var parseProjectConfig = (text2, label) => {
   const validator = new Validator();
-  const root = validator.object(parseJsonc(text3), "$", PROJECT_KEYS);
+  const root = validator.object(parseJsonc(text2), "$", PROJECT_KEYS);
   const angles = root?.["angles"] === void 0 ? {} : readAngles(validator, root["angles"]);
   const grades = root?.["tiers"] === void 0 ? {} : readGrades(validator, root["tiers"]);
   const maxParallel = root?.["maxParallel"] === void 0 ? MAX_PARALLEL : validator.integer(root["maxParallel"], "$.maxParallel", 1);
@@ -4720,12 +4447,12 @@ var parseProjectConfig = (text3, label) => {
   return { angles, grades, maxParallel: maxParallel ?? MAX_PARALLEL };
 };
 var loadProjectConfig = (root) => {
-  const path = join19(jigPaths(root).dir, PROJECT_CONFIG);
+  const path = join18(jigPaths(root).dir, PROJECT_CONFIG);
   if (!existsSync7(path)) return void 0;
   const label = `.jig/${PROJECT_CONFIG}`;
-  return { label, config: parseProjectConfig(readFileSync21(path, "utf8"), label) };
+  return { label, config: parseProjectConfig(readFileSync20(path, "utf8"), label) };
 };
-var firstLine3 = (text3) => text3.split("\n")[0]?.trim() || void 0;
+var firstLine3 = (text2) => text2.split("\n")[0]?.trim() || void 0;
 var gitLine = (args, root) => {
   const result = git(args, root);
   return result.ok ? firstLine3(result.stdout) : void 0;
@@ -4765,23 +4492,23 @@ var anyAddedComment = (root, mergeBase, stats) => {
   const result = git(["diff", "-U0", "-M", "--no-color", "--no-ext-diff", mergeBase, "--", ...candidates], root);
   if (!result.ok) return false;
   for (const [file, lines] of addedLines(result.stdout)) {
-    const path = join19(root, file);
-    if (lines.size > 0 && existsSync7(path) && hasAddedComment(file, readFileSync21(path, "utf8"), lines)) return true;
+    const path = join18(root, file);
+    if (lines.size > 0 && existsSync7(path) && hasAddedComment(file, readFileSync20(path, "utf8"), lines)) return true;
   }
   return false;
 };
 var untrackedCount = (root) => (gitStatus(root) ?? []).filter((entry) => entry.status === "??").length;
 var INLINE_READER = "inline";
-var angleAtoms = (text3) => {
-  const header = /\*\*Atoms?:\*\*([^\n]*)/.exec(text3)?.[1] ?? "";
+var angleAtoms = (text2) => {
+  const header = /\*\*Atoms?:\*\*([^\n]*)/.exec(text2)?.[1] ?? "";
   return [...header.matchAll(/`([^`]+)`/g)].map((match) => match[1] ?? "").filter((name) => name !== "");
 };
 var readsFor = (pluginRoot, angles) => {
-  const angleDir = join19(pluginRoot, "skills", "jig-review", "angles");
-  const atomDir = join19(pluginRoot, "atoms");
-  const names = existsSync7(angleDir) ? readdirSync10(angleDir) : [];
-  const files = angles.flatMap((angle) => names.filter((name) => name.startsWith(`${angle}.`) && name.endsWith(".md")).map((name) => join19(angleDir, name)));
-  const atoms = [...new Set(files.flatMap((file) => angleAtoms(readFileSync21(file, "utf8"))))].map((name) => join19(atomDir, `${name}.md`)).filter((path) => existsSync7(path));
+  const angleDir = join18(pluginRoot, "skills", "jig-review", "angles");
+  const atomDir = join18(pluginRoot, "atoms");
+  const names = existsSync7(angleDir) ? readdirSync9(angleDir) : [];
+  const files = angles.flatMap((angle) => names.filter((name) => name.startsWith(`${angle}.`) && name.endsWith(".md")).map((name) => join18(angleDir, name)));
+  const atoms = [...new Set(files.flatMap((file) => angleAtoms(readFileSync20(file, "utf8"))))].map((name) => join18(atomDir, `${name}.md`)).filter((path) => existsSync7(path));
   return { angles: files.map(toSlash), atoms: atoms.map(toSlash) };
 };
 var angleList = (angles) => angles.join("+");
@@ -4882,7 +4609,7 @@ var buildReport = (root, options) => {
     plan,
     mode,
     state,
-    skill: toSlash(join19(pluginRoot, "skills", "jig-review")),
+    skill: toSlash(join18(pluginRoot, "skills", "jig-review")),
     steps: stepsFor(plan, mode, state),
     reads: Object.fromEntries(readers.map(([name, angles]) => [name, readsFor(pluginRoot, angles)])),
     maxParallel: project?.config.maxParallel ?? MAX_PARALLEL,
@@ -4994,9 +4721,9 @@ var requireRoot = (cwd) => {
   return root;
 };
 var workingTree = (root) => {
-  const dir = mkdtempSync(join20(tmpdir(), "jig-pre-mr-"));
+  const dir = mkdtempSync(join19(tmpdir(), "jig-pre-mr-"));
   try {
-    const index = join20(dir, "index");
+    const index = join19(dir, "index");
     const current = gitLine2(["rev-parse", "--git-path", "index"], root);
     if (current !== void 0 && existsSync8(resolve9(root, current))) copyFileSync(resolve9(root, current), index);
     const withIndex = (args) => spawnSync2("git", args, { cwd: root, env: { ...process.env, GIT_INDEX_FILE: index }, encoding: "utf8", windowsHide: true, maxBuffer: MAX_BUFFER2 });
@@ -5165,9 +4892,9 @@ var check = (args, ctx) => {
 };
 var textArgument = (args, usage2) => {
   const parts = args[0] === "--" ? args.slice(1) : args;
-  const text3 = parts.join(" ").trim();
-  if (text3 === "" || args[0] !== "--" && text3.startsWith("-")) throw new UsageError(usage2);
-  return text3;
+  const text2 = parts.join(" ").trim();
+  if (text2 === "" || args[0] !== "--" && text2.startsWith("-")) throw new UsageError(usage2);
+  return text2;
 };
 var proof = (args, ctx) => {
   const command = textArgument(args, `usage: jig pre-mr proof "<command>", e.g. jig pre-mr proof "${hintFor("behavior")}"`);
@@ -5242,16 +4969,16 @@ var shellExec = (command, cwd) => {
   return result.status ?? 1;
 };
 var processIo = {
-  out: (text3) => process.stdout.write(text3),
-  err: (text3) => process.stderr.write(text3)
+  out: (text2) => process.stdout.write(text2),
+  err: (text2) => process.stderr.write(text2)
 };
 var runPreMr = (args) => preMr(args, { cwd: process.cwd(), io: processIo, exec: shellExec });
 var runSkipVerify = (args) => skipVerify(args, { cwd: process.cwd(), io: processIo });
 
 // src/slot/slot.ts
 import { spawnSync as spawnSync3 } from "node:child_process";
-import { existsSync as existsSync9, mkdirSync as mkdirSync12, readFileSync as readFileSync22, rmSync as rmSync6, writeFileSync as writeFileSync7 } from "node:fs";
-import { basename as basename4, dirname as dirname9, isAbsolute as isAbsolute4, join as join21, relative as relative5, resolve as resolve10 } from "node:path";
+import { existsSync as existsSync9, mkdirSync as mkdirSync12, readFileSync as readFileSync21, rmSync as rmSync6, writeFileSync as writeFileSync7 } from "node:fs";
+import { basename as basename4, dirname as dirname9, isAbsolute as isAbsolute4, join as join20, relative as relative5, resolve as resolve10 } from "node:path";
 import { parseArgs as parseArgs4 } from "node:util";
 
 // src/worktree/lockfiles.ts
@@ -5269,7 +4996,7 @@ var installSteps = (changed, install, lockfiles = LOCKFILES) => {
 };
 
 // src/worktree/seed.ts
-import { copyFileSync as copyFileSync2, lstatSync, mkdirSync as mkdirSync11, readdirSync as readdirSync11, readlinkSync, realpathSync as realpathSync3, statSync as statSync10, symlinkSync } from "node:fs";
+import { copyFileSync as copyFileSync2, lstatSync, mkdirSync as mkdirSync11, readdirSync as readdirSync10, readlinkSync, realpathSync as realpathSync3, statSync as statSync9, symlinkSync } from "node:fs";
 import nodePath from "node:path";
 var exists = (path) => {
   try {
@@ -5310,7 +5037,7 @@ var excluder = (globs) => {
 };
 var symlinkType = (source) => {
   try {
-    return statSync10(source).isDirectory() ? "dir" : "file";
+    return statSync9(source).isDirectory() ? "dir" : "file";
   } catch {
     return "file";
   }
@@ -5348,7 +5075,7 @@ var place = (main, worktree, rel) => {
 };
 var linksInside = (main, dir) => {
   try {
-    return readdirSync11(nodePath.join(main, dir), { withFileTypes: true }).filter((entry) => entry.isSymbolicLink()).map((entry) => `${dir}${entry.name}`);
+    return readdirSync10(nodePath.join(main, dir), { withFileTypes: true }).filter((entry) => entry.isSymbolicLink()).map((entry) => `${dir}${entry.name}`);
   } catch {
     return [];
   }
@@ -5396,11 +5123,11 @@ var fail3 = (message, code) => {
 `);
   return code;
 };
-var print = (text3) => {
-  process.stdout.write(`${text3}
+var print = (text2) => {
+  process.stdout.write(`${text2}
 `);
 };
-var escapeRegExp = (text3) => text3.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+var escapeRegExp = (text2) => text2.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 var slotNumber = (dirName, repo) => {
   const match = new RegExp(`^${escapeRegExp(repo)}-s(\\d+)(?:-|$)`).exec(dirName);
   if (match?.[1] === void 0) return void 0;
@@ -5429,12 +5156,12 @@ var lowestFreeSlot = (slots) => {
 var slotDirName = (repo, slot, slug) => slug === void 0 ? `${repo}-s${slot}` : `${repo}-s${slot}-${slug}`;
 var slotPorts = (config, slot) => Object.fromEntries(Object.entries(config.ports ?? {}).map(([key, port]) => [key, port.base + slot * port.step]));
 var slotCdpPort = (config, slot) => config.cdp === void 0 ? void 0 : config.cdp.base + slot * config.cdp.step;
-var setEnvValue = (text3, key, value) => {
-  const eol = text3.includes("\r\n") ? "\r\n" : "\n";
+var setEnvValue = (text2, key, value) => {
+  const eol = text2.includes("\r\n") ? "\r\n" : "\n";
   const line = new RegExp(`^([ \\t]*(?:export[ \\t]+)?)${escapeRegExp(key)}[ \\t]*=.*$`, "gm");
-  if (line.test(text3)) return text3.replace(line, (_match, prefix) => `${prefix}${key}=${value}`);
-  const separator = text3 === "" || text3.endsWith("\n") ? "" : eol;
-  return `${text3}${separator}${key}=${value}${eol}`;
+  if (line.test(text2)) return text2.replace(line, (_match, prefix) => `${prefix}${key}=${value}`);
+  const separator = text2 === "" || text2.endsWith("\n") ? "" : eol;
+  return `${text2}${separator}${key}=${value}${eol}`;
 };
 var agentViewConfig = (base, config, cdpPort) => {
   const result = { ...base, port: cdpPort };
@@ -5468,7 +5195,7 @@ var loadContext = () => {
 var formatDuplicates = (duplicates) => [...duplicates].map(([slot, group]) => `s${slot}: ${group.map((worktree) => toSlash(worktree.path)).join(", ")}`).join("; ");
 var isTracked = (dir, file) => git(["ls-files", "--error-unmatch", "--", file], dir).ok;
 var writeLocalFile = (dir, file, content) => {
-  const path = join21(dir, file);
+  const path = join20(dir, file);
   mkdirSync12(dirname9(path), { recursive: true });
   writeFileSync7(path, content);
   if (isTracked(dir, file)) {
@@ -5484,19 +5211,19 @@ var insideDir = (dir, file) => {
 var writePorts = (dir, slots, slot) => {
   for (const [key, port] of Object.entries(slots.ports ?? {})) {
     const path = insideDir(dir, port.target);
-    const text3 = existsSync9(path) ? readFileSync22(path, "utf8") : "";
-    writeLocalFile(dir, port.target, setEnvValue(text3, key, String(port.base + slot * port.step)));
+    const text2 = existsSync9(path) ? readFileSync21(path, "utf8") : "";
+    writeLocalFile(dir, port.target, setEnvValue(text2, key, String(port.base + slot * port.step)));
   }
 };
 var readJsonObject = (path) => {
   if (!existsSync9(path)) return {};
-  const value = parseJsonc(readFileSync22(path, "utf8"));
-  const isObject5 = typeof value === "object" && value !== null && !Array.isArray(value);
-  return isObject5 ? value : {};
+  const value = parseJsonc(readFileSync21(path, "utf8"));
+  const isObject4 = typeof value === "object" && value !== null && !Array.isArray(value);
+  return isObject4 ? value : {};
 };
 var writeAgentView = (mainRoot, dir, slots, cdpPort) => {
-  const own = join21(dir, AGENT_VIEW_CONFIG2);
-  const base = readJsonObject(existsSync9(own) ? own : join21(mainRoot, AGENT_VIEW_CONFIG2));
+  const own = join20(dir, AGENT_VIEW_CONFIG2);
+  const base = readJsonObject(existsSync9(own) ? own : join20(mainRoot, AGENT_VIEW_CONFIG2));
   writeLocalFile(dir, AGENT_VIEW_CONFIG2, `${JSON.stringify(agentViewConfig(base, slots, cdpPort), null, 2)}
 `);
 };
@@ -5506,7 +5233,7 @@ var worktreeAddArgs = (cwd, dir, branch) => {
   return branchExists(cwd, branch) ? ["worktree", "add", dir, branch] : ["worktree", "add", dir, "-b", branch];
 };
 var reserveSlot = async (context, slots, options) => {
-  const lock = await acquireLock(join21(ensureJigDir(context.mainRoot).cache, SLOT_LOCK));
+  const lock = await acquireLock(join20(ensureJigDir(context.mainRoot).cache, SLOT_LOCK));
   if (lock === void 0) return fail3("slot new is running elsewhere, retry", 1);
   try {
     git(["worktree", "prune"], context.projectRoot);
@@ -5579,8 +5306,8 @@ var slotLs = (args) => {
   }
   return 0;
 };
-var parseSlotNumber = (text3) => {
-  const slot = Number(text3?.replace(/^s/, ""));
+var parseSlotNumber = (text2) => {
+  const slot = Number(text2?.replace(/^s/, ""));
   return Number.isInteger(slot) && slot >= 1 ? slot : void 0;
 };
 var findSlot = (context, slot) => {
@@ -5739,8 +5466,8 @@ var fail4 = (message, code) => {
 `);
   return code;
 };
-var print2 = (text3) => {
-  process.stdout.write(`${text3}
+var print2 = (text2) => {
+  process.stdout.write(`${text2}
 `);
 };
 var mainCheckout = (cwd) => {

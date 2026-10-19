@@ -21,11 +21,11 @@ import type { Edit } from '../rules/rule'
 import { checkEdit } from '../gates/edit'
 import { stopGate } from '../gates/stop'
 import { collapseFindings, limitLines, POST_EDIT_LINE_LIMIT, type Finding } from '../tools/finding'
-import type { EventBase, JigEvent, Outcome, TodoItem } from './types'
+import type { EventBase, JigEvent, Outcome } from './types'
 
 type Command = (args: string[]) => number | Promise<number>
 
-export type { EditPair, EventBase, JigEvent, Outcome, SessionSource, TodoItem } from './types'
+export type { EditPair, EventBase, JigEvent, Outcome, SessionSource } from './types'
 
 interface HookContext extends EventBase {
   pluginRoot: string
@@ -100,16 +100,11 @@ const sessionStart = (event: EventOf<'session-start'>, ctx: HookContext): Outcom
   return contextOf(parts)
 }
 
-const FLOW_COMMANDS: ReadonlySet<string> = new Set(['jig', 'jig:jig'])
-
-const prompt = (event: EventOf<'prompt'>, ctx: HookContext): Outcome => {
+const prompt = (ctx: HookContext): Outcome => {
   const state = openSession(ctx)
   resetSnapshot(state, takeSnapshot(ctx.projectRoot))
   state.turn += 1
   ctx.turn = state.turn
-  if (event.command !== undefined && FLOW_COMMANDS.has(event.command)) {
-    state.flowTurn = state.turn
-  }
   writeState(ctx.projectRoot, state)
   return NONE
 }
@@ -188,13 +183,7 @@ const subagentStart = (event: EventOf<'subagent-start'>, ctx: HookContext): Outc
 
 const stop = async (event: EventOf<'stop'>, ctx: HookContext): Promise<Outcome> => {
   const state = openSession(ctx)
-  const verdict = await stopGate({
-    projectRoot: ctx.projectRoot,
-    pluginRoot: ctx.pluginRoot,
-    state,
-    stopHookActive: event.stopHookActive,
-    ...(event.todos === undefined ? {} : { todos: event.todos }),
-  })
+  const verdict = await stopGate({ projectRoot: ctx.projectRoot, pluginRoot: ctx.pluginRoot, state, stopHookActive: event.stopHookActive })
   writeState(ctx.projectRoot, state)
   for (const note of verdict.notes) {
     journal(ctx, note)
@@ -207,7 +196,7 @@ const route = (event: JigEvent, ctx: HookContext): Outcome | Promise<Outcome> =>
     case 'session-start':
       return sessionStart(event, ctx)
     case 'prompt':
-      return prompt(event, ctx)
+      return prompt(ctx)
     case 'pre-edit':
       return preEdit(event, ctx)
     case 'post-edit':
@@ -229,16 +218,6 @@ export const dispatch = async (event: JigEvent, base: EventBase, pluginRoot: str
   }
 }
 
-const withTodos = (event: EventOf<'stop'>, adapter: AgentAdapter, raw: string, env: NodeJS.ProcessEnv): EventOf<'stop'> => {
-  let todos: readonly TodoItem[] | undefined
-  try {
-    todos = adapter.readTodos?.(raw, env)
-  } catch {
-    return event
-  }
-  return todos === undefined ? event : { ...event, todos }
-}
-
 export const handleHook = async (
   name: string,
   raw: string,
@@ -252,8 +231,7 @@ export const handleHook = async (
     return ''
   }
   if (parsed === undefined) return ''
-  const event = parsed.event.kind === 'stop' ? withTodos(parsed.event, adapter, raw, env) : parsed.event
-  const outcome = await dispatch(event, parsed.base, resolvePluginRoot(env))
+  const outcome = await dispatch(parsed.event, parsed.base, resolvePluginRoot(env))
   return adapter.formatOutcome(parsed.event.kind, outcome)
 }
 
