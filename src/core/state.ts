@@ -1,7 +1,6 @@
 import { mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { jigPaths } from './paths'
-import type { ProofKind } from '../checks/check'
 import type { Snapshot } from './snapshot'
 
 export interface EditRecord {
@@ -17,13 +16,6 @@ export interface StopState {
   lastBlockDiffFingerprint?: string
 }
 
-export interface ProofTimes {
-  editAt?: number
-  proofAt?: number
-}
-
-export type CheckTimes = Record<string, Partial<Record<ProofKind, ProofTimes>>>
-
 export interface SessionState {
   v: 1
   sessionId: string
@@ -32,7 +24,6 @@ export interface SessionState {
   updatedAt: string
   snapshot: Snapshot
   edits: EditRecord[]
-  checks: CheckTimes
   delivered: Record<string, string[]>
   sessionAtoms: string[]
   pendingWarnings: string[]
@@ -62,7 +53,6 @@ export const createSessionState = (sessionId: string, snapshot: Snapshot, now: D
     updatedAt: iso,
     snapshot,
     edits: [],
-    checks: {},
     delivered: {},
     sessionAtoms: [],
     pendingWarnings: [],
@@ -73,15 +63,6 @@ export const createSessionState = (sessionId: string, snapshot: Snapshot, now: D
 export const resetSnapshot = (state: SessionState, snapshot: Snapshot): void => {
   state.snapshot = snapshot
   state.edits = []
-}
-
-export const stampCheck = (state: SessionState, check: string, kinds: readonly ProofKind[], field: keyof ProofTimes, at: number): void => {
-  if (kinds.length === 0) return
-  const times = state.checks[check] ?? {}
-  for (const kind of kinds) {
-    times[kind] = { ...times[kind], [field]: at }
-  }
-  state.checks[check] = times
 }
 
 const isSessionState =(value: unknown): value is SessionState => {
@@ -100,8 +81,7 @@ export const readState = (projectRoot: string, sessionId: string): SessionState 
   try {
     const value: unknown = JSON.parse(text)
     if (!isSessionState(value)) return undefined
-    const checks = typeof value.checks === 'object' && value.checks !== null ? value.checks : {}
-    return { ...value, turn: typeof value.turn === 'number' ? value.turn : 0, checks }
+    return { ...value, turn: typeof value.turn === 'number' ? value.turn : 0 }
   } catch {
     return undefined
   }

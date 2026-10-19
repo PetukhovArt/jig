@@ -4,7 +4,6 @@
   "rules": {
     "jig/comments": "error",
     "jig/suppressions": "error",
-    "jig/verify-fact": "error",
     "gate/oxlint": "error",
     "gate/stratum": "error",
     "gate/tsc": "error",

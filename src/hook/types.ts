@@ -11,7 +11,6 @@ export type JigEvent =
   | { kind: 'pre-edit'; file: string; edits: EditPair[]; wholeFile?: string }
   | { kind: 'post-edit'; file: string }
   | { kind: 'post-read'; file: string }
-  | { kind: 'post-bash'; command: string; ok: boolean }
   | { kind: 'subagent-start'; agentId: string; agentType: string }
   | { kind: 'stop'; stopHookActive: boolean }
 

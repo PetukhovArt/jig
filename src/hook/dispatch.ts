@@ -6,7 +6,6 @@ import { loadConfig, type JigConfig } from '../core/config'
 import { activeRunContext } from '../dash/dash'
 import { appendJournal, rotateJournal, type JournalEntry } from '../core/journal'
 import { ensureJigDir, resolvePluginRoot, toSlash } from '../core/paths'
-import { CHECKS } from '../checks'
 import { loadPlan, type PlanAtom } from '../core/plan'
 import { takeSnapshot } from '../core/snapshot'
 import {
@@ -15,7 +14,6 @@ import {
   pruneStates,
   readState,
   resetSnapshot,
-  stampCheck,
   writeState,
   type SessionState,
 } from '../core/state'
@@ -256,9 +254,6 @@ const postEdit = async (event: EventOf<'post-edit'>, ctx: HookContext): Promise<
   const state = openSession(ctx)
   state.edits.push({ path: event.file, at: now, agent: ctx.agent })
   const parts: string[] = []
-  for (const check of CHECKS) {
-    stampCheck(state, check.name, check.requires(event.file), 'editAt', now)
-  }
   const toolFindings = await editToolFindings(ctx, event.file)
   const toolLines = collapseFindings(toolFindings)
   const findingLines = [...toolLines, ...state.pendingWarnings]
@@ -279,19 +274,6 @@ const postRead = (event: EventOf<'post-read'>, ctx: HookContext): Outcome => {
   if (parts.length === 0) return NONE
   writeState(ctx.projectRoot, state)
   return contextOf(parts)
-}
-
-const postBash = (event: EventOf<'post-bash'>, ctx: HookContext): Outcome => {
-  if (!event.ok) return NONE
-  const proofs = CHECKS.map((check) => ({ name: check.name, kinds: check.proves(event.command) })).filter((proof) => proof.kinds.length > 0)
-  if (proofs.length === 0) return NONE
-  const now = Date.now()
-  const state = openSession(ctx)
-  for (const proof of proofs) {
-    stampCheck(state, proof.name, proof.kinds, 'proofAt', now)
-  }
-  writeState(ctx.projectRoot, state)
-  return NONE
 }
 
 const subagentStart = (ctx: HookContext): Outcome => {
@@ -328,8 +310,6 @@ const route = (event: JigEvent, ctx: HookContext): Outcome | Promise<Outcome> =>
       return postEdit(event, ctx)
     case 'post-read':
       return postRead(event, ctx)
-    case 'post-bash':
-      return postBash(event, ctx)
     case 'subagent-start':
       return subagentStart({ ...ctx, agent: event.agentId })
     case 'stop':

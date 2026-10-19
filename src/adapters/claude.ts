@@ -14,7 +14,6 @@ const HOOK_EVENT_NAMES: Record<JigEvent['kind'], string> = {
   'pre-edit': 'PreToolUse',
   'post-edit': 'PostToolUse',
   'post-read': 'PostToolUse',
-  'post-bash': 'PostToolUse',
   'subagent-start': 'SubagentStart',
   stop: 'Stop',
 }
@@ -84,13 +83,6 @@ const toolFile = (input: Json, paths: PathContext): string | undefined => {
   return rawFile === undefined ? undefined : toProjectPath(paths.projectRoot, rawFile, paths.cwd)
 }
 
-const isBashSuccess = (response: unknown): boolean => {
-  if (!isObject(response)) return true
-  const exitCode = response['exit_code'] ?? response['exitCode']
-  const hasFailedExit = typeof exitCode === 'number' && exitCode !== 0
-  return response['interrupted'] !== true && response['is_error'] !== true && !hasFailedExit
-}
-
 const toEvent = (name: string, input: Json, paths: PathContext): JigEvent | undefined => {
   const toolName = text(input, 'tool_name')
   const toolInput = isObject(input['tool_input']) ? input['tool_input'] : {}
@@ -107,10 +99,6 @@ const toEvent = (name: string, input: Json, paths: PathContext): JigEvent | unde
     case 'post-read': {
       const file = toolFile(toolInput, paths)
       return file === undefined ? undefined : { kind: name, file }
-    }
-    case 'post-bash': {
-      const command = text(toolInput, 'command')
-      return command === undefined ? undefined : { kind: 'post-bash', command, ok: isBashSuccess(input['tool_response']) }
     }
     case 'subagent-start': {
       const agentId = text(input, 'agent_id')

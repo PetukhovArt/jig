@@ -1,13 +1,26 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { git } from '../src/core/git'
 import { readJournal } from '../src/core/journal'
-import { buildPlan, writePlan } from '../src/core/plan'
 import { dispatch, type EventBase, type JigEvent } from '../src/hook/dispatch'
 
 const pluginRoot = resolve(__dirname, '..')
+
+vi.mock('../src/tools', () => ({
+  TOOLS: [
+    {
+      name: 'probe',
+      rule: 'gate/probe',
+      binaries: [],
+      stop: async (_tools: unknown, input: { files: readonly string[] }) => ({
+        runs: [],
+        findings: input.files.map((file) => ({ tool: 'probe', rule: 'probe/always', severity: 'error', file, line: 1, message: 'probe fails' })),
+      }),
+    },
+  ],
+}))
 
 let root: string
 let base: EventBase
@@ -35,9 +48,6 @@ beforeEach(async () => {
   git(['-c', 'user.email=jig@test', '-c', 'user.name=jig', 'commit', '-q', '-m', 'init'], root)
   await send({ kind: 'session-start', source: 'startup' })
   await send({ kind: 'prompt' })
-  const plan = buildPlan(root, pluginRoot)
-  plan.tools.agentView = { bin: ['agent-view'], config: join(root, 'agent-view.config.json') }
-  writePlan(root, plan)
 })
 
 afterEach(() => {
@@ -49,7 +59,7 @@ describe('stop gate loop protection', () => {
     await editView('<template>a</template>\n')
     const first = await send({ kind: 'stop', stopHookActive: false })
     expect(first.type).toBe('block')
-    expect(first.type === 'block' && first.reason).toContain('jig/verify-fact')
+    expect(first.type === 'block' && first.reason).toContain('probe fails')
     expect(await send({ kind: 'stop', stopHookActive: true })).toEqual({ type: 'none' })
     expect(journalKinds()).toContain('gate-unresolved')
   })

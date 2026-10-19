@@ -31,25 +31,6 @@ vi.mock('../src/tools', () => {
   return { TOOLS: [stopTool('beta'), editTool, stopTool('alpha')] }
 })
 
-vi.mock('../src/checks', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../src/checks')>()
-  const http = actual.defineCheck({
-    name: 'http',
-    binaries: [],
-    requires: (file) => (file.startsWith('api/') ? ['behavior'] : []),
-    proves: (command) => (command.startsWith('npm run e2e') ? ['behavior'] : []),
-    hints: { behavior: 'npm run e2e' },
-  })
-  const dormant = actual.defineCheck({
-    name: 'dormant',
-    binaries: [{ key: 'dormant', label: 'dormant', command: 'dormant', packages: [], configs: [], requiresConfig: false }],
-    requires: () => ['look'],
-    proves: () => [],
-    hints: {},
-  })
-  return { ...actual, CHECKS: [http, dormant] }
-})
-
 let root: string
 
 const plan = (): Plan => ({ v: 1, inputsHash: '', pluginVersion: '', builtAt: '', config: defaultConfig(), tools: {}, atoms: [] })
@@ -87,28 +68,5 @@ describe('gates read tools from the registry', () => {
     expect(Object.keys(config.rules)).toEqual(expect.arrayContaining(['gate/beta', 'gate/gamma', 'gate/alpha']))
     const runs = await checkEdit(plan(), root, 'src/a.ts')
     expect(runs.map((toolRun) => toolRun.tool)).toEqual(['gamma'])
-  })
-})
-
-describe('jig/verify-fact reads runtime checks from the registry', () => {
-  const verifyMessages = async (proofAt?: number): Promise<string[]> => {
-    const checks = await runStopChecks({
-      projectRoot: root,
-      pluginRoot: root,
-      plan: plan(),
-      diff: { files: ['api/users.ts', 'src/a.ts'], stamps: {}, fingerprint: '' },
-      times: { checks: { http: { behavior: { editAt: 10, ...(proofAt === undefined ? {} : { proofAt }) } } } },
-    })
-    return checks.findings.filter((finding) => finding.rule === 'jig/verify-fact').map((finding) => finding.message)
-  }
-
-  it('blocks on an active check without proof and skips checks whose binaries are missing', async () => {
-    const [message, ...rest] = await verifyMessages()
-    expect(rest).toEqual([])
-    expect(message).toMatch(/^jig\/verify-fact: http has no behavior proof since files changed \(1: api\/users\.ts\)\. behavior: run npm run e2e, or if not needed: /)
-  })
-
-  it('passes once the check recorded a proof after the edit', async () => {
-    expect(await verifyMessages(11)).toEqual([])
   })
 })
