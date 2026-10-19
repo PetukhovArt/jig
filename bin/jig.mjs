@@ -4357,6 +4357,13 @@ var CLEANUP = [7, 9];
 var RULES = [6, 10, 11, 13, 15];
 var MECHANICAL = [16, 17];
 var CLEANUP_TOKENS = ["reuse", "simplification", "altitude", "conventions"];
+var LAYOUTS = ["auto", "inline", "fanout", "lean", "solo"];
+var isLayout = (value) => LAYOUTS.includes(value);
+var AUTO_INLINE_MAX_N = 2;
+var resolveAuto = (layout, n) => {
+  if (layout !== "auto") return layout;
+  return n <= AUTO_INLINE_MAX_N ? "inline" : "lean";
+};
 var finderCount = (lines2) => Math.min(MAX_FINDERS, Math.ceil(Math.max(0, lines2) / LINES_PER_FINDER));
 var ceilingOf = (angle, settings) => settings?.[angle]?.severityCeiling ?? (IMPORTANT_ANGLES.includes(angle) ? "Important" : "Nit");
 var autoTokens = (shape, n) => {
@@ -4368,10 +4375,10 @@ var autoTokens = (shape, n) => {
   if (n === 1) tokens.push(...CLEANUP_TOKENS);
   return tokens;
 };
-var parseSelector = (input, shape, n) => {
+var parseSelector = (input, shape, n, inline = n === 1) => {
   const given = input !== void 0 && input !== "";
-  const source = given ? "argument" : n === 1 ? "small-diff" : "default";
-  const raw = given ? input : n === 1 ? "quick" : "full";
+  const source = given ? "argument" : inline ? "small-diff" : "default";
+  const raw = given ? input : inline ? "quick" : "full";
   if (Object.hasOwn(PRESETS, raw)) {
     const expanded2 = PRESETS[raw];
     return { input: raw, tokens: expanded2 === void 0 ? [] : [expanded2], source };
@@ -4433,10 +4440,19 @@ var layoutFinders = (n, angles, grades) => {
   groups.push({ name: "mechanical", kind: "mechanical", angles: MECHANICAL.filter(has) });
   return groups.filter((group) => group.angles.length > 0).flatMap((group) => splitByGrade(group.name, group.kind, group.angles, grades));
 };
+var FINDER_TIER = { lean: "standard", solo: "deep" };
+var ANGLE_TOKEN_NAMES = Object.values(ANGLE_TOKENS);
+var finderGrades = (layout, grades) => {
+  const tier = FINDER_TIER[layout];
+  if (tier === void 0) return { ...grades };
+  return Object.fromEntries(Object.entries(grades).map(([key, grade]) => [key, ANGLE_TOKEN_NAMES.includes(key) ? { ...grade, tier } : grade]));
+};
 var planReview = (input) => {
   const n = finderCount(input.lines);
-  const grades = { ...DEFAULT_GRADES, ...input.grades };
-  const selection = parseSelector(input.selector, input.shape, n);
+  const layout = resolveAuto(input.layout ?? "auto", n);
+  const inline = n === 1 || n > 1 && layout === "inline";
+  const grades = finderGrades(layout, { ...DEFAULT_GRADES, ...input.grades });
+  const selection = parseSelector(input.selector, input.shape, n, inline);
   const wanted = selectedAngles(selection.tokens, input.angles);
   const skipped = [];
   const angles = ANGLES.filter((angle) => {
@@ -4450,11 +4466,14 @@ var planReview = (input) => {
     (angle) => skipped.push({ angle, reason: "no counted code lines" })
   );
   const wantsDeepening = selection.tokens.length === 0 ? input.shape.newSourceFiles > 0 : selection.tokens.includes("deepening");
-  const path2 = usedForCode.length === 0 ? "none" : n === 1 ? "inline" : "subagents";
+  const path2 = usedForCode.length === 0 ? "none" : inline ? "inline" : "subagents";
+  const judging = path2 !== "subagents" || layout === "lean" ? "important" : layout === "solo" ? "self" : "clusters";
   return {
     lines: input.lines,
     n,
+    layout,
     path: path2,
+    judging,
     selection,
     outputTokens: selection.tokens.filter((token) => token !== "deepening"),
     angles: usedForCode,
@@ -4485,7 +4504,11 @@ var stepsFor = (plan, mode, state) => {
     );
   }
   if (plan.path === "inline") steps.push({ file: "steps/04-inline.md" }, ...gateFiles(plan.angles).map((file) => ({ file })));
-  else steps.push({ file: "steps/04-finders.md" }, { file: "steps/05-verify.md" });
+  else if (plan.judging === "important") {
+    steps.push({ file: "steps/04-finders.md" }, { file: "steps/05-verify.md", when: 'sections "Dedup" and "Layout lean"' }, ...gateFiles(plan.angles).map((file) => ({ file })));
+  } else if (plan.judging === "self") {
+    steps.push({ file: "steps/04-finders.md", when: 'with section "Layout solo"' }, { file: "steps/05-verify.md", when: 'sections "Dedup" and "Layout solo"' });
+  } else steps.push({ file: "steps/04-finders.md", when: 'without section "Layout solo"' }, { file: "steps/05-verify.md", when: 'without sections "Layout lean" and "Layout solo"' });
   steps.push({ file: "steps/06-rank.md" });
   if (state) steps.push({ file: "steps/07-comments.md" });
   steps.push(output);
@@ -4576,7 +4599,7 @@ var hasAddedComment = (file, source, added) => {
     return false;
   });
 };
-var PROJECT_KEYS = ["$schema", "iterationsMemory", "discover", "review", "severity", "route", "angles", "tiers", "maxParallel"];
+var PROJECT_KEYS = ["$schema", "iterationsMemory", "discover", "review", "severity", "route", "angles", "tiers", "maxParallel", "layout"];
 var readAngles = (validator, value) => {
   const object = validator.object(value, "$.angles", void 0);
   if (object === void 0) return {};
@@ -4624,8 +4647,9 @@ var parseProjectConfig = (text3, label) => {
   const angles = root?.["angles"] === void 0 ? {} : readAngles(validator, root["angles"]);
   const grades = root?.["tiers"] === void 0 ? {} : readGrades(validator, root["tiers"]);
   const maxParallel = root?.["maxParallel"] === void 0 ? MAX_PARALLEL : validator.integer(root["maxParallel"], "$.maxParallel", 1);
+  const layout = root?.["layout"] === void 0 ? void 0 : validator.oneOf(root["layout"], "$.layout", LAYOUTS);
   if (validator.errors.length > 0) throw new Error(`${label}: ${validator.errors.join("; ")}`);
-  return { angles, grades, maxParallel: maxParallel ?? MAX_PARALLEL };
+  return { layout, angles, grades, maxParallel: maxParallel ?? MAX_PARALLEL };
 };
 var loadProjectConfig = (root) => {
   const path2 = join21(jigPaths(root).dir, PROJECT_CONFIG);
@@ -4680,6 +4704,20 @@ var anyAddedComment = (root, mergeBase, stats) => {
 };
 var untrackedCount = (root) => (gitStatus(root) ?? []).filter((entry) => entry.status === "??").length;
 var INLINE_READER = "inline";
+var LAYOUT_ENV = "JIG_REVIEW_LAYOUT";
+var DEFAULT_LAYOUT = "auto";
+var resolveLayout = (argument, env, config) => {
+  const given = [
+    [argument, "argument", "--layout"],
+    [env, "env", LAYOUT_ENV]
+  ];
+  for (const [value, source, label] of given) {
+    if (value === void 0 || value === "") continue;
+    if (!isLayout(value)) throw new Error(`unknown layout ${value} in ${label}; expected one of ${LAYOUTS.join(", ")}`);
+    return { name: value, source };
+  }
+  return config === void 0 ? { name: DEFAULT_LAYOUT, source: "default" } : { name: config, source: "config" };
+};
 var angleAtoms = (text3) => {
   const header = /\*\*Atoms?:\*\*([^\n]*)/.exec(text3)?.[1] ?? "";
   return [...header.matchAll(/`([^`]+)`/g)].map((match) => match[1] ?? "").filter((name) => name !== "");
@@ -4700,7 +4738,20 @@ var gradeText = (grade, models) => {
 var SELECTOR_NOTES = {
   argument: "",
   default: " (default)",
-  "small-diff": " (default for N = 1; --selector full for every angle)"
+  "small-diff": " (default on the inline path; --selector full for every angle)"
+};
+var LAYOUT_SOURCE_TEXT = { argument: "--layout", env: LAYOUT_ENV, config: `.jig/${PROJECT_CONFIG}`, default: "default" };
+var LAYOUT_TEXT = {
+  inline: "the session hunts and judges; a judge subagent only for Important",
+  fanout: "finders by LINES on their angle tiers, a judge per cluster on the other model",
+  lean: "finders by LINES on the standard tier; you judge, a deep judge only for Important",
+  solo: "finders by LINES on the deep tier prove their own candidates; no judge subagents"
+};
+var layoutLine = (report) => {
+  const { name, source } = report.layout;
+  const resolved = report.plan.layout;
+  const chosen = name === "auto" ? `auto \u2192 ${resolved} (inline up to N = ${AUTO_INLINE_MAX_N}, lean above)` : resolved;
+  return `layout: ${chosen}${source === "default" ? " (default)" : ` (from ${LAYOUT_SOURCE_TEXT[source]})`} \xB7 ${LAYOUT_TEXT[resolved]}`;
 };
 var stateText = (report) => {
   if (report.state) return "on (merge request known: state file, comment texts, re-review)";
@@ -4715,6 +4766,7 @@ var formatReport = (report) => {
     `base: ${report.base.ref} (merge base ${report.base.mergeBase.slice(0, 8)}, from ${report.base.source})`,
     `lines: ${plan.lines} in ${report.files.counted} files${excluded.length > 0 ? `; excluded: ${excluded.join(", ")}` : ""}${report.files.untracked > 0 ? `; untracked files not counted: ${report.files.untracked} (git add -N to count them)` : ""}`,
     `finders: ${report.formula}`,
+    layoutLine(report),
     `shape: tests ${report.shape.tests ? "yes" : "no"} \xB7 added comments ${report.shape.comments ? "yes" : "no"} \xB7 markdown ${report.shape.docs ? "yes" : "no"} \xB7 new source files ${report.shape.newSourceFiles} \xB7 spec ${report.shape.spec ? "yes" : "no"}`,
     `selector: ${plan.selection.input}${plan.selection.tokens.length > 0 && plan.selection.input !== plan.selection.tokens.join(",") ? ` \u2192 ${plan.selection.tokens.join(",")}` : ""}${SELECTOR_NOTES[plan.selection.source]}`,
     `config: ${report.config ?? "default"} \xB7 agent: ${report.agent} \xB7 max parallel subagents: ${report.maxParallel}`,
@@ -4736,13 +4788,20 @@ var formatReport = (report) => {
     for (const judge2 of report.judge) {
       lines2.push(`  your model ${judge2.finderModel} \u2192 judge ${judge2.judgeModel}${judge2.same ? " (same model: one model in the tier)" : ""}`);
     }
+  } else if (plan.judging === "self") {
+    lines2.push("verify: no judge subagents; every finder proves its own candidates, you dedup and apply the verdicts");
+  } else if (plan.judging === "important") {
+    lines2.push(`verify: you judge every candidate by the gate files; one judge subagent for the Important ones, ${plan.verify.tier}/${plan.verify.effort}`);
+    for (const judge2 of report.judge) {
+      lines2.push(`  candidates from ${judge2.finderModel} \u2192 judge ${judge2.judgeModel}${judge2.same ? " (same model: one model in the tier)" : ""}`);
+    }
   } else {
     lines2.push(`verify: ${plan.verify.tier}/${plan.verify.effort}`);
     for (const judge2 of report.judge) {
       lines2.push(`  candidates from ${judge2.finderModel} \u2192 judge ${judge2.judgeModel}${judge2.same ? " (same model: one model in the tier)" : ""}`);
     }
   }
-  if (report.judge.length === 0) lines2.push(`  judge: a ${plan.verify.tier} model other than the finder's`);
+  if (report.judge.length === 0 && plan.judging !== "self") lines2.push(`  judge: a ${plan.verify.tier} model other than the finder's`);
   lines2.push(`outcome check: ${gradeText(plan.outcome, models)} \xB7 composer: ${gradeText(plan.composer, models)}`);
   if (plan.skipped.length > 0) {
     lines2.push(`skipped angles: ${plan.skipped.map((skip) => `${skip.angle} (${skip.reason})`).join(", ")}`);
@@ -4764,9 +4823,11 @@ var buildReport = (root, options) => {
     spec: options.spec
   };
   const project = loadProjectConfig(root);
+  const layout = resolveLayout(options.layout, options.layoutEnv, project?.config.layout);
   const plan = planReview({
     lines: lines2,
     shape,
+    layout: layout.name,
     selector: options.selector,
     angles: project?.config.angles ?? {},
     grades: project?.config.grades ?? {}
@@ -4786,6 +4847,7 @@ var buildReport = (root, options) => {
     base: { ref: base.ref, mergeBase: base.mergeBase, source: base.source },
     files: { counted, excluded, untracked: untrackedCount(root) },
     formula: `ceil(${lines2}/${LINES_PER_FINDER}) = ${Math.ceil(lines2 / LINES_PER_FINDER)}, max ${MAX_FINDERS} \u2192 N = ${plan.n}`,
+    layout,
     shape,
     plan,
     mode,
@@ -4798,11 +4860,11 @@ var buildReport = (root, options) => {
     agent,
     models,
     finderModels,
-    judge: judgeModels(usedModels, verifyModels)
+    judge: plan.judging === "self" ? [] : judgeModels(usedModels, verifyModels)
   };
 };
 var isMode = (value) => MODES.includes(value);
-var USAGE2 = "usage: jig review-plan [<base>] [--selector full|quick|auto|<tokens>] [--spec] [--mode review|pre-mr] [--mr] [--no-state] [--agent <id>] [--json]";
+var USAGE2 = "usage: jig review-plan [<base>] [--selector full|quick|auto|<tokens>] [--layout auto|inline|fanout|lean|solo] [--spec] [--mode review|pre-mr] [--mr] [--no-state] [--agent <id>] [--json]";
 var runReviewPlan = (args) => {
   const { values, positionals } = parseArgs2({
     args,
@@ -4810,6 +4872,7 @@ var runReviewPlan = (args) => {
     strict: true,
     options: {
       selector: { type: "string" },
+      layout: { type: "string" },
       spec: { type: "boolean" },
       agent: { type: "string" },
       mode: { type: "string" },
@@ -4826,6 +4889,8 @@ var runReviewPlan = (args) => {
   const report = buildReport(root, {
     base: positionals[0],
     selector: values.selector,
+    layout: values.layout,
+    layoutEnv: process.env[LAYOUT_ENV],
     spec: values.spec === true,
     agent: values.agent,
     mode,
