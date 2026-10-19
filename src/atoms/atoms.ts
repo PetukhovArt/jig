@@ -5,6 +5,7 @@ import { ensureJigDir, resolvePluginRoot, resolveProjectRoot } from '../core/pat
 import { buildPlan, readAtomIndex, writePlan } from '../core/plan'
 import { GATE_ATOMS } from '../rules/gate'
 import { listMarkdown, parseMarkdownFile, readText } from './markdown'
+import { validateDocRefs } from './doc-refs'
 import { validateSkillDocs } from './skill-docs'
 
 type Command = (args: string[]) => number | Promise<number>
@@ -126,7 +127,7 @@ export const runBuild: Command = (args) => {
     return 2
   }
   const pluginRoot = resolvePluginRoot()
-  const errors = [...validateAtoms(pluginRoot), ...validateSkillDocs(pluginRoot)]
+  const errors = [...validateAtoms(pluginRoot), ...validateSkillDocs(pluginRoot), ...validateDocRefs(pluginRoot)]
   if (errors.length > 0) {
     process.stdout.write(`${errors.join('\n')}\n`)
     return 1

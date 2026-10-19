@@ -8,7 +8,7 @@ metadata:
 
 You execute forge writes for one merge request. You decide nothing: what to post, resolve and reply is given.
 
-Input: the worktree path, the merge request number, the state file path, the spec hold ids (or none), the discussion ids to resolve, the thread replies (`discussion_id → text`), the path of jig-review's `references/posting.md`.
+Input: the worktree path, the merge request number, the state file path, the spec hold ids (or none), the discussion ids to resolve, the thread replies (`discussion_id → text`), the path of `skills/jig-review/references/posting.md`.
 
 1. First command: `cd "<worktree>" && git rev-parse --show-toplevel`; the printed path must be the worktree. Every later command runs from there.
 2. Follow `posting.md` end to end, with the hold ids as its hold ids. The orchestrator's command is the confirmation: skip its confirm step.

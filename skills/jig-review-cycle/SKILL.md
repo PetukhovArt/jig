@@ -142,7 +142,7 @@ outside the diff (in the FYI note; a tech-debt issue?):
   !142 · <file> · <finding summary>
 ```
 
-- **Link**: `[!<iid>](<web_url>)`; with rows from several repositories `[<repo>!<iid>](<web_url>)`.
+- **Link**: a markdown link with the text `!<iid>` (rows from several repositories: `<repo>!<iid>`) and the merge request's `web_url` as the target.
 - **Status**: `returned` · `need approval` (clean, recommended to the human) · `resolved N` / `resolved N + returned` · `blocked | <reason>`; append `· unverified N` whenever the tally has any, and `· dispute: needs a human` when the engine left one.
 - **skipped**: the `skipped:` line `queue` printed. Omit when nothing was skipped.
 - **tracker**: every `verdict` line and every `NOTE` from `queue`, verbatim. Omit when empty.

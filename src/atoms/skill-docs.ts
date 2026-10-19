@@ -2,7 +2,7 @@ import { readdirSync } from 'node:fs'
 import { basename, join } from 'node:path'
 import type { FrontmatterValue } from '../core/frontmatter'
 import { toSlash } from '../core/paths'
-import { listMarkdown, parseMarkdownFile, readText } from './markdown'
+import { listMarkdown, listSkillFolders, parseMarkdownFile, readText } from './markdown'
 
 const ROLES_DIR = 'skills/jig/references/roles'
 const FLOWS_DIR = 'skills/jig/flows'
@@ -10,6 +10,8 @@ const ROLE_KEYS = new Set(['name', 'description', 'metadata'])
 const TIERS = ['deep', 'standard', 'fast']
 const EFFORTS = ['low', 'medium', 'high']
 const MAX_DESCRIPTION_LENGTH = 200
+const SKILL_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
+const MAX_SKILL_NAME_LENGTH = 64
 const ROLE_MENTION = /\b[Rr]oles? `[^`]+`(?:(?:, |,? and |,? or )`[^`]+`)*/g
 const BACKTICKED = /`([^`]+)`/g
 const FLOW_MENTION = /\bflows\/([A-Za-z0-9_-]+)\.md/g
@@ -50,9 +52,9 @@ const checkDescription = (description: FrontmatterValue | undefined): string[] =
   return []
 }
 
-const checkName = (name: FrontmatterValue | undefined, fileName: string): string[] => {
-  if (name === fileName) return []
-  return typeof name === 'string' && name !== '' ? [`name "${name}" does not match file name "${fileName}"`] : ['name is missing']
+const checkName = (name: FrontmatterValue | undefined, expected: string, source = 'file name'): string[] => {
+  if (name === expected) return []
+  return typeof name === 'string' && name !== '' ? [`name "${name}" does not match ${source} "${expected}"`] : ['name is missing']
 }
 
 const checkMetadata = (metadata: FrontmatterValue | undefined): string[] => {
@@ -76,6 +78,15 @@ const checkDoc = (pluginRoot: string, path: string, isRole: boolean): string[] =
   if (!isRole) return problems
   const unknownKeys = Object.keys(data).filter((key) => !ROLE_KEYS.has(key))
   return [...unknownKeys.map((key) => `unknown frontmatter key "${key}"`), ...problems, ...checkMetadata(data['metadata'])]
+}
+
+const checkSkill = (pluginRoot: string, folder: string): string[] => {
+  const parsed = parseMarkdownFile(readText(join(pluginRoot, 'skills', folder, 'SKILL.md')))
+  const problems = typeof parsed === 'string' ? [parsed] : checkName(parsed.data['name'], folder, 'folder name')
+  if (!SKILL_NAME.test(folder) || folder.length > MAX_SKILL_NAME_LENGTH) {
+    problems.push(`folder name is not lowercase words joined by hyphens, at most ${MAX_SKILL_NAME_LENGTH} characters`)
+  }
+  return problems.map((problem) => `skills/${folder}/SKILL.md: ${problem}`)
 }
 
 export const validateSkillDocs = (pluginRoot: string): string[] => {
@@ -106,5 +117,6 @@ export const validateSkillDocs = (pluginRoot: string): string[] => {
       .filter((mention) => !flows.has(mention.name))
       .map((mention) => `${mention.file}:${mention.line}: flows/${mention.name}.md does not exist in ${FLOWS_DIR}/`),
   ]
-  return [...roleErrors, ...flowErrors, ...mentionErrors]
+  const skillErrors = listSkillFolders(pluginRoot).flatMap((folder) => checkSkill(pluginRoot, folder))
+  return [...skillErrors, ...roleErrors, ...flowErrors, ...mentionErrors]
 }

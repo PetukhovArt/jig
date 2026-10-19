@@ -25,7 +25,7 @@ An entry with an unknown `repo` or `range` does not run; the report names it as 
 
 ## Run
 
-1. **Two versions.** A and B: the skill before and after the edit. The old one from `git worktree add <tmp>/jig-review-old <base commit>` of the jig repository, the new one from the working tree. Which is A and which B is drawn by lot per entry; only the orchestrator knows the mapping.
+1. **Two versions.** A and B: the skill before and after the edit. The old one from `git worktree add <tmp>/old-jig-review <base commit>` of the jig repository, the new one from the working tree. Which is A and which B is drawn by lot per entry; only the orchestrator knows the mapping.
 2. **The merge request tree.** Per entry: build the repository (`repo`), then a worktree at `<head>` with a branch whose upstream is a branch set to `<base>`, so the skill takes the base from `@{upstream}` and the diff equals the merge request diff. No head check, no posting.
 3. **Launch.** One version per subagent, the same brief: "read `<version path>/skills/jig-review/SKILL.md` and follow it with `--no-state` (mode from the entry) in `<tmp>/eval-<id>`". The versions run one after the other, not in parallel: each holds up to `maxParallel` subagents itself, and the cap holds for the whole eval. Alternate the order from entry to entry.
 4. **What was read.** From each subagent's transcript collect the paths of its file reads. A run that read skill files outside its own version does not count. The agent's self-report of what it read is not used.

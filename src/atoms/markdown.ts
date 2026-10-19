@@ -1,4 +1,5 @@
-import { readdirSync, readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { FrontmatterError, parseFrontmatter, type Frontmatter } from '../core/frontmatter'
 
 export const listMarkdown = (dir: string): string[] => {
@@ -11,7 +12,17 @@ export const listMarkdown = (dir: string): string[] => {
   }
 }
 
-export const readText = (path: string): string => {
+export const listSkillFolders = (pluginRoot: string): string[] => {
+  try {
+    return readdirSync(join(pluginRoot, 'skills'))
+      .filter((name) => existsSync(join(pluginRoot, 'skills', name, 'SKILL.md')))
+      .sort()
+  } catch {
+    return []
+  }
+}
+
+export const readText =(path: string): string => {
   try {
     return readFileSync(path, 'utf8')
   } catch {
