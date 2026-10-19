@@ -5,6 +5,7 @@ import { toSlash } from '../core/paths'
 import { findInPath } from '../core/proc'
 import { slotNumber } from '../slot/slot'
 import { samePath, type Worktree } from './list'
+import { removeLinkedWorktree } from './remove'
 
 export type Bucket = 'hold-current' | 'hold-locked' | 'hold-wip' | 'hold-open-mr' | 'prunable' | 'recent' | 'safe'
 
@@ -103,8 +104,8 @@ export const matchItems = (rows: readonly SweepRow[], items: readonly string[], 
 }
 
 export const removeWorktree = (row: SweepRow, mainRoot: string): string | undefined => {
-  const result =
-    row.bucket === 'prunable' ? git(['worktree', 'prune'], mainRoot) : git(['worktree', 'remove', '--force', row.path], mainRoot)
+  if (row.bucket !== 'prunable') return removeLinkedWorktree(row.path, mainRoot).error
+  const result = git(['worktree', 'prune'], mainRoot)
   return result.ok ? undefined : result.stderr.trim()
 }
 

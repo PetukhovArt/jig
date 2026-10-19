@@ -9,6 +9,7 @@ import { ensureJigDir, resolveProjectRoot, toSlash } from '../core/paths'
 import { acquireLock } from '../core/proc'
 import { listWorktrees, type Worktree } from '../worktree/list'
 import { installSteps } from '../worktree/lockfiles'
+import { removeLinkedWorktree } from '../worktree/remove'
 import { formatSeed, seedWorktree } from '../worktree/seed'
 
 type Command = (args: string[]) => number | Promise<number>
@@ -307,8 +308,8 @@ const slotRm = (args: string[]): number => {
   if (values.force !== true && changes.length > 0) {
     return fail(`slot ${slot} has tracked changes, commit them or pass --force: ${changes.join(', ')}`, 1)
   }
-  const removed = git(['worktree', 'remove', '--force', worktree.path], context.projectRoot)
-  if (!removed.ok) return fail(`git worktree remove failed: ${removed.stderr.trim()}`, 1)
+  const removed = removeLinkedWorktree(worktree.path, context.projectRoot)
+  if (removed.error !== undefined) return fail(`git worktree remove failed: ${removed.error}`, 1)
   print(`removed ${toSlash(worktree.path)}`)
   return 0
 }
