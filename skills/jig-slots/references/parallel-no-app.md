@@ -1,6 +1,6 @@
 # Several agents in parallel, no running app
 
-Each agent gets its own worktree: one writer per worktree, never two agents in one checkout. Without a running app the ports do not matter, but the slot number still names the worktree, so the numbering rules below hold.
+Each agent gets its own worktree: one writer per worktree, never two agents in one checkout. A feature gets one worktree (`git worktree add`, then `jig worktree seed <dir>`) and one writing delegate in it; delegates working in parallel inside the feature take the agent's built-in worktrees (`native-worktrees.md`). No dev server runs where an agent writes. The slot numbering below names the slots that run the app.
 
 ## Slot math
 
@@ -18,9 +18,10 @@ The slot is encoded in the worktree directory name (`<repo>-s<N>-<slug>`), with 
 
 ## Guardrails
 
-- One worktree = one slot = one task. Don't reuse a slot dir for a different branch; remove it and create a new one.
+- A slot is long-lived and shows one branch after another (`slot show`); a feature worktree belongs to one task and is removed when the task ends.
 - **The branch does not carry the slot number**: `feat/x`, not `s3/x`. Branches go to the remote and into merge requests; N is machine-local and reused, so a removed and re-created slot would leave the branch name lying. The slot stays visible in the dir name and in `agent-view.config.json`.
 - **Remove a slot only with `jig slot rm`.** Deleting its dir or its row in another tool frees N while the slot's ports stay held by its detached processes.
 - `slot new` prints the path, the slot number and the ports. Each agent works only inside its own path.
 - `jig slot ls` shows the live slots, their ports and branches.
-- When an agent is done: `jig slot rm <N>` (it refuses while the worktree has tracked changes, unless `--force`). The branch stays; delete it only if the user asks.
+- When a slot is no longer needed: `jig slot rm <N>` (it refuses while the worktree has tracked changes, unless `--force`). The branch stays; delete it only if the user asks.
+- Worktrees left behind: `jig worktree sweep` reports them by bucket; delete one only after the user agrees to it (`--yes <path|N>`).

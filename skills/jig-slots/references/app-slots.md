@@ -1,6 +1,6 @@
 # Two or three slots with running app instances
 
-One **isolated environment per task**: a git worktree (isolated code and branch) bound to a numeric **slot** N that offsets every port (dev server, CDP/verify). Slot 0 = the main checkout, left untouched. Slots 1, 2, … = worktrees running concurrently. Everything (ports, CDP) derives from N by a fixed formula (`parallel-no-app.md`, Slot math), so two slots never overlap.
+A **slot** is a git worktree with packages installed and the dev server always running, bound to a number N that offsets every port (dev server, CDP/verify). Slot 0 = the main checkout, left untouched. Slots 1 to 3 run concurrently and **show** branches: features are written in their own worktrees, where no dev server runs, and a slot checks a finished branch out (Show a branch, below). Everything (ports, CDP) derives from N by a fixed formula (`parallel-no-app.md`, Slot math), so two slots never overlap.
 
 ## Config: the `slots` section of `.jig/config.jsonc`
 
@@ -19,8 +19,11 @@ All project-specific knobs live there; a human edits it. Missing section: `jig s
   },
   "cdp": { "base": 9876, "step": 1 }, // remote-debugging port for agent-view/verify
   "instance": { },                  // per-runtime identity so N app instances coexist, see Instance isolation
-  "copyFiles": [],                  // extra gitignored files the build needs, seeded from main (often NESTED env files)
   "clearCache": []                  // build-cache dirs to wipe per slot when env is baked at build time
+},
+"worktree": {                      // read by `jig worktree seed`, so by every slot and feature worktree
+  "seedExclude": [],                // globs of ignored paths not to seed (forward slashes, from the repo root)
+  "copyFiles": []                   // files inside a folder ignored in full that seed must copy too
 }
 ```
 
@@ -34,7 +37,8 @@ What to detect:
 | `verifyRuntime` | The **adapter** `agent-view` attaches with: only `electron`/`tauri`/`browser`, and it is what goes into `agent-view.config.json` `runtime`. Omit when it equals `runtime`. Set it when the app ships as a native shell but you verify against the dev server in Chrome (`runtime: "tauri"` + `verifyRuntime: "browser"`): a real and supported split, not a misconfiguration. |
 | `ports` | Where the dev server reads its port. Often an **env key** in vite/webpack/server config (`process.env.*PORT*`, `server.port`). Each entry: `base` (current value) + `step` (default 10) + `target` (default `.env`). For **tauri** the frontend port is usually a literal in `build.beforeDevCommand` plus `build.devUrl`: override both through a generated config file (Instance isolation → tauri). |
 | `linkedPackages` | Local deps resolved via `npm link` / `file:` / `workspace:`, or symlinks under `node_modules/<scope>` pointing **outside** the repo. `[]` if none. |
-| `copyFiles` | Gitignored files the build needs that the root `.env*` copy misses: most often **nested** env files. Find the dotenv path in the bundler config (`grep dotenv\|loadEnv\|envDir` in webpack/vite config). Paths relative to repo root. `[]` if none. |
+| `worktree.copyFiles` | Seed already copies every ignored file outside a folder ignored in full, nested env files included. List only a file the build needs **inside** such a folder (`git ls-files --others --ignored --exclude-standard --directory` prints the folder as one `dir/` line). Paths relative to repo root. `[]` if none. |
+| `worktree.seedExclude` | Ignored files that must not reach another checkout: large local dumps, per-machine state. `[]` if none. |
 | `clearCache` | Build-cache dirs to wipe per slot **when env is baked at build time** (webpack `DefinePlugin`, Vite `define`). Usually `["node_modules/.cache"]`. `[]` when env is read at runtime, **or** when the project derives its cache key from the baked env (Install and build cache). |
 | `cdp` | Default `{ "base": 9876, "step": 1 }`. Avoid 9222 (Chrome's own default). |
 | `instance` | **electron:** `{ "userDataFlag": "--user-data-dir", "userDataDir": "<scratch>/userdata" }`. **tauri:** `{ "identifierBase": "<identifier from tauri.conf.json>", "configPatch": true, "cdpEnv": "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS" (Win) / "WEBKIT_INSPECTOR_SERVER" (Linux) }`. **browser:** `{ "userDataFlag": "--user-data-dir", "userDataDir": "<scratch>/chrome-profile" }`. |
@@ -57,28 +61,29 @@ Leave a gap of at least `10 × step` between CDP bands. Avoid `9222` and anythin
 
 ## Provision
 
-`jig slot new [--slug <s>] [--branch <b>]` does, in order: `git worktree prune`; the lowest free N; `git worktree add`; copies `copyFiles` and the root `.env*`; writes each port key `base + N*step` into its `target`; writes the slot's `agent-view.config.json` with `cdp.base + N*cdp.step`; wipes `clearCache`; runs `install` in the slot. It prints `slot <N> <path> ports <k=v ...> cdp <port>`.
+`jig slot new [--slug <s>] [--branch <b>]` does, in order: `git worktree prune`; the lowest free N; `git worktree add`; `jig worktree seed` (every gitignored file and symlink of the main checkout, see Seed); writes each port key `base + N*step` into its `target`; writes the slot's `agent-view.config.json` with `cdp.base + N*cdp.step`; wipes `clearCache`; runs `install` in the slot. It prints `slot <N> <path> ports <k=v ...> cdp <port>`.
 
 Then, inside the printed path:
 1. **Relink**: re-link every `linkedPackages` entry: a plain `npm ci`/`install` reverts local `npm link` deps to the registry copy.
-2. **Env files**: check the dotenv path in the bundler config before assuming `./.env*`. Missing a nested gitignored env file is silent: the build falls back to the tracked defaults and the app points at the wrong backend with no error. A path the config's `copyFiles` misses: tell the user which entry to add.
+2. **Env files**: check the dotenv path in the bundler config. An env file inside a folder ignored in full is not seeded, and the miss is silent: the build falls back to the tracked defaults and the app points at the wrong backend with no error. Tell the user which `worktree.copyFiles` entry to add.
 3. **Instance identity and launch** (hard requirement): every slot runs its **own app process** alongside the others. Apply the per-slot app identity and bake the CDP port and identity into the `launch` string of the slot's `agent-view.config.json` (Instance isolation, below). Provisioning is **not complete** until the multi-instance sanity check passes.
 4. Print a summary: dir, branch, slot N, each dev port and URL, CDP port, and the dev/verify commands to run **from the slot dir**.
 
+## Seed
+
+`jig worktree seed <dir>` fills a worktree from the main checkout with what `git worktree add` leaves behind. It copies every gitignored file and recreates every gitignored symlink: a link into the main checkout is re-pointed at the same path in the worktree, any other link keeps its target. It looks one level into each folder ignored in full for symlinks (a linked skill under `.claude/skills/`). It copies no folder (`node_modules`, `dist`: each checkout builds its own), skips `worktree.seedExclude`, and never overwrites a file already there, so a file the branch tracks wins. It prints one line per copied or linked file and a count. Run it again at any time: it only adds what is missing. On Windows a directory link needs Developer Mode; without it seed makes a junction.
+
+## Show a branch
+
+`jig slot show <N> <branch|commit>` runs `git checkout --detach <branch>` in slot N: the running dev server reloads once. When a lock file differs between the old and the new commit, jig installs: the `install` command of the `slots` section if set, otherwise the package manager named by the lock file (`package-lock.json` → `npm ci`, `pnpm-lock.yaml` → `pnpm install --frozen-lockfile`, and so on), run in the lock file's folder. It prints `slot <N> <path> at <sha> <branch>`. It refuses while the slot has tracked changes: a slot shows branches, edits belong in a feature worktree. Only commits travel: commit in the feature worktree, then `show` again. A dependency change can need a dev server restart that the hot reload does not do.
+
 ## Install and build cache
 
-**Default: own `node_modules` per slot, shared global package cache.** A fresh slot needn't re-download anything; only unpacking costs time. Prefer `npm ci --prefer-offline --no-audit --no-fund` as `install`: `--prefer-offline` pulls tarballs from the warm global cache (`~/.npm`, `%LocalAppData%\npm-cache` on Windows), `--no-audit --no-fund` cut the slowest non-essential round-trips. Each slot's tree stays independent, so different branches can pin different deps.
+**Own `node_modules` per slot, shared global package cache.** A fresh slot needn't re-download anything; only unpacking costs time. Prefer `npm ci --prefer-offline --no-audit --no-fund` as `install`: `--prefer-offline` pulls tarballs from the warm global cache (`~/.npm`, `%LocalAppData%\npm-cache` on Windows), `--no-audit --no-fund` cut the slowest non-essential round-trips. Each slot's tree stays independent, so different branches can pin different deps.
 
 If the lockfile pins stale integrity for republished internal/private packages (`npm ci` → `EINTEGRITY` / `EUSAGE`), install **without** the lockfile (`npm install --no-package-lock`) so it resolves current registry integrity.
 
-**Shared `node_modules` (junction): gated exception.** A junction to the main checkout's tree costs seconds instead of minutes, but it turns `.bin`, native modules and postinstall output into mutable state across supposedly isolated slots. Allowed **only** when all three hold:
-1. **Gate at creation:** `git diff <base> -- package.json package-lock.json` (or the project's manifest and lockfile) is **empty**.
-2. **Invariant while running:** no install command inside the slot: no `npm install`/`ci`, no `patch-package`, no postinstall-triggering script. They write into the *shared* tree and poison the main checkout and every other slot. If the task starts touching deps: remove the junction, install a real tree, then continue.
-3. **Build cache lives outside `node_modules`** (below).
-
-Windows: `mklink /J <dir>\node_modules <main>\node_modules` (junction, not symlink: no admin needed). Teardown removes the junction **before** `jig slot rm`.
-
-**Build cache must live inside the worktree.** Bundler caches default into the dependency tree (`node_modules/.cache/webpack`, `node_modules/.vite`), which makes them shared by every junctioned slot and collateral damage of any reinstall. Point them at a worktree-root dir (webpack `cache.cacheDirectory`, vite `cacheDir` → `<worktree>/.webpack-cache`, resolved from the config's own `__dirname`).
+**Build cache must live inside the worktree.** Bundler caches default into the dependency tree (`node_modules/.cache/webpack`, `node_modules/.vite`), which makes them collateral damage of any reinstall. Point them at a worktree-root dir (webpack `cache.cacheDirectory`, vite `cacheDir` → `<worktree>/.webpack-cache`, resolved from the config's own `__dirname`) so a reinstall keeps them.
 
 **Baked env vs a stale cache.** When env is inlined at build time (webpack `DefinePlugin`, Vite `define`), a reused cache serves the **stale baked values** even after you fix the env file: webpack's filesystem cache keys on config and lockfile, *not* on env files. Symptom: the env file is correct on disk, but the running app still hits the old backend until the cache is cleared and the dev server restarted.
 - **Stopgap:** `clearCache`.
@@ -208,7 +213,7 @@ start "slot<N> <worktreeDir> [<branch>] localhost:<devPort>" /min cmd /c <scratc
 **A slot can have more than one launch path alive at once.** When `verifyRuntime` differs from `runtime`, the native-shell path and the browser-verify path are separate process trees on **two different CDP ports**. Killing one leaves the other, which re-serves the dev port. Before declaring a slot stopped, enumerate every port the slot can own (each dev port, the app-runtime CDP, the verify CDP) and confirm all are free after a short delay.
 
 1. Stop the slot's processes **by this slot's ports** (`netstat -ano | findstr :<port>` → `taskkill /PID`; POSIX `lsof -ti :<port>`), never by process name, which would hit the main checkout and every other slot. Never kill a port you did not provision.
-2. Remove the `node_modules` junction if the slot used one, and delete `<scratch>`.
+2. Delete `<scratch>`.
 3. `jig slot rm <N>`: it refuses while the worktree has tracked changes. A tracked change left in the slot: stop and report; `--force` only when the user agrees. The branch stays; delete it only if the user asks.
 
 ## Guardrails
@@ -216,3 +221,4 @@ start "slot<N> <worktreeDir> [<branch>] localhost:<devPort>" /min cmd /c <scratc
 - Before starting a dev server, if a configured port is already LISTENing (a stray process, not this slot), report the owning PID and ask: don't kill foreign processes.
 - **Changing `cdp.base`/`ports` does not migrate live slots.** Existing slots keep the `agent-view.config.json` generated under the *old* base, so their `port` silently disagrees with the launch built from the new math, and `discover` exits **0** against whatever holds the stale port. After any base change, re-derive every live slot's config or remove the slot. Cross-check `port` against the CDP port inside `launch`: if they differ, the config is stale, not the app.
 - The generated per-slot files (`.env`, `agent-view.config.json`) are local: keep them out of task branches (`.git/info/exclude`).
+- Old slots no longer needed: `jig worktree sweep` lists every worktree by bucket (`hold-current`, `hold-locked`, `hold-wip`, `hold-open-mr`, `prunable`, `recent`, `safe`) and deletes nothing. After the user agrees to an item: `jig worktree sweep --yes <path|N>`, one `--yes` per item; in a terminal of their own the user can run `--ask`. Stop the slot's processes by port first. The buckets `hold-current`, `hold-locked`, `hold-wip` are never deleted.
