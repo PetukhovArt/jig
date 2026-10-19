@@ -1,15 +1,16 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { git } from '../src/core/git'
 import { toSlash } from '../src/core/paths'
 import { findDuplicates, lowestFreeSlot, runSlot, setEnvValue, slotNumber, slotWorktrees } from '../src/slot/slot'
+import { runWorktree, worktreeSweep } from '../src/worktree/worktree'
 
 const REPO = 'app'
 
 const worktreesAt = (...names: string[]) =>
-  slotWorktrees(names.map((name) => ({ path: join(tmpdir(), name), isPrunable: false })), REPO)
+  slotWorktrees(names.map((name) => ({ path: join(tmpdir(), name), isPrunable: false, isLocked: false })), REPO)
 
 describe('slot number', () => {
   it.each([
@@ -84,8 +85,9 @@ describe('slot commands in a temporary repository', () => {
           runtime: 'electron',
           ports: { VITE_SERVER_PORT: { base: 3000, step: 10 } },
           cdp: { base: 9900, step: 1 },
-          copyFiles: ['env/.env.local'],
+          install: 'node -e "require(\'fs\').writeFileSync(\'installed.txt\', \'x\')"',
         },
+        worktree: { copyFiles: ['env/.env.local'] },
       }),
     )
     writeFileSync(join(main, 'agent-view.config.json'), JSON.stringify({ runtime: 'browser', port: 9900, launch: 'npm start' }))
@@ -155,20 +157,97 @@ describe('slot commands in a temporary repository', () => {
     expect((await runIn(['rm', '2', '--force'])).code).toBe(0)
   })
 
-  it('sweeps every worktree but main and ignores skip-worktree files of a slot', async () => {
+  it('shows a branch in a slot detached and installs only when a lock file changed', async () => {
+    const dir = join(root, 'worktrees', `${REPO}-s1-again`)
+    const installed = join(dir, 'installed.txt')
+    rmSync(installed, { force: true })
+    sh(main, 'checkout', '-q', '-b', 'show-a')
+    writeFileSync(join(main, 'package-lock.json'), '{}\n')
+    sh(main, 'add', 'package-lock.json')
+    sh(main, 'commit', '-q', '-m', 'lock')
+    sh(main, 'checkout', '-q', '-b', 'show-b')
+    writeFileSync(join(main, 'README.md'), 'readme\n')
+    sh(main, 'add', 'README.md')
+    sh(main, 'commit', '-q', '-m', 'readme')
+    sh(main, 'checkout', '-q', 'main')
+
+    const first = await runIn(['show', '1', 'show-a'])
+    expect(first.code).toBe(0)
+    expect(first.stdout).toMatch(/^slot 1 .*app-s1-again at [0-9a-f]{12} show-a\n$/)
+    expect(sh(dir, 'rev-parse', 'HEAD')).toBe(sh(main, 'rev-parse', 'show-a'))
+    expect(sh(dir, 'branch', '--show-current')).toBe('')
+    expect(existsSync(installed)).toBe(true)
+
+    rmSync(installed)
+    expect((await runIn(['show', 's1', 'show-b'])).code).toBe(0)
+    expect(existsSync(installed)).toBe(false)
+    expect(readFileSync(join(dir, 'README.md'), 'utf8').trim()).toBe('readme')
+  })
+
+  it('refuses show over tracked changes or an unknown branch', async () => {
+    const dir = join(root, 'worktrees', `${REPO}-s1-again`)
+    writeFileSync(join(dir, 'README.md'), 'edited\n')
+    expect((await runIn(['show', '1', 'show-a'])).code).toBe(1)
+    sh(dir, 'checkout', '--', 'README.md')
+    expect((await runIn(['show', '1', 'no-such-branch'])).code).toBe(1)
+    expect((await runIn(['show', '9', 'show-a'])).code).toBe(1)
+    expect((await runIn(['show', '1'])).code).toBe(2)
+  })
+
+  it('sweeps every worktree but main and deletes only what is confirmed', async () => {
     const plain = join(root, 'worktrees', 'plain')
+    const clean = join(root, 'worktrees', 'clean')
+    const locked = join(root, 'worktrees', 'locked')
     sh(main, 'worktree', 'add', '-q', plain, '-b', 'plain')
+    sh(main, 'worktree', 'add', '-q', clean, '-b', 'clean')
+    sh(main, 'worktree', 'add', '-q', '--lock', locked, '-b', 'locked')
     writeFileSync(join(plain, 'agent-view.config.json'), '{}\n')
-    const slotDir = toSlash(join(root, 'worktrees', `${REPO}-s1-again`))
+    const slotDir = join(root, 'worktrees', `${REPO}-s1-again`)
+    const sweep = async (args: string[], answer?: boolean): Promise<{ code: number; stdout: string }> => {
+      output = []
+      const code = await (answer === undefined ? worktreeSweep(args) : worktreeSweep(args, () => Promise.resolve(answer)))
+      return { code, stdout: output.join('') }
+    }
 
-    const swept = await runIn(['sweep', '--json'])
-    const text = await runIn(['sweep'])
-
-    expect(JSON.parse(swept.stdout)).toEqual([
-      { bucket: 'recent', slot: 1, path: slotDir, branch: null },
+    const report = await sweep(['--json'])
+    expect(report.code).toBe(0)
+    expect(JSON.parse(report.stdout)).toEqual([
+      { bucket: 'recent', slot: 1, path: toSlash(slotDir), branch: null },
+      { bucket: 'recent', slot: null, path: toSlash(clean), branch: 'clean' },
+      { bucket: 'hold-locked', slot: null, path: toSlash(locked), branch: 'locked' },
       { bucket: 'hold-wip', slot: null, path: toSlash(plain), branch: 'plain' },
     ])
-    expect(text.stdout).toBe(`recent  ${slotDir}  (detached)  slot 1\nhold-wip  ${toSlash(plain)}  plain\n`)
+    const text = (await sweep([])).stdout
+    expect(text).toContain(`recent  ${toSlash(slotDir)}  (detached)  slot 1\n`)
+    expect(text).toContain(`hold-wip  ${toSlash(plain)}  plain\n`)
+    expect(existsSync(slotDir) && existsSync(clean)).toBe(true)
+
+    expect((await sweep(['--yes', plain])).code).toBe(1)
+    expect((await sweep(['--yes', 'nowhere'])).code).toBe(1)
+    expect((await sweep(['--ask'])).code).toBe(1)
+    expect(existsSync(plain)).toBe(true)
+
+    const named = await sweep(['--yes', slotDir])
+    expect(named.code).toBe(0)
+    expect(named.stdout).toContain(`removed ${toSlash(slotDir)}\n`)
+    expect(existsSync(slotDir)).toBe(false)
+    expect(existsSync(clean)).toBe(true)
+
+    expect((await sweep(['--ask'], false)).code).toBe(0)
+    expect(existsSync(clean)).toBe(true)
+    expect((await sweep(['--ask'], true)).code).toBe(0)
+    expect(existsSync(clean)).toBe(false)
+    expect(existsSync(plain) && existsSync(locked)).toBe(true)
+    sh(main, 'worktree', 'unlock', locked)
+  })
+
+  it('seeds a worktree by path and refuses the main checkout', async () => {
+    const plain = join(root, 'worktrees', 'plain')
+    expect(await runWorktree(['seed', main])).toBe(1)
+    expect(await runWorktree(['seed', join(plain, 'missing')])).toBe(1)
+    expect(await runWorktree(['seed', plain])).toBe(0)
+    expect(readFileSync(join(plain, '.env'), 'utf8')).toBe('API=https://example.test\nVITE_SERVER_PORT=3000\n')
+    expect(readFileSync(join(plain, 'env', '.env.local'), 'utf8')).toBe('NESTED=1\n')
   })
 
   it('refuses new when two worktrees share a slot number', async () => {

@@ -1,0 +1,136 @@
+import { existsSync } from 'node:fs'
+import { basename, resolve } from 'node:path'
+import { createInterface } from 'node:readline/promises'
+import { parseArgs } from 'node:util'
+import { loadConfig } from '../core/config'
+import { gitToplevel } from '../core/git'
+import { resolveProjectRoot, toSlash } from '../core/paths'
+import { listWorktrees, samePath } from './list'
+import { formatSeed, seedWorktree } from './seed'
+import {
+  auditWorktrees,
+  currentWorktree,
+  formatRow,
+  KEPT_BUCKETS,
+  matchItems,
+  openMrBranches,
+  removeWorktree,
+  type SweepRow,
+} from './sweep'
+
+type Command = (args: string[]) => number | Promise<number>
+
+export type Confirm = (question: string) => Promise<boolean>
+
+const fail = (message: string, code: number): number => {
+  process.stderr.write(`jig: ${message}\n`)
+  return code
+}
+
+const print = (text: string): void => {
+  process.stdout.write(`${text}\n`)
+}
+
+const mainCheckout = (cwd: string): string => {
+  const main = listWorktrees(cwd)[0]?.path
+  if (main === undefined) throw new Error(`no git worktrees found from ${toSlash(cwd)}`)
+  return main
+}
+
+const worktreeSeed = (args: string[]): number => {
+  const { positionals } = parseArgs({ args, options: {}, allowPositionals: true, strict: true })
+  const [target] = positionals
+  if (positionals.length !== 1 || target === undefined) return fail('usage: worktree seed <dir>', 2)
+  const dir = resolve(target)
+  if (!existsSync(dir)) return fail(`no such dir ${toSlash(dir)}`, 1)
+  const toplevel = gitToplevel(dir)
+  if (toplevel === undefined || !samePath(toplevel, dir)) return fail(`${toSlash(dir)} is not the root of a git worktree`, 1)
+  const main = mainCheckout(dir)
+  if (samePath(main, dir)) return fail(`${toSlash(dir)} is the main checkout, seed fills another worktree from it`, 1)
+  const config = loadConfig(main)
+  if (config.error !== undefined) return fail(`.jig/config.jsonc: ${config.error}`, 1)
+  const items = seedWorktree(main, dir, config.worktree)
+  for (const line of formatSeed(items)) {
+    print(line)
+  }
+  return items.some((item) => item.action === 'failed') ? 1 : 0
+}
+
+const terminalConfirm = (): Confirm | undefined => {
+  if (process.stdin.isTTY !== true) return undefined
+  return async (question) => {
+    const prompt = createInterface({ input: process.stdin, output: process.stderr })
+    try {
+      return /^y(es)?$/i.test((await prompt.question(`${question} [y/N] `)).trim())
+    } finally {
+      prompt.close()
+    }
+  }
+}
+
+const removeRows = (rows: readonly SweepRow[], mainRoot: string): number => {
+  let code = 0
+  for (const row of rows) {
+    if (KEPT_BUCKETS.has(row.bucket)) {
+      code = fail(`kept ${row.path}: ${row.bucket}`, 1)
+      continue
+    }
+    const error = removeWorktree(row, mainRoot)
+    if (error === undefined) {
+      print(`removed ${row.path}`)
+    } else {
+      code = fail(`git could not remove ${row.path}: ${error}`, 1)
+    }
+  }
+  return code
+}
+
+/**
+ * `worktree sweep` reports every worktree but the main checkout by bucket and deletes nothing unless
+ * each deletion is confirmed: per item at an interactive prompt (`--ask`) or named by `--yes`.
+ */
+export const worktreeSweep = async (args: string[], confirm: Confirm | undefined = terminalConfirm()): Promise<number> => {
+  const { values } = parseArgs({
+    args,
+    options: { json: { type: 'boolean' }, ask: { type: 'boolean' }, yes: { type: 'string', multiple: true } },
+    strict: true,
+  })
+  const projectRoot = resolveProjectRoot(process.cwd())
+  const worktrees = listWorktrees(projectRoot)
+  const mainRoot = worktrees[0]?.path ?? projectRoot
+  const rows = auditWorktrees(worktrees, {
+    mainRoot,
+    repo: basename(mainRoot),
+    current: currentWorktree(process.cwd()),
+    openBranches: openMrBranches(projectRoot),
+    now: Date.now(),
+  })
+  if (values.json === true) {
+    print(JSON.stringify(rows, null, 2))
+  } else {
+    rows.forEach((row) => print(formatRow(row)))
+  }
+  const named = matchItems(rows, values.yes ?? [], process.cwd())
+  if (named.unknown.length > 0) return fail(`not a worktree of this repo: ${named.unknown.join(', ')}`, 1)
+  if (values.ask === true) {
+    if (confirm === undefined) return fail('--ask needs an interactive terminal; ask the user, then pass --yes <path|slot> per item', 1)
+    for (const row of rows.filter((candidate) => !KEPT_BUCKETS.has(candidate.bucket) && !named.rows.includes(candidate))) {
+      if (await confirm(`remove ${row.bucket} ${row.path}?`)) {
+        named.rows.push(row)
+      }
+    }
+  }
+  return removeRows(named.rows, mainRoot)
+}
+
+const subcommands = new Map<string, Command>([
+  ['seed', worktreeSeed],
+  ['sweep', (args) => worktreeSweep(args)],
+])
+
+export const runWorktree: Command = (args) => {
+  const [name, ...rest] = args
+  const subcommand = name === undefined ? undefined : subcommands.get(name)
+  if (subcommand === undefined) return fail(`usage: worktree <${[...subcommands.keys()].join('|')}>`, 2)
+  return subcommand(rest)
+}

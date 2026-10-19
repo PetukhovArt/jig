@@ -55,8 +55,15 @@
           }
         },
         "instance": { "type": "object" },
-        "copyFiles": { "type": "array", "items": { "type": "string" } },
         "clearCache": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "worktree": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "seedExclude": { "type": "array", "items": { "type": "string" }, "description": "Globs (repo-relative, forward slashes) that jig worktree seed skips" },
+        "copyFiles": { "type": "array", "items": { "type": "string" }, "description": "Files inside fully ignored folders that jig worktree seed copies as well" }
       }
     }
   },

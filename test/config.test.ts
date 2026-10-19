@@ -20,9 +20,9 @@ describe('parseConfig', () => {
       runtime: 'electron',
       ports: { VITE_SERVER_PORT: { base: 3000, step: 10, target: '.env' } },
       cdp: { base: 9900, step: 1 },
-      copyFiles: ['.env.local'],
       clearCache: [],
     })
+    expect(config.worktree).toEqual({ seedExclude: ['*.log'], copyFiles: ['node_modules/.cache/keep.json'] })
   })
 
   it('fills missing rules with the default level and keeps given ones', () => {
@@ -63,7 +63,8 @@ describe('validateConfig', () => {
     ['port missing step', { slots: { worktreesDir: '..', ports: { P: { base: 3000 } } } }, ['$.slots.ports.P.step: is required']],
     ['port unknown key', { slots: { worktreesDir: '..', ports: { P: { base: 3000, step: 1, x: 1 } } } }, ['$.slots.ports.P.x: unknown key']],
     ['cdp fractional base', { slots: { worktreesDir: '..', cdp: { base: 9900.5, step: 1 } } }, ['$.slots.cdp.base: expected an integer 1..65535']],
-    ['copyFiles item not a string', { slots: { worktreesDir: '..', copyFiles: ['a', 2] } }, ['$.slots.copyFiles[1]: expected a string']],
+    ['copyFiles item not a string', { worktree: { copyFiles: ['a', 2] } }, ['$.worktree.copyFiles[1]: expected a string']],
+    ['copyFiles moved out of slots', { slots: { worktreesDir: '..', copyFiles: [] } }, ['$.slots.copyFiles: unknown key']],
     ['instance not an object', { slots: { worktreesDir: '..', instance: 1 } }, ['$.slots.instance: expected an object']],
     ['$schema not a string', { $schema: 1 }, ['$.$schema: expected a string']],
   ])('%s', (_name, value, expected) => {

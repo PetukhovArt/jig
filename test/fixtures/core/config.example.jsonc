@@ -19,7 +19,10 @@
     "runtime": "electron",
     "ports": { "VITE_SERVER_PORT": { "base": 3000, "step": 10, "target": ".env" } },
     "cdp": { "base": 9900, "step": 1 },
-    "copyFiles": [".env.local"],
     "clearCache": []
+  },
+  "worktree": {
+    "seedExclude": ["*.log"],
+    "copyFiles": ["node_modules/.cache/keep.json"]
   }
 }

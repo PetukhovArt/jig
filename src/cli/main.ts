@@ -8,6 +8,7 @@ import { runLoop } from '../loop/loop'
 import { runAllowNoVerify } from '../rules/no-verify'
 import { runSlot } from '../slot/slot'
 import { runTiers } from '../tiers/tiers'
+import { runWorktree } from '../worktree/worktree'
 
 type Command = (args: string[]) => number | Promise<number>
 
@@ -25,6 +26,7 @@ const commands = new Map<string, Command>([
   ['build', runBuild],
   ['atom', runAtom],
   ['slot', runSlot],
+  ['worktree', runWorktree],
   ['dash', runDash],
   ['loop', runLoop],
   ['allow-no-verify', runAllowNoVerify],
