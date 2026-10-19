@@ -1,0 +1,5 @@
+interface:
+  display_name: "jig-init"
+  short_description: "Write the project's explicit jig config from catalog discovery and a few questions"
+policy:
+  allow_implicit_invocation: false
