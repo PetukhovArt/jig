@@ -1,0 +1,6 @@
+// tsc and eslint stay off so the gates match the runs before this config existed; agent-view is on, so flows drive the app.
+{
+  "tsc": false,
+  "eslint": false,
+  "agent-view": {}
+}

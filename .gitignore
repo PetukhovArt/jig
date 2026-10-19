@@ -10,6 +10,7 @@ evals/**/results/
 evals/_toolchain/
 evals/private/
 .jig/
+!evals/_fixture-base/.jig/
 
 .idea
 .claude
