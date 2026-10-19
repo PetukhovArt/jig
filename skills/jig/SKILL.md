@@ -28,6 +28,7 @@ These hold for the whole task, in every flow.
 - When a step names an atom, read `<root>/atoms/<name>.md` before acting on that step. When what you are about to do matches a trigger in the atom index below, read that atom too.
 - When a step names a role, spawn a subagent whose prompt begins `Read <root>/skills/jig/references/roles/<name>.md and follow it.`, then your brief: goal, scope, file pointers, and the paths of the atoms it must read. Do not read the role file yourself. Its tier and effort are in `references/roles.md`; run `jig tiers` once per session for the models of each tier; no mapping for this agent: pick the model that fits the tier description in `references/tiers.md`. Review what it returns; do not pass its text through.
 - Code crossing a function boundary → `flows/module-design.md` before writing it.
+- **agent-view configured**: `.jig/config.jsonc` (or `.jig/config.local.jsonc`) names `"agent-view"` and does not set it to `false`, the same test `jig pre-mr` uses; an `agent-view.config.json` alone does not count. Configured: a step that drives the app uses agent-view on the runtime `agent-view.config.json` names (`verifyRuntime`, else `runtime`: electron, tauri or browser), never a browser by default. Not configured: that step is `skip: agent-view not configured`.
 - Hooks may deny an edit or keep you from finishing. Read the reason, fix the cause, do not work around it.
 
 ## Atoms

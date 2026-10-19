@@ -11,7 +11,7 @@ This is the phase that decides the outcome. With a **tight** loop that goes **re
 1. A failing test at whatever seam reaches the bug: unit, integration, end to end.
 2. An HTTP script against a running dev server.
 3. A CLI call with a fixture input, its output diffed against a known-good snapshot.
-4. A runtime check: drive the UI and assert on the DOM, console or network (agent-view when the project has it).
+4. A runtime check: drive the UI and assert on the DOM, console or network (agent-view when it is configured, SKILL.md, on its runtime).
 5. A replay of a captured trace: a saved request, payload or event log run through the code path in isolation.
 6. A throwaway harness: the smallest subset of the system (one service, stubbed neighbors) that runs the bug path in one call.
 7. A property or fuzz loop: for "sometimes wrong", run a thousand random inputs and catch the failure.
@@ -45,7 +45,7 @@ Write 3 to 5 ranked hypotheses before testing any. Each states a prediction: "if
 
 Each probe tests one prediction; change one variable at a time. Prefer a debugger or REPL, then targeted logs at the boundaries that separate hypotheses; never log everything and grep. Tag every debug log with one unique prefix (`[DEBUG-a4f2]`) so cleanup is one search. A slowdown is measured, not logged: a baseline from a profiler or timing harness, then bisect.
 
-Live process: a heap snapshot, a CPU profile or a CDP trace of the running app (agent-view heap, profile or trace when available). Captured artifact (cpuprofile, heapsnapshot, trace, log dump): read it, do not re-run it. A large artifact is turned into a form you can query before reading it: the tool's own query command first (agent-view heap), otherwise load it into sqlite or walk it with a script, one row per sample, frame or node. Parse it in a subagent and keep only the reduced finding.
+Live process: a heap snapshot, a CPU profile or a CDP trace of the running app (agent-view heap, profile or trace when it is configured). Captured artifact (cpuprofile, heapsnapshot, trace, log dump): read it, do not re-run it. A large artifact is turned into a form you can query before reading it: the tool's own query command first (agent-view heap), otherwise load it into sqlite or walk it with a script, one row per sample, frame or node. Parse it in a subagent and keep only the reduced finding.
 
 Done when one hypothesis is confirmed by an observation that would have come out differently if it were false, and mapped to `file:line`.
 

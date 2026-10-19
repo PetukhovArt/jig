@@ -12,7 +12,7 @@ Discipline: `references/diagnosis.md`.
 
 1. Frame the symptom: what goes wrong, where it is seen, since when. Diagnosed means: a mechanism at `file:line`, confirmed by an observation that would have come out differently if it were false.
 2. Pick the branch: a live process you can run, or a captured artifact handed to you (cpuprofile, heapsnapshot, trace, log dump).
-3. Live process: build the feedback loop (diagnosis phases 1 and 2), then capture the signal on the running app: a heap snapshot for a leak, a CPU profile for a spin, a CDP trace for a glitch (agent-view heap, profile and trace when the project has it). Otherwise `skip: artifact given`.
+3. Live process: build the feedback loop (diagnosis phases 1 and 2), then capture the signal on the running app: a heap snapshot for a leak, a CPU profile for a spin, a CDP trace for a glitch (agent-view heap, profile and trace when agent-view is configured, SKILL.md). Otherwise `skip: artifact given`.
 4. Captured artifact: identify the format and read it, do not re-run it. A large artifact becomes queryable first: the tool's own query command (agent-view heap), otherwise sqlite or a script, one row per sample, frame or node. A paired before-and-after capture: diff the two. Otherwise `skip: live process`.
 5. Reduce in a subagent and keep only the finding: the function on the hot path, the retainer chain from the leaked object to a root, the loop firing without input.
 6. Hypotheses and proof (diagnosis phases 3 and 4): ranked, each with a prediction; confirm the mechanism with a cheap probe on the running process. An artifact with no second capture: the finding is the strongest hypothesis it supports, labeled so.
