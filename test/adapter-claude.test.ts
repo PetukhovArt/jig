@@ -76,7 +76,6 @@ describe('Outcome to stdout JSON', () => {
       '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"no"}}',
     ],
     ['post-edit', { type: 'context', text: 'a\nb' }, '{"hookSpecificOutput":{"hookEventName":"PostToolUse","additionalContext":"a\\nb"}}'],
-    ['post-read', { type: 'context', text: 't' }, '{"hookSpecificOutput":{"hookEventName":"PostToolUse","additionalContext":"t"}}'],
     ['session-start', { type: 'context', text: 't' }, '{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"t"}}'],
     ['subagent-start', { type: 'context', text: 't' }, '{"hookSpecificOutput":{"hookEventName":"SubagentStart","additionalContext":"t"}}'],
     ['stop', { type: 'block', reason: 'fix types' }, '{"decision":"block","reason":"fix types"}'],

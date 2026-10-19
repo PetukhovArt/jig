@@ -1,12 +1,11 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { resolveAdapter, type AgentAdapter } from '../adapters'
-import { formatAtomDelivery, formatSessionAtoms, selectAtoms } from '../atoms/atoms'
 import { loadConfig, type JigConfig } from '../core/config'
 import { activeRunContext } from '../dash/dash'
 import { appendJournal, rotateJournal, type JournalEntry } from '../core/journal'
 import { ensureJigDir, resolvePluginRoot, toSlash } from '../core/paths'
-import { loadPlan, type PlanAtom } from '../core/plan'
+import { loadPlan } from '../core/plan'
 import { takeSnapshot } from '../core/snapshot'
 import {
   createSessionState,
@@ -44,7 +43,6 @@ interface HookContext extends EventBase {
 type EventOf<K extends JigEvent['kind']> = Extract<JigEvent, { kind: K }>
 
 const NONE: Outcome = { type: 'none' }
-const SUBAGENT_ATOM_LIMIT = 10
 const GUARDED_KINDS: ReadonlySet<JigEvent['kind']> = new Set(['pre-edit'])
 const AGENT_FLAG = '--agent'
 
@@ -80,31 +78,6 @@ const trackTurn = (ctx: HookContext, state: SessionState): SessionState => {
 const openSession = (ctx: HookContext): SessionState =>
   trackTurn(ctx, readState(ctx.projectRoot, ctx.sessionId) ?? createSessionState(ctx.sessionId, takeSnapshot(ctx.projectRoot)))
 
-const deliverAtoms = (ctx: HookContext, state: SessionState, file: string): string[] => {
-  const plan = loadPlan(ctx.projectRoot, ctx.pluginRoot)
-  const delivered = state.delivered[ctx.agent] ?? []
-  const atoms = selectAtoms(plan.atoms, file, delivered)
-  const names: string[] = []
-  const texts: string[] = []
-  for (const atom of atoms) {
-    try {
-      texts.push(formatAtomDelivery(atom, file))
-      names.push(atom.name)
-    } catch (error) {
-      journalFailure(ctx, error)
-    }
-  }
-  if (names.length === 0) return []
-  state.delivered[ctx.agent] = [...delivered, ...names]
-  if (ctx.agent === MAIN_AGENT) {
-    state.sessionAtoms = [...state.sessionAtoms.filter((name) => !names.includes(name)), ...names]
-  }
-  for (const name of names) {
-    journal(ctx, { kind: 'atom', tool: 'jig', rule: name, file })
-  }
-  return texts
-}
-
 const contextOf = (parts: readonly string[]): Outcome =>
   parts.length === 0 ? NONE : { type: 'context', text: parts.join('\n') }
 
@@ -129,7 +102,6 @@ const sessionStart = (event: EventOf<'session-start'>, ctx: HookContext): Outcom
   trackTurn(ctx, state)
   const parts: string[] = []
   if (event.source === 'compact') {
-    state.delivered[MAIN_AGENT] = []
     const runLine = compactRunLine(ctx, now)
     if (runLine !== undefined) {
       parts.push(runLine)
@@ -253,39 +225,19 @@ const postEdit = async (event: EventOf<'post-edit'>, ctx: HookContext): Promise<
   const now = Date.now()
   const state = openSession(ctx)
   state.edits.push({ path: event.file, at: now, agent: ctx.agent })
-  const parts: string[] = []
   const toolFindings = await editToolFindings(ctx, event.file)
-  const toolLines = collapseFindings(toolFindings)
-  const findingLines = [...toolLines, ...state.pendingWarnings]
-  const shown = limitLines(findingLines, POST_EDIT_LINE_LIMIT, ctx.pluginRoot)
-  const isTruncated = shown.length < findingLines.length
-  const toolShownCount = isTruncated ? Math.min(toolLines.length, POST_EDIT_LINE_LIMIT - 1) : toolLines.length
-  parts.push(...shown.slice(0, toolShownCount))
-  parts.push(...deliverAtoms(ctx, state, event.file))
-  parts.push(...shown.slice(toolShownCount))
+  const findingLines = [...collapseFindings(toolFindings), ...state.pendingWarnings]
   state.pendingWarnings = []
   writeState(ctx.projectRoot, state)
-  return contextOf(parts)
+  return contextOf(limitLines(findingLines, POST_EDIT_LINE_LIMIT, ctx.pluginRoot))
 }
 
-const postRead = (event: EventOf<'post-read'>, ctx: HookContext): Outcome => {
-  const state = openSession(ctx)
-  const parts = deliverAtoms(ctx, state, event.file)
-  if (parts.length === 0) return NONE
-  writeState(ctx.projectRoot, state)
-  return contextOf(parts)
-}
+const ROLE_PATH = /\S*[\\/]roles[\\/]([\w-]+)\.md\b/g
 
-const subagentStart = (ctx: HookContext): Outcome => {
-  const state = readState(ctx.projectRoot, ctx.sessionId)
-  if (state === undefined || state.sessionAtoms.length === 0) return NONE
-  const plan = loadPlan(ctx.projectRoot, ctx.pluginRoot)
-  const recent = state.sessionAtoms.slice(-SUBAGENT_ATOM_LIMIT)
-  const atoms = recent
-    .map((name) => plan.atoms.find((atom) => atom.name === name))
-    .filter((atom): atom is PlanAtom => atom !== undefined)
-  if (atoms.length === 0) return NONE
-  return { type: 'context', text: formatSessionAtoms(atoms, ctx.pluginRoot) }
+const subagentStart = (event: EventOf<'subagent-start'>, ctx: HookContext): Outcome => {
+  const prompt = event.prompt?.replace(ROLE_PATH, 'role $1')
+  journal(ctx, { kind: 'subagent-start', tool: 'jig', rule: event.agentType, ...(prompt === undefined ? {} : { message: prompt }) })
+  return NONE
 }
 
 const stop = async (event: EventOf<'stop'>, ctx: HookContext): Promise<Outcome> => {
@@ -308,10 +260,8 @@ const route = (event: JigEvent, ctx: HookContext): Outcome | Promise<Outcome> =>
       return preEdit(event, ctx)
     case 'post-edit':
       return postEdit(event, ctx)
-    case 'post-read':
-      return postRead(event, ctx)
     case 'subagent-start':
-      return subagentStart({ ...ctx, agent: event.agentId })
+      return subagentStart(event, { ...ctx, agent: event.agentId })
     case 'stop':
       return stop(event, ctx)
   }

@@ -13,7 +13,6 @@ const HOOK_EVENT_NAMES: Record<JigEvent['kind'], string> = {
   prompt: 'UserPromptSubmit',
   'pre-edit': 'PreToolUse',
   'post-edit': 'PostToolUse',
-  'post-read': 'PostToolUse',
   'subagent-start': 'SubagentStart',
   stop: 'Stop',
 }
@@ -95,15 +94,16 @@ const toEvent = (name: string, input: Json, paths: PathContext): JigEvent | unde
       return { kind: 'prompt' }
     case 'pre-edit':
       return preEditEvent(toolName, toolInput, paths)
-    case 'post-edit':
-    case 'post-read': {
+    case 'post-edit': {
       const file = toolFile(toolInput, paths)
-      return file === undefined ? undefined : { kind: name, file }
+      return file === undefined ? undefined : { kind: 'post-edit', file }
     }
     case 'subagent-start': {
       const agentId = text(input, 'agent_id')
       if (agentId === undefined) return undefined
-      return { kind: 'subagent-start', agentId, agentType: text(input, 'agent_type') ?? '' }
+      const prompt = text(input, 'prompt')
+      const event: JigEvent = { kind: 'subagent-start', agentId, agentType: text(input, 'agent_type') ?? '' }
+      return prompt === undefined ? event : { ...event, prompt }
     }
     case 'stop':
       return { kind: 'stop', stopHookActive: input['stop_hook_active'] === true }

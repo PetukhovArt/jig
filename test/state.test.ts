@@ -22,7 +22,7 @@ const path = sessionStatePath(root, ${JSON.stringify(SESSION)})
 let torn = 0
 for (let n = 0; n < Number(count); n++) {
   const state = createSessionState(${JSON.stringify(SESSION)}, {})
-  state.sessionAtoms = Array.from({ length: 200 + n }, () => 'w' + writer + '-' + n)
+  state.edits = Array.from({ length: 200 + n }, () => ({ path: 'w' + writer + '-' + n, at: n, agent: 'main' }))
   writeState(root, state)
   let text
   try {
@@ -84,8 +84,8 @@ describe('session state', () => {
     const results = await Promise.all(Array.from({ length: WRITERS }, (_, writer) => runWriter(script, root, writer)))
 
     expect(results).toEqual(Array.from({ length: WRITERS }, () => ({ code: 0, torn: 0 })))
-    const final = JSON.parse(readFileSync(sessionStatePath(root, SESSION), 'utf8')) as { sessionAtoms: string[] }
-    expect(final.sessionAtoms).toHaveLength(200 + WRITES_PER_WRITER - 1)
+    const final = JSON.parse(readFileSync(sessionStatePath(root, SESSION), 'utf8')) as { edits: unknown[] }
+    expect(final.edits).toHaveLength(200 + WRITES_PER_WRITER - 1)
     expect(readdirSync(jigPaths(root).sessions)).toEqual([`${SESSION}.json`])
   }, 60_000)
 

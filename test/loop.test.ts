@@ -84,7 +84,7 @@ describe('jig loop', () => {
   })
 
   it('counts a subagent record in the same turn as that turn', () => {
-    const deny = { kind: 'deny', rule: 'jig/protected-paths', file: '.husky/pre-commit' } as const
+    const deny = { kind: 'deny', rule: 'jig/comments', file: 'src/a.ts' } as const
     expect(signals([record(deny), record({ ...deny, agent: 'agent-7' })])).toEqual([])
   })
 
@@ -109,16 +109,15 @@ describe('jig loop', () => {
   })
 
   it('keeps kinds that are not problem signals out of candidates and in the counts', () => {
-    const kinds = ['gate-pass', 'gate-skipped', 'atom', 'no-verify-allowed', 'skip-verify'] as const
+    const kinds = ['gate-pass', 'gate-skipped', 'skip-verify', 'subagent-start'] as const
     const records = kinds.flatMap((kind) => [1, 2].map((turn) => record({ kind, rule: 'r', turn })))
     const text = loop(records)
     expect(rows(text)).toEqual([])
     expect(tableRows(text, 'Counts')).toEqual([
-      ['atom', '2'],
       ['gate-pass', '2'],
       ['gate-skipped', '2'],
-      ['no-verify-allowed', '2'],
       ['skip-verify', '2'],
+      ['subagent-start', '2'],
     ])
   })
 

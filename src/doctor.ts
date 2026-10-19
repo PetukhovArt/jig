@@ -119,22 +119,6 @@ const checkDeny = (projectRoot: string): Check => {
   return { ...warn(text), block: formatDenyBlock() }
 }
 
-const checkAtomPaths = (projectRoot: string, pluginRoot: string): Check[] => {
-  const files = gitLsFiles(projectRoot)
-  const checks: Check[] = []
-  let globs = 0
-  for (const atom of readAtomIndex(pluginRoot)) {
-    for (const glob of atom.paths ?? []) {
-      globs++
-      const matches = createMatcher([glob])
-      if (!files.some(matches)) {
-        checks.push(warn(`atom ${atom.name}: paths glob ${glob} matches no file`))
-      }
-    }
-  }
-  return checks.length > 0 ? checks : [ok(`atoms: ${globs} paths globs match files`)]
-}
-
 const checkJournal = (projectRoot: string): Check => {
   const files = listJournalFiles(projectRoot)
   const bytes = files.reduce((total, file) => total + file.size, 0)
@@ -172,7 +156,6 @@ export const runDoctor: Command = (args) => {
     ...checkRuntime(tools),
     checkGitignore(projectRoot),
     checkDeny(projectRoot),
-    ...checkAtomPaths(projectRoot, pluginRoot),
     checkJournal(projectRoot),
     checkLock(paths.heavyLock),
     checkLock(join(paths.cache, 'slot.lock')),

@@ -10,8 +10,7 @@ export type JigEvent =
   | { kind: 'prompt' }
   | { kind: 'pre-edit'; file: string; edits: EditPair[]; wholeFile?: string }
   | { kind: 'post-edit'; file: string }
-  | { kind: 'post-read'; file: string }
-  | { kind: 'subagent-start'; agentId: string; agentType: string }
+  | { kind: 'subagent-start'; agentId: string; agentType: string; prompt?: string }
   | { kind: 'stop'; stopHookActive: boolean }
 
 export interface EventBase {

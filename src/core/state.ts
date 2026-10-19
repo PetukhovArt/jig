@@ -24,8 +24,6 @@ export interface SessionState {
   updatedAt: string
   snapshot: Snapshot
   edits: EditRecord[]
-  delivered: Record<string, string[]>
-  sessionAtoms: string[]
   pendingWarnings: string[]
   stop: StopState
 }
@@ -53,8 +51,6 @@ export const createSessionState = (sessionId: string, snapshot: Snapshot, now: D
     updatedAt: iso,
     snapshot,
     edits: [],
-    delivered: {},
-    sessionAtoms: [],
     pendingWarnings: [],
     stop: { consecutiveBlocks: 0 },
   }

@@ -1,22 +1,20 @@
 import { readFileSync } from 'node:fs'
 import { basename, join } from 'node:path'
 import { parseFrontmatter, type FrontmatterValue } from '../core/frontmatter'
-import { matchGlob } from '../core/glob'
-import { ensureJigDir, resolvePluginRoot, resolveProjectRoot, toSlash } from '../core/paths'
-import { buildPlan, readAtomIndex, writePlan, type PlanAtom } from '../core/plan'
+import { ensureJigDir, resolvePluginRoot, resolveProjectRoot } from '../core/paths'
+import { buildPlan, readAtomIndex, writePlan } from '../core/plan'
 import { listMarkdown, parseMarkdownFile, readText } from './markdown'
 import { validateSkillDocs } from './skill-docs'
 
 type Command = (args: string[]) => number | Promise<number>
 
-const ALLOWED_KEYS = new Set(['name', 'description', 'paths'])
+const ALLOWED_KEYS = new Set(['name', 'description', 'metadata', 'paths'])
 const KEBAB_CASE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 const DESCRIPTION_START = /^Apply (when|before|after|to) /
 const MAX_DESCRIPTION_LENGTH = 300
 const MAX_BODY_LINES = 35
-const MAX_ATOMS_PER_EVENT = 3
-const MAX_SESSION_ATOMS = 10
 const ATOMS_LINE = /^\s*Atoms:(.*)$/gm
+const INDEX_LINE = /^\s*- `([a-z0-9-]+)`/gm
 
 const reachableNames = (pluginRoot: string): Set<string> => {
   const skillDir = join(pluginRoot, 'skills', 'jig')
@@ -28,6 +26,9 @@ const reachableNames = (pluginRoot: string): Set<string> => {
   const names = new Set<string>()
   for (const text of texts) {
     for (const match of text.matchAll(/atom `([^`]+)`/g)) {
+      names.add(match[1] ?? '')
+    }
+    for (const match of text.matchAll(INDEX_LINE)) {
       names.add(match[1] ?? '')
     }
     for (const match of text.matchAll(ATOMS_LINE)) {
@@ -43,9 +44,6 @@ const bodyLineCount = (body: string): number => {
   const trimmed = body.replace(/\s+$/, '')
   return trimmed === '' ? 0 : trimmed.split('\n').length
 }
-
-const isGlobList = (value: FrontmatterValue): boolean =>
-  Array.isArray(value) && value.length > 0 && value.every((glob) => glob.trim() !== '')
 
 const checkName = (name: FrontmatterValue | undefined, fileName: string, seen: Set<string>): string[] => {
   if (typeof name !== 'string' || name === '') return ['name is missing']
@@ -90,14 +88,9 @@ const checkAtom = (path: string, seen: Set<string>, reachable: Set<string>): str
   if (lineCount > MAX_BODY_LINES) {
     problems.push(`body is longer than ${MAX_BODY_LINES} lines (${lineCount})`)
   }
-  const paths = data['paths']
-  const hasPaths = paths !== undefined
-  if (hasPaths && !isGlobList(paths)) {
-    problems.push('paths must be a non-empty array of globs')
-  }
   const name = typeof data['name'] === 'string' ? data['name'] : fileName
-  if (!hasPaths && !reachable.has(name)) {
-    problems.push(`atom is unreachable: name it as atom \`${name}\` or in an "Atoms:" line of skills/jig/SKILL.md or a flow, or add paths`)
+  if (!reachable.has(name)) {
+    problems.push(`atom is unreachable: name it as atom \`${name}\`, in an "Atoms:" line or an index line of skills/jig/SKILL.md or a flow`)
   }
   return problems
 }
@@ -111,30 +104,10 @@ export const validateAtoms = (pluginRoot: string): string[] => {
   )
 }
 
-export const selectAtoms = (atoms: PlanAtom[], file: string, delivered: readonly string[]): PlanAtom[] => {
-  return atoms
-    .filter((atom) => atom.paths !== undefined && !delivered.includes(atom.name) && matchGlob(file, atom.paths))
-    .sort((left, right) => left.name.localeCompare(right.name))
-    .slice(0, MAX_ATOMS_PER_EVENT)
-}
-
-const readAtomBody = (atom: PlanAtom): string => {
-  const text = readFileSync(atom.file, 'utf8')
+export const readAtomBody = (file: string): string => {
+  const text = readFileSync(file, 'utf8')
   const body = parseFrontmatter(text)?.body ?? text.replace(/\r\n/g, '\n')
   return body.replace(/^\n+/, '').replace(/\s+$/, '')
-}
-
-export const formatAtomDelivery = (atom: PlanAtom, file: string): string => {
-  return `jig: atom ${atom.name} applies to ${file}:\n${readAtomBody(atom)}`
-}
-
-export const formatSessionAtoms = (atoms: PlanAtom[], pluginRoot: string): string => {
-  if (atoms.length === 0) return ''
-  const root = toSlash(pluginRoot)
-  const lines = atoms
-    .slice(-MAX_SESSION_ATOMS)
-    .map((atom) => `- ${atom.name} (${root}/atoms/${atom.name}.md): ${atom.description}`)
-  return ['jig: atoms active in this session (read the ones your task touches):', ...lines].join('\n')
 }
 
 const BUILD_FLAGS = new Set(['--atoms-only', '--check'])
@@ -172,6 +145,6 @@ export const runAtom: Command = (args) => {
     process.stderr.write(`jig: unknown atom ${name}\n`)
     return 1
   }
-  process.stdout.write(`${readAtomBody(atom)}\n`)
+  process.stdout.write(`${readAtomBody(atom.file)}\n`)
   return 0
 }

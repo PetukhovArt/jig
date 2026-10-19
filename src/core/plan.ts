@@ -16,7 +16,6 @@ export type { PlanTools, ToolBin, ToolEntry, ToolWithConfig } from '../tools/too
 export interface PlanAtom {
   name: string
   description: string
-  paths?: string[]
   file: string
 }
 
@@ -90,14 +89,9 @@ const toPlanAtom = (file: string): PlanAtom | undefined => {
   } catch {
     return undefined
   }
-  const { name, description, paths } = data
+  const { name, description } = data
   const isIndexable = typeof name === 'string' && typeof description === 'string'
-  if (!isIndexable) return undefined
-  const atom: PlanAtom = { name, description, file }
-  if (Array.isArray(paths) && paths.length > 0) {
-    atom.paths = paths
-  }
-  return atom
+  return isIndexable ? { name, description, file } : undefined
 }
 
 export const readAtomIndex = (pluginRoot: string): PlanAtom[] => {
