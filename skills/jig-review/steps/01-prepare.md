@@ -2,7 +2,7 @@
 
 ## Project config
 
-**Read first.** It decides what to search next and which ceilings apply: [`../references/project-config.md`](../references/project-config.md). No file: the defaults there.
+`.jig/review.jsonc` exists: read [`../references/project-config.md`](../references/project-config.md) first; it decides what to search next and which ceilings apply. No file: the defaults apply and you need not read that reference (`jig review-plan` prints `config: default`).
 
 ## Target
 
@@ -10,7 +10,7 @@
 - Mode `review`, no argument: the current branch.
 - Mode `pre-mr`: the current branch with its uncommitted changes.
 
-Mode `review` resolves the merge request number in both cases, before the state key: "Merge request of the current branch" in `forge.md`. No merge request: the branch name stands in.
+Mode `review` with a merge request URL or number, or when asked to post: resolve the merge request ("Merge request of the current branch" in `forge.md`); it keys the state. A branch with no merge request named: no forge call, no state.
 
 ## Base and diff
 
@@ -59,13 +59,14 @@ The merge request description is only a source of references for item 1: the aut
 ## Layout
 
 ```bash
-node <root>/bin/jig.mjs review-plan <base> [--selector <selector>] [--spec]
+node <root>/bin/jig.mjs review-plan <base> [--selector <selector>] [--spec] [--mode pre-mr] [--mr] [--no-state]
 ```
 
-`--spec` when a spec was found. It prints, and with `--json` returns as data:
+`--spec` when a spec was found. `--mode pre-mr` in mode `pre-mr`. `--mr` in mode `review` when a merge request is known: it turns state, comment texts, re-review and posting on. `--no-state` passes the flag of the same name. No selector argument: pass none; the command picks the default. It prints, and with `--json` returns as data:
 
 - `LINES`: added + removed lines by `git diff --numstat -M` against the merge base, without tests, fixtures and `*.md`. A rename without edits counts 0. Documents are judged by angle 11 and add no readers to the bug finders.
-- `N = ceil(LINES / 150)`, at most 5: up to four bug finders plus cleanup; the rules finder and the tests-and-comments finder come on top of `N` when the diff shape calls for them. `N = 1` collapses everything into one finder ([finders](04-finders.md)).
-- the diff shape (tests, added comments, Markdown, new source files, spec), the selector expanded (`auto` too), every finder with its angles, tier, effort and model, the judge model per finder model, the subagent cap, and the angles skipped with the reason.
+- `N = ceil(LINES / 150)`, at most 5. `N = 1`: `path: inline`, you review in this session ([inline](04-inline.md)), on `quick` unless a selector was given. `N > 1`: up to four bug finders plus cleanup; the rules finder and the tests-and-comments finder come on top of `N` when the diff shape calls for them.
+- the diff shape (tests, added comments, Markdown, new source files, spec), the selector expanded (`auto` too), the mode and whether state is on, every finder (or the inline reader) with its angles, tier, effort and model and the absolute paths of its angle files (`read:`) and atoms (`atoms:`), the judge model per finder model, the subagent cap, and the angles skipped with the reason;
+- last, **the steps for this run**: the files to read from here on, in order. Only those apply.
 
-The printed layout is the plan of [step 04](04-finders.md); do not recompute it by hand. No caps on the number of findings: whatever survives verify reaches the author.
+The printed layout is the plan; do not recompute it by hand. No caps on the number of findings: whatever survives the gates reaches the author.

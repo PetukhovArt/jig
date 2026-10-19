@@ -47,7 +47,7 @@ Drop what is not a rule: meeting notes, release checklists, documents about the 
 
 ## Severity source
 
-The severity taxonomy comes from one file ([verify](05-verify.md#severity)):
+The severity taxonomy comes from one file ([verify](../gates/severity.md)):
 
 1. `severity.source` from the project config: a path in the repository;
 2. otherwise the index from step 1 closest to the code that has a severity section, `REVIEW.md` before `AGENTS.md` at the same level;

@@ -1,6 +1,6 @@
 # Comment texts
 
-Mode `review` only. Mode `pre-mr` prints the judge's `summary` per finding in the [verdict](08-output.md#pre-mr-verdict) and writes no thread texts.
+Mode `review` with state on only: texts exist to be posted as threads. Mode `pre-mr` prints the judge's `summary` per finding in the [verdict](08-output.md#pre-mr-verdict); a review without a merge request prints it in the [output](08-output.md#output). Neither writes thread texts.
 
 ## Which form
 

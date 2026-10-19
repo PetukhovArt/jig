@@ -36,7 +36,7 @@ Merge at the top level: a declared key replaces the default one whole; the other
 - **`review.language`**: the language of comment texts ([comment texts](../steps/07-comments.md)). `null`: the language of the merge request description and its threads.
 - **`severity.source`**: the path of the file whose severity sections replace the skill's taxonomy whole ([severity source](../steps/02-rules.md#severity-source)). `null`: searched among the `discover.rules` indexes. Needed when the file is not on the walk-up path.
 - **`route`**: `glob → angle numbers`. A document goes into the personal tail of the finders that have such an angle. Matched nothing: the default of [step 02](../steps/02-rules.md): indexes to everyone, standard bodies to the rules finder.
-- **`angles.<n>`**: `enabled: false` turns the angle off before any spawn; `severityCeiling` (`Important` or `Nit`) sets the ceiling of its findings ([step 05](../steps/05-verify.md)). A ceiling raised to `Important` puts the angle into the `important` selector token.
+- **`angles.<n>`**: `enabled: false` turns the angle off before any spawn; `severityCeiling` (`Important` or `Nit`) sets the ceiling of its findings ([severity](../gates/severity.md)). A ceiling raised to `Important` puts the angle into the `important` selector token.
 - **`tiers`**: tier and effort per token or role over the defaults in the [selector](selector.md#tiers), the same shape: `{ "tests": { "tier": "deep", "effort": "medium" } }`. A declared entry replaces one default entry; the others stay. Which models serve a tier is not a project matter: `~/.jig/config.jsonc`, key `tiers`, per agent (`jig tiers`).
 - **`maxParallel`**: the cap on subagents running at once ([rules for the whole run](../SKILL.md#rules-for-the-whole-run)).
 

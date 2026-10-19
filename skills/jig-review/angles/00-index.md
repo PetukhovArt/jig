@@ -22,11 +22,11 @@ Every finder gets the whole diff. The questions are split, not the material.
 - [10](10.conventions.md) · conventions and smells: written project rules broken, a code shape from the smell vocabulary
 - [13](13.architecture.md) · architecture: rules of abstractions and layers, ADRs in force, glossary terms
 
-A duplicate without an invariant and a convention without effect on behavior are not findings ([shape gate](../steps/05-verify.md#shape-gate)).
+A duplicate without an invariant and a convention without effect on behavior are not findings ([shape gate](../gates/shape.md#shape-gate)).
 
 ## Cleanup: survives ONLY as `CONFIRMED`
 
-Simplifications 7 and 8 never become threads: they go as items into one optional note. 16 and 17 stay threads ([shape gate](../steps/05-verify.md#shape-gate)).
+Simplifications 7 and 8 never become threads: they go as items into one optional note. 16 and 17 stay threads ([shape gate](../gates/shape.md#shape-gate)).
 
 - [7](7.simplification.md) · simplification: the same behavior with less code
 - [8](8.efficiency.md) · efficiency: extra work and leaks

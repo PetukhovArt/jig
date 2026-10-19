@@ -1,6 +1,6 @@
 # State, learnings, adopting threads
 
-Mode `review` only. Mode `pre-mr` skips this step: it has no state.
+Only mode `review` with a known merge request (`jig review-plan --mr` printed `state: on`): the state carries threads across sessions. Mode `pre-mr` and a review of a bare branch skip this step: no file under `.jig/runs/review/` is read or written, learnings included.
 
 ## State
 

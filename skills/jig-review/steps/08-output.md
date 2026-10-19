@@ -1,13 +1,13 @@
 # State and output
 
-Mode `review`: [write state](#write-state), then the [output](#output). Mode `pre-mr`: no state, the [pre-mr verdict](#pre-mr-verdict) instead.
+Mode `review` with state on: [write state](#write-state), then the [output](#output). Mode `review` without state (no merge request, or `--no-state`): only the [output](#output). Mode `pre-mr`: no state, the [pre-mr verdict](#pre-mr-verdict) instead.
 
 ## Write state
 
-Skipped with `--no-state`. Write into the state file:
+Only with state on (`jig review-plan` printed `state: on`). Write into the state file:
 
 - new findings with `status: "open"` **and the `mrComment` written by [comment texts](07-comments.md)**, verbatim, as it will be posted. A printed finding with only `summary` in state is a lost comment: posting has nothing to post;
-- simplifications ([shape gate](05-verify.md#shape-gate)) with `status: "optional"` and a one-sentence `mrComment`. Earlier `optional` ones stay: the note is built from all of them;
+- simplifications ([shape gate](../gates/shape.md#shape-gate)) with `status: "optional"` and a one-sentence `mrComment`. Earlier `optional` ones stay: the note is built from all of them;
 - outcome statuses from [re-review](09-rereview.md). Thread replies are not written to state; they have their own channel: item 5 of the output;
 - `last_reviewed_sha` = the reviewed HEAD sha;
 - `base_sha` = `git rev-parse <base>`: the base of THIS run resolved to a sha. Written in the same write as `last_reviewed_sha` and `diff_hash`: the triple describes one patch, and [scope recovery after a force-push](09-rereview.md#scope-after-a-force-push) reads it whole. `<base>` is a moving ref; its name is useless to the next run;
@@ -35,10 +35,10 @@ Mode `review`. Always printed, in this order.
 
 0. **Degraded line, only with `tally.degraded`** ([refused spawn](04-finders.md#refused-spawn)): `degraded: <reason>; coverage below normal`. First, before the tally. Not degraded: no line at all.
 1. **Tally line:** `2 Important, 1 Nit · optional: 3 · prior: 3 fixed, 1 skipped, 1 unverified · suppressed: 4 nit, 3 under rework, 2 rare · spec: 2 findings`.
-   With `suppressed_rare`, then the line `known risks: <file> · <defect>; …` ([rare gate](05-verify.md#rare-gate)).
+   With `suppressed_rare`, then the line `known risks: <file> · <defect>; …` ([rare gate](../gates/bugs.md#rare-gate)).
    **The `spec` tail is always printed**, in one of three forms: `spec: N findings` ([angle 15](../angles/15.spec.md) ran and found something), `spec: matches` (ran and found nothing), `spec: not found` (did not run). Without it a matching spec is indistinguishable from an unchecked one.
    A learnings file exists: the line ends with `· learnings: N active`.
-2. **Cost line:** `agents: 5 finders + 4 verify + 1 composer · 0.9M tokens · 4m12s (finders 1m50s, verify 1m30s)`, then the finder plan with tiers and models, then `judge: <finder model> → <judge model>` pairs, then `· rules: <path>` or `rules: not found`, then `· selector: <tokens>` or `selector: full` (for `auto` with the expansion: `auto → important,tests`).
+2. **Cost line:** `agents: 5 finders + 4 verify + 1 composer · 0.9M tokens · 4m12s (finders 1m50s, verify 1m30s)` (inline: `agents: inline + 1 verify`), then the finder plan with tiers and models, then `judge: <finder model> → <judge model>` pairs, then `· rules: <path>` or `rules: not found`, then `· selector: <tokens>` or `selector: full` (for `auto` with the expansion: `auto → important,tests`).
 3. **Machine line** on its own line; consumers (a review cycle, CI gates) parse it and do not read the prose:
 
 ```json
@@ -47,7 +47,7 @@ Mode `review`. Always printed, in this order.
 
    `spec` = the number of angle 15 findings, `null` when no spec was found. `0` and `null` are not interchangeable: the first means "checked, matches", the second "not checked". `degraded` enters the machine line only for a degraded run, with the same reason string as in state.
 
-4. **Every survivor in full:** `file:line` plus `mrComment` verbatim, suggestion blocks included. The printed set is exactly what will be posted.
+4. **Every survivor in full:** `file:line` plus `mrComment` verbatim, suggestion blocks included. The printed set is exactly what will be posted. Without state there are no comment texts: `file:line`, severity, the judge's `summary` with its evidence, and the fix direction in one sentence.
    With `optional`: after the findings a section `## Improvements (optional, not blocking the merge)`: a checklist `- [ ] <file:line> — <mrComment>`. The same text goes as one unresolvable note on the merge request, not as threads ([posting](../references/posting.md)).
    With `deepening`: after the findings a section `## Deepening`: one item `module · what to deepen · effect · blast radius`. Not findings: they go into neither state, tally nor posting ([selector](../references/selector.md#deepening)).
 5. Re-review: **one line per outcome** `<id> → <status>`, and the thread reply texts in full, each with its `discussion_id` (counter-replies and [replies to a developer's reply](09-rereview.md#reply-to-every-reply)). This is the only channel for replies: posting sends them from here; state does not hold them. The evidence of outcomes is not printed here: it exists to discipline the outcome subagent, and that burden lives on its return. Print the evidence of one outcome on explicit request.
@@ -65,7 +65,7 @@ Mode `pre-mr`. You are the lead reviewer of your own change, a pragmatic senior 
 
 - **Act on**: `CONFIRMED` `Important`: correctness, security, data loss, a leak, a structure the next code builds on, a missed or contradicted spec requirement. It would block a real merge request. **You fix these now**, before the merge request.
 - **Consider**: `CONFIRMED` `Nit` and `Pre-existing`, a spec item done without being asked, and the deepening proposal: legitimate, but whether it is worth the cost now is the user's call. **Ask the user** per item, with your recommendation; do not fix them unasked.
-- **Noted**: technically valid, not actionable now: simplifications (`optional`), known risks from the [rare gate](05-verify.md#rare-gate), the counts muted by the selector or by a rework. A brief list.
+- **Noted**: technically valid, not actionable now: simplifications (`optional`), known risks from the [rare gate](../gates/bugs.md#rare-gate), the counts muted by the selector or by a rework. A brief list.
 - **Dismissed**: everything `REFUTED`, with the judge's reason in one phrase.
 
 Signals for the buckets, beyond the verdict:
@@ -83,8 +83,8 @@ Print, in this order:
 > <one paragraph: what the change is for, from the task, the commits and the code>
 
 ### Reviewers
-- finder <name>: angles <list>, <tier/effort> <model>, <N> candidates
-- judges: <finder model> → <judge model>, <M> clusters
+- finder <name>: angles <list>, <tier/effort> <model>, <N> candidates   (inline: `inline: angles <list>, <your model>, <N> candidates`)
+- judges: <finder model> → <judge model>, <M> clusters   (inline: `judge: <model>, <K> Important candidates` or `judge: inline only`)
 
 ### Act on
 - `file:line` · <defect and failure scenario> · raised by <models> · judged by <model>

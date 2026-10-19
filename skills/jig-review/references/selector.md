@@ -6,12 +6,12 @@ An optional argument: comma-separated tokens without spaces, `important,architec
 
 The first word after the mode, target and flags is the selector only when it is a preset or **every** token is in the table below. Otherwise it is the start of the focus note ([step 01](../steps/01-prepare.md#focus-note)). An unknown token in a selector whose other tokens are known is an error: name it and stop, do not guess.
 
-No selector: everything runs (`full`), plus `deepening` when the diff adds source files.
+No selector: `quick` when `N = 1` (the [inline path](../steps/04-inline.md): a small diff reviewed in the session), otherwise everything runs (`full`), plus `deepening` when the diff adds source files. An explicit `full` on a small diff runs every angle inline.
 
 ## Presets
 
-- `full` (default): the same as no selector;
-- `quick` → `important`: only what a merge waits for (bugs, security, layers and placement, spread across modules, structural smells), without cleanup and `deepening`.
+- `full` (default for `N > 1`): every angle, plus `deepening` when the diff adds source files;
+- `quick` → `important` (default for `N = 1`): only what a merge waits for (bugs, security, layers and placement, spread across modules, structural smells), without cleanup and `deepening`.
 
 ## Tokens
 
@@ -41,7 +41,7 @@ Example: `important,architecture,adr,tests,comments` runs the angles with ceilin
 
 ## Angle ceilings
 
-The ceiling is the highest severity an angle gives at [verify](../steps/05-verify.md). `important` runs only the angles with ceiling `Important`.
+The ceiling is the highest severity an angle gives at [verify](../gates/severity.md). `important` runs only the angles with ceiling `Important`.
 
 - `Important`: 1, 2, 3, 4, 5, 12, 13, 14, 15; 8 (a leak only); 10 (a structural smell only).
 - `Nit`: 6, 7, 9, 11, 16, 17.
@@ -57,7 +57,7 @@ Tokens chosen by the diff shape; the summary prints the expansion first: `select
 - comment lines were added → `comments`;
 - the diff has `*.md` → `docs`;
 - the diff adds source files → `architecture,deepening`;
-- `N = 1` ([layout](../steps/01-prepare.md#layout)) → plus `reuse,simplification,altitude,conventions`: one finder reads the diff anyway, and the cleanup angles are almost free on it.
+- `N = 1` ([layout](../steps/01-prepare.md#layout)) → plus `reuse,simplification,altitude,conventions`: the session reads the diff inline anyway, and the cleanup angles are almost free on it.
 
 ## Tiers
 
@@ -73,7 +73,7 @@ Each token runs on a tier and an effort; a finder whose angles differ splits by 
 | `composer` (role `composer`) | standard / medium |
 | `deepening` (role `deepener`) | deep / high |
 
-Angle 13 sections C and D (`adr`, `glossary`) run with `architecture`. The verify judge takes another model of its tier than the finder whose candidates it judges ([verify](../steps/05-verify.md#verify)).
+Angle 13 sections C and D (`adr`, `glossary`) run with `architecture`. The verify judge takes another model of its tier than the finder whose candidates it judges ([verify](../steps/05-verify.md#judges)).
 
 ## Deepening
 
