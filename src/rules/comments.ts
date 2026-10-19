@@ -1,4 +1,4 @@
-import { lexComments, type Comment } from './lexer'
+import { lexComments, type Comment } from '../catalog/languages'
 import { fileLine, type Edit } from './rule'
 
 export interface AddedComment {

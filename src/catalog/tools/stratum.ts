@@ -1,5 +1,6 @@
-import type { Finding } from './finding'
-import { defineTool, hasConfig, isCodeFile, runTool, type ToolRun, type ToolWithConfig } from './tool'
+import type { Finding } from '../../tools/finding'
+import { defineTool, groupByMarker, nearestMarker, runTool, withMarker, type ToolRun, type ToolWithConfig } from '../../tools/tool'
+import { SCRIPT_FILES } from '../languages'
 
 interface StratumRecord {
   v?: number
@@ -62,19 +63,28 @@ export const stratumTool = defineTool({
       requiresConfig: true,
     },
   ],
+  files: SCRIPT_FILES,
+  setup: ['stratum-lint init', 'stratum-lint baseline'],
+  parse: (stdout) => parseStratum(stdout),
   comments: { suppressions: [/\bstratum-ignore\b/], allowed: [/@stratum-purity\s+\d/] },
   edit: async (tools, projectRoot, file, timeoutMs) => {
-    const entry = tools.stratum
-    if (!hasConfig(entry)) return undefined
+    const entry = withMarker(tools.stratum, nearestMarker(projectRoot, file, [STRATUM_CONFIG]))
+    if (entry === undefined) return undefined
     return runStratum(entry, projectRoot, [file], timeoutMs)
   },
   stop: async (tools, input) => {
-    const files = input.files.filter(isCodeFile)
-    const timeoutMs = input.budget(STRATUM_TIMEOUT_MS)
     const entry = tools.stratum
-    const isSkipped = files.length === 0 || timeoutMs === 0
-    if (isSkipped || !hasConfig(entry)) return { runs: [], findings: [] }
-    const toolRun = await runStratum(entry, input.projectRoot, files, timeoutMs)
-    return { runs: [toolRun], findings: toolRun.findings }
+    if (entry === undefined) return { runs: [], findings: [] }
+    const { groups, skipped } = groupByMarker(input.projectRoot, input.files, [STRATUM_CONFIG])
+    for (const file of skipped) {
+      input.notes.push({ kind: 'gate-skipped', tool: 'jig', rule: 'gate/stratum', file, message: 'no stratum config above the file' })
+    }
+    const runs: ToolRun[] = []
+    for (const group of groups) {
+      const timeoutMs = input.budget(STRATUM_TIMEOUT_MS)
+      if (timeoutMs === 0) break
+      runs.push(await runStratum({ bin: entry.bin, config: group.marker }, input.projectRoot, group.files, timeoutMs))
+    }
+    return { runs, findings: runs.flatMap((toolRun) => toolRun.findings) }
   },
 })

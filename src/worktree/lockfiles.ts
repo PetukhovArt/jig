@@ -1,17 +1,12 @@
 import { posix } from 'node:path'
-import table from './lockfiles.json'
+import { LOCKFILES, type Lockfile } from '../catalog'
 
-export interface Lockfile {
-  file: string
-  install: string
-}
+export { LOCKFILES, type Lockfile } from '../catalog'
 
 export interface InstallStep {
   dir: string
   command: string
 }
-
-export const LOCKFILES: readonly Lockfile[] = table
 
 /**
  * Install steps for the lock files among `changed` (repo-relative paths, as `git diff --name-only`

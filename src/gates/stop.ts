@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto'
-import type { RuleId } from '../core/config'
+import { TOOLS, type RegisteredTool } from '../catalog/tools'
+import type { CustomCheck, RuleId } from '../core/config'
 import { ensureJigDir, jigPaths, resolvePluginRoot, resolveProjectRoot, toProjectPath } from '../core/paths'
 import { loadPlan, type Plan } from '../core/plan'
 import { acquireLock, transferLock } from '../core/proc'
@@ -7,10 +8,10 @@ import { takeSnapshot, turnDiff, type TurnDiff } from '../core/snapshot'
 import { resetSnapshot, type SessionState } from '../core/state'
 import { logToActiveJournal } from '../task-status/task-status'
 import type { Outcome } from '../hook/types'
-import { TOOLS, type RegisteredTool } from '../tools'
 import { collapseFindings, formatFindings, POST_EDIT_LINE_LIMIT, STOP_LINE_LIMIT, type Finding } from '../tools/finding'
 import type { JournalNote, StopToolInput, ToolRun } from '../tools/tool'
-import { applyLevel, checkEdit, ruleLevel } from './edit'
+import { checkFiles, checkRule, runCustomCheck } from './custom'
+import { applySetting, checkEdit, toolFiles, toolSetting } from './edit'
 
 type Command = (args: string[]) => number | Promise<number>
 
@@ -80,11 +81,25 @@ interface HeavyLock {
 
 const toolStep = (tool: RegisteredTool, input: StopChecksInput, toolInput: StopToolInput): Promise<StopStep> =>
   timed(tool.rule, async () => {
-    const level = ruleLevel(input.plan, tool.rule)
-    if (level === 'off' || tool.stop === undefined) return { runs: [], findings: [] }
-    const { runs, findings } = await tool.stop(input.plan.tools, toolInput)
-    return { runs, findings: applyLevel(findings, level) }
+    const setting = toolSetting(input.plan.config, tool)
+    const files = toolFiles(tool, toolInput.files)
+    if (setting === undefined || tool.stop === undefined || files.length === 0) return { runs: [], findings: [] }
+    const { runs, findings } = await tool.stop(input.plan.tools, { ...toolInput, files })
+    return { runs, findings: applySetting(findings, setting) }
   })
+
+export const CUSTOM_CHECK_TIMEOUT_MS = 30_000
+
+const customStep = (check: CustomCheck, input: StopChecksInput, toolInput: StopToolInput): Promise<StopStep> =>
+  timed(checkRule(check), async () => {
+    const files = checkFiles(check, toolInput.files)
+    const timeoutMs = toolInput.budget(CUSTOM_CHECK_TIMEOUT_MS)
+    if (check.level === 'off' || files.length === 0 || timeoutMs === 0) return { runs: [], findings: [] }
+    const toolRun = await runCustomCheck(input.projectRoot, check, files, timeoutMs)
+    return { runs: [toolRun], findings: toolRun.findings }
+  })
+
+const isStopTool = (tool: RegisteredTool): boolean => tool.stop !== undefined
 
 export const runStopChecks = async (input: StopChecksInput): Promise<StopChecks> => {
   const startedAt = Date.now()
@@ -103,9 +118,13 @@ export const runStopChecks = async (input: StopChecksInput): Promise<StopChecks>
     }
     const toolInput: StopToolInput = { projectRoot: input.projectRoot, files: input.diff.files, budget, lock: { path: lock.path, transfer }, notes }
     try {
-      for (const tool of TOOLS.filter((candidate) => candidate.stop !== undefined)) {
+      const queue = [
+        ...TOOLS.filter(isStopTool).map((tool) => () => toolStep(tool, input, toolInput)),
+        ...input.plan.config.checks.filter((check) => check.on === 'stop').map((check) => () => customStep(check, input, toolInput)),
+      ]
+      for (const step of queue) {
         if (isStopped()) break
-        steps.push(await toolStep(tool, input, toolInput))
+        steps.push(await step())
       }
     } finally {
       if (!lock.isTransferred) {

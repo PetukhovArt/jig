@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { transferLock } from '../src/core/proc'
-import { groupByTsconfig, runTypeCheck, tsconfigHash, writeClosureConfig } from '../src/tools/tsc'
+import { groupByTsconfig, runTypeCheck, tsconfigHash, writeClosureConfig } from '../src/catalog/tools/tsc'
 
 let root: string
 

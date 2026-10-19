@@ -5,7 +5,7 @@ import { loadConfig } from '../core/config'
 import { activeRunContext } from '../task-status/task-status'
 import { appendJournal, rotateJournal, type JournalEntry } from '../core/journal'
 import { ensureJigDir, resolvePluginRoot } from '../core/paths'
-import { loadPlan } from '../core/plan'
+import { configDriftLine, loadPlan } from '../core/plan'
 import { takeSnapshot } from '../core/snapshot'
 import {
   createSessionState,
@@ -93,8 +93,9 @@ const sessionStart = (event: EventOf<'session-start'>, ctx: HookContext): Outcom
     }
   }
   writeState(ctx.projectRoot, state)
-  if (plan.config.error !== undefined) {
-    parts.push(`jig: .jig/config.jsonc is invalid (${plan.config.error}); defaults are used`)
+  const driftLine = configDriftLine(plan)
+  if (driftLine !== undefined) {
+    parts.push(driftLine)
   }
   return contextOf(parts)
 }

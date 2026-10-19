@@ -1,7 +1,7 @@
-import { createMatcher } from '../core/glob'
-import { isTestFile } from '../core/test-files'
-import type { ToolBinary } from '../tools/tool'
-import { defineCheck, type ProofKind } from './check'
+import { createMatcher } from '../../core/glob'
+import type { ToolBinary } from '../../tools/tool'
+import { isTestFile } from '../languages'
+import { defineCheck, type ProofKind } from './proof'
 
 export const AGENT_VIEW_CONFIG = 'agent-view.config.json'
 
@@ -14,8 +14,11 @@ export const AGENT_VIEW_BINARY: ToolBinary = {
   requiresConfig: true,
 }
 
-const isMarkup = createMatcher(['**/*.{vue,tsx,jsx,svelte,html}'])
-const isStyle = createMatcher(['**/*.{css,scss,less}'])
+export const MARKUP_FILES = ['**/*.{vue,tsx,jsx,svelte,html}'] as const
+export const STYLE_FILES = ['**/*.{css,scss,less}'] as const
+
+const isMarkup = createMatcher(MARKUP_FILES)
+const isStyle = createMatcher(STYLE_FILES)
 
 const PROOFS: ReadonlyArray<readonly [ProofKind, RegExp]> = [
   ['behavior', /(?:^|[\s;&|])(?:npx\s+)?agent-view\s+act\s+replay\b/],
@@ -32,6 +35,8 @@ const requires = (file: string): readonly ProofKind[] => {
 export const agentViewCheck = defineCheck({
   name: 'agent-view',
   binaries: [AGENT_VIEW_BINARY],
+  files: [...MARKUP_FILES, ...STYLE_FILES],
+  setup: ['agent-view init'],
   requires,
   proves: (command) => PROOFS.filter(([, pattern]) => pattern.test(command)).map(([kind]) => kind),
   hints: {

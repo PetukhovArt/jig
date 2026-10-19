@@ -8,8 +8,6 @@ export interface Comment {
   end: number
 }
 
-const SCRIPT_EXTENSION = /\.(?:ts|tsx|mts|cts|js|jsx|mjs|cjs)$/i
-const VUE_EXTENSION = /\.vue$/i
 const REGEX_KEYWORDS = new Set(['return', 'typeof', 'case', 'do', 'else'])
 const DIVISION_AFTER = new Set([')', ']'])
 const IDENTIFIER_START = /[A-Za-z_$\u0080-￿]/
@@ -285,10 +283,4 @@ export const lexVue = (source: string): Comment[] => {
     comments.push({ text: match[0], line: lineAt(source, match.index), kind: 'block', start: match.index, end })
   }
   return comments.sort((left, right) => left.end - right.end)
-}
-
-export const lexComments = (file: string, source: string): Comment[] | undefined => {
-  if (SCRIPT_EXTENSION.test(file)) return lexJs(source)
-  if (VUE_EXTENSION.test(file)) return lexVue(source)
-  return undefined
 }

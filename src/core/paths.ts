@@ -1,10 +1,11 @@
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { gitToplevel } from './git'
 
 export interface JigPaths {
   dir: string
   config: string
+  localConfig: string
   gitignore: string
   journal: string
   runs: string
@@ -16,7 +17,8 @@ export interface JigPaths {
   eslintCache: string
 }
 
-const JIG_GITIGNORE = 'journal/\nruns/\ncache/\n'
+const LOCAL_CONFIG = 'config.local.jsonc'
+const JIG_GITIGNORE = `journal/\nruns/\ncache/\n${LOCAL_CONFIG}\n`
 
 export const resolveProjectRoot = (cwd: string, env: NodeJS.ProcessEnv = process.env): string => {
   const fromEnv = env['CLAUDE_PROJECT_DIR']
@@ -40,6 +42,7 @@ export const jigPaths = (projectRoot: string): JigPaths => {
   return {
     dir,
     config: join(dir, 'config.jsonc'),
+    localConfig: join(dir, 'config.local.jsonc'),
     gitignore: join(dir, '.gitignore'),
     journal: join(dir, 'journal'),
     runs: join(dir, 'runs'),
@@ -57,6 +60,11 @@ export const ensureJigDir = (projectRoot: string): JigPaths => {
   mkdirSync(paths.dir, { recursive: true })
   if (!existsSync(paths.gitignore)) {
     writeFileSync(paths.gitignore, JIG_GITIGNORE)
+    return paths
+  }
+  const current = readFileSync(paths.gitignore, 'utf8')
+  if (!current.split(/\r?\n/).includes(LOCAL_CONFIG)) {
+    appendFileSync(paths.gitignore, `${current === '' || current.endsWith('\n') ? '' : '\n'}${LOCAL_CONFIG}\n`)
   }
   return paths
 }

@@ -2,7 +2,7 @@ import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
-import { defaultConfig, type JigConfig, type RuleId, type Severity } from '../src/core/config'
+import { defaultConfig, type JigConfig, type JigRuleId, type Severity } from '../src/core/config'
 import { addedComments } from '../src/rules/comments'
 import { gateEdit, resetGateAtoms, type GateInput } from '../src/rules/gate'
 import type { Edit } from '../src/rules/rule'
@@ -26,7 +26,7 @@ afterAll(() => {
   rmSync(sandbox, { recursive: true, force: true })
 })
 
-const withRules = (rules: Partial<Record<RuleId, Severity>>): JigConfig => {
+const withRules = (rules: Partial<Record<JigRuleId, Severity>>): JigConfig => {
   const config = defaultConfig()
   return { ...config, rules: { ...config.rules, ...rules } }
 }

@@ -8,12 +8,14 @@ import { dispatch, type EventBase, type JigEvent } from '../src/hook/dispatch'
 
 const pluginRoot = resolve(__dirname, '..')
 
-vi.mock('../src/tools', () => ({
+vi.mock('../src/catalog/tools', () => ({
+  DIRECTIVE_SOURCES: [],
   TOOLS: [
     {
       name: 'probe',
       rule: 'gate/probe',
       binaries: [],
+      files: ['**'],
       stop: async (_tools: unknown, input: { files: readonly string[] }) => ({
         runs: [],
         findings: input.files.map((file) => ({ tool: 'probe', rule: 'probe/always', severity: 'error', file, line: 1, message: 'probe fails' })),
@@ -44,6 +46,7 @@ beforeEach(async () => {
   base = { sessionId: 'loop', projectRoot: root, cwd: root }
   git(['init', '-q'], root)
   write('src/a.ts', 'export const a = 1\n')
+  write('.jig/config.jsonc', '{ "tools": { "probe": {} } }\n')
   git(['add', '-A'], root)
   git(['-c', 'user.email=jig@test', '-c', 'user.name=jig', 'commit', '-q', '-m', 'init'], root)
   await send({ kind: 'session-start', source: 'startup' })

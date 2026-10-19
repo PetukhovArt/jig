@@ -1,7 +1,8 @@
-import { resolve } from 'node:path'
-import { jigPaths, toProjectPath, toSlash } from '../core/paths'
-import type { Finding } from './finding'
-import { defineTool, hasConfig, isCodeFile, keepOnChangedLines, runTool, type ToolRun, type ToolWithConfig } from './tool'
+import { dirname, resolve } from 'node:path'
+import { jigPaths, toProjectPath, toSlash } from '../../core/paths'
+import type { Finding } from '../../tools/finding'
+import { defineTool, groupByMarker, keepOnChangedLines, runTool, type ToolRun, type ToolWithConfig } from '../../tools/tool'
+import { SCRIPT_FILES } from '../languages'
 
 interface EslintMessage {
   ruleId?: string | null
@@ -51,7 +52,13 @@ export const parseEslint = (stdout: string, projectRoot: string, cwd: string = p
   })
 }
 
-export const runEslint = (tool: ToolWithConfig, projectRoot: string, files: readonly string[], timeoutMs: number): Promise<ToolRun> =>
+export const runEslint = (
+  tool: ToolWithConfig,
+  projectRoot: string,
+  files: readonly string[],
+  timeoutMs: number,
+  cwd: string = projectRoot,
+): Promise<ToolRun> =>
   runTool({
     tool: 'eslint',
     argv: [
@@ -62,29 +69,37 @@ export const runEslint = (tool: ToolWithConfig, projectRoot: string, files: read
       '--cache-location',
       `${toSlash(jigPaths(projectRoot).eslintCache)}/`,
       '--no-warn-ignored',
-      ...files,
+      ...files.map((file) => (cwd === projectRoot ? file : resolve(projectRoot, file))),
     ],
-    cwd: projectRoot,
+    cwd,
     timeoutMs,
     okCodes: OK_CODES,
-    parse: (stdout) => parseEslint(stdout, projectRoot),
+    parse: (stdout) => parseEslint(stdout, projectRoot, cwd),
   })
 
 export const eslintTool = defineTool({
   name: 'eslint',
   binaries: [{ key: 'eslint', label: 'eslint', command: 'eslint', packages: ['eslint'], configs: ESLINT_CONFIGS, requiresConfig: true }],
+  files: SCRIPT_FILES,
+  parse: parseEslint,
   comments: {
     suppressions: [/\beslint-disable(?:-next-line|-line)?\b/, /^\/\*\s*eslint\s+[\w@/-]+\s*:/],
     allowed: [/\beslint-enable\b/],
   },
   stop: async (tools, input) => {
-    const files = input.files.filter(isCodeFile)
-    const timeoutMs = input.budget(ESLINT_TIMEOUT_MS)
     const entry = tools.eslint
-    const isSkipped = files.length === 0 || timeoutMs === 0
-    if (isSkipped || !hasConfig(entry)) return { runs: [], findings: [] }
-    const toolRun = await runEslint(entry, input.projectRoot, files, timeoutMs)
-    const errors = toolRun.findings.filter((finding) => finding.severity === 'error')
-    return { runs: [toolRun], findings: keepOnChangedLines(input.projectRoot, errors) }
+    if (entry === undefined) return { runs: [], findings: [] }
+    const { groups, skipped } = groupByMarker(input.projectRoot, input.files, ESLINT_CONFIGS)
+    for (const file of skipped) {
+      input.notes.push({ kind: 'gate-skipped', tool: 'jig', rule: 'gate/eslint', file, message: 'no eslint config above the file' })
+    }
+    const runs: ToolRun[] = []
+    for (const group of groups) {
+      const timeoutMs = input.budget(ESLINT_TIMEOUT_MS)
+      if (timeoutMs === 0) break
+      runs.push(await runEslint({ bin: entry.bin, config: group.marker }, input.projectRoot, group.files, timeoutMs, dirname(group.marker)))
+    }
+    const errors = runs.flatMap((toolRun) => toolRun.findings).filter((finding) => finding.severity === 'error')
+    return { runs, findings: keepOnChangedLines(input.projectRoot, errors) }
   },
 })

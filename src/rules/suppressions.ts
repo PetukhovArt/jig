@@ -1,4 +1,4 @@
-import { DIRECTIVE_SOURCES } from '../tools'
+import { DIRECTIVE_SOURCES } from '../catalog'
 
 const firstMatch = (patterns: readonly RegExp[], text: string): string | undefined => {
   for (const pattern of patterns) {

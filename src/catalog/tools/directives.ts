@@ -1,4 +1,4 @@
-import type { DirectiveSource } from './tool'
+import type { DirectiveSource } from '../../tools/tool'
 
 export const DIRECTIVE_ONLY_TOOLS: readonly DirectiveSource[] = [
   { name: 'biome', comments: { suppressions: [/\bbiome-ignore\b/], allowed: [] } },
