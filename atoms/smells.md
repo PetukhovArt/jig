@@ -1,6 +1,8 @@
 ---
 name: smells
 description: "Apply when judging whether a hunk is a code smell. Each smell is a heuristic with a known fix, never a hard violation; report it as 'possible <smell>'."
+metadata:
+  group: Review
 ---
 # Smells
 

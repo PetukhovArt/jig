@@ -1,6 +1,8 @@
 ---
 name: domain-model
 description: "Apply when writing stateful logic, designing types, or when code branches a lot on the same shape. Encode the domain in a structure (a union, a state machine, a registry) instead of scattered conditionals, and make illegal states unrepresentable."
+metadata:
+  group: Design
 ---
 # Domain model
 

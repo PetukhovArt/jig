@@ -1,6 +1,8 @@
 ---
 name: patterns
 description: "Apply when designing a module interface with two or more variants, or when untangling complex code: a switch on type, an instanceof chain, duplicated conditional creation, an import cycle. Map the problem to the pattern that solves it."
+metadata:
+  group: Design
 ---
 # Patterns
 

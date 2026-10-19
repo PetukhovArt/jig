@@ -1,6 +1,8 @@
 ---
 name: root-causes
 description: "Apply when debugging. Trace each symptom back to the first place the system went wrong and fix it there. A guard is a fix only when the state it handles is legitimate. If two fixes sharing one premise fail the same check, test the premise."
+metadata:
+  group: Proof
 ---
 # Root causes
 

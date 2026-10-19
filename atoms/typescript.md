@@ -1,7 +1,8 @@
 ---
 name: typescript
 description: "Apply when reading or editing TypeScript. Model with the type system: sum types over flag combinations, branded primitives, parsing at boundaries, no lies to the compiler, exhaustive handling."
-paths: ["**/*.{ts,tsx}"]
+metadata:
+  group: Code
 ---
 # TypeScript
 

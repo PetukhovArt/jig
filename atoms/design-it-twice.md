@@ -1,6 +1,8 @@
 ---
 name: design-it-twice
 description: "Apply when facing a novel module interface, data shape or architectural decision with no precedent in the codebase, or when a new requirement lands in an existing design. Get the data structures right first, explore two or three shapes, and redesign as if the requirement had been there from day one."
+metadata:
+  group: Design
 ---
 # Design it twice
 

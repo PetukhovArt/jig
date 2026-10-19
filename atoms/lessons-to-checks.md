@@ -1,6 +1,8 @@
 ---
 name: lessons-to-checks
 description: "Apply when you catch yourself writing the same instruction a second time, or see a recurring correction or review finding. Encode the rule as structure (architecture, a type, a lint whose message names the fix, a test) instead of more text."
+metadata:
+  group: Process
 ---
 # Lessons to checks
 

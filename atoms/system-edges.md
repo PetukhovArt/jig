@@ -1,6 +1,8 @@
 ---
 name: system-edges
 description: "Apply when wiring validation, error handling, adapters or imports across modules. Guard at system boundaries (network, storage, IPC, CLI, config), trust internal types, keep business logic pure, and cross module boundaries only through their public interface."
+metadata:
+  group: Design
 ---
 # System edges
 

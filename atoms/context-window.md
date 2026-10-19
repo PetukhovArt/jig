@@ -1,6 +1,8 @@
 ---
 name: context-window
 description: "Apply when context fills up: large outputs, long files, repeated reads, fan-out work. Route bulk reading to subagents and keep summaries, not raw payloads, in the main thread."
+metadata:
+  group: Process
 ---
 # Context window
 

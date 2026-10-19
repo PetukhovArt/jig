@@ -1,6 +1,8 @@
 ---
 name: one-way
 description: "Apply when introducing a new API, abstraction or way of doing a task while old ones exist. There is one way to do each task: migrate every caller and delete the old way in the same wave; keep a compatibility layer only while an intermediate state ships to a shared branch."
+metadata:
+  group: Design
 ---
 # One way
 

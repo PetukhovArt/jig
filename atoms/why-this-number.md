@@ -1,6 +1,8 @@
 ---
 name: why-this-number
 description: "Apply before you trust, report or act on a measured number: a speedup, a regression, a latency, a throughput, an eval score. Find what limits it and rule out that it measured something other than the work you think."
+metadata:
+  group: Proof
 ---
 # Why this number
 
