@@ -6,7 +6,8 @@ import { loadConfig } from '../core/config'
 import { gitToplevel } from '../core/git'
 import { resolveProjectRoot, toSlash } from '../core/paths'
 import { listWorktrees, samePath } from './list'
-import { formatSeed, seedWorktree } from './seed'
+import { removeLinkedWorktree } from './remove'
+import { formatSeed, linkDependencies, seedWorktree } from './seed'
 import {
   auditWorktrees,
   currentWorktree,
@@ -38,9 +39,9 @@ const mainCheckout = (cwd: string): string => {
 }
 
 const worktreeSeed = (args: string[]): number => {
-  const { positionals } = parseArgs({ args, options: {}, allowPositionals: true, strict: true })
+  const { values, positionals } = parseArgs({ args, options: { 'link-deps': { type: 'boolean' } }, allowPositionals: true, strict: true })
   const [target] = positionals
-  if (positionals.length !== 1 || target === undefined) return fail('usage: worktree seed <dir>', 2)
+  if (positionals.length !== 1 || target === undefined) return fail('usage: worktree seed <dir> [--link-deps]', 2)
   const dir = resolve(target)
   if (!existsSync(dir)) return fail(`no such dir ${toSlash(dir)}`, 1)
   const toplevel = gitToplevel(dir)
@@ -49,14 +50,31 @@ const worktreeSeed = (args: string[]): number => {
   if (samePath(main, dir)) return fail(`${toSlash(dir)} is the main checkout, seed fills another worktree from it`, 1)
   const config = loadConfig(main)
   if (config.error !== undefined) return fail(`.jig/config.jsonc: ${config.error}`, 1)
-  const items = seedWorktree(main, dir, config.worktree)
+  const deps = values['link-deps'] === true ? [linkDependencies(main, dir)] : []
+  const items = [...deps, ...seedWorktree(main, dir, config.worktree)]
   for (const line of formatSeed(items)) {
     print(line)
   }
   return items.some((item) => item.action === 'failed') ? 1 : 0
 }
 
-const terminalConfirm = (): Confirm | undefined => {
+const worktreeRemove = (args: string[]): number => {
+  const { positionals } = parseArgs({ args, options: {}, allowPositionals: true, strict: true })
+  const [target] = positionals
+  if (positionals.length !== 1 || target === undefined) return fail('usage: worktree remove <dir>', 2)
+  const dir = resolve(target)
+  const worktrees = listWorktrees(existsSync(dir) ? dir : process.cwd())
+  const main = worktrees[0]?.path
+  if (main === undefined) return fail(`no git worktrees found from ${toSlash(dir)}`, 1)
+  if (samePath(main, dir)) return fail(`${toSlash(dir)} is the main checkout, remove takes a linked worktree`, 1)
+  if (!worktrees.some((worktree) => samePath(worktree.path, dir))) return fail(`${toSlash(dir)} is not a worktree of ${toSlash(main)}`, 1)
+  const removal = removeLinkedWorktree(dir, main)
+  if (removal.error !== undefined) return fail(`could not remove ${toSlash(dir)}: ${removal.error}`, 1)
+  print(`removed ${toSlash(dir)} (${removal.unlinked} links unlinked first)`)
+  return 0
+}
+
+const terminalConfirm =(): Confirm | undefined => {
   if (process.stdin.isTTY !== true) return undefined
   return async (question) => {
     const prompt = createInterface({ input: process.stdin, output: process.stderr })
@@ -125,6 +143,7 @@ export const worktreeSweep = async (args: string[], confirm: Confirm | undefined
 
 const subcommands = new Map<string, Command>([
   ['seed', worktreeSeed],
+  ['remove', worktreeRemove],
   ['sweep', (args) => worktreeSweep(args)],
 ])
 

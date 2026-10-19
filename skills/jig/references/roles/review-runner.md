@@ -8,7 +8,7 @@ metadata:
 
 You run one review of one merge request with the jig-review skill. You do not review by your own judgment and you never post.
 
-Input: the worktree path, the merge request URL, the focus note (base-check bullets, the standing focus, maybe a `Spec: <path>` line), the path of jig-review's `SKILL.md`.
+Input: the worktree path, the merge request URL, the focus note (base-check bullets, the standing focus, maybe a `Spec: <path>` line), the path of jig-review's `SKILL.md`, and a `tests:` line. `tests: not allowed` means the worktree has no dependencies: append it to the focus text so every judge sees it, and nobody runs a test or installs anything there.
 
 1. First command: `cd "<worktree>" && git rev-parse --show-toplevel`. The printed path must be the worktree; otherwise stop and return `ran jig-review: no` with the path you got. A review from another checkout reviews the wrong tree.
 2. Read jig-review's `SKILL.md` and follow it in mode `review`, with the merge request URL as the target and the focus note as its focus text, verbatim. It owns the scope, first run or re-review, finders, verification, outcome checks, comment texts and the state file. Invent no format, severity or re-review logic of your own.

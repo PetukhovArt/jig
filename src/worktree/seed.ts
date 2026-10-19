@@ -1,4 +1,4 @@
-import { copyFileSync, lstatSync, mkdirSync, readdirSync, readlinkSync, realpathSync, statSync, symlinkSync } from 'node:fs'
+import { copyFileSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync, realpathSync, statSync, symlinkSync } from 'node:fs'
 import nodePath, { type PlatformPath } from 'node:path'
 import { git } from '../core/git'
 import { createMatcher } from '../core/glob'
@@ -165,7 +165,64 @@ export const seedWorktree = (main: string, worktree: string, options: SeedOption
   return items
 }
 
-export const formatSeed = (items: readonly SeedItem[]): string[] => {
+export const NODE_LOCKFILES = ['package-lock.json', 'npm-shrinkwrap.json', 'pnpm-lock.yaml', 'yarn.lock', 'bun.lock', 'bun.lockb'] as const
+export const DEPS_DIR = 'node_modules'
+
+const readOrUndefined = (path: string): Buffer | undefined => {
+  try {
+    return readFileSync(path)
+  } catch {
+    return undefined
+  }
+}
+
+const isDirectory = (path: string): boolean => {
+  try {
+    return statSync(path).isDirectory()
+  } catch {
+    return false
+  }
+}
+
+const BINARY_LOCKFILES: ReadonlySet<string> = new Set(['bun.lockb'])
+
+const lockBytes = (dir: string, file: string): string | undefined => {
+  const bytes = readOrUndefined(nodePath.join(dir, file))
+  if (bytes === undefined) return undefined
+  const text = bytes.toString('latin1')
+  return BINARY_LOCKFILES.has(file) ? text : text.replace(/\r\n/g, '\n')
+}
+
+const lockMismatch = (main: string, worktree: string): string | undefined => {
+  const pairs = NODE_LOCKFILES.map((file) => ({ file, main: lockBytes(main, file), worktree: lockBytes(worktree, file) }))
+  const present = pairs.filter((pair) => pair.main !== undefined || pair.worktree !== undefined)
+  if (present.length === 0) return 'no lock file'
+  const differs = present.find((pair) => pair.main === undefined || pair.worktree === undefined || pair.main !== pair.worktree)
+  return differs === undefined ? undefined : `${differs.file} differs from the main checkout`
+}
+
+/**
+ * Links the worktree's `node_modules` to the main checkout's (a junction on Windows, a symlink
+ * elsewhere) only when every root lock file is byte-identical in both (CRLF read as LF in a text
+ * lock file: `core.autocrlf` checks one out with CRLF while npm writes LF), so the installed tree
+ * is the one the worktree's lock file describes. Otherwise nothing is created and the item says why.
+ */
+export const linkDependencies = (main: string, worktree: string): SeedItem => {
+  const source = nodePath.join(main, DEPS_DIR)
+  const destination = nodePath.join(worktree, DEPS_DIR)
+  if (exists(destination)) return { action: 'kept', path: DEPS_DIR }
+  if (!isDirectory(source)) return { action: 'skipped', path: DEPS_DIR, detail: 'the main checkout has none' }
+  const mismatch = lockMismatch(main, worktree)
+  if (mismatch !== undefined) return { action: 'skipped', path: DEPS_DIR, detail: mismatch }
+  try {
+    symlinkSync(source, destination, process.platform === 'win32' ? 'junction' : 'dir')
+    return { action: 'linked', path: DEPS_DIR, detail: source.replace(/\\/g, '/') }
+  } catch (error) {
+    return { action: 'failed', path: DEPS_DIR, detail: error instanceof Error ? error.message : String(error) }
+  }
+}
+
+export const formatSeed =(items: readonly SeedItem[]): string[] => {
   const lines = items
     .filter((item) => item.action !== 'kept' && item.action !== 'excluded')
     .map((item) => `${item.action} ${item.path}${item.detail === undefined ? '' : ` (${item.detail})`}`)
