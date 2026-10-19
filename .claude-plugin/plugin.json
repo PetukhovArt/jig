@@ -7,7 +7,7 @@
   "repository": "https://github.com/PetukhovArt/jig",
   "license": "MIT",
   "keywords": ["harness", "agents", "verification", "skills", "hooks"],
-  "skills": ["./skills/jig", "./skills/jig-slots", "./skills/jig-explain", "./skills/jig-video"],
+  "skills": ["./skills/jig", "./skills/jig-slots", "./skills/jig-task-status", "./skills/jig-explain", "./skills/jig-video"],
   "hooks": "./hooks/hooks.json",
   "experimental": { "evals": "evals/agent" }
 }

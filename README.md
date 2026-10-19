@@ -10,7 +10,7 @@ The harness pyramid: the bottom layers (execution, safety, verification) are dur
 | Safety | deny before action: protected paths, suppressions, comments, `--no-verify` |
 | Execution | worktree slots (`jig slot`) |
 | Context | atoms (`atoms/*.md`) |
-| Orchestration | `/jig`, flows, the run page (`jig dash`) |
+| Orchestration | `/jig`, flows, the decision trail (`jig task-status`) |
 | Evolution | the journal and the weekly loop (`jig loop`) |
 
 ## Install
@@ -52,17 +52,17 @@ Tool gates switch on by themselves when the project has the tool's config and bi
 
 `jig check edit <file>` and `jig check stop` run the same paths by hand.
 
-A runtime check maps each changed file to the proof kinds it needs: `behavior` (the use case still works) and `look` (what the user sees). For agent-view, components and markup (`.vue`, `.tsx`, `.jsx`, `.svelte`, `.html`, not tests) need both, styles (`.css`, `.scss`, `.less`) need `look`. Only a successful `agent-view act replay` proves `behavior`, only `agent-view screenshot` or `snap` proves `look`; `dom`, `eval`, `click` and the like prove nothing. When a kind is not needed, record why on the run page: `jig dash decision "skip-verify:behavior" --why "<reason>"` (or `skip-verify:look`, or `skip-verify` for all kinds) lifts it for the turn.
+A runtime check maps each changed file to the proof kinds it needs: `behavior` (the use case still works) and `look` (what the user sees). For agent-view, components and markup (`.vue`, `.tsx`, `.jsx`, `.svelte`, `.html`, not tests) need both, styles (`.css`, `.scss`, `.less`) need `look`. Only a successful `agent-view act replay` proves `behavior`, only `agent-view screenshot` or `snap` proves `look`; `dom`, `eval`, `click` and the like prove nothing. When a kind is not needed, record why in the task-status journal: `jig task-status log verify "skip-verify:behavior" --why "<reason>"` (or `skip-verify:look`, or `skip-verify` for all kinds) lifts it for the turn.
 
 ## `/jig` and flows
 
-Without `/jig`, only the hooks and path-matched atoms run, and a small task goes in one shot. `/jig <task>` (fallback `/jig:jig`) is invoked by the user only. It restates the task with a done check, picks a flow, copies the flow's steps into the todo list and opens a run page with `jig dash init`.
+Without `/jig`, only the hooks and path-matched atoms run, and a small task goes in one shot. `/jig <task>` (fallback `/jig:jig`) is invoked by the user only. It restates the task with a done check, picks a flow and copies the flow's steps into the todo list.
 
 Flows (`skills/jig/flows/`): `investigation`, `bug-fix`, `feature`, `module-design`, `refactoring`, `perf`, `prototype`, `ui-match`, `review`, `bug-bash`, `mr-watching`, `afk-mode`, `session-resume`, `session-pause`. Every code-changing flow ends with the shared `mr` step. Subagent roles are templates in `skills/jig/references/roles/`; each template names a model tier and an effort (`metadata.tier`, `metadata.effort`), and `jig tiers` maps the tier to the agent's models (built-in for Claude Code, overridable in `~/.jig/config.jsonc`).
 
 Flows and role templates carry frontmatter, `name` and a one-line `description`, so an agent sees what each is for without opening it. `npm run build` generates the flow list in `skills/jig/SKILL.md` and the role index `skills/jig/references/roles.md` from it, next to the atom index `skills/jig/references/atoms.md`; `jig build` rejects a role or flow mention that names no file and a role no flow or reference spawns.
 
-Other skills: `jig-slots` (model or user), `jig-explain` and `jig-video` (user only).
+Other skills: `jig-slots` (model or user), `jig-task-status`, `jig-explain` and `jig-video` (user only). `jig-task-status` keeps the decision trail of a long or unattended run: one TSV row per decision, step or question in `.jig/runs/<branch>/task-status.tsv`, and a page built from it on demand; `afk-mode` follows it.
 
 ## Configuration
 
@@ -114,7 +114,8 @@ Run as `node <plugin root>/bin/jig.mjs <command>`.
 | `slot ls [--json]` | slots and their ports |
 | `slot rm <N> [--force]` | removes a slot's worktree; without `--force`, refuses on tracked changes |
 | `slot sweep [--json]` | sorts all worktrees into `hold-wip`, `hold-open-mr`, `recent`, `safe`; deletes nothing |
-| `dash <init\|step\|add\|decision\|result\|ask\|answer\|path>` | the run page under `.jig/runs/<branch>/` |
+| `task-status log <phase> <decision> [--why <text>] [--evidence <text>] [--result <text>]` | appends a row to the decision journal `.jig/runs/<branch>/task-status.tsv` |
+| `task-status open [--lang en\|ru]` / `task-status path` | builds the HTML page from the journal and prints its path / prints the journal path |
 | `loop [--days 7]` | aggregates the journal into improvement candidates |
 | `allow-no-verify` | allows `--no-verify` for one commit within 10 minutes, only when the pre-commit hook fails on files outside the staged change |
 | `doctor` | diagnostics: Node, config, found tools, active runtime checks, deny block, atom globs, locks |
