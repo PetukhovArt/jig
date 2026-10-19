@@ -1,22 +1,19 @@
 {
   "$schema": "https://raw.githubusercontent.com/PetukhovArt/jig/main/schema/config.schema.json",
+  // Tools by catalog name. {} = the definition's defaults; false = off.
+  "tsc": { "command": "vue-tsc" },
+  "eslint": { "ignoreRules": ["boundaries/*"] },
+  "oxlint": false,
+  "stratum": { "level": "warn" },
+  "agent-view": {},
   // jig rules: off | warn | error. Missing keys use the default, error.
   "rules": {
     "jig/comments": "error",
     "jig/tests": "error"
   },
-  // Catalog tools by name: {} turns one on, false turns it off; nothing outside this list runs.
-  "tools": {
-    "tsc": { "command": "vue-tsc" },
-    "eslint": { "ignoreRules": ["boundaries/*"] },
-    "oxlint": false,
-    "stratum": { "level": "warn" }
-  },
-  "proofs": {
-    "agent-view": {}
-  },
+  // Project checks, run like catalog tools.
   "checks": [
-    { "name": "unit", "files": ["src/**/*.ts"], "on": "stop", "run": "vitest related --run {files}" }
+    { "name": "unit", "files": "src/**/*.ts", "on": "stop", "run": "vitest related --run {files}" }
   ],
   "slots": {
     "worktreesDir": "..",

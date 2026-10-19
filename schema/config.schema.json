@@ -16,25 +16,11 @@
         "jig/tests": { "$ref": "#/$defs/severity" }
       }
     },
-    "tools": {
-      "type": "object",
-      "additionalProperties": false,
-      "description": "Catalog tools by name. {} turns a tool on, false turns it off. A tool not named here never runs.",
-      "properties": {
-        "oxlint": { "$ref": "#/$defs/tool" },
-        "tsc": { "$ref": "#/$defs/tool" },
-        "eslint": { "$ref": "#/$defs/tool" },
-        "stratum": { "$ref": "#/$defs/tool" }
-      }
-    },
-    "proofs": {
-      "type": "object",
-      "additionalProperties": false,
-      "description": "Catalog proofs by name (what proves a UI change in the running app). Read by jig pre-mr.",
-      "properties": {
-        "agent-view": { "$ref": "#/$defs/tool" }
-      }
-    },
+    "oxlint": { "$ref": "#/$defs/tool" },
+    "tsc": { "$ref": "#/$defs/tool" },
+    "eslint": { "$ref": "#/$defs/tool" },
+    "stratum": { "$ref": "#/$defs/tool" },
+    "agent-view": { "$ref": "#/$defs/tool", "description": "Proof of UI changes in the running app, read by jig pre-mr" },
     "checks": {
       "type": "array",
       "description": "The project's own checks, run after an edit or at the end of a turn on the matching files.",
@@ -44,7 +30,10 @@
         "required": ["name", "files", "on", "run"],
         "properties": {
           "name": { "type": "string", "pattern": "^[\\w.-]+$", "description": "Unique; findings use the rule check/<name>" },
-          "files": { "type": "array", "items": { "type": "string" }, "description": "Globs, repo-relative with forward slashes" },
+          "files": {
+            "oneOf": [{ "type": "string" }, { "type": "array", "items": { "type": "string" } }],
+            "description": "Glob or globs, repo-relative with forward slashes"
+          },
           "on": { "enum": ["edit", "stop"] },
           "run": { "type": "string", "pattern": "\\{files\\}", "description": "Command without a shell; the token {files} becomes one argument per file" },
           "format": {
@@ -105,6 +94,7 @@
   "$defs": {
     "severity": { "enum": ["off", "warn", "error"] },
     "tool": {
+      "description": "A catalog tool or proof by name. {} turns it on, false turns it off; a name missing from the config never runs.",
       "oneOf": [
         { "const": false },
         {

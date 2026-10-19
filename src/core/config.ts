@@ -166,24 +166,20 @@ const readToolSetting = (validator: Validator, value: unknown, path: string): To
   return setting
 }
 
-const readNamed = (validator: Validator, value: unknown, path: string, names: readonly string[]): Record<string, ToolSetting> => {
+const readNamed = (validator: Validator, root: Json, names: readonly string[]): Record<string, ToolSetting> => {
   const settings: Record<string, ToolSetting> = {}
-  if (value === undefined) return settings
-  const object = validator.object(value, path, undefined)
-  if (object === undefined) return settings
-  for (const [name, raw] of Object.entries(object)) {
-    const at = childPath(path, name)
-    if (!names.includes(name)) {
-      validator.report(at, `unknown name, the catalog has ${names.join(', ')}`)
-      continue
-    }
-    const setting = readToolSetting(validator, raw, at)
+  for (const name of names) {
+    if (!Object.hasOwn(root, name)) continue
+    const setting = readToolSetting(validator, root[name], childPath('$', name))
     if (setting !== undefined) {
       settings[name] = setting
     }
   }
   return settings
 }
+
+const readGlobs = (validator: Validator, value: unknown, path: string): string[] | undefined =>
+  typeof value === 'string' ? [value] : validator.strings(value, path)
 
 const CHECK_KEYS = ['name', 'files', 'on', 'run', 'format', 'level'] as const
 const CHECK_NAME = /^[\w.-]+$/
@@ -195,7 +191,7 @@ const readCheck = (validator: Validator, value: unknown, path: string): CustomCh
   const before = validator.errors.length
   const name = validator.string(object['name'], childPath(path, 'name'))
   if (name !== undefined && !CHECK_NAME.test(name)) validator.report(childPath(path, 'name'), 'expected letters, digits, ".", "_" or "-"')
-  const files = validator.strings(object['files'], childPath(path, 'files'))
+  const files = readGlobs(validator, object['files'], childPath(path, 'files'))
   const on = validator.oneOf(object['on'], childPath(path, 'on'), CHECK_STAGES)
   const run = validator.string(object['run'], childPath(path, 'run'))
   if (run !== undefined && !run.includes(FILES_TOKEN)) validator.report(childPath(path, 'run'), `needs the ${FILES_TOKEN} placeholder`)
@@ -330,7 +326,10 @@ export const defaultRules = (): Record<JigRuleId, Severity> => {
 
 export const defaultConfig = (): JigConfig => ({ rules: defaultRules(), tools: {}, proofs: {}, checks: [] })
 
-const ROOT_KEYS = ['$schema', 'rules', 'tools', 'proofs', 'checks', 'slots', 'worktree'] as const
+const SECTION_KEYS = ['$schema', 'rules', 'checks', 'slots', 'worktree'] as const
+
+/** Root keys: the fixed sections plus every catalog name, so a tool outside the catalog is an unknown key. */
+export const ROOT_KEYS: readonly string[] = [...SECTION_KEYS, ...TOOL_NAMES, ...PROOF_NAMES]
 
 export const validateConfig = (value: unknown): { config: JigConfig; errors: string[] } => {
   const validator = new Validator()
@@ -340,8 +339,8 @@ export const validateConfig = (value: unknown): { config: JigConfig; errors: str
     validator.string(root['$schema'], '$.$schema')
   }
   const rules = readRules(validator, root['rules'])
-  const tools = readNamed(validator, root['tools'], '$.tools', TOOL_NAMES)
-  const proofs = readNamed(validator, root['proofs'], '$.proofs', PROOF_NAMES)
+  const tools = readNamed(validator, root, TOOL_NAMES)
+  const proofs = readNamed(validator, root, PROOF_NAMES)
   const checks = readChecks(validator, root['checks'])
   const slots = root['slots'] === undefined ? undefined : readSlots(validator, root['slots'])
   const worktree = root['worktree'] === undefined ? undefined : readWorktree(validator, root['worktree'])

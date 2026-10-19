@@ -42,18 +42,15 @@ const readSharedConfig = (projectRoot: string): Json => {
 
 const proposedSetting = (found: Found): Json => (found.command === undefined ? {} : { command: found.command })
 
-const section = (base: Json, key: string): Json => (isObject(base[key]) ? { ...(base[key] as Json) } : {})
-
 /** The explicit config jig would write: the current one (with --update) plus every ready catalog entry it does not name. */
 export const buildProposal = (base: Json, discovery: Discovery, config: Pick<LoadedConfig, 'tools' | 'proofs'>): Json => {
-  const tools = section(base, 'tools')
-  const proofs = section(base, 'proofs')
+  const proposal: Json = { $schema: SCHEMA_URL, ...base }
   for (const found of discovery.found) {
-    if (found.status !== 'ready' || isListed(config, found)) continue
-    const target = found.kind === 'tool' ? tools : proofs
-    target[found.name] = proposedSetting(found)
+    if (found.status === 'ready' && !isListed(config, found)) {
+      proposal[found.name] = proposedSetting(found)
+    }
   }
-  return { $schema: SCHEMA_URL, ...base, tools, proofs }
+  return proposal
 }
 
 const questionsFor = (discovery: Discovery, boundaries: boolean): string[] => {
@@ -67,7 +64,7 @@ const questionsFor = (discovery: Discovery, boundaries: boolean): string[] => {
   questions.push(`agent-view for UI proof (${agentViewState}): needed? Setup: ${setupOf('agent-view')}.`)
   const stratum = byName.get('stratum')
   const stratumState = stratum === undefined ? 'not installed' : stratum.status === 'ready' ? 'configured' : 'installed, no stratum.config.jsonc'
-  const port = boundaries ? ` ${BOUNDARIES_PLUGIN} is present: port its rules to stratum, then tools.eslint.ignoreRules ["${BOUNDARIES_IGNORE}"].` : ''
+  const port = boundaries ? ` ${BOUNDARIES_PLUGIN} is present: port its rules to stratum, then "eslint": { "ignoreRules": ["${BOUNDARIES_IGNORE}"] }.` : ''
   questions.push(`stratum for module layers (${stratumState}): needed? Setup: ${setupOf('stratum')}.${port}`)
   return questions
 }

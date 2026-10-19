@@ -10,7 +10,7 @@ import { configDrift, configDriftLine, resolveTools } from '../src/core/plan'
 import { doctorChecks } from '../src/doctor'
 import { checkArgv, runCustomCheck } from '../src/gates/custom'
 import { discover } from '../src/init/discover'
-import { buildInitReport } from '../src/init/init'
+import { buildInitReport, SCHEMA_URL } from '../src/init/init'
 import { groupByMarker, nearestMarker } from '../src/tools/tool'
 
 let root: string
@@ -118,15 +118,15 @@ describe('discovery and drift', () => {
   })
 
   it('reports tools the project has and the config does not name', () => {
-    expect(configDrift(root, config({ tools: { tsc: { command: 'vue-tsc' } } }), [])).toEqual(['found eslint, not in config'])
+    expect(configDrift(root, config({ tsc: { command: 'vue-tsc' } }), [])).toEqual(['found eslint, not in config'])
   })
 
   it('accepts false as a decision, not drift', () => {
-    expect(configDrift(root, config({ tools: { tsc: {}, eslint: false } }), [])).toEqual([])
+    expect(configDrift(root, config({ tsc: {}, eslint: false }), [])).toEqual([])
   })
 
   it('reports a tool that is on but not installed, and a broken config', () => {
-    expect(configDrift(root, config({ tools: { tsc: {}, eslint: {} } }), ['eslint'])).toEqual(['eslint is on in config, its binary is not installed'])
+    expect(configDrift(root, config({ tsc: {}, eslint: {} }), ['eslint'])).toEqual(['eslint is on in config, its binary is not installed'])
     expect(configDrift(root, { ...config({}), error: '$.x: unknown key' }, [])).toEqual(['.jig config is invalid ($.x: unknown key)'])
   })
 
@@ -145,22 +145,25 @@ describe('discovery and drift', () => {
   it('resolves only named tools, under the binary the command names', () => {
     write('node_modules/vue-tsc/package.json', JSON.stringify({ name: 'vue-tsc', bin: { 'vue-tsc': 'bin.js' } }))
     write('node_modules/vue-tsc/bin.js', '')
-    const { tools, unresolved } = resolveTools(root, config({ tools: { tsc: { command: 'vue-tsc --strict' }, oxlint: false } }))
+    const { tools, unresolved } = resolveTools(root, config({ tsc: { command: 'vue-tsc --strict' }, oxlint: false }))
     expect(Object.keys(tools)).toEqual(['vueTsc'])
     expect(tools['vueTsc']?.bin.slice(-2)).toEqual([join(root, 'node_modules', 'vue-tsc', 'bin.js'), '--strict'])
     expect(unresolved).toEqual([])
   })
 
   it('proposes an explicit config by names and keeps the current one on --update', () => {
-    write('.jig/config.jsonc', '{ "tools": { "eslint": { "ignoreRules": ["boundaries/*"] } }, "slots": { "worktreesDir": ".." } }')
+    write('.jig/config.jsonc', '{ "eslint": { "ignoreRules": ["boundaries/*"] }, "slots": { "worktreesDir": ".." } }')
     const fresh = buildInitReport(root, false)
-    expect(fresh.proposal['tools']).toEqual({ tsc: { command: 'vue-tsc' }, eslint: {} })
-    expect(fresh.proposal['rules']).toBeUndefined()
+    expect(fresh.proposal).toEqual({ $schema: SCHEMA_URL, tsc: { command: 'vue-tsc' }, eslint: {} })
     expect(fresh.boundaries).toBe(true)
     expect(fresh.questions.join('\n')).toMatch(/stratum.*installed, no stratum\.config\.jsonc.*stratum-lint init.*boundaries\/\*/)
     const update = buildInitReport(root, true)
-    expect(update.proposal['tools']).toEqual({ eslint: { ignoreRules: ['boundaries/*'] }, tsc: { command: 'vue-tsc' } })
-    expect(update.proposal['slots']).toEqual({ worktreesDir: '..' })
+    expect(update.proposal).toEqual({
+      $schema: SCHEMA_URL,
+      eslint: { ignoreRules: ['boundaries/*'] },
+      slots: { worktreesDir: '..' },
+      tsc: { command: 'vue-tsc' },
+    })
     expect(update.drift).toContain('found tsc, not in config')
   })
 })

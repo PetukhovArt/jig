@@ -51,7 +51,7 @@ beforeEach(() => {
   write('.gitignore', 'node_modules/\n')
   write('tsconfig.json', '{ "compilerOptions": { "strict": true, "noEmit": true, "types": [] }, "include": ["src"] }\n')
   write('src/a.ts', 'export const a = 1\n')
-  write('.jig/config.jsonc', '{ "tools": { "tsc": {} } }\n')
+  write('.jig/config.jsonc', '{ "tsc": {} }\n')
   git(['add', '-A'], root)
   git(['-c', 'user.email=jig@test', '-c', 'user.name=jig', 'commit', '-q', '-m', 'init'], root)
   if (hasTypescript) {
@@ -74,7 +74,7 @@ describe('hooks through bin/jig.mjs', () => {
   })
 
   it('denies the first narrating comment once the comment gate is on, then lets the same call pass', () => {
-    write('.jig/config.jsonc', '{ "rules": { "jig/comments": "error" }, "tools": { "tsc": {} } }\n')
+    write('.jig/config.jsonc', '{ "rules": { "jig/comments": "error" }, "tsc": {} }\n')
     const content = 'let i = 0\n// increments i\ni++\n'
     expect(denialOf(preWrite('src/b.ts', content))).toBe('deny')
     expect(preWrite('src/b.ts', content)).toBe('')

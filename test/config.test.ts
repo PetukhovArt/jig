@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { OUTPUT_FORMATS, PROOF_NAMES, TOOL_NAMES } from '../src/catalog'
-import { defaultRules, enabledSetting, loadConfig, mergeConfigValues, parseConfig, validateConfig } from '../src/core/config'
+import { defaultRules, enabledSetting, loadConfig, mergeConfigValues, parseConfig, ROOT_KEYS, validateConfig } from '../src/core/config'
 
 const example = readFileSync(join(import.meta.dirname, 'fixtures', 'core', 'config.example.jsonc'), 'utf8')
 
@@ -54,7 +54,7 @@ describe('parseConfig', () => {
   })
 
   it('falls back to defaults with an error on invalid config', () => {
-    const config = parseConfig('{ "rules": { "jig/comments": "warn", "jig/unknown": "error" }, "tools": { "eslint": {} } }')
+    const config = parseConfig('{ "rules": { "jig/comments": "warn", "jig/unknown": "error" }, "eslint": {} }')
     expect(config.error).toBe('$.rules["jig/unknown"]: unknown key')
     expect(config.rules).toEqual(defaultRules())
     expect(config.tools).toEqual({})
@@ -73,13 +73,14 @@ describe('validateConfig', () => {
     ['wrong severity', { rules: { 'jig/tests': 'fatal' } }, ['$.rules["jig/tests"]: expected one of off, warn, error']],
     ['rules not an object', { rules: [] }, ['$.rules: expected an object']],
     ['root not an object', 'x', ['$: expected an object']],
-    ['tool outside the catalog', { tools: { ruff: {} } }, ['$.tools.ruff: unknown name, the catalog has oxlint, tsc, eslint, stratum']],
-    ['proof outside the catalog', { proofs: { eslint: {} } }, ['$.proofs.eslint: unknown name, the catalog has agent-view']],
-    ['tool true', { tools: { eslint: true } }, ['$.tools.eslint: expected an object']],
-    ['tool unknown key', { tools: { eslint: { config: 'x' } } }, ['$.tools.eslint.config: unknown key']],
-    ['tool wrong level', { tools: { eslint: { level: 'fatal' } } }, ['$.tools.eslint.level: expected one of off, warn, error']],
-    ['tool empty command', { tools: { tsc: { command: ' ' } } }, ['$.tools.tsc.command: is empty']],
-    ['ignoreRules not strings', { tools: { eslint: { ignoreRules: [1] } } }, ['$.tools.eslint.ignoreRules[0]: expected a string']],
+    ['tool outside the catalog', { ruff: {} }, ['$.ruff: unknown key']],
+    ['tool true', { eslint: true }, ['$.eslint: expected an object']],
+    ['proof as a tool entry', { 'agent-view': 'on' }, ['$["agent-view"]: expected an object']],
+    ['tool unknown key', { eslint: { config: 'x' } }, ['$.eslint.config: unknown key']],
+    ['tool wrong level', { eslint: { level: 'fatal' } }, ['$.eslint.level: expected one of off, warn, error']],
+    ['tool empty command', { tsc: { command: ' ' } }, ['$.tsc.command: is empty']],
+    ['ignoreRules not strings', { eslint: { ignoreRules: [1] } }, ['$.eslint.ignoreRules[0]: expected a string']],
+    ['check files not globs', { checks: [{ name: 'a', files: 1, on: 'stop', run: 'x {files}' }] }, ['$.checks[0].files: expected an array of strings']],
     ['checks not an array', { checks: {} }, ['$.checks: expected an array']],
     ['check missing run', { checks: [{ name: 'a', files: ['**'], on: 'stop' }] }, ['$.checks[0].run: is required']],
     ['check without {files}', { checks: [{ name: 'a', files: ['**'], on: 'stop', run: 'lint' }] }, ['$.checks[0].run: needs the {files} placeholder']],
@@ -116,15 +117,15 @@ describe('validateConfig', () => {
 describe('schema/config.schema.json', () => {
   const schema = JSON.parse(readFileSync(join(import.meta.dirname, '..', 'schema', 'config.schema.json'), 'utf8'))
 
-  it('names the same tools, proofs and check formats as the catalog', () => {
-    expect(Object.keys(schema.properties.tools.properties)).toEqual(TOOL_NAMES)
-    expect(Object.keys(schema.properties.proofs.properties)).toEqual(PROOF_NAMES)
+  it('names the same root keys and check formats as the validator and the catalog', () => {
+    expect(Object.keys(schema.properties).sort()).toEqual([...ROOT_KEYS].sort())
+    expect(Object.keys(schema.properties)).toEqual(expect.arrayContaining([...TOOL_NAMES, ...PROOF_NAMES]))
     expect(schema.properties.checks.items.properties.format.enum).toEqual(OUTPUT_FORMATS)
   })
 })
 
 describe('enabledSetting', () => {
-  const { config } = validateConfig({ tools: { eslint: {}, oxlint: false, stratum: { level: 'off' } } })
+  const { config } = validateConfig({ eslint: {}, oxlint: false, stratum: { level: 'off' } })
 
   it('returns the settings of a tool the config turns on', () => {
     expect(enabledSetting(config.tools, 'eslint')).toEqual({ level: 'error', ignoreRules: [] })
@@ -137,18 +138,17 @@ describe('enabledSetting', () => {
 
 describe('mergeConfigValues', () => {
   it('merges objects by key and lets local values replace shared ones', () => {
-    const shared = { tools: { eslint: { ignoreRules: ['a/*'] }, tsc: {} }, slots: { worktreesDir: '..', dev: 'npm run dev' } }
-    const local = { tools: { eslint: { level: 'warn' }, tsc: false }, slots: { dev: 'pnpm dev' } }
+    const shared = { eslint: { ignoreRules: ['a/*'] }, tsc: {}, slots: { worktreesDir: '..', dev: 'npm run dev' } }
+    const local = { eslint: { level: 'warn' }, tsc: false, slots: { dev: 'pnpm dev' } }
     expect(mergeConfigValues(shared, local)).toEqual({
-      tools: { eslint: { ignoreRules: ['a/*'], level: 'warn' }, tsc: false },
+      eslint: { ignoreRules: ['a/*'], level: 'warn' },
+      tsc: false,
       slots: { worktreesDir: '..', dev: 'pnpm dev' },
     })
   })
 
   it('replaces arrays other than checks', () => {
-    expect(mergeConfigValues({ tools: { eslint: { ignoreRules: ['a/*'] } } }, { tools: { eslint: { ignoreRules: [] } } })).toEqual({
-      tools: { eslint: { ignoreRules: [] } },
-    })
+    expect(mergeConfigValues({ eslint: { ignoreRules: ['a/*'] } }, { eslint: { ignoreRules: [] } })).toEqual({ eslint: { ignoreRules: [] } })
   })
 
   it('merges checks by name: a local check replaces the shared one of its name', () => {
@@ -188,7 +188,7 @@ describe('loadConfig', () => {
   })
 
   it('lays .jig/config.local.jsonc over the shared config', () => {
-    const local = '{ "tools": { "stratum": false, "eslint": { "level": "warn" } }, "slots": { "dev": "pnpm dev" } }'
+    const local = '{ "stratum": false, "eslint": { "level": "warn" }, "slots": { "dev": "pnpm dev" } }'
     const config = loadConfig(project({ 'config.jsonc': example, 'config.local.jsonc': local }))
     expect(config.error).toBeUndefined()
     expect(config.tools['stratum']).toBe(false)
@@ -199,12 +199,12 @@ describe('loadConfig', () => {
   })
 
   it('reads a local config alone', () => {
-    const config = loadConfig(project({ 'config.local.jsonc': '{ "tools": { "eslint": {} } }' }))
+    const config = loadConfig(project({ 'config.local.jsonc': '{ "eslint": {} }' }))
     expect(enabledSetting(config.tools, 'eslint')).toBeDefined()
   })
 
   it('names the file whose JSONC is broken', () => {
-    const config = loadConfig(project({ 'config.jsonc': '{}', 'config.local.jsonc': '{ "tools": ' }))
+    const config = loadConfig(project({ 'config.jsonc': '{}', 'config.local.jsonc': '{ "eslint": ' }))
     expect(config.error).toMatch(/^\.jig\/config\.local\.jsonc: \$: /)
     expect(config.tools).toEqual({})
   })

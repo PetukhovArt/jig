@@ -46,7 +46,7 @@ beforeEach(async () => {
   base = { sessionId: 'loop', projectRoot: root, cwd: root }
   git(['init', '-q'], root)
   write('src/a.ts', 'export const a = 1\n')
-  write('.jig/config.jsonc', '{ "tools": { "probe": {} } }\n')
+  write('.jig/config.jsonc', '{ "probe": {} }\n')
   git(['add', '-A'], root)
   git(['-c', 'user.email=jig@test', '-c', 'user.name=jig', 'commit', '-q', '-m', 'init'], root)
   await send({ kind: 'session-start', source: 'startup' })
