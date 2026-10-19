@@ -121,6 +121,11 @@ describe('discovery and drift', () => {
     expect(configDrift(root, config({ tsc: { command: 'vue-tsc' } }), [])).toEqual(['found eslint, not in config'])
   })
 
+  it('says UI proof is off when agent-view.config.json exists and the config does not name agent-view', () => {
+    write('agent-view.config.json', '{}')
+    expect(configDrift(root, config({ tsc: {}, eslint: {} }), [])).toEqual(['found agent-view, not in config: UI proof is off'])
+  })
+
   it('accepts false as a decision, not drift', () => {
     expect(configDrift(root, config({ tsc: {}, eslint: false }), [])).toEqual([])
   })
@@ -139,7 +144,7 @@ describe('discovery and drift', () => {
     }
     const missing = loadConfig(root)
     const drift = configDrift(root, missing, [])
-    expect(configDriftLine({ drift, config: missing })).toBe('jig: no .jig/config.jsonc, found tsc, eslint. Run jig init to settle the project config.')
+    expect(configDriftLine({ drift, config: missing })).toBe('jig: no .jig/config.jsonc, so nothing runs; found tsc, eslint. Run jig init to settle the project config.')
   })
 
   it('resolves only named tools, under the binary the command names', () => {

@@ -87,10 +87,10 @@ export const resolveTools = (projectRoot: string, config: Pick<JigConfig, 'tools
 /** Why the project and its config disagree; empty when they agree. Read at session start, written by `jig init --update`. */
 export const configDrift = (projectRoot: string, config: LoadedConfig, unresolved: readonly string[]): string[] => {
   if (config.error !== undefined) return [`.jig config is invalid (${config.error})`]
-  const found = unlisted(config, discover(projectRoot)).map((item) => item.name)
-  if (config.files.length === 0) return found.length === 0 ? [] : [`no .jig/config.jsonc, found ${found.join(', ')}`]
+  const found = unlisted(config, discover(projectRoot))
+  if (config.files.length === 0) return found.length === 0 ? [] : [`no .jig/config.jsonc, so nothing runs; found ${found.map((item) => item.name).join(', ')}`]
   return [
-    ...found.map((name) => `found ${name}, not in config`),
+    ...found.map((item) => (item.kind === 'proof' ? `found ${item.name}, not in config: UI proof is off` : `found ${item.name}, not in config`)),
     ...unresolved.map((name) => `${name} is on in config, its binary is not installed`),
   ]
 }
