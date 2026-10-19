@@ -66,10 +66,6 @@ afterEach(() => {
 })
 
 describe('hooks through bin/jig.mjs', () => {
-  it('denies a write to a protected path', () => {
-    expect(denialOf(preWrite('tsconfig.json', '{}\n'))).toBe('deny')
-  })
-
   it('denies a narrating comment', () => {
     expect(denialOf(preWrite('src/b.ts', 'let i = 0\n// increments i\ni++\n'))).toBe('deny')
   })

@@ -12,7 +12,6 @@ const HOOK_EVENT_NAMES: Record<JigEvent['kind'], string> = {
   'session-start': 'SessionStart',
   prompt: 'UserPromptSubmit',
   'pre-edit': 'PreToolUse',
-  'pre-bash': 'PreToolUse',
   'post-edit': 'PostToolUse',
   'post-read': 'PostToolUse',
   'post-bash': 'PostToolUse',
@@ -104,10 +103,6 @@ const toEvent = (name: string, input: Json, paths: PathContext): JigEvent | unde
       return { kind: 'prompt' }
     case 'pre-edit':
       return preEditEvent(toolName, toolInput, paths)
-    case 'pre-bash': {
-      const command = text(toolInput, 'command')
-      return command === undefined ? undefined : { kind: 'pre-bash', command }
-    }
     case 'post-edit':
     case 'post-read': {
       const file = toolFile(toolInput, paths)

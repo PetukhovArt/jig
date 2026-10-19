@@ -13,7 +13,6 @@ export type JournalKind =
   | 'atom'
   | 'tool-failure'
   | 'hook-failure'
-  | 'no-verify-allowed'
   | 'skip-verify'
 
 export type JournalTool = string

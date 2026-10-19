@@ -1,13 +1,9 @@
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { afterAll, describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { defaultConfig } from '../src/core/config'
 import { checkComments } from '../src/rules/comments'
-import { checkNoVerify } from '../src/rules/no-verify'
-import { checkProtectedPath, checkShellWrite } from '../src/rules/protected'
 import { checkSuppressions } from '../src/rules/suppressions'
-import type { Finding } from '../src/tools/finding'
 
 const FIXTURES = join(import.meta.dirname, 'fixtures', 'rules')
 const BEFORE_MARK = '.before.'
@@ -20,14 +16,6 @@ interface Case {
 type Kind = 'bad' | 'good'
 
 const config = defaultConfig()
-const sandbox = mkdtempSync(join(tmpdir(), 'jig-rules-'))
-
-afterAll(() => {
-  rmSync(sandbox, { recursive: true, force: true })
-})
-
-const count = (finding: Finding | undefined): number => (finding === undefined ? 0 : 1)
-
 const editCases = (rule: string, kind: Kind, check: typeof checkComments): Case[] => {
   const dir = join(FIXTURES, rule, kind)
   return readdirSync(dir)
@@ -41,24 +29,9 @@ const editCases = (rule: string, kind: Kind, check: typeof checkComments): Case[
     })
 }
 
-const lineCases = (rule: string, kind: Kind, list: string, check: (line: string) => number): Case[] =>
-  readFileSync(join(FIXTURES, rule, kind, list), 'utf8')
-    .split('\n')
-    .filter(Boolean)
-    .map((line) => ({ name: line, findings: check(line) }))
-
 const casesOf = (kind: Kind): Record<string, Case[]> => ({
   'jig/comments': editCases('comments', kind, checkComments),
   'jig/suppressions': editCases('suppressions', kind, checkSuppressions),
-  'jig/protected-paths': [
-    ...lineCases('protected-paths', kind, 'edits.txt', (file) => count(checkProtectedPath(file, config))),
-    ...lineCases('protected-paths', kind, 'commands.txt', (command) =>
-      count(checkShellWrite(command, config, { projectRoot: sandbox, cwd: sandbox })),
-    ),
-  ],
-  'jig/no-verify': lineCases('no-verify', kind, 'commands.txt', (command) =>
-    count(checkNoVerify(command, { projectRoot: sandbox, sessionId: 'rules-test', config })),
-  ),
 })
 
 describe.each(Object.entries(casesOf('bad')))('%s bad fixtures', (_, cases) => {
@@ -91,23 +64,6 @@ describe('rule texts', () => {
     )
   })
 
-  it('names the protected path', () => {
-    expect(checkProtectedPath('tsconfig.json', config)?.message).toBe(
-      'jig/protected-paths: tsconfig.json configures the checks and is protected. Do not change it; tell the user what change you need and why.',
-    )
-  })
-
-  it('resolves a shell path from the command cwd against the project root', () => {
-    const ctx = { projectRoot: sandbox, cwd: join(sandbox, 'src') }
-    expect(checkShellWrite('rm ../tsconfig.json', config, ctx)?.file).toBe('tsconfig.json')
-    expect(checkShellWrite(`rm ${join(sandbox, '..', 'tsconfig.json')}`, config, ctx)).toBeUndefined()
-  })
-
-  it('points to allow-no-verify', () => {
-    const finding = checkNoVerify('git commit -nm x', { projectRoot: sandbox, sessionId: 'rules-test', config })
-    expect(finding?.message).toMatch(/^jig\/no-verify: commits keep their hooks\. .* run: node .*\/bin\/jig\.mjs allow-no-verify$/)
-  })
-
   it('reports file lines for an edit fragment that starts at line 10', () => {
     const edit = { before: 'const a = 1\n', after: '// explains a\n// @ts-ignore\nconst a = 1\n', line: 10 }
     expect(checkComments('src/a.ts', [edit], config)[0]?.line).toBe(10)
@@ -134,9 +90,8 @@ describe('rule texts', () => {
   })
 
   it('stays silent when the rule is off', () => {
-    const off = { rules: { ...config.rules, 'jig/comments': 'off' as const, 'jig/protected-paths': 'off' as const } }
+    const off = { rules: { ...config.rules, 'jig/comments': 'off' as const } }
     expect(checkComments('src/a.ts', [{ before: '', after: '// x\n' }], off)).toEqual([])
-    expect(checkProtectedPath('tsconfig.json', off)).toBeUndefined()
   })
 
   it('reports warn severity from the config', () => {

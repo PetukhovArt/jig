@@ -24,12 +24,6 @@ export interface ProofTimes {
 
 export type CheckTimes = Record<string, Partial<Record<ProofKind, ProofTimes>>>
 
-export interface NoVerifyAllowance {
-  stagedHash: string
-  until: number
-  used: boolean
-}
-
 export interface SessionState {
   v: 1
   sessionId: string
@@ -43,7 +37,6 @@ export interface SessionState {
   sessionAtoms: string[]
   pendingWarnings: string[]
   stop: StopState
-  noVerifyAllowance?: NoVerifyAllowance
 }
 
 export const MAIN_AGENT = 'main'

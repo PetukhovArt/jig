@@ -9,8 +9,6 @@ export type Severity = (typeof SEVERITIES)[number]
 export const JIG_RULE_IDS = [
   'jig/comments',
   'jig/suppressions',
-  'jig/protected-paths',
-  'jig/no-verify',
   'jig/verify-fact',
 ] as const
 export type RuleId = (typeof JIG_RULE_IDS)[number] | GateRuleId

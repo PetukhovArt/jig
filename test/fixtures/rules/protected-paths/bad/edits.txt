@@ -1,8 +1,0 @@
-tsconfig.app.json
-eslint.config.mjs
-.jig/config.jsonc
-.github/workflows/ci.yml
-.husky/pre-commit
-packages/web/tsconfig.json
-.claude/settings.json
-./tsconfig.json

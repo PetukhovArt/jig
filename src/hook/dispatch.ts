@@ -20,8 +20,6 @@ import {
   type SessionState,
 } from '../core/state'
 import { checkComments } from '../rules/comments'
-import { checkNoVerify } from '../rules/no-verify'
-import { checkProtectedPath, checkShellWrite } from '../rules/protected'
 import type { Edit } from '../rules/rule'
 import { checkSuppressions } from '../rules/suppressions'
 import { checkEdit } from '../gates/edit'
@@ -49,7 +47,7 @@ type EventOf<K extends JigEvent['kind']> = Extract<JigEvent, { kind: K }>
 
 const NONE: Outcome = { type: 'none' }
 const SUBAGENT_ATOM_LIMIT = 10
-const GUARDED_KINDS: ReadonlySet<JigEvent['kind']> = new Set(['pre-edit', 'pre-bash'])
+const GUARDED_KINDS: ReadonlySet<JigEvent['kind']> = new Set(['pre-edit'])
 const AGENT_FLAG = '--agent'
 
 const errorMessage = (error: unknown): string => (error instanceof Error ? error.message : String(error))
@@ -224,7 +222,7 @@ const preEdit = (event: EventOf<'pre-edit'>, ctx: HookContext): Outcome => {
   let config: JigConfig | undefined
   const guard: Check = () => {
     config = loadConfig(ctx.projectRoot)
-    return checkProtectedPath(event.file, config)
+    return undefined
   }
   const withConfig = (check: (loaded: JigConfig) => Finding[]): Check => () => (config === undefined ? [] : check(config))
   const edits = locateEdits(event, ctx.projectRoot)
@@ -232,16 +230,6 @@ const preEdit = (event: EventOf<'pre-edit'>, ctx: HookContext): Outcome => {
     withConfig((loaded) => checkSuppressions(event.file, edits, loaded)),
     withConfig((loaded) => checkComments(event.file, edits, loaded)),
   ])
-}
-
-const preBash = (event: EventOf<'pre-bash'>, ctx: HookContext): Outcome => {
-  let config: JigConfig | undefined
-  const guard: Check = () => {
-    config = loadConfig(ctx.projectRoot)
-    return checkNoVerify(event.command, { projectRoot: ctx.projectRoot, sessionId: ctx.sessionId, config })
-  }
-  const shellWrite: Check = () => (config === undefined ? undefined : checkShellWrite(event.command, config, { projectRoot: ctx.projectRoot, cwd: ctx.cwd }))
-  return runChecks(ctx, guard, [shellWrite])
 }
 
 const editToolFindings = async (ctx: HookContext, file: string): Promise<Finding[]> => {
@@ -336,8 +324,6 @@ const route = (event: JigEvent, ctx: HookContext): Outcome | Promise<Outcome> =>
       return prompt(ctx)
     case 'pre-edit':
       return preEdit(event, ctx)
-    case 'pre-bash':
-      return preBash(event, ctx)
     case 'post-edit':
       return postEdit(event, ctx)
     case 'post-read':

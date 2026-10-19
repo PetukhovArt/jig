@@ -9,7 +9,6 @@ export type JigEvent =
   | { kind: 'session-start'; source: SessionSource }
   | { kind: 'prompt' }
   | { kind: 'pre-edit'; file: string; edits: EditPair[]; wholeFile?: string }
-  | { kind: 'pre-bash'; command: string }
   | { kind: 'post-edit'; file: string }
   | { kind: 'post-read'; file: string }
   | { kind: 'post-bash'; command: string; ok: boolean }
