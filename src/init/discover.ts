@@ -28,7 +28,11 @@ const SKIPPED_DIRS = new Set(['node_modules', 'dist', 'build', 'out', 'coverage'
 const WALK_DEPTH = 4
 const DEPENDENCY_FIELDS = ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies'] as const
 
-const isSkippedPath = (path: string): boolean => path.split('/').some((part) => SKIPPED_DIRS.has(part) || part === '.git')
+const FIXTURE_DIR = /fixture/i
+
+const isSkippedDir = (part: string): boolean => SKIPPED_DIRS.has(part) || part === '.git' || FIXTURE_DIR.test(part)
+
+const isSkippedPath = (path: string): boolean => path.split('/').slice(0, -1).some(isSkippedDir)
 
 const walk = (root: string, dir = '', depth = 0): string[] => {
   let entries: Dirent[]
@@ -40,7 +44,7 @@ const walk = (root: string, dir = '', depth = 0): string[] => {
   return entries.flatMap((entry) => {
     const path = dir === '' ? entry.name : `${dir}/${entry.name}`
     if (entry.isFile()) return [path]
-    const isWalked = entry.isDirectory() && depth < WALK_DEPTH && !entry.name.startsWith('.') && !SKIPPED_DIRS.has(entry.name)
+    const isWalked = entry.isDirectory() && depth < WALK_DEPTH && !entry.name.startsWith('.') && !isSkippedDir(entry.name)
     return isWalked ? walk(root, path, depth + 1) : []
   })
 }

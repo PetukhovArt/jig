@@ -103,8 +103,9 @@ describe('discovery and drift', () => {
     write('node_modules/eslint/eslint.config.js', '')
   })
 
-  it('finds catalog entries by marker and package, skipping ignored folders', () => {
+  it('finds catalog entries by marker and package, skipping ignored and fixture folders', () => {
     write('.gitignore', 'node_modules/\n')
+    write('test/fixtures/lint/.oxlintrc.json', '{}')
     const { found, packages } = discover(root)
     expect(found.map((item) => [item.name, item.status, item.markers])).toEqual([
       ['tsc', 'ready', ['tsconfig.json']],
