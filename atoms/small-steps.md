@@ -1,6 +1,6 @@
 ---
 name: small-steps
-description: "Apply to multi-step work and to how you stack commits and merge requests. Break the work into small units that each end in a verifiable state, check each before the next, and order delivery so the sequence proves itself to a reviewer."
+description: "Apply to multistep work and to how you stack commits and merge requests. Break the work into small units that each end in a verifiable state, check each before the next, and order delivery so the sequence proves itself to a reviewer."
 ---
 # Small steps
 

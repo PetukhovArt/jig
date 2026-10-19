@@ -1,7 +1,7 @@
 ---
 name: typescript
 description: "Apply when reading or editing TypeScript. Model with the type system: sum types over flag combinations, branded primitives, parsing at boundaries, no lies to the compiler, exhaustive handling."
-paths: ["**/*.{ts,tsx,mts,cts}"]
+paths: ["**/*.{ts,tsx}"]
 ---
 # TypeScript
 
@@ -10,7 +10,7 @@ paths: ["**/*.{ts,tsx,mts,cts}"]
 - Parse external data (network, storage, IPC) into a typed value once, at the boundary.
 - Exhaustive `switch` over a union ends with a `never` check.
 - Derive types from their authoritative source (a schema, a const object) instead of restating them.
-- Names say what a value is, not its type: `users`, not `userArray`. Booleans read as questions: `isReady`.
+- Names say what a value is, not its type: `users`, not `userArray`.
 - Early returns over nested conditions. Do not extract an early return into a one-call helper.
 - Throw `Error` subclasses, never strings. Handle an error where you can act on it; elsewhere let it propagate.
 - A change made for performance names the measurement behind it.

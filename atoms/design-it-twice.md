@@ -4,7 +4,7 @@ description: "Apply when facing a novel module interface, data shape or architec
 ---
 # Design it twice
 
-- Name the data shape before writing logic. When the data structure is right, the code around it becomes obvious.
+- Name the data shape before writing logic. When the data structure is right, the surrounding code becomes obvious.
 - For a novel decision, sketch two or three structurally different options (types and signatures, not prose) and compare them side by side before committing.
 - Write the caller's usage first; the interface follows from it.
 - A new requirement: redesign as if it had been foundational, propagate it through every reference, then deliver the redesign in small steps.

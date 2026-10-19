@@ -1,8 +1,8 @@
 {
   "name": "petukhovart",
   "owner": { "name": "Artem Petukhov", "url": "https://github.com/PetukhovArt" },
-  "description": "jig, agent-view and stratum: deterministic tooling for AI coding agents.",
+  "description": "jig, agent-view and stratum: deterministic-first tooling for AI coding agents.",
   "plugins": [
-    { "name": "jig", "source": "./", "description": "Deterministic rails for AI coding agents.", "category": "engineering" }
+    { "name": "jig", "source": "./", "description": "Trust your harness", "category": "engineering" }
   ]
 }
