@@ -18,7 +18,7 @@ Plugin root: `${CLAUDE_PLUGIN_ROOT}`; below, `<root>` means this path and `<skil
 - **`review`** (default): someone else's merge request, or a branch you were asked to review. With a merge request, findings become threads, a state file remembers them, and the next run re-reviews only the new work and checks the outcome of every open thread. Without one (a bare branch): the findings are printed, no state, no threads.
 - **`pre-mr`** (first argument `pre-mr`): your own diff, before you open the merge request. A verdict in four buckets instead of threads. No state file, no posting, no outcome check, no re-review after your fixes: track progress in your todo list. You fix only **Act on**; **Consider** goes to the user as a question; Noted and Dismissed are listed. Then the caller continues: cleanup, then the merge request.
 
-**State only where it outlives the session.** The state file (`.jig/runs/review/*.json`) exists to carry threads across sessions. It is read and written only in mode `review` with a known merge request and without `--no-state`; pass `--mr` to `jig review-plan` then. Everywhere else no file under `.jig/runs/review/` is read or written.
+**State only where it outlives the session.** The state file (`.jig/runs/review/*.json` under the main checkout, shared by its linked worktrees) exists to carry threads across sessions; `jig review-cycle` reads it to skip a merge request whose head was already reviewed. It is read and written only in mode `review` with a known merge request and without `--no-state`; pass `--mr` to `jig review-plan` then. Everywhere else no file under `.jig/runs/review/` is read or written.
 
 ## Arguments
 

@@ -10,10 +10,10 @@ Without the flag:
 
 ```
 KEY  = the first 12 characters of: printf '%s' "<remote_url>:<target>" | git hash-object --stdin
-file = <project>/.jig/runs/review/<KEY>.json
+file = <main checkout>/.jig/runs/review/<KEY>.json
 ```
 
-`target` is the merge request number when known, otherwise the name of the reviewed branch. `remote_url` from `git remote get-url origin`. `.jig/runs/` stays out of git. Write the file with an absolute path resolved in the same command that uses it: shell state does not survive between tool calls.
+`node <root>/bin/jig.mjs review-cycle state-path <merge request number>` prints this path from inside the repository; use it rather than computing the key by hand. `target` is the merge request number when known, otherwise the name of the reviewed branch. `remote_url` from `git remote get-url origin`. The **main checkout** is the first entry of `git worktree list`: a review that runs in a linked worktree (a review cycle gives each merge request its own) reads and writes the same file as one in the main checkout, and the file outlives the worktree. `.jig/runs/` stays out of git. Write the file with an absolute path resolved in the same command that uses it: shell state does not survive between tool calls.
 
 Schema and field semantics: [`../references/state-schema.md`](../references/state-schema.md). Read it before reading or writing state.
 
@@ -25,7 +25,7 @@ Schema and field semantics: [`../references/state-schema.md`](../references/stat
 
 ## Learnings
 
-A repository-level file: `<project>/.jig/runs/review/learnings.json` (no KEY: the rules outlive one merge request). Schema: [`../references/learnings-schema.md`](../references/learnings-schema.md).
+A repository-level file: `<main checkout>/.jig/runs/review/learnings.json` (no KEY: the rules outlive one merge request). Schema: [`../references/learnings-schema.md`](../references/learnings-schema.md).
 
 Each entry is one skip or demote rule derived from a dispute the developer won ([re-review](09-rereview.md)). File exists → the active entries go into every finder and judge brief as a block **below the project's review document and above the skill's defaults**.
 

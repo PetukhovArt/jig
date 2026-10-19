@@ -1,6 +1,6 @@
 # State file schema
 
-`<project>/.jig/runs/review/<KEY>.json` ([state](../steps/03-state.md)):
+`<main checkout>/.jig/runs/review/<KEY>.json` ([state](../steps/03-state.md)):
 
 ```json
 {
@@ -35,7 +35,7 @@
 - **`caused_by`**: only when the finding's file is outside the diff and the finder proved the causing line inside it. Posting anchors the thread on that line ([posting](posting.md)).
 - **`models`**: the models of the finders that raised the finding and of its judge. Two different models is the strongest signal the run reports.
 - **`status`**: `open | fixed | skipped | unverified | no_change_needed | optional`. A finding stays under the outcome check until its thread is resolved. Only `fixed` and `no_change_needed` close it, and exactly they resolve the thread. `skipped` (the defect stands) and `unverified` (the check did not run) are silent (nothing is posted or rejudged) but not final: the next run checks again, so a late fix still closes the thread.
-  `optional` is a simplification ([shape gate](../gates/shape.md#shape-gate)): there is and will be no thread, `discussion_id` is never set, the outcome check does not take it, it is not counted in `prior_*`. Posting collects all `optional` items into one unresolvable note as a checklist titled "[🟡 Nit] Improvements: optional, not blocking the merge".
+  `optional` is a simplification ([shape gate](../gates/shape.md#shape-gate)): there is and will be no thread, `discussion_id` is never set, the outcome check does not take it, it is not counted in `prior_*`. Posting collects all `optional` items into the one unresolvable FYI note as a checklist titled "[🟡 Nit] Improvements: optional, not blocking the merge" ([posting](posting.md#8-the-fyi-note-one-per-merge-request)).
 - **`tally.optional`** = this run's simplifications. Not part of `nit`: they do not block the merge. **Absent = 0.**
 - **A finding has no other fields.** A field outside this schema is not written: nothing reads it, and its data is lost silently. Thread replies (counter-replies, answers to a developer's reply) do not live in state at all: they are printed with `discussion_id` in the output ([item 5](../steps/08-output.md#output)).
 - **`diff_hash`** = `git diff <base>...HEAD | git hash-object --stdin` at the end of the run. Equal to the current value means the code did not change ([re-review](../steps/09-rereview.md)); a rebase does not move it. **Absent = the comparison fails**, the run goes in full.
