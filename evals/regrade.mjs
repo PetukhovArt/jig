@@ -1,9 +1,9 @@
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
-import { BASH, TRACE_CAP, cap, diffAgainstBase, git, gradeAll, lastMessage, loadCases, parseStream, removeDir, run, toolCallText, traceText, weightedScore } from './run-local.mjs'
+import { TRACE_CAP, cap, diffAgainstBase, git, gradeAll, lastMessage, loadCases, parseStream, removeDir, runHiddenTests, scaffoldInto, toolCallText, traceText, uiContext, weightedScore } from './run-local.mjs'
 
-const USAGE = `usage: node evals/regrade.mjs <results dir> <suite dir> [--case <name>] [--judge-model haiku] [--trust-replay]
+const USAGE = `usage: node evals/regrade.mjs <results dir> <suite dir> [--case <name>] [--judge-model opus] [--judge-effort high] [--trust-replay]
 Re-grades stored runs with the current graders, without re-running the agent. The project is rebuilt
 in a temp dir from the case scaffold plus diffs/<run>.diff, or, for results stored without a diff, a
 replay of the trace's Write/Edit/MultiEdit calls. A replay misses files the agent wrote from the shell,
@@ -17,7 +17,7 @@ if (!resultsDir || !suiteDir) {
   process.exit(2)
 }
 const flag = (name) => (rest.includes(name) ? rest[rest.indexOf(name) + 1] : undefined)
-const options = { judgeModel: flag('--judge-model') ?? 'haiku' }
+const options = { judgeModel: flag('--judge-model') ?? 'opus', judgeEffort: flag('--judge-effort') ?? 'high' }
 
 const slash = (path) => path.replace(/\\/g, '/').replace(/^\/([a-z])\//i, '$1:/').toLowerCase()
 
@@ -75,11 +75,9 @@ const regrade = async (recordPath) => {
   const [testCase] = loadCases(resolve(suiteDir), record.case)
   const events = parseStream(readFileSync(join(resultsDir, 'traces', `${id}.jsonl`), 'utf8'))
   const runDir = mkdtempSync(join(tmpdir(), 'jig-regrade-'))
+  const tempDir = mkdtempSync(join(tmpdir(), 'jig-regrade-tmp-'))
   try {
-    if (testCase.scaffold) {
-      const scaffold = await run(BASH, [testCase.scaffold.replace(/\\/g, '/')], { cwd: runDir, timeoutMs: 600_000 })
-      if (scaffold.code !== 0) throw new Error(`scaffold failed: ${cap(scaffold.stderr, 500)}`)
-    }
+    await scaffoldInto(testCase, runDir)
     const base = git(runDir, ['rev-parse', 'HEAD']).stdout.trim()
     const diffPath = resolve(resultsDir, 'diffs', `${id}.diff`)
     let source = 'stored diff'
@@ -91,7 +89,15 @@ const regrade = async (recordPath) => {
       diffRebuilt = misses.length === 0 && (shellWrites === 0 || rest.includes('--trust-replay'))
       source = `trace replay, ${misses.length} edits not applied, ${shellWrites} shell writes not replayed`
     }
-    const context = { runDir, trace: cap(traceText(events), TRACE_CAP), toolCalls: toolCallText(events), lastMessage: lastMessage(events), diff: diffAgainstBase(runDir, base) }
+    const context = {
+      runDir,
+      trace: cap(traceText(events), TRACE_CAP),
+      toolCalls: toolCallText(events),
+      lastMessage: lastMessage(events),
+      diff: diffAgainstBase(runDir, base),
+      hiddenTests: testCase.hiddenTests && diffRebuilt ? (await runHiddenTests(testCase, runDir, tempDir)).text : record.hiddenTests?.text,
+      ui: uiContext(record.ui, resultsDir),
+    }
     const fresh = await gradeAll(testCase, record.arm, context, options)
     const graders = fresh.map((verdict) => {
       const grader = testCase.graders.find((entry) => entry.name === verdict.name)
@@ -109,6 +115,7 @@ const regrade = async (recordPath) => {
     process.stdout.write(`[${id}] score ${record.score.toFixed(2)} -> ${score.toFixed(2)} judge $${judgeCostUsd.toFixed(4)} (${source}) ${verdicts}\n`)
   } finally {
     removeDir(runDir)
+    removeDir(tempDir)
   }
 }
 

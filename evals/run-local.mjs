@@ -1,25 +1,28 @@
 import { spawn, spawnSync } from 'node:child_process'
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, rmdirSync, unlinkSync, writeFileSync } from 'node:fs'
+import { copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
-import { basename, isAbsolute, join, resolve } from 'node:path'
+import { basename, dirname, extname, isAbsolute, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { budgetCheck, classifyReplay, hiddenTestEvidence, replayVerdict } from './eval-steps.mjs'
+import { unlinkModules } from './link-modules.mjs'
 
 const DEFAULT_TOOLS = ['Write', 'Edit', 'MultiEdit', 'Bash', 'Read', 'Glob', 'Grep', 'Agent']
 const TRACE_CAP = 400_000
 const JUDGE_INPUT_CAP = 80_000
+const EVALS_DIR = dirname(fileURLToPath(import.meta.url))
 
 const usage = (message) => {
   if (message) process.stderr.write(`${message}\n`)
   process.stderr.write(`usage: node evals/run-local.mjs --plugin <dir> [--eval-dir evals/agent] [--case <name>] [--runs N]
-  [--arms with,without] [-j N] [--model <m>] [--effort <level>] [--judge-model haiku] [--out <dir>] [--keep-temp]
-  [--stop-at-utilization 0.98]
+  [--arms with,without] [-j N] [--model <m>] [--effort <level>] [--judge-model opus] [--judge-effort high]
+  [--out <dir>] [--keep-temp] [--stop-at-utilization 0.98] [--max-usd <n>] [--no-ui]
 `)
   process.exit(2)
 }
 
 const parseArgs = (argv) => {
-  const options = { evalDir: 'evals/agent', concurrency: 1, judgeModel: 'haiku', keepTemp: false, stopAtUtilization: 0.98 }
+  const options = { evalDir: 'evals/agent', concurrency: 1, judgeModel: 'opus', judgeEffort: 'high', keepTemp: false, stopAtUtilization: 0.98, ui: true }
   const take = (index) => {
     if (argv[index + 1] === undefined) usage(`missing value for ${argv[index]}`)
     return argv[index + 1]
@@ -35,6 +38,9 @@ const parseArgs = (argv) => {
     else if (flag === '--model') options.model = take(index++)
     else if (flag === '--effort') options.effort = take(index++)
     else if (flag === '--judge-model') options.judgeModel = take(index++)
+    else if (flag === '--judge-effort') options.judgeEffort = take(index++)
+    else if (flag === '--max-usd') options.maxUsd = Number(take(index++))
+    else if (flag === '--no-ui') options.ui = false
     else if (flag === '--out') options.out = take(index++)
     else if (flag === '--keep-temp') options.keepTemp = true
     else if (flag === '--stop-at-utilization') options.stopAtUtilization = Number(take(index++))
@@ -42,6 +48,7 @@ const parseArgs = (argv) => {
     else usage(`unknown argument ${flag}`)
   }
   if (!options.plugin) usage('--plugin is required')
+  if (options.maxUsd !== undefined && !(options.maxUsd > 0)) usage('--max-usd takes a positive number')
   options.plugin = resolve(options.plugin)
   for (const arm of options.arms ?? []) if (arm !== 'with' && arm !== 'without') usage(`unknown arm ${arm}`)
   return options
@@ -134,6 +141,10 @@ const loadCases = (suiteDir, filter) => {
       timeoutSeconds: prompt.meta.timeout_seconds ?? caseYaml.timeout_seconds ?? 1800,
       allowedTools: prompt.meta.allowed_tools ?? caseYaml.allowed_tools ?? [],
       scaffold: scaffold ? join(dir, scaffold) : undefined,
+      baseLink: caseYaml.context?.base_link,
+      estimateUsd: caseYaml.estimate_usd,
+      hiddenTests: caseYaml.hidden_tests && { ...caseYaml.hidden_tests, dir: join(dir, caseYaml.hidden_tests.dir ?? 'hidden-tests') },
+      ui: caseYaml.ui_check,
       graders: loadGraders(join(dir, 'graders')),
     }
   })
@@ -207,19 +218,15 @@ const run = (command, args, { cwd, input, timeoutMs, env = isolatedEnv(), onStdo
 
 const git = (cwd, args) => spawnSync('git', args, { cwd, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 })
 
-const unlinkToolchainLink = (dir) => {
-  const link = join(dir, 'node_modules')
-  if (!existsSync(link) || !lstatSync(link).isSymbolicLink()) return
-  try {
-    unlinkSync(link)
-  } catch {
-    rmdirSync(link)
-  }
+const removeDir = (dir) => {
+  unlinkModules(join(dir, 'node_modules'))
+  rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 500 })
 }
 
-const removeDir = (dir) => {
-  unlinkToolchainLink(dir)
-  rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 500 })
+const scaffoldInto = async (testCase, dir) => {
+  if (!testCase.scaffold) return
+  const scaffold = await run(BASH, [testCase.scaffold.replace(/\\/g, '/')], { cwd: dir, env: { ...isolatedEnv(), JIG_EVALS_DIR: EVALS_DIR }, timeoutMs: 600_000 })
+  if (scaffold.code !== 0) throw new Error(`scaffold failed (${scaffold.code}): ${cap(scaffold.stderr, 1000)}`)
 }
 
 const parseStream = (text) => {
@@ -282,6 +289,8 @@ const readTarget = (target, context) => {
   if (target === 'last_message' || target === 'final_message') return context.lastMessage
   if (target === 'files') return context.diff()
   if (target === 'tool_calls') return context.toolCalls
+  if (target === 'hidden_tests') return context.hiddenTests
+  if (target === 'ui') return context.ui?.text
   if (typeof target !== 'object' || target === null) return undefined
   if (target.source === 'files') return context.diff(target.exclude)
   if (target.source === 'file') {
@@ -329,21 +338,29 @@ Answer with exactly PASS or FAIL on the first line, then one or two sentences of
 
 const focusLabel = (focus) => {
   if (typeof focus === 'object') return `file ${focus.path}`
+  if (focus === 'ui') return 'act replay of the use case in the app built from the run, screenshots after each attempt attached in order'
   return focus === 'files' ? 'git diff of the run vs the base commit, new files included' : 'final assistant message'
+}
+
+const IMAGE_TYPES = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp' }
+
+const judgeInput = (prompt, images) => {
+  const pictures = images.map((path) => ({ type: 'image', source: { type: 'base64', media_type: IMAGE_TYPES[extname(path).toLowerCase()] ?? 'image/png', data: readFileSync(path).toString('base64') } }))
+  return `${JSON.stringify({ type: 'user', message: { role: 'user', content: [{ type: 'text', text: prompt }, ...pictures] } })}\n`
 }
 
 const gradeLlm = async (grader, context, options) => {
   const focus = grader.focus ?? 'files'
+  if (focus === 'ui' && context.ui?.verdict !== 'pass' && context.ui?.verdict !== 'fail') {
+    return { passed: false, skipped: true, reason: `no UI verdict to judge: ${context.ui ? `${context.ui.verdict}${context.ui.error ? `, ${context.ui.error}` : ''}` : 'the UI step did not run'}` }
+  }
   const raw = readTarget(focus, context)
   const evidence = raw === undefined || raw === '' ? '(empty: nothing found)' : cap(raw, JUDGE_INPUT_CAP)
-  const args = ['-p', '--model', options.judgeModel, '--output-format', 'json', '--max-turns', '1', '--tools', '', ...ISOLATION_FLAGS]
-  const result = await run('claude', args, { cwd: tmpdir(), input: judgePrompt(grader, evidence, focusLabel(focus)), timeoutMs: 300_000 })
-  let verdict
-  try {
-    verdict = JSON.parse(result.stdout)
-  } catch {
-    return { passed: false, reason: `judge failed: ${cap(result.stderr || result.stdout, 300)}`, costUsd: 0 }
-  }
+  const images = focus === 'ui' ? context.ui.screenshots.filter((path) => existsSync(path)) : []
+  const args = ['-p', '--model', options.judgeModel, '--effort', options.judgeEffort, '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose', '--max-turns', '1', '--tools', '', ...ISOLATION_FLAGS]
+  const result = await run('claude', args, { cwd: tmpdir(), input: judgeInput(judgePrompt(grader, evidence, focusLabel(focus)), images), timeoutMs: 300_000 })
+  const verdict = parseStream(result.stdout).findLast((event) => event.type === 'result')
+  if (!verdict) return { passed: false, reason: `judge failed: ${cap(result.stderr || result.stdout, 300)}`, costUsd: 0 }
   const text = String(verdict.result ?? '').trim()
   const firstWord = /^[^A-Za-z]*([A-Za-z]+)/.exec(text)?.[1]?.toUpperCase()
   return { passed: firstWord === 'PASS', reason: cap(text, 600), costUsd: verdict.total_cost_usd ?? 0 }
@@ -411,14 +428,16 @@ const gradeAll = async (testCase, arm, context, options) => {
       verdict = { passed: false, reason: `grader error: ${error.message}` }
     }
     const steps = verdict.steps ? { steps: verdict.steps.map(({ step, passed }) => ({ step, passed })) } : {}
-    verdicts.push({ name: grader.name, type: grader.type, weight: grader.weight, passed: verdict.passed, reason: verdict.reason, costUsd: verdict.costUsd ?? 0, ...steps })
+    const skipped = verdict.skipped ? { skipped: true } : {}
+    verdicts.push({ name: grader.name, type: grader.type, weight: grader.weight, passed: verdict.passed, reason: verdict.reason, costUsd: verdict.costUsd ?? 0, ...steps, ...skipped })
   }
   return verdicts
 }
 
 const weightedScore = (verdicts) => {
-  const total = verdicts.reduce((sum, verdict) => sum + verdict.weight, 0)
-  return total === 0 ? 0 : verdicts.reduce((sum, verdict) => sum + (verdict.passed ? verdict.weight : 0), 0) / total
+  const scored = verdicts.filter((verdict) => !verdict.skipped)
+  const total = scored.reduce((sum, verdict) => sum + verdict.weight, 0)
+  return total === 0 ? 0 : scored.reduce((sum, verdict) => sum + (verdict.passed ? verdict.weight : 0), 0) / total
 }
 
 const claimedPorts = new Set()
@@ -456,11 +475,20 @@ const ownCdpPort = async (runDir) => {
   return port
 }
 
-const runAgent = async (testCase, arm, index, options, outDir, runDir, tempDir, record) => {
-  if (testCase.scaffold) {
-    const scaffold = await run(BASH, [testCase.scaffold.replace(/\\/g, '/')], { cwd: runDir, timeoutMs: 600_000 })
-    if (scaffold.code !== 0) throw new Error(`scaffold failed (${scaffold.code}): ${cap(scaffold.stderr, 1000)}`)
+const baseProjects = new Map()
+
+const baseProjectOf = (testCase) => {
+  if (!baseProjects.has(testCase.name)) {
+    const dir = mkdtempSync(join(tmpdir(), 'jig-eval-base-'))
+    baseProjects.set(testCase.name, { dir, ready: scaffoldInto(testCase, dir) })
   }
+  const base = baseProjects.get(testCase.name)
+  return base.ready.then(() => base.dir)
+}
+
+const runAgent = async (testCase, arm, index, options, outDir, runDir, tempDir, record) => {
+  await scaffoldInto(testCase, runDir)
+  if (testCase.baseLink) writeFileSync(join(runDir, testCase.baseLink), `${await baseProjectOf(testCase)}\n`)
   record.cdpPort = await ownCdpPort(runDir)
   const base = git(runDir, ['rev-parse', 'HEAD']).stdout.trim()
   const tracePath = join(outDir, 'traces', `${testCase.name}-${arm}-${index + 1}.jsonl`)
@@ -496,6 +524,124 @@ const runAgent = async (testCase, arm, index, options, outDir, runDir, tempDir, 
   return { runDir, trace: cap(traceText(events), TRACE_CAP), toolCalls: toolCallText(events), lastMessage: lastMessage(events), diff: diffAgainstBase(runDir, base) }
 }
 
+const filesUnder = (dir, prefix = '') =>
+  readdirSync(dir, { withFileTypes: true }).flatMap((entry) => (entry.isDirectory() ? filesUnder(join(dir, entry.name), `${prefix}${entry.name}/`) : [`${prefix}${entry.name}`]))
+
+const TEST_FILE = /\.(test|spec)\.[cm]?[jt]sx?$/
+
+const runHiddenTests = async (testCase, runDir, tempDir) => {
+  const { dir, command = 'npx vitest run', filter } = testCase.hiddenTests
+  const files = filesUnder(dir)
+  const agentVersions = files.map((file) => [file, existsSync(join(runDir, file)) ? readFileSync(join(runDir, file)) : undefined])
+  const reportPath = join(tempDir, 'hidden-tests.json')
+  const [bin, ...args] = String(command).split(/\s+/).filter(Boolean)
+  const fullArgs = [...args, ...files.filter((file) => TEST_FILE.test(file)), '--maxWorkers=1', ...(filter ? ['-t', String(filter)] : []), '--reporter=json', `--outputFile=${reportPath}`]
+  try {
+    for (const file of files) {
+      mkdirSync(dirname(join(runDir, file)), { recursive: true })
+      copyFileSync(join(dir, file), join(runDir, file))
+    }
+    const result = await run(bin, fullArgs, { cwd: runDir, env: { ...isolatedEnv(), TMPDIR: tempDir, TEMP: tempDir, TMP: tempDir }, timeoutMs: 600_000 })
+    const report = existsSync(reportPath) ? JSON.parse(readFileSync(reportPath, 'utf8')) : undefined
+    return { command: [bin, ...fullArgs.slice(0, -2)].join(' '), exitCode: result.code, ...hiddenTestEvidence(report, result) }
+  } finally {
+    for (const [file, content] of agentVersions) {
+      if (content === undefined) rmSync(join(runDir, file), { force: true })
+      else writeFileSync(join(runDir, file), content)
+    }
+  }
+}
+
+let appQueue = Promise.resolve()
+
+const withApp = (task) => {
+  const turn = appQueue.then(task, task)
+  appQueue = turn.catch(() => undefined)
+  return turn
+}
+
+const parseEnv = (text) => Object.fromEntries([...String(text ?? '').matchAll(/(\w+)=(?:"([^"]*)"|'([^']*)'|(\S*))/g)].map(([, key, double, single, bare]) => [key, double ?? single ?? bare]))
+
+const copyActs = (testCase, actDir) => {
+  const scripts = join(actDir, '.agent-view', 'scripts')
+  const { store, store_sections: storeSections = [], acts = [] } = testCase.ui
+  for (const section of storeSections) cpSync(join(store, section), join(scripts, section), { recursive: true })
+  for (const section of acts) cpSync(join(testCase.dir, section), join(scripts, basename(section)), { recursive: true })
+}
+
+const uiEvidence = (check) =>
+  [
+    `use case ${check.replay}: ${check.verdict}${check.error ? ` (${check.error})` : ''}`,
+    ...check.attempts.flatMap((attempt, index) => [`attempt ${index + 1}: ${attempt.outcome}, exit ${attempt.exitCode}, screenshot ${attempt.screenshot ?? 'none'}`, attempt.output]),
+    'Only a failure at the final check is the app failing; an earlier failure was retried once.',
+  ].join('\n')
+
+const runUiCheck = async (testCase, runDir, tempDir, outDir, id) => {
+  const ui = testCase.ui
+  const shotsDir = join(outDir, 'ui', id)
+  const actDir = join(tempDir, 'act')
+  mkdirSync(shotsDir, { recursive: true })
+  mkdirSync(actDir, { recursive: true })
+  copyActs(testCase, actDir)
+  const env = {
+    ...isolatedEnv(),
+    ...parseEnv(ui.env),
+    JIG_RUN_DIR: runDir,
+    JIG_ACT_DIR: actDir,
+    JIG_CASE_DIR: testCase.dir,
+    JIG_EVALS_DIR: EVALS_DIR,
+    JIG_CDP_PORT: String(await claimPort()),
+    JIG_DEV_PORT: String(await claimPort()),
+    JIG_UI_REPLAY: ui.replay,
+  }
+  const shell = (command, { cwd = testCase.dir, timeoutMs = 600_000 } = {}) => run(BASH, ['-c', command], { cwd, env, timeoutMs })
+  const check = { replay: ui.replay, cdpPort: Number(env.JIG_CDP_PORT), devPort: Number(env.JIG_DEV_PORT), attempts: [], verdict: 'inconclusive', screenshots: [] }
+  const patch = ui.patch ? resolve(testCase.dir, ui.patch) : undefined
+  let patched = false
+  try {
+    if (patch) {
+      const applied = git(runDir, ['apply', '--ignore-whitespace', '--whitespace=nowarn', patch])
+      if (applied.status !== 0) throw new Error(`patch ${ui.patch} does not apply: ${cap(applied.stderr, 300)}`)
+      patched = true
+    }
+    const started = await shell(ui.start)
+    if (started.code !== 0) throw new Error(`start failed (${started.code}): ${cap(`${started.stdout}\n${started.stderr}`.trim(), 500)}`)
+    for (;;) {
+      const replay = await shell('agent-view act replay "$JIG_UI_REPLAY"', { cwd: actDir, timeoutMs: (ui.replay_timeout_seconds ?? 900) * 1000 })
+      const output = `${replay.stdout}\n${replay.stderr}`.trim()
+      const attempt = { outcome: classifyReplay({ code: replay.code, output }, { useCase: ui.replay, finalSteps: ui.final_steps ?? [] }), exitCode: replay.code, output: cap(output, 2000) }
+      const shot = await shell('agent-view screenshot --scale 0.5', { cwd: actDir, timeoutMs: 60_000 })
+      const shotPath = /^(.*\.(?:png|jpe?g|webp))\s*$/im.exec(shot.stdout)?.[1]?.trim()
+      if (shotPath && existsSync(shotPath)) {
+        const saved = join(shotsDir, `attempt-${check.attempts.length + 1}${extname(shotPath)}`)
+        copyFileSync(shotPath, saved)
+        rmSync(shotPath, { force: true })
+        attempt.screenshot = relative(outDir, saved).replace(/\\/g, '/')
+      }
+      check.attempts.push(attempt)
+      check.verdict = replayVerdict(check.attempts.map((entry) => entry.outcome))
+      if (check.verdict !== 'retry') break
+      if (ui.reset) await shell(ui.reset, { cwd: actDir, timeoutMs: 120_000 })
+    }
+  } catch (error) {
+    check.error = error.message
+  } finally {
+    if (ui.stop) check.stopExit = (await shell(ui.stop, { timeoutMs: 120_000 })).code
+    if (ui.restore) {
+      const restored = await shell(ui.restore, { timeoutMs: 900_000 })
+      check.restore = { exitCode: restored.code, output: cap(`${restored.stdout}\n${restored.stderr}`.trim(), 1000) }
+      if (restored.code !== 0) process.stdout.write(`[${id}] STAND RESTORE FAILED (${restored.code}): ${cap(check.restore.output, 300)}\n`)
+    }
+    if (patched) git(runDir, ['apply', '-R', '--ignore-whitespace', '--whitespace=nowarn', patch])
+  }
+  check.screenshots = check.attempts.filter((attempt) => attempt.screenshot).map((attempt) => attempt.screenshot)
+  check.text = uiEvidence(check)
+  writeFileSync(join(shotsDir, 'ui-check.json'), JSON.stringify(check, null, 2))
+  return check
+}
+
+const uiContext = (check, outDir) => check && { ...check, screenshots: check.screenshots.map((path) => resolve(outDir, path)) }
+
 const runOne = async ({ testCase, arm, index, options, outDir }) => {
   const runDir = mkdtempSync(join(tmpdir(), 'jig-eval-'))
   const tempDir = mkdtempSync(join(tmpdir(), 'jig-eval-tmp-'))
@@ -503,7 +649,18 @@ const runOne = async ({ testCase, arm, index, options, outDir }) => {
   const started = Date.now()
   try {
     const context = await runAgent(testCase, arm, index, options, outDir, runDir, tempDir, record)
-    writeFileSync(join(outDir, 'diffs', `${testCase.name}-${arm}-${index + 1}.diff`), context.diff())
+    const id = `${testCase.name}-${arm}-${index + 1}`
+    writeFileSync(join(outDir, 'diffs', `${id}.diff`), context.diff())
+    if (testCase.hiddenTests) {
+      record.hiddenTests = await runHiddenTests(testCase, runDir, tempDir)
+      context.hiddenTests = record.hiddenTests.text
+    }
+    if (testCase.ui && options.ui) {
+      record.ui = await withApp(() => runUiCheck(testCase, runDir, tempDir, outDir, id))
+      context.ui = uiContext(record.ui, outDir)
+    }
+    git(runDir, ['checkout', '-q', '--', '.'])
+    git(runDir, ['clean', '-fdq'])
     record.graders = await gradeAll(testCase, arm, context, options)
     record.score = weightedScore(record.graders)
     record.judgeCostUsd = record.graders.reduce((sum, verdict) => sum + verdict.costUsd, 0)
@@ -521,11 +678,13 @@ const runOne = async ({ testCase, arm, index, options, outDir }) => {
     }
   }
   writeFileSync(join(outDir, 'runs', `${testCase.name}-${arm}-${index + 1}.json`), JSON.stringify(record, null, 2))
-  const verdicts = record.graders.map((verdict) => `${verdict.name}:${verdict.passed ? 'PASS' : 'FAIL'}`).join(' ')
+  const verdicts = record.graders.map((verdict) => `${verdict.name}:${verdict.skipped ? 'SKIP' : verdict.passed ? 'PASS' : 'FAIL'}`).join(' ')
   const error = record.error ? ` ERROR ${record.error}` : ''
-  process.stdout.write(`[${testCase.name}/${arm}/${index + 1}] score ${record.score.toFixed(2)} cost $${(record.costUsd ?? 0).toFixed(2)} turns ${record.turns ?? '-'} ${verdicts}${error}\n`)
+  process.stdout.write(`[${testCase.name}/${arm}/${index + 1}] score ${record.score.toFixed(2)} cost $${runCost(record).toFixed(2)} turns ${record.turns ?? '-'} ${verdicts}${error}\n`)
   return record
 }
+
+const runCost = (record) => (record.costUsd ?? 0) + (record.judgeCostUsd ?? 0)
 
 const mean = (values) => (values.length === 0 ? undefined : values.reduce((sum, value) => sum + value, 0) / values.length)
 const numbers = (runs, pick) => runs.map(pick).filter((value) => typeof value === 'number' && Number.isFinite(value))
@@ -587,16 +746,24 @@ const summarize = (records, cases, arms) => {
 const runPool = async (jobs, options) => {
   const records = []
   let next = 0
-  let stopped = false
+  let inFlight = 0
+  let stopped
+  const stop = (reason) => {
+    if (!stopped) process.stdout.write(`${reason}: no more runs launched\n`)
+    stopped ??= reason
+  }
   const worker = async () => {
-    while (next < jobs.length) {
-      if (rateLimit.utilization >= options.stopAtUtilization) {
-        if (!stopped) process.stdout.write(`rate limit utilization ${rateLimit.utilization} >= ${options.stopAtUtilization}: no more runs launched\n`)
-        stopped = true
-        return
+    while (next < jobs.length && !stopped) {
+      if (rateLimit.utilization >= options.stopAtUtilization) return stop(`rate limit utilization ${rateLimit.utilization} >= ${options.stopAtUtilization}`)
+      const job = jobs[next]
+      const budget = budgetCheck({ maxUsd: options.maxUsd, finishedCosts: records.map(runCost), inFlight, estimateUsd: job.testCase.estimateUsd })
+      if (!budget.allowed) {
+        return stop(`budget $${options.maxUsd}: spent $${budget.spentUsd.toFixed(2)} + ${inFlight + 1} x $${budget.perRunUsd.toFixed(2)} per run would reach $${budget.projectedUsd.toFixed(2)}`)
       }
-      const job = jobs[next++]
+      next++
+      inFlight++
       records.push(await runOne(job))
+      inFlight--
     }
   }
   await Promise.all(Array.from({ length: Math.min(options.concurrency, jobs.length) }, worker))
@@ -621,13 +788,20 @@ const main = async () => {
   )
   process.stdout.write(`${jobs.length} runs, ${cases.length} cases, arms ${arms.join(',')}, -j ${options.concurrency}, bash ${BASH}\nout ${outDir}\n`)
   const { records, stopped } = await runPool(jobs, options)
+  for (const { dir, ready } of baseProjects.values()) {
+    await ready.catch(() => undefined)
+    if (!options.keepTemp) removeDir(dir)
+  }
 
   const aggregate = {
     runner: 'evals/run-local.mjs',
     plugin: options.plugin,
     evalDir: suiteDir,
     arms,
-    partial: stopped,
+    partial: stopped !== undefined,
+    stoppedBy: stopped,
+    maxUsd: options.maxUsd,
+    totalCostUsd: records.reduce((sum, record) => sum + runCost(record), 0),
     maxRateLimitUtilization: rateLimit.utilization,
     cases: cases.map((testCase) => ({
       name: testCase.name,
@@ -635,13 +809,14 @@ const main = async () => {
     })),
   }
   writeFileSync(join(outDir, 'aggregate-result.json'), JSON.stringify(aggregate, null, 2))
-  const partial = stopped ? '**Partial: stopped at the rate limit utilization ceiling.**\n\n' : ''
-  const summary = `# Local eval: ${options.evalDir}\n\n${partial}${summarize(records, cases, arms)}`
+  const partial = stopped ? `**Partial: ${stopped}.**\n\n` : ''
+  const budget = options.maxUsd === undefined ? '' : `Budget: $${options.maxUsd.toFixed(2)}, spent $${aggregate.totalCostUsd.toFixed(2)}\n`
+  const summary = `# Local eval: ${options.evalDir}\n\n${partial}${summarize(records, cases, arms)}${budget}`
   writeFileSync(join(outDir, 'summary.md'), summary)
   process.stdout.write(`\n${summary}\nwritten ${join(outDir, 'summary.md')}\n`)
 }
 
-export { BASH, TRACE_CAP, cap, diffAgainstBase, git, gradeAll, lastMessage, loadCases, parseStream, removeDir, run, toolCallText, traceText, weightedScore }
+export { BASH, TRACE_CAP, cap, diffAgainstBase, git, gradeAll, lastMessage, loadCases, parseStream, removeDir, run, runHiddenTests, runUiCheck, scaffoldInto, toolCallText, traceText, uiContext, weightedScore, withApp }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url))
   main().catch((error) => {
