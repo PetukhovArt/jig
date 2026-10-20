@@ -99,6 +99,18 @@ describe('hooks through bin/jig.mjs', () => {
     expect(denialOf(edit(pragma))).toBe('deny')
   })
 
+  it('denies a new xUnit test in TestsBackend/UnitTest1.cs once, then lets the same call pass', () => {
+    const content = 'public class UnitTest1\n{\n    [Fact]\n    public void Test1() => Assert.True(Probe.Run());\n}\n'
+    expect(denialOf(preWrite('TestsBackend/UnitTest1.cs', content))).toBe('deny')
+    expect(preWrite('TestsBackend/UnitTest1.cs', content)).toBe('')
+  })
+
+  it('reads the edited file to tell a test file outside the test paths', () => {
+    write('src/flows.ts', "test('logs in', () => {})\nconst name = 'logs out'\n")
+    const edit = { file_path: join(root, 'src/flows.ts'), old_string: "const name = 'logs out'\n", new_string: "const name = 'logs out'\ntest(name, () => {})\n" }
+    expect(denialOf(hook('pre-edit', { hook_event_name: 'PreToolUse', tool_name: 'Edit', tool_input: edit }))).toBe('deny')
+  })
+
   it('says once at session start that the project drifted from its config', () => {
     write('.oxlintrc.json', '{}\n')
     const context: string = JSON.parse(hook('session-start', { hook_event_name: 'SessionStart', source: 'startup' })).hookSpecificOutput.additionalContext

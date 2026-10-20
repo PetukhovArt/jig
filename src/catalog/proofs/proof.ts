@@ -1,4 +1,5 @@
 import type { PlanTools, ToolBinary } from '../../tools/tool'
+import type { SourceReader } from '../languages'
 
 export const PROOF_KINDS = ['behavior', 'look'] as const
 
@@ -9,7 +10,7 @@ export interface CheckDefinition<N extends string = string> {
   binaries: readonly ToolBinary[]
   files: readonly string[]
   setup?: readonly string[]
-  requires: (file: string) => readonly ProofKind[]
+  requires: (file: string, source?: SourceReader) => readonly ProofKind[]
   proves: (command: string) => readonly ProofKind[]
   hints: Readonly<Partial<Record<ProofKind, string>>>
 }

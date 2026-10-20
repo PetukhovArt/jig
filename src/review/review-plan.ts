@@ -6,7 +6,7 @@ import { git, gitStatus, gitToplevel } from '../core/git'
 import { createMatcher } from '../core/glob'
 import { parseJsonc } from '../core/jsonc'
 import { jigPaths, resolvePluginRoot, toSlash } from '../core/paths'
-import { isTestFile } from '../catalog/languages'
+import { fileSource, isTestFile } from '../catalog/languages'
 import { lexComments } from '../catalog/languages'
 import { detectAgent, loadUserConfig, resolveTiers, type TierMap } from '../tiers/tiers'
 import {
@@ -55,9 +55,9 @@ const isFixturePath = createMatcher(['**/{fixture,fixtures,__fixtures__,__snapsh
 const isMarkdown = createMatcher(['**/*.md'])
 const isChangelog = createMatcher(['**/CHANGELOG.md'])
 
-export const exclusionOf = (path: string): Exclusion | undefined => {
+export const exclusionOf = (path: string, root?: string): Exclusion | undefined => {
   if (isMarkdown(path)) return 'markdown'
-  if (isTestFile(path) || isTestPath(path)) return 'test'
+  if (isTestFile(path, root === undefined ? undefined : fileSource(root, path)) || isTestPath(path)) return 'test'
   if (isFixturePath(path)) return 'fixture'
   return undefined
 }
@@ -79,12 +79,12 @@ export const parseNumstat = (output: string): FileStat[] => {
   return stats
 }
 
-export const countLines = (stats: readonly FileStat[]): { lines: number; counted: number; excluded: Record<Exclusion, number> } => {
+export const countLines = (stats: readonly FileStat[], root?: string): { lines: number; counted: number; excluded: Record<Exclusion, number> } => {
   const excluded: Record<Exclusion, number> = { test: 0, fixture: 0, markdown: 0 }
   let lines = 0
   let counted = 0
   for (const stat of stats) {
-    const exclusion = exclusionOf(stat.path)
+    const exclusion = exclusionOf(stat.path, root)
     if (exclusion !== undefined) {
       excluded[exclusion]++
       continue
@@ -241,7 +241,7 @@ export const resolveBase = (root: string, given: string | undefined, command = '
 const addedNewSourceFiles = (root: string, mergeBase: string): number => {
   const result = git(['diff', '--name-only', '--diff-filter=A', '-M', '-z', mergeBase], root)
   if (!result.ok) return 0
-  return result.stdout.split('\0').filter((path) => path !== '' && exclusionOf(path) === undefined).length
+  return result.stdout.split('\0').filter((path) => path !== '' && exclusionOf(path, root) === undefined).length
 }
 
 const anyAddedComment = (root: string, mergeBase: string, stats: readonly FileStat[]): boolean => {
@@ -426,10 +426,10 @@ export interface ReportOptions {
 
 export const buildReport = (root: string, options: ReportOptions): ReviewPlanReport => {
   const base = resolveBase(root, options.base)
-  const { lines, counted, excluded } = countLines(base.stats)
+  const { lines, counted, excluded } = countLines(base.stats, root)
   const changed = base.stats.filter((stat) => stat.added > 0)
   const shape: Shape = {
-    tests: changed.some((stat) => exclusionOf(stat.path) === 'test'),
+    tests: changed.some((stat) => exclusionOf(stat.path, root) === 'test'),
     comments: anyAddedComment(root, base.mergeBase, base.stats),
     docs: changed.some((stat) => exclusionOf(stat.path) === 'markdown' && !isChangelog(stat.path)),
     newSourceFiles: addedNewSourceFiles(root, base.mergeBase),

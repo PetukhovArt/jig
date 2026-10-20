@@ -3,6 +3,7 @@ import { copyFileSync, existsSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
+import { fileSource } from '../catalog/languages'
 import { CHECKS, PROOF_KINDS, type CheckDefinition, type ProofKind } from '../checks'
 import { enabledSetting, loadConfig } from '../core/config'
 import { git, gitStatus, gitToplevel } from '../core/git'
@@ -122,8 +123,11 @@ export const configuredChecks = (root: string): CheckDefinition[] => {
   return CHECKS.filter((check) => enabledSetting(proofs, check.name) !== undefined)
 }
 
-export const requirements = (files: readonly string[], checks: readonly CheckDefinition[] = CHECKS): Requirement[] =>
-  PROOF_KINDS.map((kind) => ({ kind, files: files.filter((file) => checks.some((check) => check.requires(file).includes(kind))) })).filter(
+export const requirements = (root: string, files: readonly string[], checks: readonly CheckDefinition[] = CHECKS): Requirement[] =>
+  PROOF_KINDS.map((kind) => ({
+    kind,
+    files: files.filter((file) => checks.some((check) => check.requires(file, fileSource(root, file)).includes(kind))),
+  })).filter(
     (requirement) => requirement.files.length > 0,
   )
 
@@ -181,9 +185,9 @@ export interface Evaluation {
 }
 
 export const evaluate = ({ root, mergeBase, head, tree, files, records, checks }: Evaluation): Verdict => {
-  const needed = requirements(files, checks)
+  const needed = requirements(root, files, checks)
   if (needed.length === 0) {
-    const ui = requirements(files).flatMap((requirement) => requirement.files)
+    const ui = requirements(root, files).flatMap((requirement) => requirement.files)
     return ui.length === 0 ? { type: 'no-ui' } : { type: 'no-proof-tool', files: [...new Set(ui)] }
   }
   const diffs = new Map<string, Set<string> | undefined>()

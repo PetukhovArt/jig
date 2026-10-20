@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import { mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { fileSource, type SourceReader } from '../catalog/languages'
 import type { JigConfig, JigRuleId, RuleId } from '../core/config'
 import { parseFrontmatter } from '../core/frontmatter'
 import { jigPaths, toSlash } from '../core/paths'
@@ -97,8 +98,13 @@ const commentSection = (input: GateInput, comments: readonly AddedComment[]): { 
 
 const TEST_REMINDER = 'Finish "this test fails when a developer <edit>, which breaks <behavior>" with a realistic edit, or drop the test.'
 
+const editedSource =
+  ({ projectRoot, file, edits }: GateInput): SourceReader =>
+  () =>
+    [fileSource(projectRoot, file)() ?? '', ...edits.map((edit) => edit.after)].join('\n')
+
 const testSection = (input: GateInput): { text: string; hit: GateHit } | undefined => {
-  const added = addedTestCases(input.file, input.edits)
+  const added = addedTestCases(input.file, input.edits, editedSource(input))
   if (added <= 0 || !claimFirst(input, `test\n${input.file}`)) return undefined
   const head = `jig/tests: the edit adds ${added} test case(s) to ${input.file}. ${RETRY}`
   return {

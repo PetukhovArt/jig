@@ -12,4 +12,5 @@ export const DIRECTIVE_ONLY_TOOLS: readonly DirectiveSource[] = [
       allowed: [/^#\s*(?:pragma|nullable)\b/, /^\/\/\s*<\/?auto-?generated\b/],
     },
   },
+  { name: 'resharper', comments: { suppressions: [/\bReSharper\s+disable\b/], allowed: [/\bReSharper\s+restore\b/] } },
 ]

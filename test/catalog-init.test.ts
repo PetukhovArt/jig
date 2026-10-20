@@ -49,14 +49,36 @@ describe('catalog', () => {
     expect(languageFor(file)?.name).toBe(language)
   })
 
-  it('knows test files from the language patterns', () => {
-    expect(isTestFile('src/a.test.ts')).toBe(true)
-    expect(isTestFile('src/__tests__/helper.ts')).toBe(true)
-    expect(isTestFile('src/a.ts')).toBe(false)
-    expect(isTestFile('Api.Tests/Fakes.cs')).toBe(true)
-    expect(isTestFile('Api/StreamTest.cs')).toBe(true)
-    expect(isTestFile('Api/Stream.cs')).toBe(false)
-    expect(isTestFile('web/e2eTests/login.ts')).toBe(false)
+  it.each([
+    ['src/a.test.ts', true],
+    ['src/__tests__/helper.ts', true],
+    ['src/__tests__/data.json', true],
+    ['src/a.ts', false],
+    ['web/e2eTests/login.ts', false],
+    ['Api.Tests/Fakes.cs', true],
+    ['TestsBackend/UnitTest1.cs', true],
+    ['Tests.Unit/Fakes.cs', true],
+    ['Api/OrderTests.cs', true],
+    ['Api/StreamTest.cs', true],
+    ['api/tests/Fakes.cs', true],
+    ['api/spec/Fakes.cs', true],
+    ['Api/Stream.cs', false],
+    ['Api/Attestation.cs', false],
+    ['Contest/Score.cs', false],
+    ['Api/Testable.cs', false],
+  ])('knows %s by its path: %s', (file, expected) => {
+    expect(isTestFile(file)).toBe(expected)
+  })
+
+  it.each([
+    ['web/e2eTests/login.ts', "test('logs in', () => {})\n", true],
+    ['src/flows.ts', "describe.each([1, 2])('flow %i', () => {})\n", true],
+    ['src/run.ts', 'export const test = (value) => value\ntest(1)\n', false],
+    ['Api/Stream.cs', 'public class Stream\n{\n    [Fact]\n    public void Reads() { }\n}\n', true],
+    ['Api/Stream.cs', 'var cases = all[Test];\n', false],
+    ['src/App.vue', "it('renders', () => {})\n", false],
+  ])('knows %s by its content', (file, source, expected) => {
+    expect(isTestFile(file, () => source)).toBe(expected)
   })
 
   it('offers tool parsers as custom check formats', () => {

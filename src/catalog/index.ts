@@ -4,7 +4,7 @@ import { PROOFS, type ProofDefinition } from './proofs'
 import { TOOLS, type RegisteredTool } from './tools'
 import { parseStratum } from './tools/stratum'
 
-export { isTestFile, languageFor, LANGUAGES, lexComments, TEST_FILE_GLOBS, type Language } from './languages'
+export { fileSource, isTestFile, languageFor, LANGUAGES, lexComments, type Language, type SourceReader } from './languages'
 export { PROOFS, type ProofDefinition, type ProofName } from './proofs'
 export { DIRECTIVE_SOURCES, TOOLS, type GateRuleId, type RegisteredTool, type ToolName } from './tools'
 

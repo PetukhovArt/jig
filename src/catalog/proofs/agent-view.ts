@@ -1,6 +1,6 @@
 import { createMatcher } from '../../core/glob'
 import type { ToolBinary } from '../../tools/tool'
-import { isTestFile } from '../languages'
+import { isTestFile, type SourceReader } from '../languages'
 import { defineCheck, type ProofKind } from './proof'
 
 export const AGENT_VIEW_CONFIG = 'agent-view.config.json'
@@ -25,8 +25,8 @@ const PROOFS: ReadonlyArray<readonly [ProofKind, RegExp]> = [
   ['look', /(?:^|[\s;&|])(?:npx\s+)?agent-view\s+(?:screenshot|snap)\b/],
 ]
 
-const requires = (file: string): readonly ProofKind[] => {
-  if (isTestFile(file)) return []
+const requires = (file: string, source?: SourceReader): readonly ProofKind[] => {
+  if (isTestFile(file, source)) return []
   if (isMarkup(file)) return ['behavior', 'look']
   if (isStyle(file)) return ['look']
   return []
