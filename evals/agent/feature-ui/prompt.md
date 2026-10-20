@@ -1,8 +1,8 @@
 ---
 max_turns: 60
-runs: 3
+runs: 1
 timeout_seconds: 1800
-allowed_tools: [Read, Glob, Grep, Edit, Write, MultiEdit, Bash, Agent, Skill, TodoWrite]
+allowed_tools: [Read, Glob, Grep, Edit, Write, MultiEdit, Bash, Agent, Skill]
 ---
 
 Add a status filter (online / offline / all) to the camera list. It must survive a page reload.

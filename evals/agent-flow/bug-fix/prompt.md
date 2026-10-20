@@ -1,8 +1,8 @@
 ---
 max_turns: 60
-runs: 3
+runs: 1
 timeout_seconds: 1800
-allowed_tools: [Read, Glob, Grep, Edit, Write, MultiEdit, Bash, Agent, Skill, TodoWrite]
+allowed_tools: [Read, Glob, Grep, Edit, Write, MultiEdit, Bash, Agent, Skill]
 ---
 
 /jig The last page of the camera list shows one item fewer than it should. Fix it.
