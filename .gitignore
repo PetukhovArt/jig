@@ -9,6 +9,7 @@ coverage/
 evals/**/results/
 evals/_toolchain/
 evals/private/
+evals/private-*/
 evals/private-flow/
 .jig/
 !evals/_fixture-base/.jig/
