@@ -681,8 +681,196 @@ var lexVue = (source) => {
   return comments.sort((left, right) => left.end - right.end);
 };
 
+// src/catalog/languages/csharp-lexer.ts
+var MESSAGE_DIRECTIVE = /^#\s*(?:region|endregion|error|warning)\b/;
+var CHECK_DIRECTIVE = /^#\s*(?:pragma|nullable)\b/;
+var TRAILING_COMMENT = /\s*\/\/.*$/;
+var CSharpLexer = class {
+  constructor(source) {
+    this.source = source;
+  }
+  source;
+  index = 0;
+  line = 1;
+  comments = [];
+  run() {
+    this.scanCode(0);
+    return this.comments;
+  }
+  at(offset = 0) {
+    return this.source[this.index + offset] ?? "";
+  }
+  advance() {
+    if (this.source[this.index] === "\n") {
+      this.line++;
+    }
+    this.index++;
+  }
+  runLength(char) {
+    let length = 0;
+    while (this.at(length) === char) {
+      length++;
+    }
+    return length;
+  }
+  lineEnd() {
+    const newline = this.source.indexOf("\n", this.index);
+    return newline === -1 ? this.source.length : newline;
+  }
+  scanCode(closingBraces) {
+    let depth = 0;
+    while (this.index < this.source.length) {
+      const char = this.at();
+      if (char === "}" && depth === 0 && closingBraces > 0) {
+        this.index += Math.min(this.runLength("}"), closingBraces);
+        return;
+      }
+      if (char === "{") {
+        depth++;
+      } else if (char === "}") {
+        depth--;
+      }
+      this.scanToken(char);
+    }
+  }
+  scanToken(char) {
+    if (char === "/" && this.at(1) === "/") {
+      this.scanLineComment();
+      return;
+    }
+    if (char === "/" && this.at(1) === "*") {
+      this.scanBlockComment();
+      return;
+    }
+    if (char === "#") {
+      this.scanDirective();
+      return;
+    }
+    if (char === "'") {
+      this.scanChar();
+      return;
+    }
+    if (char === '"' || char === "$" || char === "@") {
+      this.scanString();
+      return;
+    }
+    this.advance();
+  }
+  scanString() {
+    let dollars = 0;
+    let isVerbatim = false;
+    while (this.at() === "$" || this.at() === "@") {
+      if (this.at() === "$") {
+        dollars++;
+      } else {
+        isVerbatim = true;
+      }
+      this.index++;
+    }
+    if (this.at() !== '"') return;
+    const quotes = this.runLength('"');
+    if (quotes >= 3 && !isVerbatim) {
+      this.scanRawString(quotes, dollars);
+      return;
+    }
+    this.index++;
+    this.scanQuotedString(isVerbatim, dollars > 0);
+  }
+  scanQuotedString(isVerbatim, isInterpolated) {
+    while (this.index < this.source.length) {
+      const char = this.at();
+      if (char === "\\" && !isVerbatim) {
+        this.index++;
+        this.advance();
+        continue;
+      }
+      if (char === '"') {
+        const isEscaped = isVerbatim && this.at(1) === '"';
+        this.index += isEscaped ? 2 : 1;
+        if (isEscaped) continue;
+        return;
+      }
+      if (char === "\n" && !isVerbatim) return;
+      if (isInterpolated && (char === "{" || char === "}") && this.at(1) === char) {
+        this.index += 2;
+        continue;
+      }
+      if (isInterpolated && char === "{") {
+        this.index++;
+        this.scanCode(1);
+        continue;
+      }
+      this.advance();
+    }
+  }
+  scanRawString(quotes, dollars) {
+    this.index += quotes;
+    while (this.index < this.source.length) {
+      const char = this.at();
+      if (char === '"') {
+        const run3 = this.runLength('"');
+        this.index += run3;
+        if (run3 >= quotes) return;
+        continue;
+      }
+      if (char === "{" && dollars > 0) {
+        const run3 = this.runLength("{");
+        this.index += run3;
+        if (run3 >= dollars) {
+          this.scanCode(dollars);
+        }
+        continue;
+      }
+      this.advance();
+    }
+  }
+  scanChar() {
+    this.index++;
+    while (this.index < this.source.length) {
+      const char = this.at();
+      if (char === "\\") {
+        this.index++;
+        this.advance();
+        continue;
+      }
+      if (char === "\n") return;
+      this.index++;
+      if (char === "'") return;
+    }
+  }
+  scanLineComment() {
+    const start = this.index;
+    this.index = this.lineEnd();
+    const text3 = this.source.slice(start, this.index).replace(/\r$/, "");
+    this.comments.push({ text: text3, line: this.line, kind: "line", start, end: this.index });
+  }
+  scanBlockComment() {
+    const start = this.index;
+    const line = this.line;
+    const close = this.source.indexOf("*/", start + 2);
+    const stop2 = close === -1 ? this.source.length : close + 2;
+    this.line += countNewlines(this.source, start, stop2);
+    this.index = stop2;
+    this.comments.push({ text: this.source.slice(start, stop2), line, kind: "block", start, end: stop2 });
+  }
+  scanDirective() {
+    const start = this.index;
+    const lineText = this.source.slice(start, this.lineEnd()).replace(/\r$/, "");
+    if (MESSAGE_DIRECTIVE.test(lineText)) {
+      this.index = this.lineEnd();
+      return;
+    }
+    this.index++;
+    if (!CHECK_DIRECTIVE.test(lineText)) return;
+    const text3 = lineText.replace(TRAILING_COMMENT, "");
+    this.comments.push({ text: text3, line: this.line, kind: "directive", start, end: start + text3.length });
+  }
+};
+var lexCSharp = (source) => new CSharpLexer(source).run();
+
 // src/catalog/languages/index.ts
 var SCRIPT_EXTENSIONS = [".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs"];
+var CSHARP_TEST_ATTRIBUTE = String.raw`\[\s*(?:\w+\.)*(?:Fact|Theory|Test|TestCase|TestCaseSource|TestMethod|DataTestMethod)(?:Attribute)?(?=\s*[(\],])`;
 var LANGUAGES = [
   {
     name: "javascript",
@@ -691,7 +879,14 @@ var LANGUAGES = [
     testFiles: ["**/*.{test,spec}.{ts,tsx,js,jsx,mts,cts,mjs,cjs}", "**/__tests__/**"],
     testCase: /(?<![\w$.])(?:it|test)(?:\.\w+)*\s*\(/g
   },
-  { name: "vue", extensions: [".vue"], lexComments: lexVue, testFiles: [] }
+  { name: "vue", extensions: [".vue"], lexComments: lexVue, testFiles: [] },
+  {
+    name: "csharp",
+    extensions: [".cs"],
+    lexComments: lexCSharp,
+    testFiles: ["**/*Tests/**/*.cs", "**/*{Test,Tests}.cs"],
+    testCase: new RegExp(String.raw`(?<![\w)]\s*)(?<!${CSHARP_TEST_ATTRIBUTE}[^\n]*\]\s*)${CSHARP_TEST_ATTRIBUTE}`, "g")
+  }
 ];
 var SCRIPT_FILES = ["**/*.{ts,tsx,mts,cts,js,jsx,mjs,cjs,vue}"];
 var TYPED_FILES = ["**/*.{ts,tsx,mts,cts,vue}"];
@@ -752,7 +947,14 @@ var DIRECTIVE_ONLY_TOOLS = [
   { name: "biome", comments: { suppressions: [/\bbiome-ignore\b/], allowed: [] } },
   { name: "vite", comments: { suppressions: [], allowed: [/@vite-ignore/] } },
   { name: "webpack", comments: { suppressions: [], allowed: [/webpack[A-Z]\w*\s*:/] } },
-  { name: "minifiers", comments: { suppressions: [], allowed: [/[@#]__(?:PURE|NO_SIDE_EFFECTS)__/] } }
+  { name: "minifiers", comments: { suppressions: [], allowed: [/[@#]__(?:PURE|NO_SIDE_EFFECTS)__/] } },
+  {
+    name: "roslyn",
+    comments: {
+      suppressions: [/^#\s*pragma\s+warning\s+disable\b/, /^#\s*nullable\s+disable\b/],
+      allowed: [/^#\s*(?:pragma|nullable)\b/, /^\/\/\s*<\/?auto-?generated\b/]
+    }
+  }
 ];
 
 // src/catalog/tools/eslint.ts
