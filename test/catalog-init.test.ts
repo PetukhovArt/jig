@@ -43,6 +43,7 @@ describe('catalog', () => {
   it.each([
     ['src/a.ts', 'javascript'],
     ['src/App.VUE', 'vue'],
+    ['Server/Controllers/StreamController.cs', 'csharp'],
     ['README.md', undefined],
   ])('knows the language of %s', (file, language) => {
     expect(languageFor(file)?.name).toBe(language)
@@ -52,6 +53,10 @@ describe('catalog', () => {
     expect(isTestFile('src/a.test.ts')).toBe(true)
     expect(isTestFile('src/__tests__/helper.ts')).toBe(true)
     expect(isTestFile('src/a.ts')).toBe(false)
+    expect(isTestFile('Api.Tests/Fakes.cs')).toBe(true)
+    expect(isTestFile('Api/StreamTest.cs')).toBe(true)
+    expect(isTestFile('Api/Stream.cs')).toBe(false)
+    expect(isTestFile('web/e2eTests/login.ts')).toBe(false)
   })
 
   it('offers tool parsers as custom check formats', () => {

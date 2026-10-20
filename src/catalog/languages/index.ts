@@ -1,5 +1,6 @@
 import { extname } from 'node:path'
 import { createMatcher } from '../../core/glob'
+import { lexCSharp } from './csharp-lexer'
 import { lexJs, lexVue, type Comment } from './js-lexer'
 
 export type { Comment, CommentKind } from './js-lexer'
@@ -14,6 +15,8 @@ export interface Language {
 
 const SCRIPT_EXTENSIONS = ['.ts', '.tsx', '.mts', '.cts', '.js', '.jsx', '.mjs', '.cjs'] as const
 
+const CSHARP_TEST_ATTRIBUTE = String.raw`\[\s*(?:\w+\.)*(?:Fact|Theory|Test|TestCase|TestCaseSource|TestMethod|DataTestMethod)(?:Attribute)?(?=\s*[(\],])`
+
 export const LANGUAGES: readonly Language[] = [
   {
     name: 'javascript',
@@ -23,6 +26,13 @@ export const LANGUAGES: readonly Language[] = [
     testCase: /(?<![\w$.])(?:it|test)(?:\.\w+)*\s*\(/g,
   },
   { name: 'vue', extensions: ['.vue'], lexComments: lexVue, testFiles: [] },
+  {
+    name: 'csharp',
+    extensions: ['.cs'],
+    lexComments: lexCSharp,
+    testFiles: ['**/*Tests/**/*.cs', '**/*{Test,Tests}.cs'],
+    testCase: new RegExp(String.raw`(?<![\w)]\s*)(?<!${CSHARP_TEST_ATTRIBUTE}[^\n]*\]\s*)${CSHARP_TEST_ATTRIBUTE}`, 'g'),
+  },
 ]
 
 export const SCRIPT_FILES = ['**/*.{ts,tsx,mts,cts,js,jsx,mjs,cjs,vue}'] as const

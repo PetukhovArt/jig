@@ -1,4 +1,4 @@
-export type CommentKind = 'line' | 'block'
+export type CommentKind = 'line' | 'block' | 'directive'
 
 export interface Comment {
   text: string
@@ -20,7 +20,7 @@ const STYLE_BLOCK = /<style\b[^>]*>[\s\S]*?<\/style\s*>/gi
 const HTML_COMMENT = /<!--[\s\S]*?-->/g
 const SFC_TAG = /<(?:script|template|style)\b/i
 
-const countNewlines = (text: string, from: number, to: number): number => {
+export const countNewlines = (text: string, from: number, to: number): number => {
   let count = 0
   for (let index = from; index < to; index++) {
     if (text[index] === '\n') {

@@ -80,6 +80,25 @@ describe('hooks through bin/jig.mjs', () => {
     expect(preWrite('src/b.ts', content)).toBe('')
   })
 
+  it('denies a C# edit that adds an XML doc once and a #pragma warning disable every time', () => {
+    write('.jig/config.jsonc', '{ "rules": { "jig/comments": "error" }, "tsc": {} }\n')
+    const file = 'Server/Controllers/StreamController.cs'
+    const method = '    public IActionResult Get(string id) => Ok(_frames.Get(id));\n'
+    write(file, `public class StreamController : ControllerBase\n{\n${method}}\n`)
+    const edit = (prepend: string): string =>
+      hook('pre-edit', {
+        hook_event_name: 'PreToolUse',
+        tool_name: 'Edit',
+        tool_input: { file_path: join(root, file), old_string: method, new_string: `${prepend}${method}` },
+      })
+    const summary = '    /// <summary>Returns the frame of the stream.</summary>\n'
+    expect(denialOf(edit(summary))).toBe('deny')
+    expect(edit(summary)).toBe('')
+    const pragma = '#pragma warning disable CS0618\n'
+    expect(denialOf(edit(pragma))).toBe('deny')
+    expect(denialOf(edit(pragma))).toBe('deny')
+  })
+
   it('says once at session start that the project drifted from its config', () => {
     write('.oxlintrc.json', '{}\n')
     const context: string = JSON.parse(hook('session-start', { hook_event_name: 'SessionStart', source: 'startup' })).hookSpecificOutput.additionalContext
