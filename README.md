@@ -19,8 +19,9 @@ The agent cannot end a turn on a type error, and cannot open a merge request wit
 
 ## Who it is for
 
-jig is agnostic by design: the core knows events, files and checks, not an agent, a language or a framework. It is built **Claude Code first, TypeScript first, frontend first**, and is strongest on three fronts:
+jig is agnostic by design: the core knows events, files and checks, not an agent, a language or a framework. It is built **Claude Code first, TypeScript first, frontend first**, and is strongest on four fronts:
 
+- **Deterministic checks.** What code can decide, code decides: gates in hooks, the review layout from `jig review-plan`, the merge request gate from `jig pre-mr`, the queue from `jig review-cycle`. Same input, same verdict; the model judges only what no tool can.
 - **Architecture.** Module layers and boundaries checked on every edit ([stratum](https://github.com/PetukhovArt/stratum)), atoms on module depth, domain models and system edges, a flow that sketches two designs before writing one.
 - **Verification.** Type and lint gates every turn, UI proof on the running app ([agent-view](https://github.com/PetukhovArt/agent-view): browser, Electron, Tauri), a review whose findings a second model proves.
 - **Extensibility.** Any language joins through the project's own `checks`; agents join through an adapter, a team's review process through a [process adapter](docs/review-cycle.md#process-adapter).
