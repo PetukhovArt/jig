@@ -146,6 +146,21 @@ fi
     expect(readFileSync(join(root, 'log.txt'), 'utf8').trim().split('\n')).toEqual(['stop', 'restore'])
   })
 
+  it('keeps start and stop output, and puts patched files back byte for byte', async () => {
+    fakeAgentView(['DONE: replay use-case'])
+    const runDir = project()
+    const testCase = uiCase(runDir)
+    testCase.ui = { ...testCase.ui!, start: `${testCase.ui!.start} && echo logged in`, stop: 'echo fixture deleted' }
+    writeFileSync(join(runDir, 'src', 'app.ts'), 'export const port = 1\r\n')
+
+    const check = await runUiCheck(testCase, runDir, join(root, 'run-tmp'), join(root, 'out'), 'c-with-3')
+
+    expect(check.verdict).toBe('pass')
+    expect(check.start).toEqual({ exitCode: 0, output: 'logged in' })
+    expect(check.stop).toEqual({ exitCode: 0, output: 'fixture deleted' })
+    expect(readFileSync(join(runDir, 'src', 'app.ts'), 'utf8')).toBe('export const port = 1\r\n')
+  })
+
   it('runs one app task at a time', async () => {
     const events: string[] = []
     const task = (name: string, ms: number) => async () => {

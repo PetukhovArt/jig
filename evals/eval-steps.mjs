@@ -16,8 +16,9 @@ const verdictLine = (output) =>
 const classifyReplay = ({ code, output }, { useCase, finalSteps = [] }) => {
   const line = verdictLine(output)
   if (code === 0 && line?.startsWith('DONE')) return 'done'
-  if (!line?.startsWith('FAIL: ')) return 'early'
-  const where = line.slice('FAIL: '.length)
+  const verdict = ['FAIL: ', 'STALE: '].find((prefix) => line?.startsWith(prefix))
+  if (verdict === undefined) return 'early'
+  const where = line.slice(verdict.length)
   const startsWithName = (prefix) => where.startsWith(`${prefix} `) || where.startsWith(`${prefix}:`)
   if (startsWithName(`replay ${useCase}`)) return 'final'
   return finalSteps.some((step) => startsWithName(`step ${step}`)) ? 'final' : 'early'

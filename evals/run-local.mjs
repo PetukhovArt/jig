@@ -576,6 +576,13 @@ const uiEvidence = (check) =>
     'Only a failure at the final check is the app failing; an earlier failure was retried once.',
   ].join('\n')
 
+const patchedFiles = (runDir, patch) =>
+  git(runDir, ['apply', '--numstat', '-z', patch])
+    .stdout.split('\0')
+    .map((entry) => entry.split('\t')[2])
+    .filter((file) => file !== undefined && file !== '')
+    .map((file) => join(runDir, file))
+
 const runUiCheck = async (testCase, runDir, tempDir, outDir, id) => {
   const ui = testCase.ui
   const shotsDir = join(outDir, 'ui', id)
@@ -597,15 +604,19 @@ const runUiCheck = async (testCase, runDir, tempDir, outDir, id) => {
   const shell = (command, { cwd = testCase.dir, timeoutMs = 600_000 } = {}) => run(BASH, ['-c', command], { cwd, env, timeoutMs })
   const check = { replay: ui.replay, cdpPort: Number(env.JIG_CDP_PORT), devPort: Number(env.JIG_DEV_PORT), attempts: [], verdict: 'inconclusive', screenshots: [] }
   const patch = ui.patch ? resolve(testCase.dir, ui.patch) : undefined
-  let patched = false
+  let originals = []
   try {
     if (patch) {
+      originals = patchedFiles(runDir, patch).map((path) => ({ path, content: existsSync(path) ? readFileSync(path) : undefined }))
       const applied = git(runDir, ['apply', '--ignore-whitespace', '--whitespace=nowarn', patch])
-      if (applied.status !== 0) throw new Error(`patch ${ui.patch} does not apply: ${cap(applied.stderr, 300)}`)
-      patched = true
+      if (applied.status !== 0) {
+        originals = []
+        throw new Error(`patch ${ui.patch} does not apply: ${cap(applied.stderr, 300)}`)
+      }
     }
     const started = await shell(ui.start)
-    if (started.code !== 0) throw new Error(`start failed (${started.code}): ${cap(`${started.stdout}\n${started.stderr}`.trim(), 500)}`)
+    check.start = { exitCode: started.code, output: cap(`${started.stdout}\n${started.stderr}`.trim(), 1000) }
+    if (started.code !== 0) throw new Error(`start failed (${started.code}): ${cap(check.start.output, 500)}`)
     for (;;) {
       const replay = await shell('agent-view act replay "$JIG_UI_REPLAY"', { cwd: actDir, timeoutMs: (ui.replay_timeout_seconds ?? 900) * 1000 })
       const output = `${replay.stdout}\n${replay.stderr}`.trim()
@@ -626,13 +637,20 @@ const runUiCheck = async (testCase, runDir, tempDir, outDir, id) => {
   } catch (error) {
     check.error = error.message
   } finally {
-    if (ui.stop) check.stopExit = (await shell(ui.stop, { timeoutMs: 120_000 })).code
+    if (ui.stop) {
+      const stopped = await shell(ui.stop, { timeoutMs: 120_000 })
+      check.stopExit = stopped.code
+      check.stop = { exitCode: stopped.code, output: cap(`${stopped.stdout}\n${stopped.stderr}`.trim(), 1000) }
+    }
     if (ui.restore) {
       const restored = await shell(ui.restore, { timeoutMs: 900_000 })
       check.restore = { exitCode: restored.code, output: cap(`${restored.stdout}\n${restored.stderr}`.trim(), 1000) }
       if (restored.code !== 0) process.stdout.write(`[${id}] STAND RESTORE FAILED (${restored.code}): ${cap(check.restore.output, 300)}\n`)
     }
-    if (patched) git(runDir, ['apply', '-R', '--ignore-whitespace', '--whitespace=nowarn', patch])
+    for (const { path, content } of originals) {
+      if (content === undefined) rmSync(path, { force: true })
+      else writeFileSync(path, content)
+    }
   }
   check.screenshots = check.attempts.filter((attempt) => attempt.screenshot).map((attempt) => attempt.screenshot)
   check.text = uiEvidence(check)

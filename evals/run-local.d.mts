@@ -19,6 +19,8 @@ export interface UiCheck {
   error?: string
   attempts: { outcome: string; exitCode: number | null; output: string; screenshot?: string }[]
   screenshots: string[]
+  start?: { exitCode: number | null; output: string }
+  stop?: { exitCode: number | null; output: string }
   restore?: { exitCode: number | null; output: string }
   text: string
 }

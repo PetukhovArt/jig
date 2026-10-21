@@ -69,6 +69,7 @@ describe('act replay retry rule', () => {
     [1, 'FAIL: step trigger-expression-operators-paired — steps ran, until expr not met after 10s', 'final'],
     [1, 'FAIL: step trigger-table-row-loaded — steps ran, until not met after 30s', 'early'],
     [3, 'STALE: step trigger-open: step 2/4 click testid=x — not on screen within 10s', 'early'],
+    [3, 'STALE: step trigger-expression-operators-paired: step 1/1 click testid=x — not on screen within 10s', 'final'],
     [2, 'connect ECONNREFUSED 127.0.0.1:9921', 'early'],
     [0, 'DONE: replay trigger-orphan-operator-use-case · 4 steps in 3.1s', 'done'],
   ])('exit %i "%s" is %s', (code, output, outcome) => {
