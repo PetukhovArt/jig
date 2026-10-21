@@ -27,7 +27,7 @@ Agents are good at writing code and bad at noticing when they broke something. A
 
 ## Who it's for
 
-The core doesn't care which agent, language or framework you use: it deals in events, files and checks. In practice it was built for, and is best at, **Claude Code, TypeScript and frontend** apps (web, Electron, Tauri, monorepos included). What I care about most:
+The core doesn't care which agent, language or framework you use: it deals in events, files and checks. In practice it was built for, and is best at, **Claude Code, TypeScript and frontend** apps (web, Electron, Tauri, monorepos included). Four things matter most:
 
 - **Deterministic checks.** If code can decide something, code decides it: the gates, the review plan, whether a merge request may go, which merge requests need review. Same input, same answer. The model only gets the questions no tool can answer.
 - **Architecture.** [stratum](https://github.com/PetukhovArt/stratum) checks module layers and boundaries on every edit, and the `module-design` flow sketches two designs before writing either.
