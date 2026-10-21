@@ -11,6 +11,9 @@ const rolesDir = join(skillDir, 'references', 'roles')
 const roleIndexPath = join(skillDir, 'references', 'roles.md')
 const flowsDir = join(skillDir, 'flows')
 const skillPath = join(skillDir, 'SKILL.md')
+const skillsDir = join(root, 'skills')
+const readmePath = join(root, 'README.md')
+const README_BLOCKS = ['flows', 'skills', 'atoms', 'roles']
 const FLOWS_START = '<!-- flows:start -->'
 const FLOWS_END = '<!-- flows:end -->'
 const ATOMS_START = '<!-- atoms:start -->'
@@ -106,13 +109,66 @@ const roleIndex = () => {
   return ['# Role index', '', ...lines].join('\n').trimEnd() + '\n'
 }
 
-const replaceBlock = (text, startMarker, endMarker, lines) => {
+const replaceBlock = (text, startMarker, endMarker, lines, label = 'skills/jig/SKILL.md') => {
   const start = text.indexOf(`${startMarker}\n`)
   const end = text.indexOf(`${endMarker}\n`)
   if (start === -1 || end < start) {
-    throw new Error(`skills/jig/SKILL.md: needs the lines ${startMarker} and ${endMarker}, in that order`)
+    throw new Error(`${label}: needs the lines ${startMarker} and ${endMarker}, in that order`)
   }
   return [text.slice(0, start), startMarker, '\n', ...lines.map((line) => `${line}\n`), text.slice(end)].join('')
+}
+
+const cell = (text) => text.replaceAll('|', '\\|')
+
+const details = (summary, lines) => ['', `<details><summary><b>${summary}</b></summary>`, '', ...lines, '', '</details>', '']
+
+const readmeFlows = () => {
+  const flows = readEntries(flowsDir, 'flows').filter(({ name }) => name !== SHARED_FLOW)
+  return details(`All ${flows.length} flows`, [
+    '| flow | for |',
+    '| --- | --- |',
+    ...flows.map(({ file, name, description }) => `| [${name}](skills/jig/flows/${file}) | ${cell(description)} |`),
+  ])
+}
+
+const readmeSkills = () => {
+  const skills = readdirSync(skillsDir)
+    .filter((dir) => existsSync(join(skillsDir, dir, 'SKILL.md')))
+    .sort()
+    .map((dir) => ({ dir, ...readFrontmatter(readFileSync(join(skillsDir, dir, 'SKILL.md'), 'utf8')) }))
+  return details(`All ${skills.length} skills`, [
+    '| skill | started by | what it does |',
+    '| --- | --- | --- |',
+    ...skills.map(({ dir, name, description, ['disable-model-invocation']: userOnly }) => {
+      const startedBy = userOnly === 'true' ? 'you' : 'you or the model'
+      const what = description.replace(/\s+Use (for|when) .*$/, '')
+      return `| [\`/${name}\`](skills/${dir}/SKILL.md) | ${startedBy} | ${cell(what)} |`
+    }),
+  ])
+}
+
+const readmeAtoms = () => {
+  const lines = atomIndexLines()
+  const count = lines.filter((line) => line.startsWith('- ')).length
+  return details(`All ${count} atoms`, lines.map((line) => line.replace(/^- `([\w-]+)`/, '- [`$1`](atoms/$1.md)')))
+}
+
+const readmeRoles = () => {
+  const roles = readEntries(rolesDir, 'roles')
+  return details(`All ${roles.length} roles`, [
+    '| role | tier / effort | when |',
+    '| --- | --- | --- |',
+    ...roles.map(({ file, name, description, metadata }) =>
+      `| [${name}](skills/jig/references/roles/${file}) | ${metadata?.tier}/${metadata?.effort} | ${cell(description)} |`),
+  ])
+}
+
+const readmeWithIndexes = () => {
+  const generators = { flows: readmeFlows, skills: readmeSkills, atoms: readmeAtoms, roles: readmeRoles }
+  return README_BLOCKS.reduce(
+    (text, block) => replaceBlock(text, `<!-- ${block}:start -->`, `<!-- ${block}:end -->`, generators[block](), 'README.md'),
+    normalizeEol(readFileSync(readmePath, 'utf8')),
+  )
 }
 
 const skillWithIndexes = () => {
@@ -139,6 +195,7 @@ const main = async () => {
     [bundlePath, await bundle()],
     [roleIndexPath, roleIndex()],
     [skillPath, skillWithIndexes()],
+    [readmePath, readmeWithIndexes()],
   ]
 
   if (isCheck) {
