@@ -33,26 +33,39 @@ Pairs stay together while readers are short: 1, 4, 8 and 14 read lines (8 looks 
 
 **One finder, one tier.** An angle's tier and effort come from its token ([project config](../references/project-config.md), key `tiers`; defaults in [selector](../references/selector.md#tiers)). A finder whose angles have different tiers splits: one finder per tier and effort, each with its own angles and its own documents in the tail. This is the last step of the layout, after the bug split. With `1+4+8+14`, where `bugs` is deep/high and `efficiency`, `security` are standard/high, the spawn is `1+4` and `8+14`. The config is applied literally: a token's tier is never raised to its neighbour's or lowered.
 
+## Shared context
+
+What every finder needs is read **once**, by you, before the first spawn. Tool output is paid in full by each agent that fetches it: eight finders that each ran `git diff` and cut it into overlapping slices, then `cat` the same files around it, cost more than the review itself.
+
+1. **The diff.** `jig review-plan` wrote it once, as parts of whole files with an index (`diff files:`). Read every part. Subagents read the parts (a judge: the index, then its files' line ranges); nobody runs `git diff` on the reviewed range again.
+2. **The shared read set.** What most finders need beyond the diff: the touched functions in full, their callers and the signatures they call, by line range, not whole files. Read it once and list it as `already read: <path>:<from>-<to>, …`.
+3. **Fork or fresh.** Where the agent can start a subagent that inherits your conversation (Claude Code: subagent type `fork`), every subagent whose model is your own model is forked after items 1–2: it starts from the diff and the read set in the prompt cache instead of reading them again. Never change a subagent's model to fork it: the tier the plan printed wins. Everything else is spawned fresh with the brief below, and reads the diff parts and only the ranges its `already read` list lacks. A fork copies everything you hold, so hold nothing else at that moment: the plan, the rules block, the diff, the read set.
+
 ## Spawn
 
 Spawn every finder of the layout **in one batch**, in parallel, within the [subagent cap](../SKILL.md#rules-for-the-whole-run). Brief each with role `finder`: pass the path of its template, `<root>/skills/jig/references/roles/finder.md`, and let the subagent read it.
 
-**Every call carries the model and effort of its tier explicitly**, not the session's model. Before spawning print the plan; it goes into the [cost line](08-output.md#output): `finders: 1+4 deep/high opus · 8+14 standard/high sonnet · 2+3+5+12 deep/high opus · …`.
+**Every call carries the model and effort of its tier explicitly**, not the session's model. Before spawning print the plan; it goes into the [cost line](08-output.md#output): `finders: 1+4 deep/high opus · 8+14 standard/high sonnet · 2+3+5+12 deep/high opus · …`, each marked `fork` or `fresh`.
 
 **The brief order is fixed**: the shared prefix first, the personal tail last, so the shared part hits the prompt cache of the whole batch:
-1. the diff (or the `diff:` command `jig review-plan` printed, when it is large);
+1. the diff: the index and part paths `jig review-plan` printed under `diff files:` (a fork has the text already: name the paths anyway);
 2. the shared rules block ([project rules](02-rules.md)): only severity (verbatim) and skip rules; convention bodies go to the rules finder;
 3. the learnings block ([state](03-state.md#learnings));
 4. the project root;
 5. the focus note ([prepare](01-prepare.md#focus-note));
 6. facts and decisions ([prepare](01-prepare.md#facts-and-decisions));
-7. this finder's angles: the absolute paths `jig review-plan` printed under the finder, `read:` (angle files) and `atoms:` (the atoms they name), so the finder reads them without searching;
-8. the documents routed to its angles by `route`, each with its scope ("this rule applies only under that directory");
-9. the role template path.
+7. the `already read` list of the [shared read set](#shared-context);
+8. this finder's angles: the absolute paths `jig review-plan` printed under the finder, `read:` (angle files) and `atoms:` (the atoms they name), so the finder reads them without searching;
+9. the documents routed to its angles by `route`, each with its scope ("this rule applies only under that directory");
+10. the role template path.
 
-Items 1–6 are identical across the batch. Items 7–9 are personal: a document addressed to angle 13 never reaches the finder that reads lines. Every document goes as a path, never pasted, except the severity sections and the skip rules of item 2.
+Items 1–7 are byte-identical across the batch. Items 8–10 are personal: a document addressed to angle 13 never reaches the finder that reads lines. Every document goes as a path, never pasted, except the severity sections and the skip rules of item 2.
 
-**Wait without polling.** Continue when each finder's completion notification arrives, or run it in the foreground. Never `sleep` and never read a subagent's output file in a loop.
+**Run them in the foreground and save each report.** Several spawns in one message run in parallel, and each report returns to you; a background subagent may report to the session at the top instead of you, and outlives you when you fail. As each report arrives, with state on, write it to the [checkpoint](#checkpoint). Never `sleep` and never read a subagent's output file in a loop.
+
+### Checkpoint
+
+With state on, the run keeps its finished subagent reports in `<state file without .json>.run/`: one file per finder (`<finder name>.md`) and one for the deepener, each starting with the line `head: <reviewed HEAD sha> · diff: <the diff files folder name>`. A run that starts and finds this folder with its own head and diff is a retry: it reuses those reports and spawns only the finders that have none. Another head or diff: delete the folder and start clean. [Writing state](08-output.md#write-state) deletes it. A retry never repeats a finished finder: on one merge request a second runner restarted the whole fan-out and doubled its cost.
 
 ### Refused spawn
 

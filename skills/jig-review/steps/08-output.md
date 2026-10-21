@@ -18,6 +18,8 @@ Only with state on (`jig review-plan` printed `state: on`). Write into the state
 - `timings`: start, finish, seconds per phase from the [clock](03-state.md#state) stamps;
 - `tokens`: subagent token sums per phase. This run's numbers replace the earlier ones.
 
+Then delete the run's [checkpoint](04-finders.md#checkpoint) folder: the state now holds what it kept. A run that does not publish its tally (convergence check failed, degraded) keeps it for the retry.
+
 Field rules (allowed `category` slugs and the rest): [`../references/state-schema.md`](../references/state-schema.md).
 
 **Convergence check (re-review).** Every finding that entered the outcome check leaves with a status:

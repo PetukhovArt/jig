@@ -24,7 +24,7 @@ No `CONFIRMED` `Important` after your own gates: no subagent. The output says `j
 
 One or more: spawn **one** judge subagent for all of them, role `verifier`, on the model the layout prints next to your model (`your model opus → judge sonnet`), with the tier and effort it prints. Brief, in this order: the command that prints the diff, the Important candidates with your evidence, the project's severity sections verbatim ([source](02-rules.md#severity-source)), facts and decisions, then paths only: the gate files of these candidates' classes (`<skill>/gates/bugs.md` for bug angles, `<skill>/gates/shape.md` for the rest, `<skill>/gates/severity.md` always) and the role template `<root>/skills/jig/references/roles/verifier.md`. Never paste the gate text; the judge reads the files itself.
 
-Run it in the foreground, or in the background and continue on its completion notification. Never `sleep` and never poll its output.
+Run it in the foreground ([rules](../SKILL.md#rules-for-the-whole-run)). Never `sleep` and never poll its output.
 
 **The judge's verdict stands.** `CONFIRMED` by it: the item carries "two models" (you and the judge). `REFUTED`: the candidate goes to the refuted list with the judge's reason; when you still hold a quoted line it ignored, name the disagreement in the output instead of overruling it. A severity it lowered stands with its `severity_gate`.
 

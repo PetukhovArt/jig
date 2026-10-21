@@ -32,6 +32,7 @@ Sections 1–4, then stop. Never arm, re-arm or reason about a schedule: a skill
 ## Agent
 
 - **Subagents** (preferred): roles `review-runner` and `poster`, each spawned with a prompt that begins `Read <root>/skills/jig/references/roles/<name>.md and follow it.`, then its brief. The review runner must be able to spawn its own subagents (jig-review fans out finders and judges): in Claude Code a `general-purpose` agent.
+- **Only your own subagents report to you.** A runner runs its finders and judges in its foreground, so their reports go to it. A report of a finder, deepener or judge that still reaches this session belongs to a runner: do not act on it, do not forward it, do not count it; findings reach you only in a runner's return.
 - **Waves of 2.** At most two review runners at once; a poster counts against the same cap. When one returns, start the next merge request (its worktree, then its runner), and spawn each poster as soon as its review returns.
 - **No subagents** (an agent without them): run the merge requests one by one in this session: `cd` into the worktree, read jig-review's `SKILL.md` and run it there, then follow `posting.md` yourself. The steps and checks below stay the same; only who runs them changes.
 
@@ -89,7 +90,7 @@ Every command for one merge request runs with `-C <repo_dir>` or from `<repo_dir
 2. **Spec**: `node <root>/bin/jig.mjs review-cycle spec <refs>` → a path or nothing. A path joins this merge request's focus note as one line `Spec: <path>`. Nothing: the engine looks for the task's spec itself, by the same definition (jig-review `steps/01-prepare.md`, "Spec"): the tasks the merge request names, never a document that only describes the touched area.
 3. **Snapshot**: `state=` is a path → copy that file to `<state>.before-cycle`. The tally is checked against the state as it was before the run; afterwards its statuses have already moved.
 4. **Spawn** role `review-runner` with: the worktree path, the merge request URL, the focus note (base-check + focus + spec line), the path `<root>/skills/jig-review/SKILL.md`. First run or re-review is the engine's own decision, from its state file.
-5. **Proof of run**: the first lines are `ran jig-review: yes` and `state: <existing path>`; anything else → the runner failed: spawn it again, never act on its findings.
+5. **Proof of run**: the first lines are `ran jig-review: yes` and `state: <existing path>`; anything else → the runner failed: never act on its findings, and **continue it, do not restart it**. Its conversation is still there (it stopped on an error, it returned early): message it to go on from where it stopped (Claude Code: `SendMessage` to its id). It is gone, or the agent cannot message a subagent: spawn a new runner with the same brief plus the line `retry: reuse the checkpoint`; jig-review reuses the finder reports the first run saved and spawns only the missing ones ([checkpoint](../jig-review/steps/04-finders.md#checkpoint)). One runner per merge request at a time; a second failure → the merge request is `blocked` with the reason.
 6. **Reconcile** before acting on anything: write the tally line to a file, then
 
    ```bash

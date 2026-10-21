@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -271,5 +271,31 @@ describe('buildReport on a repository', () => {
     expect(scoped.shape).toEqual({ tests: false, comments: true, docs: false, newSourceFiles: 0, spec: false })
     expect(scoped.diff).toBe(`git diff ${scoped.base.mergeBase} -- src/a.ts`)
     expect(() => buildReport(root, { base: 'main', spec: false, agent: 'claude', paths: ['lib/a.ts'] })).toThrow('nothing changed against main under lib/a.ts')
+    expect(report.diffFiles).toBeNull()
+  })
+
+  it('writes the diff for subagents once, in parts that keep each file whole and an index of line ranges', () => {
+    const root = mkdtempSync(join(tmpdir(), 'jig-review-plan-'))
+    dirs.push(root)
+    vi.stubEnv('JIG_USER_CONFIG', join(root, 'absent.jsonc'))
+    const run = (...args: string[]) => expect(git(['-c', 'user.email=t@t', '-c', 'user.name=t', ...args], root).ok).toBe(true)
+    run('init', '-q', '-b', 'main')
+    write(root, 'a.ts', 'export const a = 1\n')
+    run('add', '-A')
+    run('commit', '-qm', 'base')
+    write(root, 'big.ts', Array.from({ length: 1600 }, (_, index) => `export const b${index} = ${index}`).join('\n') + '\n')
+    write(root, 'a.ts', 'export const a = 2\n')
+    run('add', '-A')
+    run('commit', '-qm', 'feature')
+
+    const files = buildReport(root, { base: 'HEAD~1', spec: false, agent: 'claude', layout: 'lean' }).diffFiles
+
+    const whole = git(['diff', '--no-color', 'HEAD~1'], root).stdout
+    expect(files?.parts.map((part) => readFileSync(part, 'utf8')).join('')).toBe(whole)
+    const index = readFileSync(files?.index ?? '', 'utf8').trim().split('\n').map((line) => line.split('\t'))
+    expect(index).toEqual([
+      ['a.ts', 'part-01.diff:1-7'],
+      ['big.ts', 'part-02.diff:1-1606'],
+    ])
   })
 })

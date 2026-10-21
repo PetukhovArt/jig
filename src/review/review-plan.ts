@@ -10,6 +10,7 @@ import { realPath } from '../core/proc'
 import { fileSource, isTestFile } from '../catalog/languages'
 import { lexComments } from '../catalog/languages'
 import { detectAgent, loadUserConfig, resolveTiers, type TierMap } from '../tiers/tiers'
+import { DIFF_PART_MAX_LINES, writeDiffFiles, type DiffFiles } from './diff-files'
 import {
   AUTO_INLINE_MAX_N,
   CEILINGS,
@@ -278,6 +279,7 @@ export interface ReviewPlanReport {
   files: { counted: number; excluded: Record<Exclusion, number>; untracked: number }
   scope: string[]
   diff: string
+  diffFiles: DiffFiles | null
   formula: string
   layout: { name: Layout; source: LayoutSource }
   shape: Shape
@@ -376,6 +378,9 @@ export const formatReport = (report: ReviewPlanReport): string => {
     `base: ${report.base.ref} (merge base ${report.base.mergeBase.slice(0, 8)}, from ${report.base.source})`,
     `lines: ${plan.lines} in ${report.files.counted} files${report.scope.length > 0 ? ` (scope: ${report.scope.join(' ')})` : ''}${excluded.length > 0 ? `; excluded: ${excluded.join(', ')}` : ''}${report.files.untracked > 0 ? `; untracked files not counted: ${report.files.untracked} (git add -N to count them)` : ''}`,
     `diff: ${report.diff}`,
+    ...(report.diffFiles === null
+      ? []
+      : [`diff files: ${report.diffFiles.index} · ${report.diffFiles.parts.length} part${report.diffFiles.parts.length === 1 ? '' : 's'} of at most ${DIFF_PART_MAX_LINES} lines, each file whole; subagents read these, never the diff command`]),
     `finders: ${report.formula}`,
     layoutLine(report),
     `shape: tests ${report.shape.tests ? 'yes' : 'no'} · added comments ${report.shape.comments ? 'yes' : 'no'} · markdown ${report.shape.docs ? 'yes' : 'no'} · new source files ${report.shape.newSourceFiles} · spec ${report.shape.spec ? 'yes' : 'no'}`,
@@ -477,6 +482,7 @@ export const buildReport = (root: string, options: ReportOptions): ReviewPlanRep
     files: { counted, excluded, untracked },
     scope: [...paths],
     diff: diffCommand(base.mergeBase, paths),
+    diffFiles: plan.path === 'subagents' ? writeDiffFiles(root, [base.mergeBase, ...pathspec(paths)]) : null,
     formula: `ceil(${lines}/${LINES_PER_FINDER}) = ${Math.ceil(lines / LINES_PER_FINDER)}, max ${MAX_FINDERS} → N = ${plan.n}`,
     layout,
     shape,
