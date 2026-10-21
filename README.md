@@ -16,7 +16,7 @@ The agent cannot end a turn on a type error, and cannot open a merge request wit
 - **UI proven on the running app.** `jig pre-mr` holds the merge request until each changed UI file has a replayed use case and a screenshot, or a recorded reason why not.
 - **Review with a second model.** `jig-review` sizes its finders by the diff, and a judge on another model proves each finding before the author sees it. `jig-review-cycle` does it for every merge request waiting on you.
 - **Fits a legacy codebase.** Lint errors count on changed lines only, type errors in the turn's files only, stratum starts from a baseline: the agent answers for what it touched, not for the history.
-- **Never stuck, never slow.** Three blocks in a row and the gate steps aside with a journal record instead of looping. Edit hooks stay under 300 ms at p95 and the end-of-turn gate under 20 s on 20 files, measured by the [benchmarks](docs/evals.md#benchmarks).
+- **Never stuck, never slow.** Three blocks in a row and the gate steps aside with a journal record instead of looping. Budgets of 300 ms at p95 per edit hook and 20 s for the end-of-turn gate on 20 files are checked by the [benchmarks](docs/evals.md#benchmarks).
 - **Parallel by default.** A worktree per task, slots with offset dev and CDP ports, a gate scoped to its own session, one heavy check at a time across sessions.
 - **Unattended, yet auditable.** `afk-mode` works toward a checkable done condition and logs every decision; a separate auditor checks the log against `git log` before you read it.
 - **Learns from its own misses.** Every deny, block and failure lands in a journal; the weekly loop turns repeats into proposed checks and rules, and you approve each one.
