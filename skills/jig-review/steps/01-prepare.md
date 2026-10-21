@@ -23,6 +23,8 @@ Mode `review` with a merge request URL or number, or when asked to post: resolve
 
 The reviewed diff is `git diff $(git merge-base <base> HEAD)`: the commits of the branch plus uncommitted changes. New untracked files are not in it: `jig review-plan` counts them; in mode `pre-mr` run `git add -N <files>` so they are reviewed.
 
+**Scope in mode `pre-mr`.** The working tree is part of the diff, so uncommitted work that is not the task's (another agent, a parallel task, the user's edits) would be counted and reviewed. `git status` shows changes outside the task's files → pass the task's paths after `--` to `jig review-plan` (pathspecs from the repository root). It counts, shapes and prints the diff for those paths only.
+
 **Three dots, never two.** `<base>..HEAD` pulls in everything merged into the branch from the base: on a branch with a merge that is dozens of foreign files every finder reads and nobody can post on. A range computed with two dots anywhere in the run is intersected with `git diff --name-only <base>...HEAD`, and what was cut is named in the summary ([re-review](09-rereview.md) computes its scope this way).
 
 ## Selector
@@ -59,12 +61,13 @@ The merge request description is only a source of references for item 1: the aut
 ## Layout
 
 ```bash
-node <root>/bin/jig.mjs review-plan <base> [--selector <selector>] [--layout <layout>] [--spec] [--mode pre-mr] [--mr] [--no-state]
+node <root>/bin/jig.mjs review-plan <base> [--selector <selector>] [--layout <layout>] [--spec] [--mode pre-mr] [--mr] [--no-state] [-- <path>...]
 ```
 
 `--spec` when a spec was found. `--mode pre-mr` in mode `pre-mr`. `--mr` in mode `review` when a merge request is known: it turns state, comment texts, re-review and posting on. `--no-state` passes the flag of the same name. No selector argument: pass none; the command picks the default. It prints, and with `--json` returns as data:
 
-- `LINES`: added + removed lines by `git diff --numstat -M` against the merge base, without tests, fixtures and `*.md`. A rename without edits counts 0. Documents are judged by angle 11 and add no readers to the bug finders.
+- `LINES`: added + removed lines by `git diff --numstat -M` against the merge base, without tests, fixtures and `*.md`. A rename without edits counts 0. Documents are judged by angle 11 and add no readers to the bug finders. With paths, the `lines:` line names the scope.
+- `diff:` the command that prints the reviewed diff, paths included. Every brief and your own reading use this command, never a hand-written `git diff`.
 - `N = ceil(LINES / 150)`, at most 5. `N = 1`: `path: inline` in every layout.
 - the layout (`--layout`, else `JIG_REVIEW_LAYOUT`, else `layout` in the [project config](../references/project-config.md), else `auto`). `auto`: `N ≤ 2` → `inline`, you review in this session ([inline](04-inline.md)), on `quick` unless a selector was given; `N > 2` → `lean`: up to four bug finders plus cleanup, the rules finder and the tests-and-comments finder on top when the diff shape calls for them, all on the standard tier, and you judge ([verify](05-verify.md#layout-lean)). Measured on reference merge requests: inline found the known bugs at 40 and 212 lines and missed the one at 784, which the lean finders found; `fanout` and `solo` found nothing more at 212 lines for 6-7 times the cost.
 - the diff shape (tests, added comments, Markdown, new source files, spec), the selector expanded (`auto` too), the mode and whether state is on, every finder (or the inline reader) with its angles, tier, effort and model and the absolute paths of its angle files (`read:`) and atoms (`atoms:`), the judge model per finder model, the subagent cap, and the angles skipped with the reason;

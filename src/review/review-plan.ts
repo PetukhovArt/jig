@@ -210,13 +210,15 @@ export interface Base {
   stats: FileStat[]
 }
 
-const diffStats = (root: string, mergeBase: string): FileStat[] => {
-  const result = git(['diff', '--numstat', '-M', '-z', mergeBase], root)
+const pathspec = (paths: readonly string[]): string[] => (paths.length > 0 ? ['--', ...paths] : [])
+
+const diffStats = (root: string, mergeBase: string, paths: readonly string[]): FileStat[] => {
+  const result = git(['diff', '--numstat', '-M', '-z', mergeBase, ...pathspec(paths)], root)
   if (!result.ok) throw new Error(`git diff --numstat failed: ${result.stderr.trim()}`)
   return parseNumstat(result.stdout)
 }
 
-export const resolveBase = (root: string, given: string | undefined, command = 'review-plan'): Base => {
+export const resolveBase = (root: string, given: string | undefined, command = 'review-plan', paths: readonly string[] = []): Base => {
   const candidates: { ref: string | undefined; source: Base['source'] }[] = given
     ? [{ ref: given, source: 'argument' }]
     : [
@@ -231,15 +233,15 @@ export const resolveBase = (root: string, given: string | undefined, command = '
       if (source === 'argument') throw new Error(`no merge base between ${ref} and HEAD`)
       continue
     }
-    last = { ref, mergeBase, source, stats: diffStats(root, mergeBase) }
+    last = { ref, mergeBase, source, stats: diffStats(root, mergeBase, paths) }
     if (last.stats.length > 0) return last
   }
   if (last !== undefined) return last
   throw new Error(`no base: pass the merge request target, e.g. jig ${command} origin/main`)
 }
 
-const addedNewSourceFiles = (root: string, mergeBase: string): number => {
-  const result = git(['diff', '--name-only', '--diff-filter=A', '-M', '-z', mergeBase], root)
+const addedNewSourceFiles = (root: string, mergeBase: string, paths: readonly string[]): number => {
+  const result = git(['diff', '--name-only', '--diff-filter=A', '-M', '-z', mergeBase, ...pathspec(paths)], root)
   if (!result.ok) return 0
   return result.stdout.split('\0').filter((path) => path !== '' && exclusionOf(path, root) === undefined).length
 }
@@ -256,7 +258,13 @@ const anyAddedComment = (root: string, mergeBase: string, stats: readonly FileSt
   return false
 }
 
-const untrackedCount = (root: string): number => (gitStatus(root) ?? []).filter((entry) => entry.status === '??').length
+const untrackedCount = (root: string, paths: readonly string[]): number =>
+  (gitStatus(root, paths) ?? []).filter((entry) => entry.status === '??').length
+
+const shellWord = (word: string): string => (/^[\w./:@=+-]+$/.test(word) ? word : `'${word.replaceAll("'", `'\\''`)}'`)
+
+export const diffCommand = (mergeBase: string, paths: readonly string[]): string =>
+  ['git', 'diff', mergeBase, ...pathspec(paths)].map(shellWord).join(' ')
 
 /** Files a reader of some angles reads before the hunt: the angle files and the atoms they name, absolute. */
 export interface Reads {
@@ -267,6 +275,8 @@ export interface Reads {
 export interface ReviewPlanReport {
   base: { ref: string; mergeBase: string; source: Base['source'] }
   files: { counted: number; excluded: Record<Exclusion, number>; untracked: number }
+  scope: string[]
+  diff: string
   formula: string
   layout: { name: Layout; source: LayoutSource }
   shape: Shape
@@ -363,7 +373,8 @@ export const formatReport = (report: ReviewPlanReport): string => {
     .map(([kind, count]) => `${count} ${kind}`)
   const lines = [
     `base: ${report.base.ref} (merge base ${report.base.mergeBase.slice(0, 8)}, from ${report.base.source})`,
-    `lines: ${plan.lines} in ${report.files.counted} files${excluded.length > 0 ? `; excluded: ${excluded.join(', ')}` : ''}${report.files.untracked > 0 ? `; untracked files not counted: ${report.files.untracked} (git add -N to count them)` : ''}`,
+    `lines: ${plan.lines} in ${report.files.counted} files${report.scope.length > 0 ? ` (scope: ${report.scope.join(' ')})` : ''}${excluded.length > 0 ? `; excluded: ${excluded.join(', ')}` : ''}${report.files.untracked > 0 ? `; untracked files not counted: ${report.files.untracked} (git add -N to count them)` : ''}`,
+    `diff: ${report.diff}`,
     `finders: ${report.formula}`,
     layoutLine(report),
     `shape: tests ${report.shape.tests ? 'yes' : 'no'} · added comments ${report.shape.comments ? 'yes' : 'no'} · markdown ${report.shape.docs ? 'yes' : 'no'} · new source files ${report.shape.newSourceFiles} · spec ${report.shape.spec ? 'yes' : 'no'}`,
@@ -422,17 +433,19 @@ export interface ReportOptions {
   mergeRequest?: boolean
   noState?: boolean
   pluginRoot?: string
+  paths?: readonly string[]
 }
 
 export const buildReport = (root: string, options: ReportOptions): ReviewPlanReport => {
-  const base = resolveBase(root, options.base)
+  const paths = options.paths ?? []
+  const base = resolveBase(root, options.base, 'review-plan', paths)
   const { lines, counted, excluded } = countLines(base.stats, root)
   const changed = base.stats.filter((stat) => stat.added > 0)
   const shape: Shape = {
     tests: changed.some((stat) => exclusionOf(stat.path, root) === 'test'),
     comments: anyAddedComment(root, base.mergeBase, base.stats),
     docs: changed.some((stat) => exclusionOf(stat.path) === 'markdown' && !isChangelog(stat.path)),
-    newSourceFiles: addedNewSourceFiles(root, base.mergeBase),
+    newSourceFiles: addedNewSourceFiles(root, base.mergeBase, paths),
     spec: options.spec,
   }
   const project = loadProjectConfig(root)
@@ -458,7 +471,9 @@ export const buildReport = (root: string, options: ReportOptions): ReviewPlanRep
   const readers: [string, readonly Angle[]][] = plan.path === 'inline' ? [[INLINE_READER, plan.angles]] : plan.finders.map((finder) => [finder.name, finder.angles])
   return {
     base: { ref: base.ref, mergeBase: base.mergeBase, source: base.source },
-    files: { counted, excluded, untracked: untrackedCount(root) },
+    files: { counted, excluded, untracked: untrackedCount(root, paths) },
+    scope: [...paths],
+    diff: diffCommand(base.mergeBase, paths),
     formula: `ceil(${lines}/${LINES_PER_FINDER}) = ${Math.ceil(lines / LINES_PER_FINDER)}, max ${MAX_FINDERS} → N = ${plan.n}`,
     layout,
     shape,
@@ -478,11 +493,14 @@ export const buildReport = (root: string, options: ReportOptions): ReviewPlanRep
 }
 
 const isMode = (value: string): value is Mode => (MODES as readonly string[]).includes(value)
-const USAGE = 'usage: jig review-plan [<base>] [--selector full|quick|auto|<tokens>] [--layout auto|inline|fanout|lean|solo] [--spec] [--mode review|pre-mr] [--mr] [--no-state] [--agent <id>] [--json]'
+const USAGE = 'usage: jig review-plan [<base>] [--selector full|quick|auto|<tokens>] [--layout auto|inline|fanout|lean|solo] [--spec] [--mode review|pre-mr] [--mr] [--no-state] [--agent <id>] [--json] [-- <pathspec>...]'
 
 export const runReviewPlan: Command = (args) => {
+  const separator = args.indexOf('--')
+  const paths = separator === -1 ? [] : args.slice(separator + 1)
+  if (separator !== -1 && paths.length === 0) throw new Error(`no path after --; ${USAGE}`)
   const { values, positionals } = parseArgs({
-    args,
+    args: separator === -1 ? args : args.slice(0, separator),
     allowPositionals: true,
     strict: true,
     options: {
@@ -511,6 +529,7 @@ export const runReviewPlan: Command = (args) => {
     mode,
     mergeRequest: values.mr === true,
     noState: values['no-state'] === true,
+    paths,
   })
   process.stdout.write(`${values.json ? JSON.stringify(report) : formatReport(report)}\n`)
   return 0

@@ -40,7 +40,7 @@ Spawn every finder of the layout **in one batch**, in parallel, within the [suba
 **Every call carries the model and effort of its tier explicitly**, not the session's model. Before spawning print the plan; it goes into the [cost line](08-output.md#output): `finders: 1+4 deep/high opus · 8+14 standard/high sonnet · 2+3+5+12 deep/high opus · …`.
 
 **The brief order is fixed**: the shared prefix first, the personal tail last, so the shared part hits the prompt cache of the whole batch:
-1. the diff (or the command that prints it, when it is large);
+1. the diff (or the `diff:` command `jig review-plan` printed, when it is large);
 2. the shared rules block ([project rules](02-rules.md)): only severity (verbatim) and skip rules; convention bodies go to the rules finder;
 3. the learnings block ([state](03-state.md#learnings));
 4. the project root;

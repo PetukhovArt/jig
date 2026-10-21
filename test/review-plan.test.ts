@@ -264,5 +264,11 @@ describe('buildReport on a repository', () => {
     expect(report.plan.n).toBe(2)
     expect(report.shape).toEqual({ tests: true, comments: true, docs: false, newSourceFiles: 1, spec: false })
     expect(report.judge).toContainEqual({ finderModel: 'opus', judgeModel: 'sonnet', same: false })
+
+    const scoped = buildReport(root, { base: 'main', spec: false, agent: 'claude', paths: ['src/a.ts'] })
+
+    expect(scoped.plan.lines).toBe(1)
+    expect(scoped.shape).toEqual({ tests: false, comments: true, docs: false, newSourceFiles: 0, spec: false })
+    expect(scoped.diff).toBe(`git diff ${scoped.base.mergeBase} -- src/a.ts`)
   })
 })

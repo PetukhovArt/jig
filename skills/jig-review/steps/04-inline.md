@@ -5,7 +5,7 @@ The inline path: `jig review-plan` printed `path: inline` (`N = 1`, or layout `i
 ## Hunt
 
 1. Read the files under `path: inline` in the layout: `read:` (the angle files) and `atoms:` (the atoms they name). They are absolute paths: read them, do not search for them. No other angle file applies.
-2. Read the diff once (`git diff <merge base>`), then every function it touches in full.
+2. Read the diff once (the `diff:` command `jig review-plan` printed), then every function it touches in full.
 3. Hunt every angle of the layout at full aggression, with the rule documents ([step 02](02-rules.md)), the focus note and the spec when one was found. A candidate costs nothing and dies at the gate; do not hold one back because you already have enough.
 
 Write the candidates down before judging any, a section per angle, explicitly empty when it found nothing ("angle 2: nothing"). Per candidate: `file:line`, angle, `root` (the symbol where the defect originates), summary, mechanism (initiator → path → effect as far as you know); angles 6, 10, 13 add `rule`, the verbatim quote of the rule; angle 15 adds [`spec_quote`](../angles/15.spec.md#spec_quote). No quote: no candidate.

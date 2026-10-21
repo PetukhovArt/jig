@@ -38,8 +38,8 @@ export const gitToplevel = (cwd: string): string | undefined => {
   return result.ok ? firstLine(result.stdout) : undefined
 }
 
-export const gitStatus = (cwd: string): GitStatusEntry[] | undefined => {
-  const result = git(['status', '--porcelain=v1', '-z', '--untracked-files=all'], cwd)
+export const gitStatus = (cwd: string, paths: readonly string[] = []): GitStatusEntry[] | undefined => {
+  const result = git(['status', '--porcelain=v1', '-z', '--untracked-files=all', ...(paths.length > 0 ? ['--', ...paths] : [])], cwd)
   if (!result.ok) return undefined
   const tokens = result.stdout.split('\0')
   const entries: GitStatusEntry[] = []

@@ -232,8 +232,8 @@ var gitToplevel = (cwd) => {
   const result = git(["rev-parse", "--show-toplevel"], cwd);
   return result.ok ? firstLine(result.stdout) : void 0;
 };
-var gitStatus = (cwd) => {
-  const result = git(["status", "--porcelain=v1", "-z", "--untracked-files=all"], cwd);
+var gitStatus = (cwd, paths = []) => {
+  const result = git(["status", "--porcelain=v1", "-z", "--untracked-files=all", ...paths.length > 0 ? ["--", ...paths] : []], cwd);
   if (!result.ok) return void 0;
   const tokens = result.stdout.split("\0");
   const entries = [];
@@ -4973,12 +4973,13 @@ var gitLine = (args, root) => {
   const result = git(args, root);
   return result.ok ? firstLine3(result.stdout) : void 0;
 };
-var diffStats = (root, mergeBase) => {
-  const result = git(["diff", "--numstat", "-M", "-z", mergeBase], root);
+var pathspec = (paths) => paths.length > 0 ? ["--", ...paths] : [];
+var diffStats = (root, mergeBase, paths) => {
+  const result = git(["diff", "--numstat", "-M", "-z", mergeBase, ...pathspec(paths)], root);
   if (!result.ok) throw new Error(`git diff --numstat failed: ${result.stderr.trim()}`);
   return parseNumstat(result.stdout);
 };
-var resolveBase = (root, given, command = "review-plan") => {
+var resolveBase = (root, given, command = "review-plan", paths = []) => {
   const candidates = given ? [{ ref: given, source: "argument" }] : [
     { ref: gitLine(["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"], root), source: "upstream" },
     { ref: gitLine(["symbolic-ref", "--short", "refs/remotes/origin/HEAD"], root), source: "origin-head" }
@@ -4991,14 +4992,14 @@ var resolveBase = (root, given, command = "review-plan") => {
       if (source === "argument") throw new Error(`no merge base between ${ref} and HEAD`);
       continue;
     }
-    last = { ref, mergeBase, source, stats: diffStats(root, mergeBase) };
+    last = { ref, mergeBase, source, stats: diffStats(root, mergeBase, paths) };
     if (last.stats.length > 0) return last;
   }
   if (last !== void 0) return last;
   throw new Error(`no base: pass the merge request target, e.g. jig ${command} origin/main`);
 };
-var addedNewSourceFiles = (root, mergeBase) => {
-  const result = git(["diff", "--name-only", "--diff-filter=A", "-M", "-z", mergeBase], root);
+var addedNewSourceFiles = (root, mergeBase, paths) => {
+  const result = git(["diff", "--name-only", "--diff-filter=A", "-M", "-z", mergeBase, ...pathspec(paths)], root);
   if (!result.ok) return 0;
   return result.stdout.split("\0").filter((path2) => path2 !== "" && exclusionOf(path2, root) === void 0).length;
 };
@@ -5013,7 +5014,9 @@ var anyAddedComment = (root, mergeBase, stats) => {
   }
   return false;
 };
-var untrackedCount = (root) => (gitStatus(root) ?? []).filter((entry) => entry.status === "??").length;
+var untrackedCount = (root, paths) => (gitStatus(root, paths) ?? []).filter((entry) => entry.status === "??").length;
+var shellWord = (word) => /^[\w./:@=+-]+$/.test(word) ? word : `'${word.replaceAll("'", `'\\''`)}'`;
+var diffCommand = (mergeBase, paths) => ["git", "diff", mergeBase, ...pathspec(paths)].map(shellWord).join(" ");
 var INLINE_READER = "inline";
 var LAYOUT_ENV = "JIG_REVIEW_LAYOUT";
 var DEFAULT_LAYOUT = "auto";
@@ -5075,7 +5078,8 @@ var formatReport = (report) => {
   const excluded = Object.entries(report.files.excluded).filter(([, count]) => count > 0).map(([kind, count]) => `${count} ${kind}`);
   const lines2 = [
     `base: ${report.base.ref} (merge base ${report.base.mergeBase.slice(0, 8)}, from ${report.base.source})`,
-    `lines: ${plan.lines} in ${report.files.counted} files${excluded.length > 0 ? `; excluded: ${excluded.join(", ")}` : ""}${report.files.untracked > 0 ? `; untracked files not counted: ${report.files.untracked} (git add -N to count them)` : ""}`,
+    `lines: ${plan.lines} in ${report.files.counted} files${report.scope.length > 0 ? ` (scope: ${report.scope.join(" ")})` : ""}${excluded.length > 0 ? `; excluded: ${excluded.join(", ")}` : ""}${report.files.untracked > 0 ? `; untracked files not counted: ${report.files.untracked} (git add -N to count them)` : ""}`,
+    `diff: ${report.diff}`,
     `finders: ${report.formula}`,
     layoutLine(report),
     `shape: tests ${report.shape.tests ? "yes" : "no"} \xB7 added comments ${report.shape.comments ? "yes" : "no"} \xB7 markdown ${report.shape.docs ? "yes" : "no"} \xB7 new source files ${report.shape.newSourceFiles} \xB7 spec ${report.shape.spec ? "yes" : "no"}`,
@@ -5123,14 +5127,15 @@ var formatReport = (report) => {
   return lines2.join("\n");
 };
 var buildReport = (root, options) => {
-  const base = resolveBase(root, options.base);
+  const paths = options.paths ?? [];
+  const base = resolveBase(root, options.base, "review-plan", paths);
   const { lines: lines2, counted, excluded } = countLines(base.stats, root);
   const changed = base.stats.filter((stat) => stat.added > 0);
   const shape = {
     tests: changed.some((stat) => exclusionOf(stat.path, root) === "test"),
     comments: anyAddedComment(root, base.mergeBase, base.stats),
     docs: changed.some((stat) => exclusionOf(stat.path) === "markdown" && !isChangelog(stat.path)),
-    newSourceFiles: addedNewSourceFiles(root, base.mergeBase),
+    newSourceFiles: addedNewSourceFiles(root, base.mergeBase, paths),
     spec: options.spec
   };
   const project = loadProjectConfig(root);
@@ -5156,7 +5161,9 @@ var buildReport = (root, options) => {
   const readers = plan.path === "inline" ? [[INLINE_READER, plan.angles]] : plan.finders.map((finder) => [finder.name, finder.angles]);
   return {
     base: { ref: base.ref, mergeBase: base.mergeBase, source: base.source },
-    files: { counted, excluded, untracked: untrackedCount(root) },
+    files: { counted, excluded, untracked: untrackedCount(root, paths) },
+    scope: [...paths],
+    diff: diffCommand(base.mergeBase, paths),
     formula: `ceil(${lines2}/${LINES_PER_FINDER}) = ${Math.ceil(lines2 / LINES_PER_FINDER)}, max ${MAX_FINDERS} \u2192 N = ${plan.n}`,
     layout,
     shape,
@@ -5175,10 +5182,13 @@ var buildReport = (root, options) => {
   };
 };
 var isMode = (value) => MODES.includes(value);
-var USAGE2 = "usage: jig review-plan [<base>] [--selector full|quick|auto|<tokens>] [--layout auto|inline|fanout|lean|solo] [--spec] [--mode review|pre-mr] [--mr] [--no-state] [--agent <id>] [--json]";
+var USAGE2 = "usage: jig review-plan [<base>] [--selector full|quick|auto|<tokens>] [--layout auto|inline|fanout|lean|solo] [--spec] [--mode review|pre-mr] [--mr] [--no-state] [--agent <id>] [--json] [-- <pathspec>...]";
 var runReviewPlan = (args) => {
+  const separator = args.indexOf("--");
+  const paths = separator === -1 ? [] : args.slice(separator + 1);
+  if (separator !== -1 && paths.length === 0) throw new Error(`no path after --; ${USAGE2}`);
   const { values, positionals } = parseArgs2({
-    args,
+    args: separator === -1 ? args : args.slice(0, separator),
     allowPositionals: true,
     strict: true,
     options: {
@@ -5206,7 +5216,8 @@ var runReviewPlan = (args) => {
     agent: values.agent,
     mode,
     mergeRequest: values.mr === true,
-    noState: values["no-state"] === true
+    noState: values["no-state"] === true,
+    paths
   });
   process.stdout.write(`${values.json ? JSON.stringify(report) : formatReport(report)}
 `);
