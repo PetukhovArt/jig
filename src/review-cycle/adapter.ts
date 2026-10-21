@@ -92,7 +92,7 @@ export const findBash = (env: NodeJS.ProcessEnv = process.env, platform: NodeJS.
   const fromEnv = env['JIG_BASH']
   if (fromEnv) return fromEnv
   if (platform !== 'win32') return findInPath('bash', env)
-  const git = findInPath('git', env)
+  const git = findInPath('git.exe', env)
   if (git !== undefined) {
     for (const root of [dirname(dirname(git)), dirname(dirname(dirname(git)))]) {
       const candidate = join(root, 'bin', 'bash.exe')

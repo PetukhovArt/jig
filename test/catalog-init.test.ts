@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -23,7 +23,7 @@ const write = (path: string, text: string): void => {
 const config = (value: unknown) => ({ ...validateConfig(value).config, files: ['.jig/config.jsonc'] })
 
 beforeEach(() => {
-  root = mkdtempSync(join(tmpdir(), 'jig-catalog-'))
+  root = realpathSync.native(mkdtempSync(join(tmpdir(), 'jig-catalog-')))
   git(['init', '-q'], root)
 })
 

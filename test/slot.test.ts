@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
@@ -69,7 +69,7 @@ describe('slot commands in a temporary repository', () => {
   }
 
   beforeAll(() => {
-    root = mkdtempSync(join(tmpdir(), 'jig-slot-'))
+    root = realpathSync.native(mkdtempSync(join(tmpdir(), 'jig-slot-')))
     main = join(root, REPO)
     mkdirSync(join(main, '.jig'), { recursive: true })
     sh(root, 'init', '-q', '-b', 'main', main)

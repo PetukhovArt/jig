@@ -3,6 +3,7 @@ import { statSync } from 'node:fs'
 import { join } from 'node:path'
 import { gitStatus, gitToplevel } from './git'
 import { toProjectPath } from './paths'
+import { realPath } from './proc'
 
 export interface FileStamp {
   mtimeMs: number
@@ -32,7 +33,8 @@ const changedFiles = (projectRoot: string): string[] => {
   const top = gitToplevel(projectRoot)
   if (top === undefined) return []
   const entries = gitStatus(top) ?? []
-  return entries.map((entry) => toProjectPath(projectRoot, join(top, entry.path))).filter(isInsideProject)
+  const longFormRoot = realPath(projectRoot)
+  return entries.map((entry) => toProjectPath(longFormRoot, join(top, entry.path))).filter(isInsideProject)
 }
 
 export const takeSnapshot = (projectRoot: string): Snapshot => {

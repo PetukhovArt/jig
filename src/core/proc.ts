@@ -47,7 +47,7 @@ const isWithin = (parent: string, child: string): boolean => {
   return path === '' || (!path.startsWith('..') && !isAbsolute(path))
 }
 
-const realPath = (path: string): string => {
+export const realPath = (path: string): string => {
   try {
     return realpathSync.native(path)
   } catch {
