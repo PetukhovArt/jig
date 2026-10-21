@@ -7,7 +7,7 @@ import { validateDocRefs } from '../src/atoms/doc-refs'
 const REPO_ROOT = resolve(import.meta.dirname, '..')
 
 const DEFAULT_FILES: Record<string, string> = {
-  'README.md': 'Run `/jig <task>` (fallback `/jig:jig`), or `/jig-slots`.\n\nFlows (`skills/jig/flows/`): `flow-a`. Every flow ends with `mr`.\n',
+  'README.md': 'Run `/jig <task>` (fallback `/jig:jig`), or `/jig-slots`.\n\n| [flow-a](skills/jig/flows/flow-a.md) | a |\n',
   'skills/jig/SKILL.md': 'See `references/loop.md` and [the flow](flows/flow-a.md#steps).\n',
   'skills/jig/references/loop.md': 'Back to [the skill](../SKILL.md) or `references/roles/<name>.md`.\n',
   'skills/jig/flows/flow-a.md': '# flow-a\n',
@@ -48,8 +48,8 @@ describe('validateDocRefs', () => {
     ['broken relative link', { 'skills/jig/SKILL.md': 'See [x](references/gone.md "title").\n' }, 'skills/jig/SKILL.md:1: link references/gone.md points at no file'],
     ['missing skill-relative path', { 'skills/jig/flows/flow-a.md': '# flow-a\n\nUse `references/forge.md`.\n' }, 'skills/jig/flows/flow-a.md:3: `references/forge.md` points at no file'],
     ['missing root path', { 'README.md': `${DEFAULT_FILES['README.md']}Edit \`skills/jig/references/roles.md\`.\n` }, 'README.md:4: `skills/jig/references/roles.md` points at no file'],
-    ['flow missing from the README list', { 'skills/jig/flows/flow-b.md': '# flow-b\n' }, 'README.md:3: flow flow-b is missing from the flow list'],
-    ['README lists a flow that does not exist', { 'README.md': 'Flows (`skills/jig/flows/`): `flow-a`, `flow-z`.\n' }, 'README.md:1: flow flow-z does not exist'],
+    ['flow missing from the README table', { 'skills/jig/flows/flow-b.md': '# flow-b\n' }, 'README.md:3: flow flow-b is missing from the flow table'],
+    ['README lists a flow that does not exist', { 'README.md': `${DEFAULT_FILES['README.md']}| [flow-z](./skills/jig/flows/flow-z.md) | z |\n` }, 'README.md:4: link ./skills/jig/flows/flow-z.md points at no file'],
   ])('reports %s', (_name, files, expected) => {
     const errors = validateDocRefs(makePluginRoot(files))
     expect(errors).toHaveLength(1)

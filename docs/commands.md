@@ -1,0 +1,30 @@
+# Commands
+
+Run as `node <plugin root>/bin/jig.mjs <command>`.
+
+| Command | What it does |
+| --- | --- |
+| `check edit <file>` / `check stop` | findings for one file / the end-of-turn gate against HEAD |
+| `build [--atoms-only] [--check]` | validates atoms, role templates and flows; without `--atoms-only`, writes the tool plan to `.jig/cache/plan.json` |
+| `atom <name>` | prints an atom |
+| `init [--update] [--json]` | discovery by the catalog: found tools, what to ask the user, a proposed `.jig/config.jsonc` (with `--update`, the current config plus what it does not name); writes nothing |
+| `slot new [--slug <s>] [--branch <b>]` | creates a slot worktree with offset ports and its own `agent-view.config.json`, seeded from the main checkout |
+| `slot show <N> <branch\|commit>` | checks the branch out detached in slot N (refuses on tracked changes) and runs the install command when a lock file changed |
+| `slot ls [--json]` | slots and their ports |
+| `slot rm <N> [--force]` | removes a slot's worktree; without `--force`, refuses on tracked changes |
+| `worktree seed <dir> [--link-deps]` | copies the main checkout's ignored files and recreates its ignored symlinks in another worktree; never overwrites tracked files. `--link-deps` (used by the review cycle only) also links `node_modules` to the main checkout's, a junction on Windows and a symlink elsewhere, when every root lock file (`package-lock.json`, `npm-shrinkwrap.json`, `pnpm-lock.yaml`, `yarn.lock`, `bun.lock`, `bun.lockb`) is byte-identical in both, CRLF and LF aside in a text lock file; otherwise it prints `skipped node_modules (<reason>)` and the worktree stays without dependencies |
+| `worktree remove <dir>` | removes a linked worktree: unlinks its symlinks and junctions first (the targets stay), then `git worktree remove --force`; `slot rm` and `worktree sweep` remove the same way |
+| `worktree sweep [--json] [--ask] [--yes <path\|slot>]...` | sorts every worktree but the main checkout into `hold-current`, `hold-locked`, `hold-wip`, `hold-open-mr`, `prunable`, `recent`, `safe`; removes only those confirmed at the `--ask` prompt or named by `--yes`, never a `hold-current`, `hold-locked` or `hold-wip` one |
+| `review-plan [<base>] [--selector full\|quick\|auto\|<tokens>] [--spec] [--mode review\|pre-mr] [--mr] [--no-state] [--agent <id>] [--json] [-- <pathspec>...]` | the review layout for the diff against the base, or for the given paths only: counted lines, the diff command, the inline path or the finders, their models and the judge, and the step files that apply to the run |
+| `review-cycle queue\|state-path\|import-state\|base-check\|spec\|reconcile\|unresolved\|spec-hold\|withdraw\|verdict` | the deterministic half of the [review cycle](review-cycle.md): the filtered queue, the state path of a merge request, importing the old skills' state, the adapter's base-check and spec, the tally check, the count of unresolved threads without Nit and Pre-existing ones, the spec hold, withdrawing threads, the per-ref verdict; exit 3 when the forge or the adapter cannot answer |
+| `pre-mr [<base>] [-- <pathspec>...]` | exit 0 when the branch's UI changes (in the given paths only) are proven or skipped with a level, else lists what is missing and exits 1 ([UI proof](ui-proof.md)) |
+| `pre-mr proof "<command>"` / `pre-mr bug-bash "<result>"` | runs a proof command and records it when it exits 0 / records the bug-bash result |
+| `skip-verify --level unit-test\|type-check\|none --why "<reason>"` | lets `pre-mr` pass with that level until the next edit |
+| `task-status log <phase> <decision> [--why <text>] [--evidence <text>] [--result <text>]` | appends a row to the decision journal `.jig/runs/<branch>/task-status.tsv` |
+| `task-status open [--lang en\|ru]` / `task-status path` | builds the HTML page from the journal and prints its path / prints the journal path |
+| `tiers [--agent <id>] [--json]` | the models of each tier for the agent |
+| `loop [--days 7]` | aggregates the journal into improvement candidates |
+| `doctor` | diagnostics: Node, config, each catalog tool, agent-view setup, deny block, journal size, locks |
+| `version` | plugin version |
+
+`hook <name>` is the entry point for `hooks/hooks.json`, not for people.

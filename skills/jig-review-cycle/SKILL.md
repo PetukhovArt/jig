@@ -25,7 +25,7 @@ A single named merge request is jig-review's job directly (`/jig-review <url> <f
 
 ## One pass, never a schedule
 
-Sections 1–4, then stop. Never arm, re-arm or reason about a schedule: a skill that scheduled itself would add another schedule on every firing. Recurrence is the agent's or the operating system's (README, "Review cycle"). The pass is idempotent: a merge request whose head was already reviewed and has no new developer reply is skipped, and one whose worktree is still live (the previous pass is reviewing it) is skipped as `busy`.
+Sections 1–4, then stop. Never arm, re-arm or reason about a schedule: a skill that scheduled itself would add another schedule on every firing. Recurrence is the agent's or the operating system's (docs/review-cycle.md, "Recurrence"). The pass is idempotent: a merge request whose head was already reviewed and has no new developer reply is skipped, and one whose worktree is still live (the previous pass is reviewing it) is skipped as `busy`.
 
 **Nothing waits on an external system.** No `sleep`, no polling, no retry loop until a pipeline finishes, a developer answers or a label appears: every external fact is sampled once per pass. Wait for a subagent by its completion notification, or run it in the foreground.
 

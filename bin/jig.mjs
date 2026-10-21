@@ -2796,7 +2796,7 @@ var BACKTICKED_PATH = /`((?:skills|references|scripts|agents)\/[^`\s]+)/g;
 var SKILL_RELATIVE = /^(?:references|scripts|agents)\//;
 var PLACEHOLDER = /[<>*{}[\]]/;
 var URL_SCHEME = /^[a-z][a-z0-9+.-]*:/i;
-var FLOW_LIST = /^Flows \(`skills\/jig\/flows\/`\): (.*)$/m;
+var FLOW_ROW = /^\| \[[^\]]+\]\((?:\.\/)?skills\/jig\/flows\/([\w-]+)\.md\)/gm;
 var listNested = (pluginRoot, dir) => {
   try {
     return readdirSync6(join12(pluginRoot, dir), { recursive: true, encoding: "utf8" }).filter((path2) => path2.endsWith(".md")).map((path2) => `${dir}/${toSlash(path2)}`);
@@ -2826,17 +2826,13 @@ var checkBacktickedPaths = ({ file, text: text3 }, pluginRoot) => [...text3.matc
   const resolved = root === "" ? path2 : `${root}/${path2}`;
   return exists(pluginRoot, resolved) ? [] : [`${file}:${lineAt2(text3, match.index)}: \`${path2}\` points at no file`];
 });
-var checkFlowList = ({ file, text: text3 }, pluginRoot) => {
-  const match = file === "README.md" ? FLOW_LIST.exec(text3) : null;
-  if (match === null) return [];
-  const sentence = (match[1] ?? "").split(". ")[0] ?? "";
-  const listed = new Set([...sentence.matchAll(/`([^`]+)`/g)].map((name) => name[1] ?? ""));
-  const flows = listMarkdown(join12(pluginRoot, FLOWS_DIR)).map((name) => name.slice(0, -".md".length)).filter((name) => name !== SHARED_FLOW);
-  const line = lineAt2(text3, match.index);
-  return [
-    ...flows.filter((name) => !listed.has(name)).map((name) => `${file}:${line}: flow ${name} is missing from the flow list`),
-    ...[...listed].filter((name) => !flows.includes(name)).map((name) => `${file}:${line}: flow ${name} does not exist in ${FLOWS_DIR}/`)
-  ];
+var checkFlowTable = ({ file, text: text3 }, pluginRoot) => {
+  const rows = file === "README.md" ? [...text3.matchAll(FLOW_ROW)] : [];
+  const [first] = rows;
+  if (first === void 0) return [];
+  const listed = new Set(rows.map((row) => row[1] ?? ""));
+  const line = lineAt2(text3, first.index);
+  return listMarkdown(join12(pluginRoot, FLOWS_DIR)).map((name) => name.slice(0, -".md".length)).filter((name) => name !== SHARED_FLOW && !listed.has(name)).map((name) => `${file}:${line}: flow ${name} is missing from the flow table`);
 };
 var validateDocRefs = (pluginRoot) => {
   const skills = new Set(listSkillFolders(pluginRoot));
@@ -2848,7 +2844,7 @@ var validateDocRefs = (pluginRoot) => {
       ...checkSlashCommands(doc, skills),
       ...checkLinks(doc, pluginRoot),
       ...checkBacktickedPaths(doc, pluginRoot),
-      ...checkFlowList(doc, pluginRoot)
+      ...checkFlowTable(doc, pluginRoot)
     ];
   });
 };
