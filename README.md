@@ -2,47 +2,48 @@
 
 # jig
 
-**A harness plugin for AI coding agents: code checks what code can check, the model keeps the rest.**<br/>
-The agent cannot end a turn on a type error, and cannot open a merge request with an unproven UI change.
+**Guardrails for AI coding agents.**<br/>
+Your agent can't finish a turn with a type error in its files, and can't open a merge request for a UI change nobody has seen working.
 
 [![CI](https://github.com/PetukhovArt/jig/actions/workflows/ci.yml/badge.svg)](https://github.com/PetukhovArt/jig/actions/workflows/ci.yml) [![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE) [![node](https://img.shields.io/badge/node-%3E%3D20-339933.svg)](package.json) [![Claude Code plugin](https://img.shields.io/badge/Claude_Code-plugin-D97757.svg)](.claude-plugin/plugin.json)
 
 </div>
 
-## Why jig
+Agents are good at writing code and bad at noticing when they broke something. A prompt that says "run the type checker" works until the context gets compacted, or until the model decides this one time it doesn't matter. jig moves those rules out of the prompt and into hooks and a small CLI. If a tool can check it, the tool checks it, every time. The model is left with the judgment calls.
 
-- **Gates before the edit lands.** A new lint or type suppression is always denied. A new comment or test case is denied once, with the rules to judge it by.
-- **Every turn ends green.** tsc, ESLint, stratum and the project's own checks run over the session's own files at the end of each turn and block it on an error. A parallel session in the same checkout does not trip your gate.
-- **UI proven on the running app.** `jig pre-mr` holds the merge request until each changed UI file has a replayed use case and a screenshot, or a recorded reason why not.
-- **Review with a second model.** `jig-review` sizes its finders by the diff, and a judge on another model proves each finding before the author sees it. `jig-review-cycle` does it for every merge request waiting on you.
-- **Fits a legacy codebase.** Lint errors count on changed lines only, type errors in the turn's files only, stratum starts from a baseline: the agent answers for what it touched, not for the history.
-- **Never stuck, never slow.** Three blocks in a row and the gate steps aside with a journal record instead of looping. Budgets of 300 ms at p95 per edit hook and 20 s for the end-of-turn gate on 20 files are checked by the [benchmarks](docs/evals.md#benchmarks).
-- **Parallel by default.** A worktree per task, slots with offset dev and CDP ports, a gate scoped to its own session, one heavy check at a time across sessions.
-- **Unattended, yet auditable.** `afk-mode` works toward a checkable done condition and logs every decision; a separate auditor checks the log against `git log` before you read it.
-- **Learns from its own misses.** Every deny, block and failure lands in a journal; the weekly loop turns repeats into proposed checks and rules, and you approve each one.
-- **Measured, not believed.** Agent evals run the same tasks with and without the plugin; a change to an atom or flow goes through the [`eval`](skills/jig/flows/eval.md) flow before it stays.
-- **The right model per job.** Each subagent role names a tier and an effort: cheap models prune comments and post threads, deep ones judge findings and designs.
-- **Thin on top, light underneath.** Knowledge lives in short atoms read when their trigger applies; flows run only when you type `/jig`. One CLI, Node >= 20, no runtime dependencies; in your project it writes only `.jig/`.
+## What you get
 
-## Who it is for
+- **Checks that run whether the agent remembers or not.** Adding an `eslint-disable` or `@ts-ignore` is refused outright. A new comment or test case gets bounced once along with the rules for it, so the agent has to think before trying again. At the end of every turn, tsc, ESLint, stratum and your own checks run over the files that session touched, and an error keeps the turn open.
+- **UI changes proven in the app.** Before a merge request, `jig pre-mr` wants a replayed use case and a screenshot for each changed component, or a written reason why there are none.
+- **Reviews you can trust.** `jig-review` decides how many reviewers a diff needs, then a different model checks each finding before you see it. `jig-review-cycle` goes through every merge request waiting on you in one pass.
+- **Works on an old codebase.** ESLint only looks at the lines the agent changed and tsc only at the files it touched. stratum starts from a baseline, so old violations don't block anyone.
+- **Gets out of the way.** After three blocks in a row the gate stops blocking and writes it down, so the agent never loops on it. Edit hooks have a 300 ms budget (p95), the end-of-turn gate 20 s for 20 files, and the [benchmarks](docs/evals.md#benchmarks) check both.
+- **Several agents at once.** Each task can get its own worktree. Finished branches can be shown in a slot with its own dev server and ports. Each session's gate only looks at its own files, and heavy checks take turns instead of all running at once.
+- **Overnight runs you can check in the morning.** `afk-mode` keeps a log of every decision, and a separate agent compares that log with `git log` before you read the summary.
+- **It improves from its own journal.** Every refusal, block and crash is written down. Once a week `jig loop` turns the repeats into proposed rules and checks, and nothing changes until you approve it.
+- **Changes to it get measured.** Evals run the same tasks with and without the plugin, and a change to a rule goes through the [`eval`](skills/jig/flows/eval.md) flow before it stays.
+- **Cheap models where they're enough.** Each subagent role has a tier: fast models prune comments and post threads, stronger ones judge findings and designs.
+- **Light.** One CLI on Node 20+, no runtime dependencies. In your project it only creates `.jig/`.
 
-jig is agnostic by design: the core knows events, files and checks, not an agent, a language or a framework. It is built **Claude Code first, TypeScript first, frontend first**, and is strongest on four fronts:
+## Who it's for
 
-- **Deterministic checks.** What code can decide, code decides: gates in hooks, the review layout from `jig review-plan`, the merge request gate from `jig pre-mr`, the queue from `jig review-cycle`. Same input, same verdict; the model judges only what no tool can.
-- **Architecture.** Module layers and boundaries checked on every edit ([stratum](https://github.com/PetukhovArt/stratum)), atoms on module depth, domain models and system edges, a flow that sketches two designs before writing one.
-- **Verification.** Type and lint gates every turn, UI proof on the running app ([agent-view](https://github.com/PetukhovArt/agent-view): browser, Electron, Tauri), a review whose findings a second model proves.
-- **Extensibility.** Any language joins through the project's own `checks`; agents join through an adapter, a team's review process through a [process adapter](docs/review-cycle.md#process-adapter).
+The core doesn't care which agent, language or framework you use: it deals in events, files and checks. In practice it was built for, and is best at, **Claude Code, TypeScript and frontend** apps (web, Electron, Tauri, monorepos included). What I care about most:
 
-| | ready today | through extension |
+- **Deterministic checks.** If code can decide something, code decides it: the gates, the review plan, whether a merge request may go, which merge requests need review. Same input, same answer. The model only gets the questions no tool can answer.
+- **Architecture.** [stratum](https://github.com/PetukhovArt/stratum) checks module layers and boundaries on every edit, and the `module-design` flow sketches two designs before writing either.
+- **Verification.** Types and lint every turn, the UI proven in the running app through [agent-view](https://github.com/PetukhovArt/agent-view), review findings confirmed by a second model.
+- **Extensibility.** Other languages plug in through your own `checks`, other agents through an adapter, your team's review process through a [process adapter](docs/review-cycle.md#process-adapter).
+
+| | works today | needs an extension |
 | --- | --- | --- |
-| agent | Claude Code | Cursor, Codex: an adapter over the same events ([agents](docs/agents.md)) |
-| language | TypeScript, JavaScript, Vue; C# in the comment, test and suppression gates | any: a `checks` entry with `{files}` ([configuration](docs/configuration.md)) |
-| project | web, Electron and Tauri apps, monorepos | backends, CLIs, libraries: everything but UI proof |
+| agent | Claude Code | Cursor and Codex need an adapter ([agents](docs/agents.md)) |
+| language | TypeScript, JavaScript, Vue; C# for the comment, test and suppression gates | anything, through a `checks` entry ([configuration](docs/configuration.md)) |
+| project | web, Electron and Tauri apps, monorepos | backends, CLIs, libraries: everything except UI proof |
 | platform | Windows, macOS, Linux; GitLab and GitHub | |
 
 ## Quick start
 
-In Claude Code 2.1.275 or later:
+You need Claude Code 2.1.275 or later.
 
 ```text
 /plugin install jig --marketplace PetukhovArt/jig
@@ -50,7 +51,7 @@ In Claude Code 2.1.275 or later:
 /jig <task>
 ```
 
-`/jig-init` discovers your tools, asks only what code cannot know, writes `.jig/config.jsonc` and runs `jig doctor`.
+`/jig-init` looks at your project, asks only what it can't figure out on its own, writes `.jig/config.jsonc` and runs `jig doctor` to check the result.
 
 <details><summary><b>Install from a shell</b></summary>
 
@@ -59,17 +60,17 @@ claude plugin marketplace add PetukhovArt/jig
 claude plugin install jig@petukhovart
 ```
 
-Then run `/jig-init` in your project, or `node <plugin root>/bin/jig.mjs doctor` to see the config, each catalog tool and anything missing.
+Then run `/jig-init` in your project. `node <plugin root>/bin/jig.mjs doctor` shows the config, each tool and anything missing.
 
 </details>
 
 ## Usage
 
-The hooks need nothing from you: once `.jig/config.jsonc` names the tools, every edit and every turn goes through them ([hooks and gates](docs/hooks.md)).
+The hooks need nothing from you. Once `.jig/config.jsonc` names your tools, every edit and every turn goes through them ([hooks and gates](docs/hooks.md)).
 
 ### Just use [`/jig`](skills/jig/SKILL.md)
 
-The one skill to remember. Start a task that needs rigor with it, and say how you will know it is done:
+It's the only command you really need to remember. Use it for anything that deserves care, and tell it how you'll know the work is done:
 
 ```text
 /jig the camera list flickers when a filter changes. reproduce it first, then fix and prove it in the app.
@@ -79,7 +80,7 @@ The one skill to remember. Start a task that needs rigor with it, and say how yo
 /jig i'm going to bed. move every caller of the sync store to the async one, behavior unchanged.
 ```
 
-It restates the task with a done check, picks one of its flows and copies the flow's steps into the todo list. Every code-changing flow ends with the shared [`mr`](skills/jig/flows/mr.md) step: review your own diff, prove the UI, `jig pre-mr`, then the merge request.
+It repeats the task back with a done check, picks a flow and puts the flow's steps in the todo list. Every flow that changes code finishes the same way ([`mr`](skills/jig/flows/mr.md)): it reviews its own diff, proves the UI, runs `jig pre-mr` and opens the merge request.
 
 <!-- flows:start -->
 
@@ -111,7 +112,7 @@ It restates the task with a done check, picks one of its flows and copies the fl
 
 ## Skills
 
-[`/jig`](skills/jig/SKILL.md) reaches for the rest when a step needs them (`jig-review`, `jig-slots`, `jig-task-status`). Type one yourself when you want just that:
+`/jig` calls `jig-review`, `jig-slots` and `jig-task-status` by itself when a step needs them. You can also run any skill on its own:
 
 ```text
 /jig-review https://gitlab.example.com/team/app/-/merge_requests/412 --post
@@ -121,7 +122,7 @@ It restates the task with a done check, picks one of its flows and copies the fl
 /loop 2h /jig-review-cycle
 ```
 
-Three skills the model may also start on its own, because a flow step or a schedule needs them; the rest run only when you type them ([why each](docs/flows.md#who-starts-a-skill)).
+The model can start three of them on its own, because a flow or a schedule needs them. The others run only when you type them ([why](docs/flows.md#who-starts-a-skill)).
 
 <!-- skills:start -->
 
@@ -144,32 +145,32 @@ Three skills the model may also start on its own, because a flow step or a sched
 
 <!-- skills:end -->
 
-## Key ideas
+## How it's built
 
-**A pyramid of needs for the agent.** As in Maslow's pyramid, the lower layers come first: an agent that can break the build gains nothing from a clever plan. The bottom three are durable and get the investment; the top three get thinner with every model release, so jig keeps them small ([more](docs/agents.md#the-harness-pyramid)).
+**Basics first.** Think of Maslow's pyramid. An agent that can break the build gets nothing out of a clever plan, so the lower layers come first. They also last longest. The upper layers get thinner with each model release, because models learn to do that part themselves, so jig keeps them small ([more](docs/agents.md#the-harness-pyramid)).
 
 ```text
-         evolution       journal, weekly loop                  ┐
-       orchestration     /jig, flows, review, decision trail   │ thin: models absorb these
-          context        atoms read on their trigger           ┘
-       verification      gates, tsc, ESLint, stratum, UI proof ┐
-          safety         deny suppressions, comments, tests    │ durable: invest here
-         execution       worktrees, slots with a warm app      ┘
+       evolution       journal, weekly loop                  ┐
+     orchestration     /jig, flows, review, decision trail   │ thin: models catch up here
+        context        atoms read when they apply            ┘
+     verification      gates, tsc, ESLint, stratum, UI proof ┐
+        safety         no suppressions, rules for comments   │ solid: worth the effort
+       execution       worktrees, slots with a running app   ┘
 ```
 
-**Code checks what code can check.** A rule a tool can enforce is a hook, not a sentence in a prompt. The model cannot skip a gate, argue with it or forget it after compaction: suppressions are denied before the edit, and the turn does not end on a type error ([hooks and gates](docs/hooks.md)).
+**Rules live in hooks.** A rule that a tool can enforce goes in a hook. The model can't skip a hook, argue with it or forget it after compaction ([hooks and gates](docs/hooks.md)).
 
-**Proof on the running product.** Green tests do not prove a UI change. [agent-view](https://github.com/PetukhovArt/agent-view) drives the app as its user does: a replayed use case proves the behavior, a screenshot proves the look, and `jig pre-mr` holds the merge request until both exist ([UI proof](docs/ui-proof.md)).
+**UI proof means the real app.** Passing tests don't show that a screen still works. [agent-view](https://github.com/PetukhovArt/agent-view) clicks through the app the way a user would: a replayed use case covers the behavior and a screenshot covers the look ([UI proof](docs/ui-proof.md)).
 
-**Architecture as a checked rule.** [stratum](https://github.com/PetukhovArt/stratum) checks module layers and boundaries from a config on every edit, fast enough for the hot path. A legacy codebase starts from a baseline: only new violations block.
+**Architecture gets checked too.** Module layers and boundaries live in a [stratum](https://github.com/PetukhovArt/stratum) config and are checked on every edit, fast enough that nobody notices.
 
-**A finding is proven, not claimed.** Review finders hunt aggressively; a judge on a different model keeps only what it can prove on a quoted line. Every claim in a reply carries its evidence.
+**Review findings need evidence.** Reviewers look for problems aggressively. Then a judge on a different model keeps only the findings it can point to on a quoted line.
 
-**Thin knowledge, read on its trigger.** No long system prompt: each rule is a short atom with a one-line trigger, read only when the work matches it.
+**Short rules, read when they apply.** There's no giant system prompt. Each rule is a short file (an atom) with a one-line trigger, and the agent reads it only when the work matches.
 
 ## Atoms and roles
 
-Atoms are the rules behind the key ideas, one per file, indexed in [`skills/jig/SKILL.md`](skills/jig/SKILL.md) by the moment of work. Roles are subagent templates the flows spawn, each with a model tier and an effort ([more](docs/flows.md)).
+Atoms are those short rules, indexed in [`skills/jig/SKILL.md`](skills/jig/SKILL.md) by when in the work they apply. Roles are templates for the subagents that flows start, each with a model tier and effort ([more](docs/flows.md)).
 
 <!-- atoms:start -->
 
@@ -243,7 +244,7 @@ Atoms are the rules behind the key ideas, one per file, indexed in [`skills/jig/
 
 ## Agents
 
-v1 ships the Claude Code adapter. The core and its event model do not depend on the agent, so Cursor and Codex adapters can follow ([what each agent offers a plugin](docs/agents.md)).
+Only the Claude Code adapter exists for now. The core doesn't depend on the agent, so Cursor and Codex adapters can be added ([what each agent lets a plugin do](docs/agents.md)).
 
 ## Docs
 
