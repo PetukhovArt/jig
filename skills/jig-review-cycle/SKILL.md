@@ -1,7 +1,6 @@
 ---
 name: jig-review-cycle
 description: "Review every merge request awaiting your review in one pass: filter, review each in its own worktree with jig-review, post the threads, record the verdict through the team's process adapter."
-disable-model-invocation: true
 argument-hint: "[<focus note>] [--no-focus]"
 ---
 
