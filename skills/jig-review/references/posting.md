@@ -14,7 +14,7 @@ With `--post`, step 6 is skipped: the flag IS the confirmation.
 
 ## 2. Postable set
 
-Postable = `open` and not yet posted (no `discussion_id`), plus **all** `optional` items, earlier ones included: the note is rebuilt from the whole set, and an update without the old items would erase them.
+Postable = `open` and not yet posted (no `discussion_id`), plus **all** `optional` items, earlier ones included, plus the state's `deepening` when present: the note is rebuilt from the whole set, and an update without the old items would erase them.
 
 **Hold ids.** A caller may name finding ids to hold back (a review cycle holds spec findings whose quote is not in the spec). They leave the postable set before routing: not posted, not in the note, not counted.
 
@@ -24,7 +24,7 @@ Read the merge request's diff refs ("Diff refs" row): `base_sha`, `start_sha`, `
 
 - the file is in the merge request diff and the line is an added or context line of the new side → a **thread** on `file:new_line`;
 - the file is not in the diff, and `caused_by` holds: its `file` is in the diff, its `diff_line` appears verbatim among that file's added or removed lines, and its `victim_line` appears verbatim in the affected file of the reviewed tree → a **promoted** thread on the cause line; its body ends with one line naming the affected `file:line`;
-- otherwise → an item of the **one FYI note** (step 8). `optional` findings go there too, wherever their file is.
+- otherwise → an item of the **one FYI note** (step 8). `optional` findings and the `deepening` go there too, wherever their file is.
 
 Routing is the scope gate: you do not decide it per finding, and nothing is filtered before it. A suggestion block becomes a one-line replacement of the anchored line.
 
@@ -37,10 +37,10 @@ Write `manifest.json` before posting anything: one entry per item, threads and p
 ```json
 [{ "i": 0, "kind": "thread", "file": "src/a.ts", "line": 43, "anchor": null, "positioned": true, "payload": "<abs path>", "preview": "**[🔴 Important]** …" },
  { "i": 1, "kind": "promoted", "file": "src/b.ts", "line": 9, "anchor": "src/a.ts:12", "positioned": true, "payload": "<abs path>", "preview": "…" },
- { "i": "fyi", "kind": "fyi", "count": 2, "optional": 1, "payload": "<abs path>", "items": [{ "file": "src/c.ts", "line": 116, "reason": "no caused_by" }] }]
+ { "i": "fyi", "kind": "fyi", "count": 2, "optional": 1, "deepening": true, "payload": "<abs path>", "items": [{ "file": "src/c.ts", "line": 116, "reason": "no caused_by" }] }]
 ```
 
-`count` is the out-of-diff items, `optional` the simplifications. The manifest is the posting contract: the confirmation (step 6) prints it, posting fires it, the report counts against it. A manifest with only an FYI entry posts no thread: a caller reading it knows the pass returned nothing to the developer.
+`count` is the out-of-diff items, `optional` the simplifications, `deepening` whether the note carries the proposal. The manifest is the posting contract: the confirmation (step 6) prints it, posting fires it, the report counts against it. A manifest with only an FYI entry posts no thread: a caller reading it knows the pass returned nothing to the developer.
 
 ## 5. Threads, never flat notes
 
@@ -61,7 +61,8 @@ Post each entry from its payload file. A 201 proves nothing about the body: read
 One unresolvable general note, rebuilt whole on every pass, sections without items left out:
 
 - `**Outside the merge request scope**`: noticed during review, fix when the change is small; no resolve needed. One item per out-of-diff finding: `` `file:line` `` and the first line of its `mrComment` without the chip;
-- `**[🟡 Nit] Improvements: optional, not blocking the merge.**`: one `- [ ]` item per `optional` finding, naming the file.
+- `**[🟡 Nit] Improvements: optional, not blocking the merge.**`: one `- [ ]` item per `optional` finding, naming the file;
+- `**Deepening: a proposal, not a finding.**`: the state's `deepening` as one item, `module · what to deepen · effect · blast radius`.
 
 The heading lines are in the comment language. Find your earlier note by the invisible marker `<!-- review-fyi -->` at its end and update it ("Post or update a general note"); create one only when none exists. Keep the marker: without it every pass leaves another note.
 

@@ -16,7 +16,7 @@ const LEGACY_FILE = /^(.+)-([0-9a-f]{12})\.json$/
 const MAX_IID = 99_999
 
 const TOP_FIELDS: ReadonlySet<string> = new Set([
-  'key', 'remote', 'target', 'source_branch', 'base_sha', 'last_reviewed_sha', 'diff_hash', 'runs', 'tokens', 'timings', 'tally', 'findings',
+  'key', 'remote', 'target', 'source_branch', 'base_sha', 'last_reviewed_sha', 'diff_hash', 'runs', 'tokens', 'timings', 'tally', 'findings', 'deepening',
 ])
 const FINDING_FIELDS: ReadonlySet<string> = new Set([
   'id', 'file', 'line', 'angle', 'category', 'severity', 'severity_class', 'severity_gate', 'verdict', 'models', 'summary', 'mrComment',

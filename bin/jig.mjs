@@ -6080,7 +6080,8 @@ var TOP_FIELDS = /* @__PURE__ */ new Set([
   "tokens",
   "timings",
   "tally",
-  "findings"
+  "findings",
+  "deepening"
 ]);
 var FINDING_FIELDS = /* @__PURE__ */ new Set([
   "id",

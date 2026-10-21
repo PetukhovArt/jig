@@ -22,6 +22,7 @@ state: <absolute path of the state file>
 spec: <source> · <absolute path of the spec file the review judged by> | none
 tally: <the machine line, verbatim>
 <the survivors as jig-review printed them, each mrComment verbatim>
+<the ## Deepening section verbatim, when the run has one; it is in the state file too>
 OUTCOMES: <id> → <status>, one per line | none
 REPLIES: <discussion_id> → <reply text verbatim>, one per thread the run answers | none
 ```
