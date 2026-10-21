@@ -104,20 +104,20 @@ It restates the task with a done check, picks a flow and copies the flow's steps
 
 ## Skills
 
-`/jig` runs most of them when a step needs them. Use one directly when you want just that:
+Three of them the model may also start on its own, because a flow step or a schedule needs them; the rest run only when you type them ([why each](docs/flows.md#who-starts-a-skill)).
 
-| skill | use it when |
-| --- | --- |
-| [`/jig`](skills/jig/SKILL.md) | a task needs a flow: pick it, track its steps, prove the result |
-| [`/jig-init`](skills/jig-init/SKILL.md) | setting jig up for a project, or settling it after the project changed |
-| [`/jig-review`](skills/jig-review/SKILL.md) | reviewing someone else's merge request (threads, `--post`, re-review), or your own diff before the merge request (mode `pre-mr`) |
-| [`/jig-review-cycle`](skills/jig-review-cycle/SKILL.md) | every merge request awaiting your review, in one pass ([review cycle](docs/review-cycle.md)) |
-| [`/jig-slots`](skills/jig-slots/SKILL.md) | work runs in parallel: a worktree per task, and finished branches shown in a slot with a warm dev server |
-| [`/jig-task-status`](skills/jig-task-status/SKILL.md) | a long or unattended run needs a reviewable decision trail |
-| [`/jig-grill`](skills/jig-grill/SKILL.md) | a plan or decision should be questioned until nothing is silently assumed |
-| [`/jig-prune-comments`](skills/jig-prune-comments/SKILL.md) | comments the rules do not allow pile up across a merge request, a folder or the repository |
-| [`/jig-explain`](skills/jig-explain/SKILL.md) | the current topic needs a visual explanation: call trees, file trees, diagrams |
-| [`/jig-video`](skills/jig-video/SKILL.md) | a change needs a narrated demo video of its use cases |
+| skill | started by | use it when |
+| --- | --- | --- |
+| [`/jig`](skills/jig/SKILL.md) | you | a task needs a flow: pick it, track its steps, prove the result |
+| [`/jig-init`](skills/jig-init/SKILL.md) | you | setting jig up for a project, or settling it after the project changed |
+| [`/jig-review`](skills/jig-review/SKILL.md) | you or the model | reviewing someone else's merge request (threads, `--post`, re-review), or your own diff before the merge request (mode `pre-mr`) |
+| [`/jig-review-cycle`](skills/jig-review-cycle/SKILL.md) | you or the model | every merge request awaiting your review, in one pass ([review cycle](docs/review-cycle.md)) |
+| [`/jig-slots`](skills/jig-slots/SKILL.md) | you or the model | work runs in parallel: a worktree per task, and finished branches shown in a slot with a warm dev server |
+| [`/jig-task-status`](skills/jig-task-status/SKILL.md) | you | a long or unattended run needs a reviewable decision trail |
+| [`/jig-grill`](skills/jig-grill/SKILL.md) | you | a plan or decision should be questioned until nothing is silently assumed |
+| [`/jig-prune-comments`](skills/jig-prune-comments/SKILL.md) | you | comments the rules do not allow pile up across a merge request, a folder or the repository |
+| [`/jig-explain`](skills/jig-explain/SKILL.md) | you | the current topic needs a visual explanation: call trees, file trees, diagrams |
+| [`/jig-video`](skills/jig-video/SKILL.md) | you | a change needs a narrated demo video of its use cases |
 
 ## Agents
 
