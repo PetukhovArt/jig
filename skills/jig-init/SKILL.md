@@ -28,6 +28,7 @@ Read `<root>/atoms/questions.md` before the first question and follow it. Ask in
 6. stratum, when the user wants it:
    1. No `stratum.config.jsonc`: run `stratum-lint init`.
    2. `eslint-plugin-boundaries` is in package.json: port its element types and rules into `stratum.config.jsonc` following the stratum guide (`docs/custom-rules.md`, the section translating an eslint-plugin-boundaries setup: layers with `depends_on`, `slices`, `entry_points`, `import-policy`, `overrides`, `restricted-calls`). Leave the plugin installed and its ESLint config untouched; add `"eslint": { "ignoreRules": ["boundaries/*"] }` so jig stops reporting it.
+      The layers are the user's decision. Port on your own only a rule with a one-to-one translation. Everything else is a question, one at a time, with the boundaries lines it comes from and a recommendation: a layer or slice the config does not name, a rule with no one-to-one form, a folder that breaks the layering today (legacy code, a shared dump, a generated folder), and the project's existing boundaries suppressions or ignores. Legacy keeps the strict rule and goes to the baseline or a named `overrides` entry the user picks; never loosen a layer's rule to make legacy pass.
    3. Run `stratum-lint` over the project. Violations that exist today go to `stratum-lint baseline`.
    4. Show the user the diff of `stratum.config.jsonc` (and of the baseline size) before you go on.
    5. Add `"stratum": {}`.
