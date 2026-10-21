@@ -148,9 +148,14 @@ const readmeSkills = () => {
 }
 
 const readmeAtoms = () => {
-  const lines = atomIndexLines()
-  const count = lines.filter((line) => line.startsWith('- ')).length
-  return details(`All ${count} atoms`, lines.map((line) => line.replace(/^- `([\w-]+)`/, '- [`$1`](atoms/$1.md)')))
+  const atoms = readEntries(atomsDir, 'atoms')
+    .map(({ file, name, description, metadata }) => ({ file, name, group: metadata?.group, when: triggerOf(file, description) }))
+    .sort((a, b) => ATOM_GROUPS.indexOf(a.group) - ATOM_GROUPS.indexOf(b.group))
+  return details(`All ${atoms.length} atoms`, [
+    '| atom | group | apply |',
+    '| --- | --- | --- |',
+    ...atoms.map(({ file, name, group, when }) => `| [${name}](atoms/${file}) | ${group.toLowerCase()} | ${cell(when.replace(/^Apply /, ''))} |`),
+  ])
 }
 
 const readmeRoles = () => {

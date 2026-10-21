@@ -69,14 +69,19 @@ Then run `/jig-init` in your project, or `node <plugin root>/bin/jig.mjs doctor`
 
 The hooks need nothing from you: once `.jig/config.jsonc` names the tools, every edit and every turn goes through them ([hooks and gates](docs/hooks.md)).
 
-For a task that needs rigor, start with `/jig` and say how you will know it is done:
+### Just use [`/jig`](skills/jig/SKILL.md)
+
+The one skill to remember. Start a task that needs rigor with it, and say how you will know it is done:
 
 ```text
 /jig the camera list flickers when a filter changes. reproduce it first, then fix and prove it in the app.
+```
+
+```text
 /jig i'm going to bed. move every caller of the sync store to the async one, behavior unchanged.
 ```
 
-It restates the task with a done check, picks a flow and copies the flow's steps into the todo list. Every code-changing flow ends with the shared [`mr`](skills/jig/flows/mr.md) step: review your own diff, prove the UI, `jig pre-mr`, then the merge request.
+It restates the task with a done check, picks one of its flows and copies the flow's steps into the todo list. Every code-changing flow ends with the shared [`mr`](skills/jig/flows/mr.md) step: review your own diff, prove the UI, `jig pre-mr`, then the merge request.
 
 <!-- flows:start -->
 
@@ -108,14 +113,15 @@ It restates the task with a done check, picks a flow and copies the flow's steps
 
 ## Skills
 
-`/jig` reaches for the rest when a step needs them. The ones you type yourself most:
+[`/jig`](skills/jig/SKILL.md) reaches for the rest when a step needs them (`jig-review`, `jig-slots`, `jig-task-status`). Type one yourself when you want just that:
 
-| skill | use it when |
-| --- | --- |
-| [`/jig`](skills/jig/SKILL.md) | a task needs a flow: pick it, track its steps, prove the result |
-| [`/jig-init`](skills/jig-init/SKILL.md) | setting jig up for a project, or settling it after the project changed |
-| [`/jig-review`](skills/jig-review/SKILL.md) | reviewing someone else's merge request, or your own diff before the merge request (`pre-mr`) |
-| [`/jig-review-cycle`](skills/jig-review-cycle/SKILL.md) | every merge request awaiting your review, in one pass ([review cycle](docs/review-cycle.md)) |
+```text
+/jig-review https://gitlab.example.com/team/app/-/merge_requests/412 --post
+```
+
+```text
+/loop 2h /jig-review-cycle
+```
 
 Three skills the model may also start on its own, because a flow step or a schedule needs them; the rest run only when you type them ([why each](docs/flows.md#who-starts-a-skill)).
 
@@ -140,51 +146,67 @@ Three skills the model may also start on its own, because a flow step or a sched
 
 <!-- skills:end -->
 
+## Key ideas
+
+**A pyramid of needs for the agent.** As in Maslow's pyramid, the lower layers come first: an agent that can break the build gains nothing from a clever plan. The bottom three are durable and get the investment; the top three get thinner with every model release, so jig keeps them small ([more](docs/agents.md#the-harness-pyramid)).
+
+```text
+         evolution       journal, weekly loop                  ┐
+       orchestration     /jig, flows, review, decision trail   │ thin: models absorb these
+          context        atoms read on their trigger           ┘
+       verification      gates, tsc, ESLint, stratum, UI proof ┐
+          safety         deny suppressions, comments, tests    │ durable: invest here
+         execution       worktrees, slots with a warm app      ┘
+```
+
+**Code checks what code can check.** A rule a tool can enforce is a hook, not a sentence in a prompt. The model cannot skip a gate, argue with it or forget it after compaction: suppressions are denied before the edit, and the turn does not end on a type error ([hooks and gates](docs/hooks.md)).
+
+**Proof on the running product.** Green tests do not prove a UI change. [agent-view](https://github.com/PetukhovArt/agent-view) drives the app as its user does: a replayed use case proves the behavior, a screenshot proves the look, and `jig pre-mr` holds the merge request until both exist ([UI proof](docs/ui-proof.md)).
+
+**Architecture as a checked rule.** [stratum](https://github.com/PetukhovArt/stratum) checks module layers and boundaries from a config on every edit, fast enough for the hot path. A legacy codebase starts from a baseline: only new violations block.
+
+**A finding is proven, not claimed.** Review finders hunt aggressively; a judge on a different model keeps only what it can prove on a quoted line. Every claim in a reply carries its evidence.
+
+**Thin knowledge, read on its trigger.** No long system prompt: each rule is a short atom with a one-line trigger, read only when the work matches it.
+
 ## Atoms and roles
 
-Atoms are the knowledge: short rules an agent reads when their trigger applies, indexed in [`skills/jig/SKILL.md`](skills/jig/SKILL.md). Roles are subagent templates the flows spawn, each with a model tier and an effort ([more](docs/flows.md)).
+Atoms are the rules behind the key ideas, one per file, indexed in [`skills/jig/SKILL.md`](skills/jig/SKILL.md) by the moment of work. Roles are subagent templates the flows spawn, each with a model tier and an effort ([more](docs/flows.md)).
 
 <!-- atoms:start -->
 
 <details><summary><b>All 28 atoms</b></summary>
 
-**Process**
-- [`automate-repeats`](atoms/automate-repeats.md): Apply to any non-trivial edit, migration, analysis or check
-- [`autonomy`](atoms/autonomy.md): Apply when you are about to ask the human 'should I do X?' or to stop and wait
-- [`context-window`](atoms/context-window.md): Apply when context fills up: large outputs, long files, repeated reads, fan-out work
-- [`lessons-to-checks`](atoms/lessons-to-checks.md): Apply when you catch yourself writing the same instruction a second time, or see a recurring correction or review finding
-- [`questions`](atoms/questions.md): Apply before you ask the human anything, or when you interview them about a plan
-- [`small-steps`](atoms/small-steps.md): Apply to multistep work and to how you stack commits and merge requests
-- [`writing-for-agents`](atoms/writing-for-agents.md): Apply when you write or edit text an agent runs on: a skill, a flow, an atom, a role, AGENTS.md or CLAUDE.md
-
-**Design**
-- [`design-it-twice`](atoms/design-it-twice.md): Apply when facing a novel module interface, data shape or architectural decision with no precedent in the codebase, or when a new requirement lands in an existing design
-- [`do-less`](atoms/do-less.md): Apply when sizing a change, adding an option or abstraction, or sequencing an addition
-- [`domain-model`](atoms/domain-model.md): Apply when writing stateful logic, designing types, or when code branches a lot on the same shape
-- [`module-depth`](atoms/module-depth.md): Apply before you write code that crosses a function boundary: a new or changed signature, exported type or module surface
-- [`one-way`](atoms/one-way.md): Apply when introducing a new API, abstraction or way of doing a task while old ones exist
-- [`patterns`](atoms/patterns.md): Apply when designing a module interface with two or more variants, or when untangling complex code: a switch on type, an instanceof chain, duplicated conditional creation, an import cycle
-- [`shared-state`](atoms/shared-state.md): Apply when concurrent actors, modules or runs might write the same file, key, branch or state object, or when a command must survive crashes and retries
-- [`system-edges`](atoms/system-edges.md): Apply when wiring validation, error handling, adapters or imports across modules
-
-**Code**
-- [`comments`](atoms/comments.md): Apply when you add, keep or review a code comment
-- [`dead-code`](atoms/dead-code.md): Apply when deleting code believed unused, or reviewing a diff that leaves an export, file or branch nothing reaches
-- [`docs`](atoms/docs.md): Apply when writing, editing or reviewing a Markdown document (README, docs, ADR, glossary)
-- [`effects`](atoms/effects.md): Apply when writing or reviewing reactive code (Vue, React, Solid, signals, stores)
-- [`tests`](atoms/tests.md): Apply when you write, change, keep or review a test
-- [`typescript`](atoms/typescript.md): Apply when reading or editing TypeScript
-
-**Proof**
-- [`change-impact`](atoms/change-impact.md): Apply before you change code other code depends on
-- [`evidence`](atoms/evidence.md): Apply to every claim in a reply or report
-- [`prove-shippable`](atoms/prove-shippable.md): Apply after completing a task, before declaring done
-- [`root-causes`](atoms/root-causes.md): Apply when debugging
-- [`why-this-number`](atoms/why-this-number.md): Apply before you trust, report or act on a measured number: a speedup, a regression, a latency, a throughput, an eval score
-
-**Review**
-- [`reader-cost`](atoms/reader-cost.md): Apply when shaping or reviewing code that is hard to trace
-- [`smells`](atoms/smells.md): Apply when judging whether a hunk is a code smell
+| atom | group | apply |
+| --- | --- | --- |
+| [automate-repeats](atoms/automate-repeats.md) | process | to any non-trivial edit, migration, analysis or check |
+| [autonomy](atoms/autonomy.md) | process | when you are about to ask the human 'should I do X?' or to stop and wait |
+| [context-window](atoms/context-window.md) | process | when context fills up: large outputs, long files, repeated reads, fan-out work |
+| [lessons-to-checks](atoms/lessons-to-checks.md) | process | when you catch yourself writing the same instruction a second time, or see a recurring correction or review finding |
+| [questions](atoms/questions.md) | process | before you ask the human anything, or when you interview them about a plan |
+| [small-steps](atoms/small-steps.md) | process | to multistep work and to how you stack commits and merge requests |
+| [writing-for-agents](atoms/writing-for-agents.md) | process | when you write or edit text an agent runs on: a skill, a flow, an atom, a role, AGENTS.md or CLAUDE.md |
+| [design-it-twice](atoms/design-it-twice.md) | design | when facing a novel module interface, data shape or architectural decision with no precedent in the codebase, or when a new requirement lands in an existing design |
+| [do-less](atoms/do-less.md) | design | when sizing a change, adding an option or abstraction, or sequencing an addition |
+| [domain-model](atoms/domain-model.md) | design | when writing stateful logic, designing types, or when code branches a lot on the same shape |
+| [module-depth](atoms/module-depth.md) | design | before you write code that crosses a function boundary: a new or changed signature, exported type or module surface |
+| [one-way](atoms/one-way.md) | design | when introducing a new API, abstraction or way of doing a task while old ones exist |
+| [patterns](atoms/patterns.md) | design | when designing a module interface with two or more variants, or when untangling complex code: a switch on type, an instanceof chain, duplicated conditional creation, an import cycle |
+| [shared-state](atoms/shared-state.md) | design | when concurrent actors, modules or runs might write the same file, key, branch or state object, or when a command must survive crashes and retries |
+| [system-edges](atoms/system-edges.md) | design | when wiring validation, error handling, adapters or imports across modules |
+| [comments](atoms/comments.md) | code | when you add, keep or review a code comment |
+| [dead-code](atoms/dead-code.md) | code | when deleting code believed unused, or reviewing a diff that leaves an export, file or branch nothing reaches |
+| [docs](atoms/docs.md) | code | when writing, editing or reviewing a Markdown document (README, docs, ADR, glossary) |
+| [effects](atoms/effects.md) | code | when writing or reviewing reactive code (Vue, React, Solid, signals, stores) |
+| [tests](atoms/tests.md) | code | when you write, change, keep or review a test |
+| [typescript](atoms/typescript.md) | code | when reading or editing TypeScript |
+| [change-impact](atoms/change-impact.md) | proof | before you change code other code depends on |
+| [evidence](atoms/evidence.md) | proof | to every claim in a reply or report |
+| [prove-shippable](atoms/prove-shippable.md) | proof | after completing a task, before declaring done |
+| [root-causes](atoms/root-causes.md) | proof | when debugging |
+| [why-this-number](atoms/why-this-number.md) | proof | before you trust, report or act on a measured number: a speedup, a regression, a latency, a throughput, an eval score |
+| [reader-cost](atoms/reader-cost.md) | review | when shaping or reviewing code that is hard to trace |
+| [smells](atoms/smells.md) | review | when judging whether a hunk is a code smell |
 
 </details>
 
