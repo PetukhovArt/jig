@@ -7,6 +7,7 @@ export interface EditRecord {
   path: string
   at: number
   agent: string
+  via?: 'shell'
 }
 
 export interface StopState {
@@ -35,10 +36,50 @@ const RENAME_RETRY_CODES = new Set(['EPERM', 'EACCES', 'EBUSY'])
 
 let tmpCounter = 0
 
-const sessionFileName = (sessionId: string): string => `${sessionId.replace(/[^A-Za-z0-9._-]/g, '_')}.json`
+const safeName = (id: string): string => id.replace(/[^A-Za-z0-9._-]/g, '_')
+
+const sessionFileName = (sessionId: string): string => `${safeName(sessionId)}.json`
+
+const shellCallPrefix = (sessionId: string): string => `${safeName(sessionId)}.shell-`
 
 export const sessionStatePath = (projectRoot: string, sessionId: string): string =>
   join(jigPaths(projectRoot).sessions, sessionFileName(sessionId))
+
+const shellCallPath = (projectRoot: string, sessionId: string, callId: string): string =>
+  join(jigPaths(projectRoot).sessions, `${shellCallPrefix(sessionId)}${safeName(callId)}.json`)
+
+export const openShellCall = (projectRoot: string, sessionId: string, callId: string, snapshot: Snapshot): void => {
+  mkdirSync(jigPaths(projectRoot).sessions, { recursive: true })
+  writeFileAtomic(shellCallPath(projectRoot, sessionId, callId), JSON.stringify(snapshot))
+}
+
+export const closeShellCall = (projectRoot: string, sessionId: string, callId: string): Snapshot | undefined => {
+  const path = shellCallPath(projectRoot, sessionId, callId)
+  let text: string
+  try {
+    text = readFileSync(path, 'utf8')
+  } catch {
+    return undefined
+  }
+  rmSync(path, { force: true })
+  try {
+    const value: unknown = JSON.parse(text)
+    return typeof value === 'object' && value !== null ? (value as Snapshot) : undefined
+  } catch {
+    return undefined
+  }
+}
+
+export const openShellCalls = (projectRoot: string, sessionId: string): string[] => {
+  const prefix = shellCallPrefix(sessionId)
+  let names: string[]
+  try {
+    names = readdirSync(jigPaths(projectRoot).sessions)
+  } catch {
+    return []
+  }
+  return names.filter((name) => name.startsWith(prefix) && name.endsWith('.json')).map((name) => name.slice(prefix.length, -'.json'.length))
+}
 
 export const createSessionState = (sessionId: string, snapshot: Snapshot, now: Date = new Date()): SessionState => {
   const iso = now.toISOString()

@@ -6,10 +6,13 @@ import { activeRunContext } from '../task-status/task-status'
 import { appendJournal, rotateJournal, type JournalEntry } from '../core/journal'
 import { ensureJigDir, resolvePluginRoot } from '../core/paths'
 import { configDriftLine, loadPlan } from '../core/plan'
-import { takeSnapshot } from '../core/snapshot'
+import { changedSince, takeSnapshot } from '../core/snapshot'
 import {
+  closeShellCall,
   createSessionState,
   MAIN_AGENT,
+  openShellCall,
+  openShellCalls,
   pruneStates,
   readState,
   resetSnapshot,
@@ -173,6 +176,28 @@ const postEdit = async (event: EventOf<'post-edit'>, ctx: HookContext): Promise<
   return contextOf(limitLines(findingLines, POST_EDIT_LINE_LIMIT, ctx.pluginRoot))
 }
 
+const preShell = (event: EventOf<'pre-shell'>, ctx: HookContext): Outcome => {
+  openShellCall(ctx.projectRoot, ctx.sessionId, event.callId, takeSnapshot(ctx.projectRoot))
+  return NONE
+}
+
+const attributeShellCall = (ctx: HookContext, state: SessionState, callId: string): void => {
+  const before = closeShellCall(ctx.projectRoot, ctx.sessionId, callId)
+  if (before === undefined) return
+  const at = Date.now()
+  for (const path of changedSince(ctx.projectRoot, before)) {
+    state.edits.push({ path, at, agent: ctx.agent, via: 'shell' })
+  }
+}
+
+const postShell = (event: EventOf<'post-shell'>, ctx: HookContext): Outcome => {
+  if (event.isBackground) return NONE
+  const state = openSession(ctx)
+  attributeShellCall(ctx, state, event.callId)
+  writeState(ctx.projectRoot, state)
+  return NONE
+}
+
 const ROLE_PATH = /\S*[\\/]roles[\\/]([\w-]+)\.md\b/g
 
 const subagentStart = (event: EventOf<'subagent-start'>, ctx: HookContext): Outcome => {
@@ -183,7 +208,13 @@ const subagentStart = (event: EventOf<'subagent-start'>, ctx: HookContext): Outc
 
 const stop = async (event: EventOf<'stop'>, ctx: HookContext): Promise<Outcome> => {
   const state = openSession(ctx)
-  const verdict = await stopGate({ projectRoot: ctx.projectRoot, pluginRoot: ctx.pluginRoot, state, stopHookActive: event.stopHookActive })
+  const attributesShell = ctx.attributesShell === true
+  if (attributesShell) {
+    for (const callId of openShellCalls(ctx.projectRoot, ctx.sessionId)) {
+      attributeShellCall(ctx, state, callId)
+    }
+  }
+  const verdict = await stopGate({ projectRoot: ctx.projectRoot, pluginRoot: ctx.pluginRoot, state, stopHookActive: event.stopHookActive, attributesShell })
   writeState(ctx.projectRoot, state)
   for (const note of verdict.notes) {
     journal(ctx, note)
@@ -201,6 +232,10 @@ const route = (event: JigEvent, ctx: HookContext): Outcome | Promise<Outcome> =>
       return preEdit(event, ctx)
     case 'post-edit':
       return postEdit(event, ctx)
+    case 'pre-shell':
+      return preShell(event, ctx)
+    case 'post-shell':
+      return postShell(event, ctx)
     case 'subagent-start':
       return subagentStart(event, { ...ctx, agent: event.agentId })
     case 'stop':
@@ -231,7 +266,7 @@ export const handleHook = async (
     return ''
   }
   if (parsed === undefined) return ''
-  const outcome = await dispatch(parsed.event, parsed.base, resolvePluginRoot(env))
+  const outcome = await dispatch(parsed.event, { ...parsed.base, attributesShell: adapter.attributesShell }, resolvePluginRoot(env))
   return adapter.formatOutcome(parsed.event.kind, outcome)
 }
 

@@ -1,0 +1,27 @@
+{
+  "name": "post-shell",
+  "input": {
+    "session_id": "s1",
+    "transcript_path": "/tmp/t.jsonl",
+    "cwd": "${PROJECT}",
+    "permission_mode": "default",
+    "hook_event_name": "PostToolUse",
+    "tool_name": "PowerShell",
+    "tool_use_id": "t8",
+    "tool_input": {
+      "command": "npm run dev",
+      "run_in_background": true
+    },
+    "tool_response": {}
+  },
+  "expected": {
+    "base": {
+      "sessionId": "s1"
+    },
+    "event": {
+      "kind": "post-shell",
+      "callId": "t8",
+      "isBackground": true
+    }
+  }
+}

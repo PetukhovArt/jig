@@ -2343,8 +2343,41 @@ var STATE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1e3;
 var RENAME_ATTEMPTS = 20;
 var RENAME_RETRY_CODES = /* @__PURE__ */ new Set(["EPERM", "EACCES", "EBUSY"]);
 var tmpCounter = 0;
-var sessionFileName = (sessionId) => `${sessionId.replace(/[^A-Za-z0-9._-]/g, "_")}.json`;
+var safeName = (id) => id.replace(/[^A-Za-z0-9._-]/g, "_");
+var sessionFileName = (sessionId) => `${safeName(sessionId)}.json`;
+var shellCallPrefix = (sessionId) => `${safeName(sessionId)}.shell-`;
 var sessionStatePath = (projectRoot, sessionId) => join8(jigPaths(projectRoot).sessions, sessionFileName(sessionId));
+var shellCallPath = (projectRoot, sessionId, callId) => join8(jigPaths(projectRoot).sessions, `${shellCallPrefix(sessionId)}${safeName(callId)}.json`);
+var openShellCall = (projectRoot, sessionId, callId, snapshot2) => {
+  mkdirSync5(jigPaths(projectRoot).sessions, { recursive: true });
+  writeFileAtomic(shellCallPath(projectRoot, sessionId, callId), JSON.stringify(snapshot2));
+};
+var closeShellCall = (projectRoot, sessionId, callId) => {
+  const path2 = shellCallPath(projectRoot, sessionId, callId);
+  let text3;
+  try {
+    text3 = readFileSync10(path2, "utf8");
+  } catch {
+    return void 0;
+  }
+  rmSync2(path2, { force: true });
+  try {
+    const value = JSON.parse(text3);
+    return typeof value === "object" && value !== null ? value : void 0;
+  } catch {
+    return void 0;
+  }
+};
+var openShellCalls = (projectRoot, sessionId) => {
+  const prefix = shellCallPrefix(sessionId);
+  let names;
+  try {
+    names = readdirSync2(jigPaths(projectRoot).sessions);
+  } catch {
+    return [];
+  }
+  return names.filter((name) => name.startsWith(prefix) && name.endsWith(".json")).map((name) => name.slice(prefix.length, -".json".length));
+};
 var createSessionState = (sessionId, snapshot2, now = /* @__PURE__ */ new Date()) => {
   const iso = now.toISOString();
   return {
@@ -3430,7 +3463,8 @@ var changedFiles = (projectRoot) => {
   const top = gitToplevel(projectRoot);
   if (top === void 0) return [];
   const entries = gitStatus(top) ?? [];
-  return entries.map((entry) => toProjectPath(projectRoot, join18(top, entry.path))).filter(isInsideProject);
+  const longFormRoot = realPath(projectRoot);
+  return entries.map((entry) => toProjectPath(longFormRoot, join18(top, entry.path))).filter(isInsideProject);
 };
 var takeSnapshot = (projectRoot) => {
   const snapshot2 = {};
@@ -3447,7 +3481,11 @@ var diffFingerprint = (stamps) => {
   const lines2 = Object.keys(stamps).sort().map((path2) => `${path2}:${stamps[path2]?.mtimeMs}:${stamps[path2]?.size}`);
   return createHash4("sha1").update(lines2.join("\n")).digest("hex");
 };
-var turnDiff = (projectRoot, snapshot2, edits) => {
+var changedSince = (projectRoot, before) => {
+  const after = takeSnapshot(projectRoot);
+  return Object.keys(after).filter((path2) => !isSameStamp(before[path2], after[path2])).sort();
+};
+var turnDiff = (projectRoot, snapshot2, edits, editsHoldShellChanges = false) => {
   const stamps = {};
   for (const { path: path2 } of edits) {
     const stamp = stampOf(join18(projectRoot, path2));
@@ -3455,14 +3493,19 @@ var turnDiff = (projectRoot, snapshot2, edits) => {
       stamps[path2] = stamp;
     }
   }
+  const foreign = [];
   for (const path2 of changedFiles(projectRoot)) {
     if (Object.hasOwn(stamps, path2)) continue;
     const stamp = stampOf(join18(projectRoot, path2));
     if (stamp === void 0 || isSameStamp(snapshot2[path2], stamp)) continue;
-    stamps[path2] = stamp;
+    if (editsHoldShellChanges) {
+      foreign.push(path2);
+    } else {
+      stamps[path2] = stamp;
+    }
   }
   const files = Object.keys(stamps).sort();
-  return { files, stamps, fingerprint: diffFingerprint(stamps) };
+  return { files, stamps, fingerprint: diffFingerprint(stamps), foreign: foreign.sort() };
 };
 
 // src/task-status/task-status.ts
@@ -3831,22 +3874,24 @@ var blockNotes = (blocking) => blocking.map((finding) => ({
   line: finding.line,
   message: finding.message
 }));
+var foreignChangeNotes = (files) => files.length === 0 ? [] : [{ kind: "foreign-change", tool: "jig", message: files.join(", ") }];
 var stopGate = async (input) => {
   const { projectRoot, pluginRoot, state } = input;
-  const diff = turnDiff(projectRoot, state.snapshot, state.edits);
+  const diff = turnDiff(projectRoot, state.snapshot, state.edits, input.attributesShell);
+  const foreignNotes = foreignChangeNotes(diff.foreign);
   const isQuiet = diff.files.length === 0 || diff.fingerprint === state.stop.lastGreenFingerprint;
-  if (isQuiet) return { outcome: NONE, notes: [] };
+  if (isQuiet) return { outcome: NONE, notes: foreignNotes };
   const isUnresolved = input.stopHookActive && diff.fingerprint === state.stop.lastBlockDiffFingerprint;
   if (isUnresolved) {
     logToActiveJournal(projectRoot, { phase: "gate", decision: "gate unresolved", why: UNRESOLVED_WHY });
-    return { outcome: NONE, notes: [{ kind: "gate-unresolved", tool: "jig", message: UNRESOLVED_WHY }] };
+    return { outcome: NONE, notes: [...foreignNotes, { kind: "gate-unresolved", tool: "jig", message: UNRESOLVED_WHY }] };
   }
   const plan = loadPlan(projectRoot, pluginRoot);
   const checks = await runStopChecks({ projectRoot, pluginRoot, plan, diff });
   if (checks.blocking.length === 0) {
     state.stop = { lastGreenFingerprint: diff.fingerprint, consecutiveBlocks: 0 };
     resetSnapshot(state, takeSnapshot(projectRoot));
-    return { outcome: NONE, notes: [...checks.notes, { kind: "gate-pass", tool: "jig", durationMs: checks.durationMs }] };
+    return { outcome: NONE, notes: [...foreignNotes, ...checks.notes, { kind: "gate-pass", tool: "jig", durationMs: checks.durationMs }] };
   }
   const fingerprint = findingsFingerprint(checks.blocking);
   const isRepeat = fingerprint === state.stop.lastBlockFingerprint;
@@ -3855,12 +3900,12 @@ var stopGate = async (input) => {
     state.stop = { consecutiveBlocks: 0 };
     const [first] = checks.blocking;
     const giveUp = { kind: "gate-giveup", tool: "jig", durationMs: checks.durationMs, ...first && { rule: first.rule, file: first.file } };
-    return { outcome: NONE, notes: [...checks.notes, giveUp] };
+    return { outcome: NONE, notes: [...foreignNotes, ...checks.notes, giveUp] };
   }
   state.stop = { ...state.stop, lastBlockFingerprint: fingerprint, consecutiveBlocks, lastBlockDiffFingerprint: diff.fingerprint };
   return {
     outcome: { type: "block", reason: blockReason(checks.blocking, pluginRoot) },
-    notes: [...checks.notes, ...blockNotes(checks.blocking)]
+    notes: [...foreignNotes, ...checks.notes, ...blockNotes(checks.blocking)]
   };
 };
 var printFailures = (runs) => {
@@ -3925,12 +3970,15 @@ import { join as join20 } from "node:path";
 // src/adapters/claude.ts
 import { readFileSync as readFileSync19 } from "node:fs";
 import { isAbsolute as isAbsolute3, resolve as resolve7 } from "node:path";
+var SHELL_CALL = "shell";
 var SESSION_SOURCES = ["startup", "resume", "clear", "compact", "fork"];
 var HOOK_EVENT_NAMES = {
   "session-start": "SessionStart",
   prompt: "UserPromptSubmit",
   "pre-edit": "PreToolUse",
   "post-edit": "PostToolUse",
+  "pre-shell": "PreToolUse",
+  "post-shell": "PostToolUse",
   "subagent-start": "SubagentStart",
   stop: "Stop"
 };
@@ -4004,6 +4052,10 @@ var toEvent = (name, input, paths) => {
       const file = toolFile(toolInput, paths);
       return file === void 0 ? void 0 : { kind: "post-edit", file };
     }
+    case "pre-shell":
+      return { kind: "pre-shell", callId: text(input, "tool_use_id") ?? SHELL_CALL };
+    case "post-shell":
+      return { kind: "post-shell", callId: text(input, "tool_use_id") ?? SHELL_CALL, isBackground: toolInput["run_in_background"] === true };
     case "subagent-start": {
       const agentId = text(input, "agent_id");
       if (agentId === void 0) return void 0;
@@ -4052,7 +4104,7 @@ var formatOutcome = (kind, outcome) => {
       return JSON.stringify({ decision: "block", reason: outcome.reason });
   }
 };
-var claude = { name: "claude", parseHookInput, formatOutcome };
+var claude = { name: "claude", attributesShell: true, parseHookInput, formatOutcome };
 
 // src/adapters/index.ts
 var ADAPTERS = { claude };
@@ -4185,6 +4237,25 @@ var postEdit = async (event, ctx) => {
   writeState(ctx.projectRoot, state);
   return contextOf(limitLines(findingLines, POST_EDIT_LINE_LIMIT, ctx.pluginRoot));
 };
+var preShell = (event, ctx) => {
+  openShellCall(ctx.projectRoot, ctx.sessionId, event.callId, takeSnapshot(ctx.projectRoot));
+  return NONE2;
+};
+var attributeShellCall = (ctx, state, callId) => {
+  const before = closeShellCall(ctx.projectRoot, ctx.sessionId, callId);
+  if (before === void 0) return;
+  const at = Date.now();
+  for (const path2 of changedSince(ctx.projectRoot, before)) {
+    state.edits.push({ path: path2, at, agent: ctx.agent, via: "shell" });
+  }
+};
+var postShell = (event, ctx) => {
+  if (event.isBackground) return NONE2;
+  const state = openSession(ctx);
+  attributeShellCall(ctx, state, event.callId);
+  writeState(ctx.projectRoot, state);
+  return NONE2;
+};
 var ROLE_PATH = /\S*[\\/]roles[\\/]([\w-]+)\.md\b/g;
 var subagentStart = (event, ctx) => {
   const prompt2 = event.prompt?.replace(ROLE_PATH, "role $1");
@@ -4193,7 +4264,13 @@ var subagentStart = (event, ctx) => {
 };
 var stop = async (event, ctx) => {
   const state = openSession(ctx);
-  const verdict2 = await stopGate({ projectRoot: ctx.projectRoot, pluginRoot: ctx.pluginRoot, state, stopHookActive: event.stopHookActive });
+  const attributesShell = ctx.attributesShell === true;
+  if (attributesShell) {
+    for (const callId of openShellCalls(ctx.projectRoot, ctx.sessionId)) {
+      attributeShellCall(ctx, state, callId);
+    }
+  }
+  const verdict2 = await stopGate({ projectRoot: ctx.projectRoot, pluginRoot: ctx.pluginRoot, state, stopHookActive: event.stopHookActive, attributesShell });
   writeState(ctx.projectRoot, state);
   for (const note of verdict2.notes) {
     journal(ctx, note);
@@ -4210,6 +4287,10 @@ var route = (event, ctx) => {
       return preEdit(event, ctx);
     case "post-edit":
       return postEdit(event, ctx);
+    case "pre-shell":
+      return preShell(event, ctx);
+    case "post-shell":
+      return postShell(event, ctx);
     case "subagent-start":
       return subagentStart(event, { ...ctx, agent: event.agentId });
     case "stop":
@@ -4233,7 +4314,7 @@ var handleHook = async (name, raw, env = process.env, adapter = resolveAdapter()
     return "";
   }
   if (parsed === void 0) return "";
-  const outcome = await dispatch2(parsed.event, parsed.base, resolvePluginRoot(env));
+  const outcome = await dispatch2(parsed.event, { ...parsed.base, attributesShell: adapter.attributesShell }, resolvePluginRoot(env));
   return adapter.formatOutcome(parsed.event.kind, outcome);
 };
 var parseHookArgs = (args) => {
@@ -5547,7 +5628,7 @@ var findBash = (env = process.env, platform = process.platform) => {
   const fromEnv = env["JIG_BASH"];
   if (fromEnv) return fromEnv;
   if (platform !== "win32") return findInPath("bash", env);
-  const git2 = findInPath("git", env);
+  const git2 = findInPath("git.exe", env);
   if (git2 !== void 0) {
     for (const root of [dirname9(dirname9(git2)), dirname9(dirname9(dirname9(git2)))]) {
       const candidate = join24(root, "bin", "bash.exe");

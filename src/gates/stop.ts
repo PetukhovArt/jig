@@ -44,6 +44,7 @@ export interface StopGateInput {
   pluginRoot: string
   state: SessionState
   stopHookActive: boolean
+  attributesShell: boolean
 }
 
 export interface StopVerdict {
@@ -158,22 +159,26 @@ const blockNotes = (blocking: readonly Finding[]): JournalNote[] =>
     message: finding.message,
   }))
 
+const foreignChangeNotes = (files: readonly string[]): JournalNote[] =>
+  files.length === 0 ? [] : [{ kind: 'foreign-change', tool: 'jig', message: files.join(', ') }]
+
 export const stopGate = async (input: StopGateInput): Promise<StopVerdict> => {
   const { projectRoot, pluginRoot, state } = input
-  const diff = turnDiff(projectRoot, state.snapshot, state.edits)
+  const diff = turnDiff(projectRoot, state.snapshot, state.edits, input.attributesShell)
+  const foreignNotes = foreignChangeNotes(diff.foreign)
   const isQuiet = diff.files.length === 0 || diff.fingerprint === state.stop.lastGreenFingerprint
-  if (isQuiet) return { outcome: NONE, notes: [] }
+  if (isQuiet) return { outcome: NONE, notes: foreignNotes }
   const isUnresolved = input.stopHookActive && diff.fingerprint === state.stop.lastBlockDiffFingerprint
   if (isUnresolved) {
     logToActiveJournal(projectRoot, { phase: 'gate', decision: 'gate unresolved', why: UNRESOLVED_WHY })
-    return { outcome: NONE, notes: [{ kind: 'gate-unresolved', tool: 'jig', message: UNRESOLVED_WHY }] }
+    return { outcome: NONE, notes: [...foreignNotes, { kind: 'gate-unresolved', tool: 'jig', message: UNRESOLVED_WHY }] }
   }
   const plan = loadPlan(projectRoot, pluginRoot)
   const checks = await runStopChecks({ projectRoot, pluginRoot, plan, diff })
   if (checks.blocking.length === 0) {
     state.stop = { lastGreenFingerprint: diff.fingerprint, consecutiveBlocks: 0 }
     resetSnapshot(state, takeSnapshot(projectRoot))
-    return { outcome: NONE, notes: [...checks.notes, { kind: 'gate-pass', tool: 'jig', durationMs: checks.durationMs }] }
+    return { outcome: NONE, notes: [...foreignNotes, ...checks.notes, { kind: 'gate-pass', tool: 'jig', durationMs: checks.durationMs }] }
   }
   const fingerprint = findingsFingerprint(checks.blocking)
   const isRepeat = fingerprint === state.stop.lastBlockFingerprint
@@ -182,12 +187,12 @@ export const stopGate = async (input: StopGateInput): Promise<StopVerdict> => {
     state.stop = { consecutiveBlocks: 0 }
     const [first] = checks.blocking
     const giveUp: JournalNote = { kind: 'gate-giveup', tool: 'jig', durationMs: checks.durationMs, ...(first && { rule: first.rule, file: first.file }) }
-    return { outcome: NONE, notes: [...checks.notes, giveUp] }
+    return { outcome: NONE, notes: [...foreignNotes, ...checks.notes, giveUp] }
   }
   state.stop = { ...state.stop, lastBlockFingerprint: fingerprint, consecutiveBlocks, lastBlockDiffFingerprint: diff.fingerprint }
   return {
     outcome: { type: 'block', reason: blockReason(checks.blocking, pluginRoot) },
-    notes: [...checks.notes, ...blockNotes(checks.blocking)],
+    notes: [...foreignNotes, ...checks.notes, ...blockNotes(checks.blocking)],
   }
 }
 

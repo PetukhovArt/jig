@@ -7,6 +7,7 @@ export interface ParsedHook {
 
 export interface AgentAdapter {
   name: string
+  attributesShell: boolean
   parseHookInput: (name: string, raw: string, env?: NodeJS.ProcessEnv) => ParsedHook | undefined
   formatOutcome: (kind: JigEvent['kind'], outcome: Outcome) => string
 }

@@ -16,6 +16,7 @@ export interface TurnDiff {
   files: string[]
   stamps: Snapshot
   fingerprint: string
+  foreign: string[]
 }
 
 const stampOf = (absolutePath: string): FileStamp | undefined => {
@@ -58,7 +59,19 @@ export const diffFingerprint = (stamps: Snapshot): string => {
   return createHash('sha1').update(lines.join('\n')).digest('hex')
 }
 
-export const turnDiff = (projectRoot: string, snapshot: Snapshot, edits: readonly { path: string }[]): TurnDiff => {
+export const changedSince = (projectRoot: string, before: Snapshot): string[] => {
+  const after = takeSnapshot(projectRoot)
+  return Object.keys(after)
+    .filter((path) => !isSameStamp(before[path], after[path] as FileStamp))
+    .sort()
+}
+
+export const turnDiff = (
+  projectRoot: string,
+  snapshot: Snapshot,
+  edits: readonly { path: string }[],
+  editsHoldShellChanges = false,
+): TurnDiff => {
   const stamps: Snapshot = {}
   for (const { path } of edits) {
     const stamp = stampOf(join(projectRoot, path))
@@ -66,12 +79,17 @@ export const turnDiff = (projectRoot: string, snapshot: Snapshot, edits: readonl
       stamps[path] = stamp
     }
   }
+  const foreign: string[] = []
   for (const path of changedFiles(projectRoot)) {
     if (Object.hasOwn(stamps, path)) continue
     const stamp = stampOf(join(projectRoot, path))
     if (stamp === undefined || isSameStamp(snapshot[path], stamp)) continue
-    stamps[path] = stamp
+    if (editsHoldShellChanges) {
+      foreign.push(path)
+    } else {
+      stamps[path] = stamp
+    }
   }
   const files = Object.keys(stamps).sort()
-  return { files, stamps, fingerprint: diffFingerprint(stamps) }
+  return { files, stamps, fingerprint: diffFingerprint(stamps), foreign: foreign.sort() }
 }

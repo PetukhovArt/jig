@@ -10,6 +10,7 @@ export type JournalKind =
   | 'gate-skipped'
   | 'gate-unresolved'
   | 'gate-giveup'
+  | 'foreign-change'
   | 'subagent-start'
   | 'tool-failure'
   | 'hook-failure'

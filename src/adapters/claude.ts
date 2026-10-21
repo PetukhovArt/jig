@@ -6,6 +6,8 @@ import type { AgentAdapter, ParsedHook } from './adapter'
 
 type Json = Record<string, unknown>
 
+const SHELL_CALL = 'shell'
+
 const SESSION_SOURCES: readonly SessionSource[] = ['startup', 'resume', 'clear', 'compact', 'fork']
 
 const HOOK_EVENT_NAMES: Record<JigEvent['kind'], string> = {
@@ -13,6 +15,8 @@ const HOOK_EVENT_NAMES: Record<JigEvent['kind'], string> = {
   prompt: 'UserPromptSubmit',
   'pre-edit': 'PreToolUse',
   'post-edit': 'PostToolUse',
+  'pre-shell': 'PreToolUse',
+  'post-shell': 'PostToolUse',
   'subagent-start': 'SubagentStart',
   stop: 'Stop',
 }
@@ -98,6 +102,10 @@ const toEvent = (name: string, input: Json, paths: PathContext): JigEvent | unde
       const file = toolFile(toolInput, paths)
       return file === undefined ? undefined : { kind: 'post-edit', file }
     }
+    case 'pre-shell':
+      return { kind: 'pre-shell', callId: text(input, 'tool_use_id') ?? SHELL_CALL }
+    case 'post-shell':
+      return { kind: 'post-shell', callId: text(input, 'tool_use_id') ?? SHELL_CALL, isBackground: toolInput['run_in_background'] === true }
     case 'subagent-start': {
       const agentId = text(input, 'agent_id')
       if (agentId === undefined) return undefined
@@ -150,4 +158,4 @@ export const formatOutcome = (kind: JigEvent['kind'], outcome: Outcome): string 
   }
 }
 
-export const claude: AgentAdapter = { name: 'claude', parseHookInput, formatOutcome }
+export const claude: AgentAdapter = { name: 'claude', attributesShell: true, parseHookInput, formatOutcome }
