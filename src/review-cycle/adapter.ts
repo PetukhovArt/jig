@@ -31,6 +31,7 @@ export interface Queue {
 /** The team's review process: what triggers a review, where a verdict is recorded, where the task text lives. */
 export interface ProcessAdapter {
   readonly label: string
+  readonly warning?: string
   queue(): Queue
   /** `stale=on|off` and any other `key=value` line for these refs. */
   rules(refs: string): Map<string, string>
@@ -146,6 +147,7 @@ export const scriptAdapter = (path: string, exec: Exec, cwd: string): ProcessAda
 /** No adapter: the queue is the forge's open merge requests with the current user as a reviewer; no tracker, no transitions. */
 export const defaultAdapter = (forge: Forge, repoDir: string): ProcessAdapter => ({
   label: `built-in (${forge.name} reviewer queue)`,
+  warning: `built-in adapter: ${forge.name} reviewer queue, no tracker spec, verdicts not recorded; set reviewCycle.processAdapter for the team's queue`,
   queue: () => ({
     rows: forge.reviewQueue().map((request) => ({
       refs: `!${request.iid}`,

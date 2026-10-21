@@ -10,7 +10,7 @@ What triggers a review and where the verdict goes is the team's: a **process ada
 { "reviewCycle": { "processAdapter": "~/review/process.mjs" } }
 ```
 
-Without one, the queue is the forge's open merge requests where you are a reviewer, and nothing is recorded in a tracker. GitLab through `glab`, GitHub through `gh` (no withdrawal yet); `reviewCycle.forge` overrides the detection by the `origin` remote.
+Without one, the queue is the forge's open merge requests where you are a reviewer, the adapter gives no spec and nothing is recorded in a tracker; `queue` prints a `WARNING built-in adapter: …` line first and the summary repeats it. GitLab through `glab`, GitHub through `gh` (no withdrawal yet); `reviewCycle.forge` overrides the detection by the `origin` remote.
 
 ## Recurrence
 

@@ -21,7 +21,7 @@ A path relative to the project root (the main checkout), absolute, or `~/…`. `
 
 The adapter runs with the main checkout as its working directory.
 
-**No adapter configured: the built-in default.** The queue is the forge's open merge requests where you are a reviewer (GitLab: `reviewer_id`; GitHub: review requested from you or reviewed by you), refs are `!<number>`, `rules` is `stale=on`, no spec, no base-check bullets, and `transition` records nothing.
+**No adapter configured: the built-in default.** The queue is the forge's open merge requests where you are a reviewer (GitLab: `reviewer_id`; GitHub: review requested from you or reviewed by you), refs are `!<number>`, `rules` is `stale=on`, no spec, no base-check bullets, and `transition` records nothing. `jig review-cycle queue` says so on its first line, `WARNING built-in adapter: …`, and the cycle's summary repeats it: a pass on the wrong queue is caught before anything is posted, not at the verdict.
 
 ## Terms
 

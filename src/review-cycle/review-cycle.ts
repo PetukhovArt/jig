@@ -203,9 +203,10 @@ const queue = (args: string[], deps: CycleDeps): number => {
   const discovered = adapter.queue()
   const entries = discovered.rows.map((row) => judgeRow(row, adapter, repos))
   if (values.json === true) {
-    deps.print(JSON.stringify({ adapter: adapter.label, entries, notes: discovered.notes }, null, 2))
+    deps.print(JSON.stringify({ adapter: adapter.label, warning: adapter.warning, entries, notes: discovered.notes }, null, 2))
     return 0
   }
+  if (adapter.warning !== undefined) deps.print(`WARNING\t${adapter.warning}`)
   deps.print(`adapter: ${adapter.label}`)
   entries.forEach((entry) => deps.print(formatEntry(entry)))
   discovered.notes.forEach((note) => deps.print(`NOTE\t${note.refs}\t${note.text}`))

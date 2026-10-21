@@ -142,6 +142,11 @@ describe('jig review-cycle queue: filter rules', () => {
     expect(result.out.filter((line) => line.startsWith('SKIP')).map(decisionOf)).toEqual(['SKIP approved'])
   })
 
+  it('warns on the first line when no adapter is configured, and not with one', () => {
+    expect(run({ mrs: {}, reviewerQueue: [] }, ['queue']).out[0]).toMatch(/^WARNING\tbuilt-in adapter: .*no tracker spec, verdicts not recorded/)
+    expect(run({ mrs: {}, adapter: adapterQueue([]) }, ['queue', '--adapter', adapterPath]).out[0]).toBe(`adapter: ${adapterPath}`)
+  })
+
   it('skips a draft', () => {
     expect(queueLines({ mrs: { 1: {} }, adapter: adapterQueue([row(1, { draft: true })]) }).map(decisionOf)).toEqual(['SKIP draft'])
   })

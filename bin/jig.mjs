@@ -5710,6 +5710,7 @@ var scriptAdapter = (path2, exec, cwd) => {
 };
 var defaultAdapter = (forge, repoDir) => ({
   label: `built-in (${forge.name} reviewer queue)`,
+  warning: `built-in adapter: ${forge.name} reviewer queue, no tracker spec, verdicts not recorded; set reviewCycle.processAdapter for the team's queue`,
   queue: () => ({
     rows: forge.reviewQueue().map((request) => ({
       refs: `!${request.iid}`,
@@ -6388,9 +6389,10 @@ var queue = (args, deps) => {
   const discovered = adapter.queue();
   const entries = discovered.rows.map((row) => judgeRow(row, adapter, repos));
   if (values.json === true) {
-    deps.print(JSON.stringify({ adapter: adapter.label, entries, notes: discovered.notes }, null, 2));
+    deps.print(JSON.stringify({ adapter: adapter.label, warning: adapter.warning, entries, notes: discovered.notes }, null, 2));
     return 0;
   }
+  if (adapter.warning !== void 0) deps.print(`WARNING	${adapter.warning}`);
   deps.print(`adapter: ${adapter.label}`);
   entries.forEach((entry) => deps.print(formatEntry(entry)));
   discovered.notes.forEach((note) => deps.print(`NOTE	${note.refs}	${note.text}`));

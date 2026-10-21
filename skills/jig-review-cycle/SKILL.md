@@ -67,6 +67,7 @@ Run it from inside a repository of the queue. It asks the adapter (or the built-
 
 | Line | Meaning |
 | --- | --- |
+| `WARNING <text>` | first line, only without a configured adapter: the built-in default reviews the forge's reviewer queue, has no tracker spec and records no verdict. Keep it for the summary; the pass goes on. |
 | `SKIP approved …` | anyone approved: re-reviewing could only comment on code cleared to merge. Its outcome is `approved` (the verdict clears the marker). |
 | `SKIP draft …` | not ready. |
 | `SKIP busy …` | its review worktree is live: a previous pass is still on it. |
@@ -123,6 +124,7 @@ One argument per merge request processed, skipped or blocked; outcome `returned`
 One line per merge request that ran a review; skipped ones collapse into one count line.
 
 ```
+WARNING built-in adapter: gitlab reviewer queue, no tracker spec, verdicts not recorded; …
 focus: <first line of the focus note>
 [!142](https://…/merge_requests/142) | returned
 [!145](https://…/merge_requests/145) | need approval
@@ -145,8 +147,9 @@ outside the diff (in the FYI note; a tech-debt issue?):
 - **Status**: `returned` · `need approval` (clean, recommended to the human) · `resolved N` / `resolved N + returned` · `blocked | <reason>`; append `· unverified N` whenever the tally has any, and `· dispute: needs a human` when the engine left one.
 - **skipped**: the `skipped:` line `queue` printed. Omit when nothing was skipped.
 - **tracker**: every `verdict` line and every `NOTE` from `queue`, verbatim. Omit when empty.
+- **WARNING**: the `WARNING` line `queue` printed, verbatim and first. Without it a pass on the built-in queue reads as a pass on the team's.
 - **focus**: printed whenever the focus file exists: without it a narrowed pass reads as a full one.
-- Nothing processed: one line, `nothing to review: skipped N (…)`.
+- Nothing processed: one line, `nothing to review: skipped N (…)`, after the `WARNING` line when there is one.
 
 **Language**: the summary and every text you write on the forge follow jig-review's comment language rule (`review.language` of `.jig/review.jsonc`, otherwise the language of the merge request and its threads); the headings above are written in that language too.
 
