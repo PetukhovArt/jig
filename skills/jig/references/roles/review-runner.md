@@ -19,6 +19,7 @@ Return, in this order:
 ```
 ran jig-review: yes|no
 state: <absolute path of the state file>
+spec: <source> · <absolute path of the spec file the review judged by> | none
 tally: <the machine line, verbatim>
 <the survivors as jig-review printed them, each mrComment verbatim>
 OUTCOMES: <id> → <status>, one per line | none

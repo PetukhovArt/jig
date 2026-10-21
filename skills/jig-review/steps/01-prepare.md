@@ -50,13 +50,17 @@ Claims only, no retelling of documents, up to ~30 lines. In the summary: `facts:
 
 ## Spec
 
-The source of the diff's goal for [angle 15](../angles/15.spec.md). Angle 15 not selected: no search. `discover.spec: false` turns the search off; `discover.tracker: true` allows fetching issues. Search in this order, the first found wins:
+The source of the diff's goal for [angle 15](../angles/15.spec.md). **The spec of a task is what was asked of it**: the task's own text in its tracker (the issue or ticket, its subtasks and comments), or a spec or PRD document that the task or the merge request links. Nothing else is a spec: a project document that describes the area the diff touches (`docs/<area>/spec.md`, a README, a widget's as-is description) is context for the rules finder, never the spec, however it is named. Angle 15 and a review cycle's spec hold are judged against the task's spec only. This is the one definition: a process adapter's `spec` op and `jig review-cycle spec` answer by it too.
 
-1. issue references in the commits of the range (`#123`, `Closes #45`, `!67`) and in the merge request description → the issue with its comments (the comments matter for [`spec_quote`](../angles/15.spec.md#spec_quote));
-2. a path given in the focus note;
-3. a spec file in the repository that matches the branch or feature: `docs/`, `specs/`, `*SPEC.md`, `*prd.md`.
+Angle 15 not selected: no search. `discover.spec: false` turns it off. Otherwise, the first found wins:
 
-The merge request description is only a source of references for item 1: the author of the diff writes it, and a mismatch between it and the code is documentation drift, not a spec finding. Nothing found: angle 15 does not run, the summary says `spec: not found`. Do not ask the user: a spec is not a precondition of a review. The text found goes **only into the personal tail of the finder that carries angle 15**, never into the shared prefix.
+1. a `Spec: <path>` line in the focus note (a review cycle passes the adapter's answer this way) → that file;
+2. the tasks the merge request names: issue references and tracker keys (`#123`, `Closes #45`, `PROJ-46`) in its title and description, its source branch name and the commit messages of the range → each named task read in its tracker with its subtasks and comments (the comments matter for [`spec_quote`](../angles/15.spec.md#spec_quote)). A named task is always read, through whatever reaches its tracker (the forge CLI for forge issues, a tracker CLI or tool the session has); no way in → `spec: not found (<key>: no access)`, never a fallback to another source;
+3. a spec or PRD document that the task from item 2 or the merge request description links.
+
+The merge request description is only a source of references: the author of the diff writes it, and a mismatch between it and the code is documentation drift, not a spec finding. Nothing found: angle 15 does not run, the summary says `spec: not found`. Do not ask the user: a spec is not a precondition of a review. The text found goes **only into the personal tail of the finder that carries angle 15**, never into the shared prefix.
+
+**Keep the text you judged by.** A spec that is not already a file (a task read from its tracker, a linked page) is written once to a file, all of its texts together: with state on `<state file without .json>.spec.md` next to the state file, otherwise a temporary file. The output names the source and that file ([output](08-output.md#output), the `spec` tail), so a caller checks spec quotes against the same text the finder read.
 
 ## Layout
 

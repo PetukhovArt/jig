@@ -54,7 +54,7 @@ NOTE  <refs>  <text>
 - `queue` lists only **triggered** work: the adapter applies its trigger itself. `draft` is `true` or `false`. `APPROVED` means **anyone** approved, not only you: an approved merge request is skipped and its marker cleared. `repo_dir` is the absolute path of a local clone; every per-merge-request call runs there, so one adapter can serve several repositories.
 - A `NOTE` is a fact the cycle cannot act on (a ref with no merge request, a ref parked on a human, a merge request with no local clone). The summary prints it verbatim: nothing in the queue disappears silently.
 - `rules` keys: `stale=on|off`: whether the stale re-review rule applies to these refs. `off` when the trigger itself means "the developer answered" (a status the developer sets after fixing), so a triggered merge request is never stale. Absent means `off`.
-- `spec` prints the path of a file with the task text (an issue body exported to a file, a tracker ticket). Nothing: the review finds issue links itself.
+- `spec` prints the path of a file with the task's spec, by the one definition in `skills/jig-review/steps/01-prepare.md` ("Spec"): the task's tracker text with its subtasks and comments, or a spec or PRD document the task links; never a document that only describes the code the task touches. Nothing: the review reads the tasks the merge request names itself, by the same definition.
 - `transition` targets: `returned` (the ref goes back to its developer), `ready` (nothing left to fix; the ref waits on a human's approval: approval itself is never an adapter op), `none` (the cycle saw an approval and clears its own marker). jig calls it once per ref, as the last step of a cycle.
 
 ## Example

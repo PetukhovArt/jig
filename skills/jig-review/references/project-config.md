@@ -10,7 +10,6 @@ Merge at the top level: a declared key replaces the default one whole; the other
 {
   "iterationsMemory": true,
   "discover": {
-    "tracker": false,
     "spec": true,
     "adr": true,
     "rules": ["AGENTS.md", "CLAUDE.md", "CLAUDE.local.md", "REVIEW.md"],
@@ -30,7 +29,7 @@ Merge at the top level: a declared key replaces the default one whole; the other
 ## Fields
 
 - **`iterationsMemory`**: a re-review reviews only the new diff and keeps the threads ([step 03](../steps/03-state.md)). `--no-state` wins over the config.
-- **`discover.tracker` / `.spec` / `.adr`**: whether to fetch issues, the spec ([angle 15](../angles/15.spec.md)), ADRs as code rules ([angle 13](../angles/13.architecture.md), section C).
+- **`discover.spec` / `.adr`**: whether to look for the task's spec ([prepare](../steps/01-prepare.md#spec): a task the merge request names is read in its tracker whenever this is on), ADRs as code rules ([angle 13](../angles/13.architecture.md), section C).
 - **`discover.rules`**: index file names. Searched at any depth by walking up from the diff's directories; `@file` inside is expanded ([step 02](../steps/02-rules.md)).
 - **`discover.standards` / `.exclude`**: globs of standard documents and what to drop from the found.
 - **`review.glossary` / `.adr`**: whether a changed glossary or ADR is reviewed as a target ([angle 11](../angles/11.docs.md), question 2). Not `discover`: that is about input, this is about the target. A document can be skipped as rules and still have its change judged.
