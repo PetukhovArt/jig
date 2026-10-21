@@ -17,6 +17,21 @@ The agent cannot end a turn on a type error, and cannot open a merge request wit
 - **Review with a second model.** `jig-review` sizes its finders by the diff, and a judge on another model proves each finding before the author sees it. `jig-review-cycle` does it for every merge request waiting on you.
 - **Thin on top.** Knowledge lives in short atoms read when their trigger applies; flows run only when you type `/jig`. One CLI, Node >= 20, no runtime dependencies.
 
+## Who it is for
+
+jig is agnostic by design: the core knows events, files and checks, not an agent, a language or a framework. It is built **Claude Code first, TypeScript first, frontend first**, and is strongest on three fronts:
+
+- **Architecture.** Module layers and boundaries checked on every edit ([stratum](https://github.com/PetukhovArt/stratum)), atoms on module depth, domain models and system edges, a flow that sketches two designs before writing one.
+- **Verification.** Type and lint gates every turn, UI proof on the running app ([agent-view](https://github.com/PetukhovArt/agent-view): browser, Electron, Tauri), a review whose findings a second model proves.
+- **Extensibility.** Any language joins through the project's own `checks`; agents join through an adapter, a team's review process through a [process adapter](docs/review-cycle.md#process-adapter).
+
+| | ready today | through extension |
+| --- | --- | --- |
+| agent | Claude Code | Cursor, Codex: an adapter over the same events ([agents](docs/agents.md)) |
+| language | TypeScript, JavaScript, Vue; C# in the comment, test and suppression gates | any: a `checks` entry with `{files}` ([configuration](docs/configuration.md)) |
+| project | web, Electron and Tauri apps, monorepos | backends, CLIs, libraries: everything but UI proof |
+| platform | Windows, macOS, Linux; GitLab and GitHub | |
+
 ## Quick start
 
 In Claude Code 2.1.275 or later:
