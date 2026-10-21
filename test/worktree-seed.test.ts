@@ -6,7 +6,7 @@ import { git } from '../src/core/git'
 import { samePath } from '../src/worktree/list'
 import { installSteps } from '../src/worktree/lockfiles'
 import { removeLinkedWorktree } from '../src/worktree/remove'
-import { excluder, formatSeed, linkDependencies, linkTarget, seedWorktree } from '../src/worktree/seed'
+import { excluder, formatSeed, linkTarget, seedWorktree } from '../src/worktree/seed'
 
 const identity = (path: string): string => path
 
@@ -190,11 +190,10 @@ describe('seed a worktree from the main checkout', () => {
   })
 })
 
-describe('review worktree: linked node_modules and teardown', () => {
+describe('worktree teardown', () => {
   let root: string
   let main: string
-  let sameLock: string
-  let otherLock: string
+  let worktree: string
 
   const sh = (cwd: string, ...args: string[]): void => {
     const result = git(args, cwd)
@@ -206,43 +205,28 @@ describe('review worktree: linked node_modules and teardown', () => {
   beforeAll(() => {
     root = mkdtempSync(join(tmpdir(), 'jig-deps-'))
     main = join(root, 'main')
-    sameLock = join(root, 'wt-same')
-    otherLock = join(root, 'wt-other')
+    worktree = join(root, 'wt')
     sh(root, 'init', '-q', '-b', 'main', main)
     sh(main, 'config', 'user.email', 'test@example.com')
     sh(main, 'config', 'user.name', 'test')
     writeFileSync(join(main, '.gitignore'), 'node_modules/\n')
-    writeFileSync(join(main, 'package-lock.json'), '{"lockfileVersion":3}\n')
     sh(main, 'add', '.')
     sh(main, 'commit', '-q', '-m', 'init')
-    sh(main, 'checkout', '-q', '-b', 'bump')
-    writeFileSync(join(main, 'package-lock.json'), '{"lockfileVersion":3,"packages":{}}\n')
-    sh(main, 'commit', '-q', '-am', 'bump')
-    sh(main, 'checkout', '-q', 'main')
     mkdirSync(join(main, 'node_modules', 'pkg'), { recursive: true })
     writeFileSync(sentinel(), 'installed')
-    sh(main, 'worktree', 'add', '-q', '--detach', sameLock, 'main')
-    sh(main, 'worktree', 'add', '-q', '--detach', otherLock, 'bump')
-    writeFileSync(join(main, 'package-lock.json'), '{\n"lockfileVersion":3}\n')
-    writeFileSync(join(sameLock, 'package-lock.json'), '{\r\n"lockfileVersion":3}\r\n')
+    sh(main, 'worktree', 'add', '-q', '--detach', worktree, 'main')
+    symlinkSync(join(main, 'node_modules'), join(worktree, 'node_modules'), process.platform === 'win32' ? 'junction' : 'dir')
   })
 
   afterAll(() => {
     rmSync(root, { recursive: true, force: true })
   })
 
-  it('links node_modules only when the lock file is byte-identical to the main checkout, line endings aside', () => {
-    expect(linkDependencies(main, sameLock)).toMatchObject({ action: 'linked', path: 'node_modules' })
-    expect(readFileSync(join(sameLock, 'node_modules', 'pkg', 'sentinel.txt'), 'utf8')).toBe('installed')
-    expect(linkDependencies(main, otherLock)).toEqual({ action: 'skipped', path: 'node_modules', detail: 'package-lock.json differs from the main checkout' })
-    expect(existsSync(join(otherLock, 'node_modules'))).toBe(false)
-  })
-
-  it('teardown unlinks the junction or symlink first, so the main checkout keeps its node_modules', () => {
-    expect(lstatSync(join(sameLock, 'node_modules')).isSymbolicLink()).toBe(true)
-    const removal = removeLinkedWorktree(sameLock, main)
+  it('unlinks a junction or symlink first, so the main checkout keeps its node_modules', () => {
+    expect(lstatSync(join(worktree, 'node_modules')).isSymbolicLink()).toBe(true)
+    const removal = removeLinkedWorktree(worktree, main)
     expect(removal).toEqual({ unlinked: 1, error: undefined })
-    expect(existsSync(sameLock)).toBe(false)
+    expect(existsSync(worktree)).toBe(false)
     expect(readFileSync(sentinel(), 'utf8')).toBe('installed')
   })
 })

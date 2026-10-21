@@ -7,7 +7,7 @@ import { gitToplevel } from '../core/git'
 import { resolveProjectRoot, toSlash } from '../core/paths'
 import { listWorktrees, samePath } from './list'
 import { removeLinkedWorktree } from './remove'
-import { formatSeed, linkDependencies, seedWorktree } from './seed'
+import { formatSeed, seedWorktree } from './seed'
 import {
   auditWorktrees,
   currentWorktree,
@@ -39,9 +39,9 @@ const mainCheckout = (cwd: string): string => {
 }
 
 const worktreeSeed = (args: string[]): number => {
-  const { values, positionals } = parseArgs({ args, options: { 'link-deps': { type: 'boolean' } }, allowPositionals: true, strict: true })
+  const { positionals } = parseArgs({ args, options: {}, allowPositionals: true, strict: true })
   const [target] = positionals
-  if (positionals.length !== 1 || target === undefined) return fail('usage: worktree seed <dir> [--link-deps]', 2)
+  if (positionals.length !== 1 || target === undefined) return fail('usage: worktree seed <dir>', 2)
   const dir = resolve(target)
   if (!existsSync(dir)) return fail(`no such dir ${toSlash(dir)}`, 1)
   const toplevel = gitToplevel(dir)
@@ -50,8 +50,7 @@ const worktreeSeed = (args: string[]): number => {
   if (samePath(main, dir)) return fail(`${toSlash(dir)} is the main checkout, seed fills another worktree from it`, 1)
   const config = loadConfig(main)
   if (config.error !== undefined) return fail(`.jig/config.jsonc: ${config.error}`, 1)
-  const deps = values['link-deps'] === true ? [linkDependencies(main, dir)] : []
-  const items = [...deps, ...seedWorktree(main, dir, config.worktree)]
+  const items = seedWorktree(main, dir, config.worktree)
   for (const line of formatSeed(items)) {
     print(line)
   }

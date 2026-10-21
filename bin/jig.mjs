@@ -1726,8 +1726,8 @@ var findNearestTsconfig = (projectRoot, file) => {
 var toIncludeGlob = (pattern) => {
   const clean = toSlash(pattern).replace(/^\.\//, "").replace(/\/$/, "");
   const lastSegment = clean.split("/").pop() ?? "";
-  const isDirectory2 = !WILDCARD.test(clean) && !lastSegment.includes(".");
-  return isDirectory2 ? `${clean}/**/*` : clean;
+  const isDirectory = !WILDCARD.test(clean) && !lastSegment.includes(".");
+  return isDirectory ? `${clean}/**/*` : clean;
 };
 var covers = (configPath, absoluteFile) => {
   const config = readTsconfig(configPath);
@@ -6570,7 +6570,7 @@ var runReviewCycle = (args) => runReviewCycleWith(args, { exec: spawnExec, cwd: 
 
 // src/slot/slot.ts
 import { spawnSync as spawnSync4 } from "node:child_process";
-import { existsSync as existsSync16, mkdirSync as mkdirSync13, readFileSync as readFileSync27, rmSync as rmSync6, writeFileSync as writeFileSync9 } from "node:fs";
+import { existsSync as existsSync16, mkdirSync as mkdirSync13, readFileSync as readFileSync26, rmSync as rmSync6, writeFileSync as writeFileSync9 } from "node:fs";
 import { basename as basename6, dirname as dirname11, isAbsolute as isAbsolute6, join as join28, relative as relative7, resolve as resolve13 } from "node:path";
 import { parseArgs as parseArgs5 } from "node:util";
 
@@ -6632,7 +6632,7 @@ var removeLinkedWorktree = (path2, mainRoot) => {
 };
 
 // src/worktree/seed.ts
-import { copyFileSync as copyFileSync4, lstatSync, mkdirSync as mkdirSync12, readdirSync as readdirSync13, readFileSync as readFileSync26, readlinkSync, realpathSync as realpathSync3, statSync as statSync10, symlinkSync } from "node:fs";
+import { copyFileSync as copyFileSync4, lstatSync, mkdirSync as mkdirSync12, readdirSync as readdirSync13, readlinkSync, realpathSync as realpathSync3, statSync as statSync10, symlinkSync } from "node:fs";
 import nodePath from "node:path";
 var exists2 = (path2) => {
   try {
@@ -6739,50 +6739,6 @@ var seedWorktree = (main, worktree, options = {}) => {
     items.push(copyFileItem(main, worktree, file, ignoredDirs, fileSet));
   }
   return items;
-};
-var NODE_LOCKFILES = ["package-lock.json", "npm-shrinkwrap.json", "pnpm-lock.yaml", "yarn.lock", "bun.lock", "bun.lockb"];
-var DEPS_DIR = "node_modules";
-var readOrUndefined = (path2) => {
-  try {
-    return readFileSync26(path2);
-  } catch {
-    return void 0;
-  }
-};
-var isDirectory = (path2) => {
-  try {
-    return statSync10(path2).isDirectory();
-  } catch {
-    return false;
-  }
-};
-var BINARY_LOCKFILES = /* @__PURE__ */ new Set(["bun.lockb"]);
-var lockBytes = (dir, file) => {
-  const bytes = readOrUndefined(nodePath.join(dir, file));
-  if (bytes === void 0) return void 0;
-  const text3 = bytes.toString("latin1");
-  return BINARY_LOCKFILES.has(file) ? text3 : text3.replace(/\r\n/g, "\n");
-};
-var lockMismatch = (main, worktree) => {
-  const pairs = NODE_LOCKFILES.map((file) => ({ file, main: lockBytes(main, file), worktree: lockBytes(worktree, file) }));
-  const present = pairs.filter((pair) => pair.main !== void 0 || pair.worktree !== void 0);
-  if (present.length === 0) return "no lock file";
-  const differs = present.find((pair) => pair.main === void 0 || pair.worktree === void 0 || pair.main !== pair.worktree);
-  return differs === void 0 ? void 0 : `${differs.file} differs from the main checkout`;
-};
-var linkDependencies = (main, worktree) => {
-  const source = nodePath.join(main, DEPS_DIR);
-  const destination = nodePath.join(worktree, DEPS_DIR);
-  if (exists2(destination)) return { action: "kept", path: DEPS_DIR };
-  if (!isDirectory(source)) return { action: "skipped", path: DEPS_DIR, detail: "the main checkout has none" };
-  const mismatch = lockMismatch(main, worktree);
-  if (mismatch !== void 0) return { action: "skipped", path: DEPS_DIR, detail: mismatch };
-  try {
-    symlinkSync(source, destination, process.platform === "win32" ? "junction" : "dir");
-    return { action: "linked", path: DEPS_DIR, detail: source.replace(/\\/g, "/") };
-  } catch (error) {
-    return { action: "failed", path: DEPS_DIR, detail: error instanceof Error ? error.message : String(error) };
-  }
 };
 var formatSeed = (items) => {
   const lines2 = items.filter((item) => item.action !== "kept" && item.action !== "excluded").map((item) => `${item.action} ${item.path}${item.detail === void 0 ? "" : ` (${item.detail})`}`);
@@ -6891,13 +6847,13 @@ var insideDir = (dir, file) => {
 var writePorts = (dir, slots, slot) => {
   for (const [key, port] of Object.entries(slots.ports ?? {})) {
     const path2 = insideDir(dir, port.target);
-    const text3 = existsSync16(path2) ? readFileSync27(path2, "utf8") : "";
+    const text3 = existsSync16(path2) ? readFileSync26(path2, "utf8") : "";
     writeLocalFile(dir, port.target, setEnvValue(text3, key, String(port.base + slot * port.step)));
   }
 };
 var readJsonObject = (path2) => {
   if (!existsSync16(path2)) return {};
-  const value = parseJsonc(readFileSync27(path2, "utf8"));
+  const value = parseJsonc(readFileSync26(path2, "utf8"));
   const isObject7 = typeof value === "object" && value !== null && !Array.isArray(value);
   return isObject7 ? value : {};
 };
@@ -7157,9 +7113,9 @@ var mainCheckout = (cwd) => {
   return main;
 };
 var worktreeSeed = (args) => {
-  const { values, positionals } = parseArgs6({ args, options: { "link-deps": { type: "boolean" } }, allowPositionals: true, strict: true });
+  const { positionals } = parseArgs6({ args, options: {}, allowPositionals: true, strict: true });
   const [target] = positionals;
-  if (positionals.length !== 1 || target === void 0) return fail4("usage: worktree seed <dir> [--link-deps]", 2);
+  if (positionals.length !== 1 || target === void 0) return fail4("usage: worktree seed <dir>", 2);
   const dir = resolve15(target);
   if (!existsSync17(dir)) return fail4(`no such dir ${toSlash(dir)}`, 1);
   const toplevel = gitToplevel(dir);
@@ -7168,8 +7124,7 @@ var worktreeSeed = (args) => {
   if (samePath(main, dir)) return fail4(`${toSlash(dir)} is the main checkout, seed fills another worktree from it`, 1);
   const config = loadConfig(main);
   if (config.error !== void 0) return fail4(`.jig/config.jsonc: ${config.error}`, 1);
-  const deps = values["link-deps"] === true ? [linkDependencies(main, dir)] : [];
-  const items = [...deps, ...seedWorktree(main, dir, config.worktree)];
+  const items = seedWorktree(main, dir, config.worktree);
   for (const line of formatSeed(items)) {
     print2(line);
   }
