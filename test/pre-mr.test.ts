@@ -87,6 +87,16 @@ describe('jig pre-mr', () => {
     expect(stdout()).toContain('UI files: none')
   })
 
+  it('reads paths after -- from the current directory and refuses a scope with no changes', () => {
+    write(root, 'src/a.ts', 'export const a = 2\n')
+    write(root, 'src/App.vue', '<template><span /></template>\n')
+
+    expect(run(['main', '--', 'a.ts'], join(root, 'src'))).toBe(0)
+    expect(stdout()).toContain('UI files: none')
+    expect(() => run(['main', '--', 'src/a.ts'], join(root, 'src'))).toThrow('nothing changed against main under src/src/a.ts')
+    expect(() => run(['main', '--', '../../elsewhere.ts'], join(root, 'src'))).toThrow('../../elsewhere.ts is outside the repository')
+  })
+
   it('asks for no UI proof when the config names no proof tool', () => {
     write(root, '.jig/config.jsonc', '{}\n')
     write(root, 'src/App.vue', '<template><span /></template>\n')

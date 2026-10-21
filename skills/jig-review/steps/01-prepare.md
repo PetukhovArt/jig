@@ -23,7 +23,7 @@ Mode `review` with a merge request URL or number, or when asked to post: resolve
 
 The reviewed diff is `git diff $(git merge-base <base> HEAD)`: the commits of the branch plus uncommitted changes. New untracked files are not in it: `jig review-plan` counts them; in mode `pre-mr` run `git add -N <files>` so they are reviewed.
 
-**Scope in mode `pre-mr`.** The working tree is part of the diff, so uncommitted work that is not the task's (another agent, a parallel task, the user's edits) would be counted and reviewed. `git status` shows changes outside the task's files → pass the task's paths after `--` to `jig review-plan` (pathspecs from the repository root). It counts, shapes and prints the diff for those paths only.
+**Scope in mode `pre-mr`.** The working tree is part of the diff, so uncommitted work that is not the task's (another agent, a parallel task, the user's edits) would be counted and reviewed. `git status` shows changes outside the task's files → pass the task's paths after `--` to `jig review-plan` (relative to the current directory, as in git). It counts, shapes and prints the diff for those paths only, and fails when nothing under them changed.
 
 **Three dots, never two.** `<base>..HEAD` pulls in everything merged into the branch from the base: on a branch with a merge that is dozens of foreign files every finder reads and nobody can post on. A range computed with two dots anywhere in the run is intersected with `git diff --name-only <base>...HEAD`, and what was cut is named in the summary ([re-review](09-rereview.md) computes its scope this way).
 

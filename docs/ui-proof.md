@@ -1,6 +1,6 @@
 # UI proof before the merge request
 
-The [`mr`](../skills/jig/flows/mr.md) step runs `jig pre-mr [<base>] [-- <pathspec>...]`, which diffs the branch against its base; paths after `--` (from the repository root) leave uncommitted work that is not the task's out.
+The [`mr`](../skills/jig/flows/mr.md) step runs `jig pre-mr [<base>] [-- <pathspec>...]`, which diffs the branch against its base; paths after `--` (relative to the current directory, as in git) leave uncommitted work that is not the task's out, and a scope with no changes is an error.
 
 UI proof is asked for only when `.jig/config.jsonc` names a proof tool (`"agent-view": {}`); without one, `jig pre-mr` exits 0 with `Verification level: no UI proof tool configured`. With one, the agent asks the user whether to run the proof (afk: runs it).
 

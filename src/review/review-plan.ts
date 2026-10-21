@@ -1,11 +1,12 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
-import { join } from 'node:path'
+import { isAbsolute, join, relative, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 import { Validator, childPath } from '../core/config'
 import { git, gitStatus, gitToplevel } from '../core/git'
 import { createMatcher } from '../core/glob'
 import { parseJsonc } from '../core/jsonc'
 import { jigPaths, resolvePluginRoot, toSlash } from '../core/paths'
+import { realPath } from '../core/proc'
 import { fileSource, isTestFile } from '../catalog/languages'
 import { lexComments } from '../catalog/languages'
 import { detectAgent, loadUserConfig, resolveTiers, type TierMap } from '../tiers/tiers'
@@ -439,6 +440,8 @@ export interface ReportOptions {
 export const buildReport = (root: string, options: ReportOptions): ReviewPlanReport => {
   const paths = options.paths ?? []
   const base = resolveBase(root, options.base, 'review-plan', paths)
+  const untracked = untrackedCount(root, paths)
+  requireScopedChanges(paths, base.stats.length + untracked, base.ref)
   const { lines, counted, excluded } = countLines(base.stats, root)
   const changed = base.stats.filter((stat) => stat.added > 0)
   const shape: Shape = {
@@ -471,7 +474,7 @@ export const buildReport = (root: string, options: ReportOptions): ReviewPlanRep
   const readers: [string, readonly Angle[]][] = plan.path === 'inline' ? [[INLINE_READER, plan.angles]] : plan.finders.map((finder) => [finder.name, finder.angles])
   return {
     base: { ref: base.ref, mergeBase: base.mergeBase, source: base.source },
-    files: { counted, excluded, untracked: untrackedCount(root, paths) },
+    files: { counted, excluded, untracked },
     scope: [...paths],
     diff: diffCommand(base.mergeBase, paths),
     formula: `ceil(${lines}/${LINES_PER_FINDER}) = ${Math.ceil(lines / LINES_PER_FINDER)}, max ${MAX_FINDERS} → N = ${plan.n}`,
@@ -500,10 +503,23 @@ export const splitPathspec = (args: readonly string[]): { options: string[]; pat
   return separator === -1 ? { options: [...args], paths: undefined } : { options: args.slice(0, separator), paths: args.slice(separator + 1) }
 }
 
+export const toRootPaths = (root: string, cwd: string, paths: readonly string[]): string[] => {
+  const from = realPath(cwd)
+  return paths.map((path) => {
+    if (path.startsWith(':')) return path
+    const fromRoot = toSlash(relative(realPath(root), resolve(from, path)))
+    if (fromRoot === '..' || fromRoot.startsWith('../') || isAbsolute(fromRoot)) throw new Error(`${path} is outside the repository`)
+    return fromRoot === '' ? '.' : fromRoot
+  })
+}
+
+export const requireScopedChanges = (paths: readonly string[], changed: number, baseRef: string): void => {
+  if (paths.length > 0 && changed === 0) throw new Error(`nothing changed against ${baseRef} under ${paths.join(' ')}; paths after -- are relative to the current directory`)
+}
+
 export const runReviewPlan: Command = (args) => {
   const split = splitPathspec(args)
   if (split.paths?.length === 0) throw new Error(`no path after --; ${USAGE}`)
-  const paths = split.paths ?? []
   const { values, positionals } = parseArgs({
     args: split.options,
     allowPositionals: true,
@@ -524,6 +540,7 @@ export const runReviewPlan: Command = (args) => {
   if (!isMode(mode)) throw new Error(`unknown mode ${mode}; ${USAGE}`)
   const root = gitToplevel(process.cwd())
   if (root === undefined) throw new Error('not inside a git repository')
+  const paths = toRootPaths(root, process.cwd(), split.paths ?? [])
   const report = buildReport(root, {
     base: positionals[0],
     selector: values.selector,

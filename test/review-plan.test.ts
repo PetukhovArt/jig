@@ -270,5 +270,6 @@ describe('buildReport on a repository', () => {
     expect(scoped.plan.lines).toBe(1)
     expect(scoped.shape).toEqual({ tests: false, comments: true, docs: false, newSourceFiles: 0, spec: false })
     expect(scoped.diff).toBe(`git diff ${scoped.base.mergeBase} -- src/a.ts`)
+    expect(() => buildReport(root, { base: 'main', spec: false, agent: 'claude', paths: ['lib/a.ts'] })).toThrow('nothing changed against main under lib/a.ts')
   })
 })

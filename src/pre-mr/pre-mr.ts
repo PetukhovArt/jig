@@ -10,7 +10,7 @@ import { git, gitStatus, gitToplevel } from '../core/git'
 import { appendJournal, readJournal, type JournalEntry, type JournalRecord } from '../core/journal'
 import { ensureJigDir } from '../core/paths'
 import { MAIN_AGENT } from '../core/state'
-import { resolveBase, splitPathspec } from '../review/review-plan'
+import { requireScopedChanges, resolveBase, splitPathspec, toRootPaths } from '../review/review-plan'
 import { logToActiveJournal } from '../task-status/task-status'
 import { listWorktrees } from '../worktree/list'
 
@@ -275,12 +275,13 @@ export const formatVerdict = (verdict: Verdict, baseLine: string): string[] => {
 const check = (args: string[], ctx: PreMrContext): number => {
   const split = splitPathspec(args)
   if (split.paths?.length === 0) throw new UsageError(PRE_MR_USAGE)
-  const paths = split.paths ?? []
   const { positionals } = parseArgs({ args: split.options, allowPositionals: true, strict: true, options: {} })
   if (positionals.length > 1) throw new UsageError(PRE_MR_USAGE)
   const root = requireRoot(ctx.cwd)
+  const paths = toRootPaths(root, ctx.cwd, split.paths ?? [])
   const base = resolveBase(root, positionals[0], 'pre-mr', paths)
   const files = [...new Set([...base.stats.map((stat) => stat.path), ...untrackedPaths(root, paths)])]
+  requireScopedChanges(paths, files.length, base.ref)
   const { head, tree } = snapshot(root)
   const verdict = evaluate({ root, mergeBase: base.mergeBase, head, tree, files, records: recordsOf(root), checks: configuredChecks(root) })
   const baseLine = `base: ${base.ref} (merge base ${base.mergeBase.slice(0, 8)}, from ${base.source})`
