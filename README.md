@@ -27,32 +27,7 @@ In Claude Code 2.1.275 or later:
 /jig <task>
 ```
 
-`/jig-init` discovers your tools, asks only what code cannot know, writes `.jig/config.jsonc` and runs `jig doctor`. Its first step, `jig init`, on a Vue demo project:
-
-```text
-jig init: discovery by the jig catalog; nothing is written.
-
-found:
-  tsc          ready; markers tsconfig.json; packages typescript; binary not installed
-  eslint       ready; markers eslint.config.mjs; packages eslint; binary not installed
-  agent-view   ready; markers agent-view.config.json; binary C:\Program Files\nodejs\node.exe C:\Users\me\AppData\Roaming\npm\node_modules\@petukhovart\agent-view\dist\cli\index.js
-not found: oxlint, stratum
-eslint-plugin-boundaries: absent
-type check: no type-check script in package.json, jig runs tsc
-
-ask the user (code cannot know):
-  - App run command (slots.dev) and install command (slots.install), if the project runs an app.
-  - agent-view for UI proof (configured): needed? Setup: agent-view init.
-  - stratum for module layers (not installed): needed? Setup: stratum-lint init, then stratum-lint baseline.
-
-proposal for .jig/config.jsonc:
-{
-  "$schema": "https://raw.githubusercontent.com/PetukhovArt/jig/main/schema/config.schema.json",
-  "tsc": {},
-  "eslint": {},
-  "agent-view": {}
-}
-```
+`/jig-init` discovers your tools, asks only what code cannot know, writes `.jig/config.jsonc` and runs `jig doctor`.
 
 <details><summary><b>Install from a shell</b></summary>
 
