@@ -100,6 +100,14 @@ describe('shell attribution', () => {
     expect(openShellCalls(root, 'a')).toEqual([])
   })
 
+  it('takes no shell snapshot in a project without a config', async () => {
+    rmSync(join(root, '.jig/config.jsonc'))
+    const a = session('a')
+    await start(a)
+    await send(a, { kind: 'pre-shell', callId: 'a1' })
+    expect(openShellCalls(root, 'a')).toEqual([])
+  })
+
   it('keeps the snapshot diff for an agent without shell events', async () => {
     const a = session('a', false)
     await start(a)

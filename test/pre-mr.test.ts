@@ -78,6 +78,15 @@ describe('jig pre-mr', () => {
     expect(stdout()).toContain('Verification level: full')
   })
 
+  it('leaves UI files outside the given paths out of the proof', () => {
+    write(root, 'src/a.ts', 'export const a = 2\n')
+    write(root, 'src/App.vue', '<template><span /></template>\n')
+    write(root, 'src/foreign.css', '.f {}\n')
+
+    expect(run(['main', '--', 'src/a.ts'])).toBe(0)
+    expect(stdout()).toContain('UI files: none')
+  })
+
   it('asks for no UI proof when the config names no proof tool', () => {
     write(root, '.jig/config.jsonc', '{}\n')
     write(root, 'src/App.vue', '<template><span /></template>\n')
@@ -175,6 +184,7 @@ describe('arguments', () => {
     ['skip-verify with an unknown option', () => skip(['--level', 'none', '--why', 'x', '--force'])],
     ['pre-mr with two bases', () => run(['main', 'other'])],
     ['pre-mr with an unknown option', () => run(['--json'])],
+    ['pre-mr with no path after --', () => run(['main', '--'])],
     ['proof that proves nothing', () => run(['proof', 'npm test'])],
     ['proof without a command', () => run(['proof'])],
     ['bug-bash without a result', () => run(['bug-bash'])],

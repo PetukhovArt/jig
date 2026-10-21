@@ -10,7 +10,7 @@ import { git, gitStatus, gitToplevel } from '../core/git'
 import { appendJournal, readJournal, type JournalEntry, type JournalRecord } from '../core/journal'
 import { ensureJigDir } from '../core/paths'
 import { MAIN_AGENT } from '../core/state'
-import { resolveBase } from '../review/review-plan'
+import { resolveBase, splitPathspec } from '../review/review-plan'
 import { logToActiveJournal } from '../task-status/task-status'
 import { listWorktrees } from '../worktree/list'
 
@@ -53,7 +53,7 @@ const EXIT_USAGE = 2
 const CLI_SESSION = 'cli'
 const MAX_BUFFER = 64 * 1024 * 1024
 
-const PRE_MR_USAGE = 'usage: jig pre-mr [<base>] | jig pre-mr proof "<command>" | jig pre-mr bug-bash "<result>"'
+const PRE_MR_USAGE = 'usage: jig pre-mr [<base>] [-- <pathspec>...] |jig pre-mr proof "<command>" | jig pre-mr bug-bash "<result>"'
 const SKIP_USAGE = `usage: jig skip-verify --level ${VERIFY_LEVELS.join('|')} --why "<reason>"`
 
 class UsageError extends Error {}
@@ -221,7 +221,8 @@ export const evaluate = ({ root, mergeBase, head, tree, files, records, checks }
   return { type: 'skipped', skip, gaps, ...(bugBash === undefined ? {} : { bugBash }) }
 }
 
-const untrackedPaths = (root: string): string[] => (gitStatus(root) ?? []).filter((entry) => entry.status === '??').map((entry) => entry.path)
+const untrackedPaths = (root: string, paths: readonly string[]): string[] =>
+  (gitStatus(root, paths) ?? []).filter((entry) => entry.status === '??').map((entry) => entry.path)
 
 const levelLine = (skip: JournalRecord): string => `Verification level: ${skip.rule ?? 'none'} (${skip.message ?? 'no reason given'})`
 
@@ -272,11 +273,14 @@ export const formatVerdict = (verdict: Verdict, baseLine: string): string[] => {
 }
 
 const check = (args: string[], ctx: PreMrContext): number => {
-  const { positionals } = parseArgs({ args, allowPositionals: true, strict: true, options: {} })
+  const split = splitPathspec(args)
+  if (split.paths?.length === 0) throw new UsageError(PRE_MR_USAGE)
+  const paths = split.paths ?? []
+  const { positionals } = parseArgs({ args: split.options, allowPositionals: true, strict: true, options: {} })
   if (positionals.length > 1) throw new UsageError(PRE_MR_USAGE)
   const root = requireRoot(ctx.cwd)
-  const base = resolveBase(root, positionals[0], 'pre-mr')
-  const files = [...new Set([...base.stats.map((stat) => stat.path), ...untrackedPaths(root)])]
+  const base = resolveBase(root, positionals[0], 'pre-mr', paths)
+  const files = [...new Set([...base.stats.map((stat) => stat.path), ...untrackedPaths(root, paths)])]
   const { head, tree } = snapshot(root)
   const verdict = evaluate({ root, mergeBase: base.mergeBase, head, tree, files, records: recordsOf(root), checks: configuredChecks(root) })
   const baseLine = `base: ${base.ref} (merge base ${base.mergeBase.slice(0, 8)}, from ${base.source})`

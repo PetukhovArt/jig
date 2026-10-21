@@ -1,12 +1,12 @@
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { resolveAdapter, type AgentAdapter } from '../adapters'
 import { loadConfig } from '../core/config'
 import { activeRunContext } from '../task-status/task-status'
 import { appendJournal, rotateJournal, type JournalEntry } from '../core/journal'
-import { ensureJigDir, resolvePluginRoot } from '../core/paths'
+import { ensureJigDir, jigPaths, resolvePluginRoot } from '../core/paths'
 import { configDriftLine, loadPlan } from '../core/plan'
-import { changedSince, takeSnapshot } from '../core/snapshot'
+import { changedSince, takeSnapshot, type Snapshot } from '../core/snapshot'
 import {
   closeShellCall,
   createSessionState,
@@ -176,14 +176,18 @@ const postEdit = async (event: EventOf<'post-edit'>, ctx: HookContext): Promise<
   return contextOf(limitLines(findingLines, POST_EDIT_LINE_LIMIT, ctx.pluginRoot))
 }
 
+const hasProjectConfig = (projectRoot: string): boolean => {
+  const paths = jigPaths(projectRoot)
+  return existsSync(paths.config) || existsSync(paths.localConfig)
+}
+
 const preShell = (event: EventOf<'pre-shell'>, ctx: HookContext): Outcome => {
+  if (!hasProjectConfig(ctx.projectRoot)) return NONE
   openShellCall(ctx.projectRoot, ctx.sessionId, event.callId, takeSnapshot(ctx.projectRoot))
   return NONE
 }
 
-const attributeShellCall = (ctx: HookContext, state: SessionState, callId: string): void => {
-  const before = closeShellCall(ctx.projectRoot, ctx.sessionId, callId)
-  if (before === undefined) return
+const attributeShellChanges = (ctx: HookContext, state: SessionState, before: Snapshot): void => {
   const at = Date.now()
   for (const path of changedSince(ctx.projectRoot, before)) {
     state.edits.push({ path, at, agent: ctx.agent, via: 'shell' })
@@ -192,8 +196,10 @@ const attributeShellCall = (ctx: HookContext, state: SessionState, callId: strin
 
 const postShell = (event: EventOf<'post-shell'>, ctx: HookContext): Outcome => {
   if (event.isBackground) return NONE
+  const before = closeShellCall(ctx.projectRoot, ctx.sessionId, event.callId)
+  if (before === undefined) return NONE
   const state = openSession(ctx)
-  attributeShellCall(ctx, state, event.callId)
+  attributeShellChanges(ctx, state, before)
   writeState(ctx.projectRoot, state)
   return NONE
 }
@@ -211,7 +217,8 @@ const stop = async (event: EventOf<'stop'>, ctx: HookContext): Promise<Outcome> 
   const attributesShell = ctx.attributesShell === true
   if (attributesShell) {
     for (const callId of openShellCalls(ctx.projectRoot, ctx.sessionId)) {
-      attributeShellCall(ctx, state, callId)
+      const before = closeShellCall(ctx.projectRoot, ctx.sessionId, callId)
+      if (before !== undefined) attributeShellChanges(ctx, state, before)
     }
   }
   const verdict = await stopGate({ projectRoot: ctx.projectRoot, pluginRoot: ctx.pluginRoot, state, stopHookActive: event.stopHookActive, attributesShell })

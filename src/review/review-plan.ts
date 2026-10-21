@@ -495,12 +495,17 @@ export const buildReport = (root: string, options: ReportOptions): ReviewPlanRep
 const isMode = (value: string): value is Mode => (MODES as readonly string[]).includes(value)
 const USAGE = 'usage: jig review-plan [<base>] [--selector full|quick|auto|<tokens>] [--layout auto|inline|fanout|lean|solo] [--spec] [--mode review|pre-mr] [--mr] [--no-state] [--agent <id>] [--json] [-- <pathspec>...]'
 
-export const runReviewPlan: Command = (args) => {
+export const splitPathspec = (args: readonly string[]): { options: string[]; paths: string[] | undefined } => {
   const separator = args.indexOf('--')
-  const paths = separator === -1 ? [] : args.slice(separator + 1)
-  if (separator !== -1 && paths.length === 0) throw new Error(`no path after --; ${USAGE}`)
+  return separator === -1 ? { options: [...args], paths: undefined } : { options: args.slice(0, separator), paths: args.slice(separator + 1) }
+}
+
+export const runReviewPlan: Command = (args) => {
+  const split = splitPathspec(args)
+  if (split.paths?.length === 0) throw new Error(`no path after --; ${USAGE}`)
+  const paths = split.paths ?? []
   const { values, positionals } = parseArgs({
-    args: separator === -1 ? args : args.slice(0, separator),
+    args: split.options,
     allowPositionals: true,
     strict: true,
     options: {
