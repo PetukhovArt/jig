@@ -11,8 +11,15 @@ export const TIERS = ['deep', 'standard', 'fast'] as const
 export type Tier = (typeof TIERS)[number]
 export type TierMap = Partial<Record<Tier, string[]>>
 
+/** Estimated list price of a model family, US dollars per million tokens. */
+export interface Price {
+  input: number
+  output: number
+}
+
 export interface UserConfig {
   tiers: Record<string, TierMap>
+  prices: Record<string, Price>
 }
 
 export interface LoadedUserConfig {
@@ -40,7 +47,7 @@ const AGENT_ENV: readonly { agent: string; vars: readonly string[] }[] = [
   { agent: 'codex', vars: ['CODEX_SANDBOX', 'CODEX_SANDBOX_NETWORK_DISABLED'] },
 ]
 
-const emptyUserConfig = (): UserConfig => ({ tiers: {} })
+const emptyUserConfig = (): UserConfig => ({ tiers: {}, prices: {} })
 
 const readModels = (validator: Validator, value: unknown, path: string): string[] | undefined => {
   const models = validator.strings(value, path)
@@ -88,15 +95,32 @@ const readTiers = (validator: Validator, value: unknown): Record<string, TierMap
   return tiers
 }
 
+const readPrices = (validator: Validator, value: unknown): Record<string, Price> => {
+  const path = '$.prices'
+  const object = validator.object(value, path, undefined)
+  if (object === undefined) return {}
+  const prices: Record<string, Price> = {}
+  for (const [model, entry] of Object.entries(object)) {
+    const modelPath = childPath(path, model)
+    const price = validator.object(entry, modelPath, ['input', 'output'])
+    if (price === undefined) continue
+    const input = validator.amount(price['input'], childPath(modelPath, 'input'))
+    const output = validator.amount(price['output'], childPath(modelPath, 'output'))
+    if (input !== undefined && output !== undefined) prices[model] = { input, output }
+  }
+  return prices
+}
+
 const validateUserConfig = (value: unknown): { config: UserConfig; errors: string[] } => {
   const validator = new Validator()
-  const root = validator.object(value, '$', ['$schema', 'tiers'])
+  const root = validator.object(value, '$', ['$schema', 'tiers', 'prices'])
   if (root === undefined) return { config: emptyUserConfig(), errors: validator.errors }
   if (root['$schema'] !== undefined) {
     validator.string(root['$schema'], '$.$schema')
   }
   const tiers = root['tiers'] === undefined ? {} : readTiers(validator, root['tiers'])
-  return { config: { tiers }, errors: validator.errors }
+  const prices = root['prices'] === undefined ? {} : readPrices(validator, root['prices'])
+  return { config: { tiers, prices }, errors: validator.errors }
 }
 
 const parseUserConfig = (text: string): { config: UserConfig; error?: string } => {

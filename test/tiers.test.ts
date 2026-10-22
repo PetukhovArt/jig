@@ -22,7 +22,7 @@ afterEach(() => {
 
 describe('resolveTiers', () => {
   it('replaces the built-in default per tier key, not per agent', () => {
-    const tiers = resolveTiers('claude', { tiers: { claude: { fast: ['sonnet'] } } })
+    const tiers = resolveTiers('claude', { tiers: { claude: { fast: ['sonnet'] } }, prices: {} })
     expect(tiers).toEqual({ deep: ['opus', 'sonnet'], standard: ['sonnet'], fast: ['sonnet'] })
   })
 })

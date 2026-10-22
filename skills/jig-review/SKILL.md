@@ -45,6 +45,7 @@ Other layouts, by `--layout <name>`, `JIG_REVIEW_LAYOUT` or the project config: 
 
 - **At most `maxParallel` subagents at once** (6 by default, printed by `jig review-plan`): finders, deepening, judges, composers together. A slot frees, the next one in the queue starts.
 - **Every subagent gets its tier and effort explicitly**, never the session's model: from `jig review-plan` for finders and judges, from its role template for the rest. `jig tiers` maps a tier to models; `~/.jig/config.jsonc` (key `tiers`) overrides the model list.
+- **A spawn's description is `<Role> <detail> !<iid>`**: the role word first (`Finder`, `Judge`, `Deepener`, `Outcome check`), the merge request number with `!`, e.g. `Finder bugs-1 !12`. `jig review cost` attributes the subagent's spend by it; without a merge request, `<Role> <detail>`.
 - **Subagents only read.** Every brief says that edits and commits are forbidden.
 - **A review never runs tests**, builds or installs dependencies, you included: a claim only a test would settle is not proven (a candidate is `REFUTED: not proven`, an outcome stays `unverified`).
 - **Briefs give paths, not text.** A subagent reads the skill files it needs itself: the brief names their absolute paths as `jig review-plan` prints them (angle files, atoms, gate files, role template). Paste only what is not a file: the diff command, candidates, facts and decisions, the project's severity sections.

@@ -6,6 +6,7 @@ import { runHook } from '../hook/dispatch'
 import { runInit } from '../init/init'
 import { runLoop } from '../loop/loop'
 import { runPreMr, runSkipVerify } from '../pre-mr/pre-mr'
+import { runReview } from '../review/cost'
 import { runReviewPlan } from '../review/review-plan'
 import { runReviewCycle } from '../review-cycle/review-cycle'
 import { runSlot } from '../slot/slot'
@@ -35,6 +36,7 @@ const commands = new Map<string, Command>([
   ['init', runInit],
   ['doctor', runDoctor],
   ['tiers', runTiers],
+  ['review', runReview],
   ['review-plan', runReviewPlan],
   ['review-cycle', runReviewCycle],
   ['pre-mr', runPreMr],

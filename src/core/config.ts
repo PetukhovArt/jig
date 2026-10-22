@@ -140,6 +140,10 @@ export class Validator {
     return this.report(path, `expected an integer ${range}`)
   }
 
+  amount(value: unknown, path: string): number | undefined {
+    return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : this.report(path, 'expected a number >= 0')
+  }
+
   strings(value: unknown, path: string): string[] | undefined {
     if (!Array.isArray(value)) return this.report(path, 'expected an array of strings')
     const before = this.errors.length

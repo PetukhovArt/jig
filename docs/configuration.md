@@ -24,6 +24,20 @@
 
 jig creates only `.jig/` in your project: `config.jsonc` goes to git, `config.local.jsonc`, `journal/`, `runs/` and `cache/` are ignored by `.jig/.gitignore`.
 
+## User config
+
+`~/.jig/config.jsonc` (`JIG_USER_CONFIG` overrides the path; [schema](../schema/user-config.schema.json)) holds what belongs to the user, not the project:
+
+```jsonc
+{
+  "tiers": { "claude": { "deep": ["opus"], "standard": ["sonnet"], "fast": ["haiku"] } },
+  "prices": { "opus": { "input": 5, "output": 25 } }
+}
+```
+
+- `tiers`: the models of each tier per agent (`jig tiers`).
+- `prices`: estimated US dollars per million tokens per model family, matched as a substring of the model id; replaces the built-in entry of that family (opus 5/25, sonnet 3/15, haiku 1/5). Cache writes cost ×1.25 of input (5-minute) or ×2 (1-hour), cache reads ×0.1. Used by `jig review cost`; every figure it prints is an estimate.
+
 ## Slots and worktrees
 
 Slots need a `slots` section; `worktreesDir` is required. The `worktree` section tunes seeding: `seedExclude` skips ignored paths, `copyFiles` adds files inside ignored folders:

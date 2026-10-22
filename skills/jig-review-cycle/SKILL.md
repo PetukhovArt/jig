@@ -118,6 +118,8 @@ node <root>/bin/jig.mjs review-cycle verdict '<refs>=<outcome>' …
 
 One argument per merge request processed, skipped or blocked; outcome `returned`, `ready`, `approved` or `held` (`skipped`, `blocked`, `stale`, `unchanged`, `draft`, `busy` mean `held`). Per ref: any merge request `returned` → `returned`; all `ready` (or approved) → `ready`; all approved → `none`; anything else → no transition. It calls the adapter's `transition` once per ref and prints one line each: the adapter's output, `<ref>: <reason>` for a blocked ref (exit 4), `<ref>: status not recorded, <reason>` for exit 3 (the next pass meets the ref unchanged and records it then).
 
+Then, when any merge request ran a review and the agent keeps subagent transcripts (Claude Code), record the pass's cost from the main checkout: `node <root>/bin/jig.mjs review cost --record` (the latest session of the project: this one). Its per-merge-request `$ · $/1k lines · $/thread` go into the summary rows; `jig review cost --report` compares passes and projects. Spawn descriptions follow `<Role> … !<iid>` (`Review !12`, `Post !12`), or the spend is not attributed.
+
 **Only here.** A hand edit between passes (a withdrawn finding, a thread changed at the user's request) never triggers a transition, even when it leaves nothing open: if it would change the verdict, ask the user. **Approval is human-only**: nothing here approves. **CI is not this skill's business**: the forge shows the pipeline, and the human decides what a red one means.
 
 ## 4. Summary
@@ -131,6 +133,7 @@ focus: <first line of the focus note>
 [!145](https://…/merge_requests/145) | need approval
 [!147](https://…/merge_requests/147) | resolved 3 + returned · unverified 1
 [!150](https://…/merge_requests/150) | blocked | tally accounts for 1 of 3 standing findings
+cost: !142 $11.40 · $7.70/1k lines · $2.20/thread; !147 re-review $9.80
 skipped: 7 (approved 1, draft 1, unchanged 2, stale 3)
 
 tracker:
@@ -146,6 +149,7 @@ outside the diff (in the FYI note; a tech-debt issue?):
 
 - **Link**: a markdown link with the text `!<iid>` (rows from several repositories: `<repo>!<iid>`) and the merge request's `web_url` as the target.
 - **Status**: `returned` · `need approval` (clean, recommended to the human) · `resolved N` / `resolved N + returned` · `blocked | <reason>`; append `· unverified N` whenever the tally has any, and `· dispute: needs a human` when the engine left one.
+- **cost**: from `review cost --record`, one entry per reviewed merge request; omit when the agent keeps no transcripts.
 - **skipped**: the `skipped:` line `queue` printed. Omit when nothing was skipped.
 - **tracker**: every `verdict` line and every `NOTE` from `queue`, verbatim. Omit when empty.
 - **WARNING**: the `WARNING` line `queue` printed, verbatim and first. Without it a pass on the built-in queue reads as a pass on the team's.
