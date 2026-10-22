@@ -1,0 +1,44 @@
+name: Bug
+description: jig did something wrong on a run (a gate, a hook, a review, a flow, a command)
+labels: [bug, needs-triage]
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: The command, flow or hook, and what jig printed or did. Paste output as is; replace private names and paths.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected
+      description: What jig should have done instead.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: How to reproduce
+      description: The smallest setup that shows it, the relevant part of `.jig/config.jsonc`, or "seen once on a live run".
+  - type: input
+    id: version
+    attributes:
+      label: jig version or commit
+      placeholder: 0.2.0 or 3ee443f
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: OS
+      options: [Windows, macOS, Linux]
+    validations:
+      required: true
+  - type: dropdown
+    id: agent
+    attributes:
+      label: AI agent
+      options: [Claude Code, Cursor, Codex, Other]
+    validations:
+      required: true

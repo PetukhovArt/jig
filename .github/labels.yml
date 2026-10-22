@@ -1,0 +1,23 @@
+# Synced to GitHub by .github/workflows/labels.yml; edit here, not in the UI.
+- { name: bug, color: d73a4a, description: jig does something wrong }
+- { name: enhancement, color: a2eeef, description: A new capability or a change to one }
+- { name: documentation, color: 0075ca, description: README or docs/ only }
+- { name: question, color: d876e3, description: A question, not a defect }
+- { name: needs-triage, color: fbca04, description: Not looked at yet }
+- { name: needs-info, color: fef2c0, description: Waits on the reporter }
+- { name: confirmed, color: 0e8a16, description: Reproduced or accepted; ready to work }
+- { name: fixed-on-main, color: c2e0c6, description: Fixed in a commit on main, not released yet }
+- { name: duplicate, color: cfd3d7, description: Already reported }
+- { name: wontfix, color: ffffff, description: Out of scope }
+- { name: invalid, color: e4e669, description: Not a jig defect }
+- { name: "area: gates", color: 5319e7, description: Hooks, jig check, the stop gate, pre-mr }
+- { name: "area: review", color: 5319e7, description: jig-review, review-plan, finders and judges }
+- { name: "area: review-cycle", color: 5319e7, description: jig-review-cycle and its process adapter }
+- { name: "area: init", color: 5319e7, description: jig init, jig doctor, configuration }
+- { name: "area: slots", color: 5319e7, description: jig slot and jig-slots }
+- { name: "area: flows", color: 5319e7, description: /jig, flows, atoms and roles }
+- { name: "area: evals", color: 5319e7, description: Evals and benchmarks }
+- { name: "os: windows", color: bfdadc, description: Only on Windows }
+- { name: "os: unix", color: bfdadc, description: Only on macOS or Linux }
+- { name: "ai: cursor", color: bfd4f2, description: Only under Cursor }
+- { name: "ai: codex", color: bfd4f2, description: Only under Codex }

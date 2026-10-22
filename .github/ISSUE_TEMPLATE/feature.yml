@@ -1,0 +1,21 @@
+name: Feature
+description: A gap jig should cover, or a change to how it works
+labels: [enhancement, needs-triage]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What you were doing and where jig fell short. One problem per issue.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: What jig could do. Say which axes it touches (OS, AI agent, project kind).
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives
+      description: What you do now, or other ways to solve it.

@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Docs
+    url: https://github.com/PetukhovArt/jig#docs
+    about: Gate rules, configuration, commands and flows
