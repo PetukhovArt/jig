@@ -2504,7 +2504,12 @@ var fileStamp = (path2) => {
   }
 };
 var planInputsHash = (projectRoot, pluginRoot) => {
-  const lines2 = [`version:${version}`, `plugin:${pluginRoot}`, ...HASHED_INPUTS.map((name) => `${name}:${fileStamp(join9(projectRoot, name))}`)];
+  const lines2 = [
+    `version:${version}`,
+    `plugin:${pluginRoot}`,
+    `bundle:${fileStamp(join9(pluginRoot, "bin", "jig.mjs"))}`,
+    ...HASHED_INPUTS.map((name) => `${name}:${fileStamp(join9(projectRoot, name))}`)
+  ];
   return createHash2("sha1").update(lines2.join("\n")).digest("hex");
 };
 var resolveTools = (projectRoot, config) => {

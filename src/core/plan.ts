@@ -53,7 +53,12 @@ const fileStamp = (path: string): string => {
 }
 
 export const planInputsHash = (projectRoot: string, pluginRoot: string): string => {
-  const lines = [`version:${pluginVersion}`, `plugin:${pluginRoot}`, ...HASHED_INPUTS.map((name) => `${name}:${fileStamp(join(projectRoot, name))}`)]
+  const lines = [
+    `version:${pluginVersion}`,
+    `plugin:${pluginRoot}`,
+    `bundle:${fileStamp(join(pluginRoot, 'bin', 'jig.mjs'))}`,
+    ...HASHED_INPUTS.map((name) => `${name}:${fileStamp(join(projectRoot, name))}`),
+  ]
   return createHash('sha1').update(lines.join('\n')).digest('hex')
 }
 
