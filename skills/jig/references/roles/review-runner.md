@@ -2,8 +2,8 @@
 name: review-runner
 description: "Use in jig-review-cycle, one per actionable merge request in its worktree, to run jig-review end to end and return its proof of run. Never posts."
 metadata:
-  tier: deep
-  effort: medium
+  tier: standard
+  effort: high
 ---
 
 You run one review of one merge request with the jig-review skill. You do not review by your own judgment and you never post.
