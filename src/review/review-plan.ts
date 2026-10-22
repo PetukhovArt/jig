@@ -368,7 +368,7 @@ const LAYOUT_SOURCE_TEXT: Readonly<Record<LayoutSource, string>> = { argument: '
 const LAYOUT_TEXT: Readonly<Record<ConcreteLayout, string>> = {
   inline: 'the session hunts and judges; a judge subagent only for Important',
   fanout: 'finders by LINES on their angle tiers, a judge per cluster on the other model',
-  lean: 'finders by LINES on the standard tier; you judge, a deep judge only for Important',
+  lean: 'finders by LINES on the deep tier, the model of the runner; you judge, a deep judge only for Important',
   solo: 'finders by LINES on the deep tier prove their own candidates; no judge subagents',
 }
 

@@ -37,7 +37,7 @@ Needs on `PATH`: `git`, `node`; with a merge request also the forge CLI of the r
 `jig review-plan` prints the layout; the default `auto` picks by size:
 
 - **Inline** (`N ≤ 2`, up to 300 counted lines; layout `inline` at any size): you hunt and judge in this session; one judge subagent on another model only when an `Important` candidate survives your gates.
-- **Lean** (`N > 2`): finder subagents on the standard tier, one per angle group; you judge every candidate, one deep judge subagent only for the `Important` ones.
+- **Lean** (`N > 2`): finder subagents on the deep tier (the model of the review runner, so they fork from it), one per angle group; you judge every candidate, one deep judge subagent only for the `Important` ones.
 
 Other layouts, by `--layout <name>`, `JIG_REVIEW_LAYOUT` or the project config: `fanout` (finders split by tier, a judge subagent per cluster on the other model) and `solo` (deep finders that prove their own candidates, no judges). On the reference merge requests both cost 6-7 times `inline` on a 212-line diff and found nothing it missed.
 

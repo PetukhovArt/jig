@@ -64,6 +64,8 @@ The merge request description is only a source of references: the author of the 
 
 ## Layout
 
+**A re-review plans on its new range, not here.** Mode `review` with a merge request whose state file exists (`jig review-cycle state-path <number>` prints a path that exists): skip the command below, read [02-rules](02-rules.md), [03-state](03-state.md) and [09-rereview](09-rereview.md); 09 runs `jig review-plan --rereview` on the new range, and its list is the steps for the rest of the run. A full-diff plan of a re-review lists finder and verify steps the run never takes.
+
 ```bash
 node <root>/bin/jig.mjs review-plan <base> [--selector <selector>] [--layout <layout>] [--spec] [--mode pre-mr] [--mr] [--no-state] [-- <path>...]
 ```
@@ -73,7 +75,7 @@ node <root>/bin/jig.mjs review-plan <base> [--selector <selector>] [--layout <la
 - `LINES`: added + removed lines by `git diff --numstat -M` against the merge base, without tests, fixtures and `*.md`. A rename without edits counts 0. Documents are judged by angle 11 and add no readers to the bug finders. With paths, the `lines:` line names the scope.
 - `diff:` the command that prints the reviewed diff, paths included. Every brief and your own reading use this command, never a hand-written `git diff`.
 - `N = ceil(LINES / 150)`, at most 5. `N = 1`: `path: inline` in every layout.
-- the layout (`--layout`, else `JIG_REVIEW_LAYOUT`, else `layout` in the [project config](../references/project-config.md), else `auto`). `auto`: `N ≤ 2` → `inline`, you review in this session ([inline](04-inline.md)), on `quick` unless a selector was given; `N > 2` → `lean`: up to four bug finders plus cleanup, the rules finder and the tests-and-comments finder on top when the diff shape calls for them, all on the standard tier, and you judge ([verify](05-verify.md#layout-lean)). Measured on reference merge requests: inline found the known bugs at 40 and 212 lines and missed the one at 784, which the lean finders found; `fanout` and `solo` found nothing more at 212 lines for 6-7 times the cost.
+- the layout (`--layout`, else `JIG_REVIEW_LAYOUT`, else `layout` in the [project config](../references/project-config.md), else `auto`). `auto`: `N ≤ 2` → `inline`, you review in this session ([inline](04-inline.md)), on `quick` unless a selector was given; `N > 2` → `lean`: up to four bug finders plus cleanup, the rules finder and the tests-and-comments finder on top when the diff shape calls for them, all on the deep tier, and you judge ([verify](05-verify.md#layout-lean)). Measured on reference merge requests: inline found the known bugs at 40 and 212 lines and missed the one at 784, which the lean finders found; `fanout` and `solo` found nothing more at 212 lines for 6-7 times the cost.
 - the diff shape (tests, added comments, Markdown, new source files, spec), the selector expanded (`auto` too), the mode and whether state is on, every finder (or the inline reader) with its angles, tier, effort and model and the absolute paths of its angle files (`read:`) and atoms (`atoms:`), the judge model per finder model, the subagent cap, and the angles skipped with the reason;
 - last, **the steps for this run**: the files to read from here on, in order. Only those apply.
 

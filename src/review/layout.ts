@@ -135,7 +135,7 @@ export interface PlanInput {
 export type FinderKind = 'bugs' | 'cleanup' | 'rules' | 'mechanical' | 'rereview'
 
 export const REREVIEW_FULL_LAYOUT_LINES = 600
-const REREVIEW_GRADE: Grade = { tier: 'standard', effort: 'high' }
+const REREVIEW_GRADE: Grade = { tier: 'deep', effort: 'medium' }
 
 export const isLightRereview = (rereview: boolean | undefined, n: number, lines: number): boolean =>
   rereview === true && n > AUTO_INLINE_MAX_N && lines < REREVIEW_FULL_LAYOUT_LINES
@@ -272,7 +272,7 @@ const layoutFinders = (n: number, angles: readonly Angle[], grades: Readonly<Rec
   return groups.filter((group) => group.angles.length > 0).flatMap((group) => splitByGrade(group.name, group.kind, group.angles, grades))
 }
 
-const FINDER_TIER: Readonly<Partial<Record<ConcreteLayout, Tier>>> = { lean: 'standard', solo: 'deep' }
+const FINDER_TIER: Readonly<Partial<Record<ConcreteLayout, Tier>>> = { lean: 'deep', solo: 'deep' }
 const ANGLE_TOKEN_NAMES: readonly string[] = Object.values(ANGLE_TOKENS)
 
 const finderGrades = (layout: ConcreteLayout, grades: Readonly<Record<string, Grade>>): Record<string, Grade> => {

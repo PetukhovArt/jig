@@ -4843,7 +4843,7 @@ var resolveAuto = (layout, n) => {
   return n <= AUTO_INLINE_MAX_N ? "inline" : "lean";
 };
 var REREVIEW_FULL_LAYOUT_LINES = 600;
-var REREVIEW_GRADE = { tier: "standard", effort: "high" };
+var REREVIEW_GRADE = { tier: "deep", effort: "medium" };
 var isLightRereview = (rereview, n, lines2) => rereview === true && n > AUTO_INLINE_MAX_N && lines2 < REREVIEW_FULL_LAYOUT_LINES;
 var finderCount = (lines2) => Math.min(MAX_FINDERS, Math.ceil(Math.max(0, lines2) / LINES_PER_FINDER));
 var ceilingOf = (angle, settings) => settings?.[angle]?.severityCeiling ?? (IMPORTANT_ANGLES.includes(angle) ? "Important" : "Nit");
@@ -4921,7 +4921,7 @@ var layoutFinders = (n, angles, grades) => {
   groups.push({ name: "mechanical", kind: "mechanical", angles: MECHANICAL.filter(has) });
   return groups.filter((group) => group.angles.length > 0).flatMap((group) => splitByGrade(group.name, group.kind, group.angles, grades));
 };
-var FINDER_TIER = { lean: "standard", solo: "deep" };
+var FINDER_TIER = { lean: "deep", solo: "deep" };
 var ANGLE_TOKEN_NAMES = Object.values(ANGLE_TOKENS);
 var finderGrades = (layout, grades) => {
   const tier = FINDER_TIER[layout];
@@ -5244,7 +5244,7 @@ var LAYOUT_SOURCE_TEXT = { argument: "--layout", env: LAYOUT_ENV, config: `.jig/
 var LAYOUT_TEXT = {
   inline: "the session hunts and judges; a judge subagent only for Important",
   fanout: "finders by LINES on their angle tiers, a judge per cluster on the other model",
-  lean: "finders by LINES on the standard tier; you judge, a deep judge only for Important",
+  lean: "finders by LINES on the deep tier, the model of the runner; you judge, a deep judge only for Important",
   solo: "finders by LINES on the deep tier prove their own candidates; no judge subagents"
 };
 var layoutLine = (report) => {

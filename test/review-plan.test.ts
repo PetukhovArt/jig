@@ -70,7 +70,7 @@ describe('layout', () => {
   it('applies a project grade override per token', () => {
     const plan = planReview({ lines: 400, shape: CODE_ONLY, grades: { bugs: { tier: 'standard', effort: 'medium' } } })
     const bugs = plan.finders.filter((finder) => finder.kind === 'bugs')
-    expect(bugs.map((finder) => `${finder.angles.join('+')}:${finder.tier}/${finder.effort}`)).toEqual(['1+4:standard/medium', '8+14:standard/high', '2+3+5+12:standard/medium'])
+    expect(bugs.map((finder) => `${finder.angles.join('+')}:${finder.tier}/${finder.effort}`)).toEqual(['1+4:deep/medium', '8+14:deep/high', '2+3+5+12:deep/medium'])
   })
 })
 
@@ -88,13 +88,13 @@ describe('layouts', () => {
 
   it('fanout splits every group by grade: seven finders on 212 lines with added comments; lean keeps four on one tier', () => {
     expect(finders('fanout')).toHaveLength(7)
-    expect(finders('lean')).toEqual(['bugs-1:1+2+3+4+5+8+12+14:standard/high', 'cleanup:7+9:standard/high', 'rules:6+10+13:standard/high', 'mechanical:17:standard/medium'])
+    expect(finders('lean')).toEqual(['bugs-1:1+2+3+4+5+8+12+14:deep/high', 'cleanup:7+9:deep/high', 'rules:6+10+13:deep/high', 'mechanical:17:deep/medium'])
     expect(finders('solo').every((finder) => finder.includes(':deep/'))).toBe(true)
   })
 
   it('a re-review range under 600 lines gets one finder for every angle and no deepening; from 600 lines the full layout', () => {
     const rereview = (lines: number) => planReview({ lines, shape: EVERY_SHAPE, rereview: true })
-    expect(rereview(450).finders.map((finder) => `${finder.name}:${finder.tier}/${finder.effort}:${finder.angles.length}`)).toEqual(['rereview:standard/high:17'])
+    expect(rereview(450).finders.map((finder) => `${finder.name}:${finder.tier}/${finder.effort}:${finder.angles.length}`)).toEqual(['rereview:deep/medium:17'])
     expect(rereview(450).deepening).toBeUndefined()
     expect(rereview(600).finders.length).toBeGreaterThan(1)
     expect(rereview(600).deepening).toBeDefined()

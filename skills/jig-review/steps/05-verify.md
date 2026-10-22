@@ -50,7 +50,7 @@ In this order: the diff index `jig review-plan` printed under `diff files:` (the
 
 ## Layout lean
 
-Only when `jig review-plan` printed `layout: lean`: the finders ran on the standard tier, and instead of a judge per cluster you judge, as on the [inline path](04-inline.md#judge-yourself). Head before verify and clusters do not apply.
+Only when `jig review-plan` printed `layout: lean`: the finders ran on the deep tier, and instead of a judge per cluster you judge, as on the [inline path](04-inline.md#judge-yourself). Head before verify and clusters do not apply.
 
 1. Judge every deduped candidate yourself by the gate files the steps list, the self-check of `gates/bugs.md` asked literally before each bug `CONFIRMED`; refute with a quoted line, not with doubt.
 2. No `CONFIRMED` `Important`: no subagent; the output says `judge: you only (no Important candidate)`.
