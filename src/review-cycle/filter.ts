@@ -1,4 +1,6 @@
 import type { Discussion, Note } from './forge'
+import type { Finding } from './state'
+import type { Outcome } from './verdict'
 
 /**
  * A thread is optional when its opening note starts with the Nit or Pre-existing chip. The two
@@ -7,6 +9,10 @@ import type { Discussion, Note } from './forge'
 export const OPTIONAL_OPENING = /^\*\*(\[[^\]]*(Nit|Pre-existing)|(Улучшения|Упрощения) — по желанию)/
 
 export const isOptionalNote = (note: Note): boolean => OPTIONAL_OPENING.test(note.body.trim())
+
+const FYI_MARKER = '<!-- review-fyi -->'
+
+const isFyiNote = (note: Note): boolean => note.body.includes(FYI_MARKER)
 
 const humanNotes = (discussion: Discussion): Note[] => discussion.notes.filter((note) => !note.system)
 
@@ -32,7 +38,7 @@ export interface ThreadFacts {
   myLastNote: string | undefined
   /** My open threads that are not optional: they wait on the developer. */
   myUnresolved: number
-  /** My open threads where someone else wrote after my last note: they wait on an answer from the review. */
+  /** My open threads, and my FYI note, where someone else wrote after my last note: they wait on an answer from the review. */
   unanswered: number
 }
 
@@ -52,9 +58,15 @@ export const threadFacts = (discussions: readonly Discussion[], me: string): Thr
     const [opening] = discussion.notes
     const ownsThread = opening !== undefined && isMine(opening)
     const answeredAfter = discussion.notes.some((note) => !note.system && !isMine(note) && time(note.createdAt) > time(myLastHere))
-    if (open && ownsThread && answeredAfter) unanswered++
+    const awaitsAnswer = open || (opening !== undefined && isFyiNote(opening))
+    if (awaitsAnswer && ownsThread && answeredAfter) unanswered++
   }
   return { myLastNote, myUnresolved, unanswered }
+}
+
+export const standingBlocking = (findings: readonly Finding[], discussions: readonly Discussion[]): number => {
+  const open = new Set(discussions.filter(isOpen).map((discussion) => discussion.id))
+  return findings.filter((finding) => finding.discussionId !== undefined && open.has(finding.discussionId)).length
 }
 
 export const lastCommit = (commitDates: readonly string[]): string | undefined => latest(commitDates)
@@ -63,6 +75,16 @@ export const SKIP_REASONS = ['approved', 'draft', 'busy', 'unchanged', 'stale'] 
 export type SkipReason = (typeof SKIP_REASONS)[number]
 
 export type Decision = { kind: 'actionable' } | { kind: 'skip'; reason: SkipReason }
+
+/**
+ * Unchanged and stale both mean the developer has not answered my threads: a standing blocking finding
+ * returns the merge request, or a ref moved back to review by hand waits on nobody.
+ */
+export const skipOutcome = (reason: SkipReason, blocking: number): Outcome => {
+  if (reason === 'approved') return 'approved'
+  if ((reason === 'unchanged' || reason === 'stale') && blocking > 0) return 'returned'
+  return 'held'
+}
 
 export interface RowFacts {
   approved: boolean
@@ -93,8 +115,8 @@ export const needsHeadSha = (threads: ThreadFacts, reviewedSha: string | undefin
   reviewedSha !== undefined && threads.unanswered === 0
 
 /**
- * Rule 4 (unchanged) wins over rule 3 (stale). Stale: I hold an unresolved thread and no commit
- * landed after my last note; it skips only under the adapter's `stale=on`.
+ * Rule 4 (unchanged) wins over rule 3 (stale). Stale: I hold an unresolved thread, no commit landed
+ * after my last note and nobody answered me since; it skips only under the adapter's `stale=on`.
  */
 export const reviewDecision = (facts: ReviewFacts): Decision => {
   const { threads } = facts
@@ -103,6 +125,7 @@ export const reviewDecision = (facts: ReviewFacts): Decision => {
   if (isUnchanged) return { kind: 'skip', reason: 'unchanged' }
   const isStale =
     threads.myUnresolved > 0 &&
+    threads.unanswered === 0 &&
     threads.myLastNote !== undefined &&
     facts.lastCommit !== undefined &&
     time(facts.lastCommit) <= time(threads.myLastNote)

@@ -32,7 +32,7 @@ Sections 1–4, then stop. Never arm, re-arm or reason about a schedule: a skill
 ## Agent
 
 - **Subagents** (preferred): roles `review-runner` and `poster`, each spawned with a prompt that begins `Read <root>/skills/jig/references/roles/<name>.md and follow it.`, then its brief. The review runner must be able to spawn its own subagents (jig-review fans out finders and judges): in Claude Code a `general-purpose` agent. Each role runs on its template's tier and effort (`jig tiers` maps the tier to a model), never the session's model: the runner is deep/medium (on standard it skipped steps and read ones its plan did not list), the poster is fast/low.
-- **Fork runners for re-reviews** (an agent that forks with the parent's context; Claude Code: `subagent_type: fork`). Once per pass, before the first runner, read the engine files every re-review reads: jig-review's `SKILL.md`, `steps/01-prepare.md`, `02-rules.md`, `03-state.md`, `09-rereview.md`, `references/state-schema.md`. Then a merge request with `state=` a path gets a fork runner: its brief adds `prepared: <those paths>`, and the fork starts from your prompt cache instead of reading them again. A fork runs on this session's model and spawns no subagents, so `state=none` (a first run, which may fan out) and a fork's `needs fan-out` return get a fresh runner on the role's tier; `needs fan-out` is not a failure of [proof of run](#2-review-each-actionable-merge-request). An agent without forks: fresh runners only.
+- **Fork runners for re-reviews** (an agent that forks with the parent's context; Claude Code: `subagent_type: fork`). Once per pass, before the first runner, read the engine files every re-review reads: jig-review's `SKILL.md`, `steps/01-prepare.md`, `02-rules.md`, `03-state.md`, `09-rereview.md`, `<root>/skills/jig-review/references/state-schema.md`. Then a merge request with `state=` a path gets a fork runner: its brief adds `prepared: <those paths>`, and the fork starts from your prompt cache instead of reading them again. A fork runs on this session's model and spawns no subagents, so `state=none` (a first run, which may fan out) and a fork's `needs fan-out` return get a fresh runner on the role's tier; `needs fan-out` is not a failure of [proof of run](#2-review-each-actionable-merge-request). An agent without forks: fresh runners only.
 - **Only your own subagents report to you.** A runner runs its finders and judges in its foreground, so their reports go to it. A report of a finder, deepener or judge that still reaches this session belongs to a runner: do not act on it, do not forward it, do not count it; findings reach you only in a runner's return.
 - **Waves of 2.** At most two review runners at once; a poster counts against the same cap. When one returns, start the next merge request (its worktree, then its runner), and spawn each poster as soon as its review returns.
 - **No subagents** (an agent without them): run the merge requests one by one in this session: `cd` into the worktree, read jig-review's `SKILL.md` and run it there, then follow `posting.md` yourself. The steps and checks below stay the same; only who runs them changes.
@@ -65,7 +65,7 @@ Then every bullet `jig review-cycle base-check` prints (the project's own checks
 node <root>/bin/jig.mjs review-cycle queue
 ```
 
-Run it from inside a repository of the queue. It asks the adapter (or the built-in default) for the triggered merge requests, then applies the filter rules in order and prints one line per merge request, tab-separated:
+Run it from inside a repository of the queue. It asks the adapter (or the built-in default) for the triggered merge requests, then applies the filter rules in order and prints one line per merge request, tab-separated. Every `SKIP` line carries `outcome=<outcome>`: the skipped merge request's argument to the [verdict](#3-verdict-last).
 
 | Line | Meaning |
 | --- | --- |
@@ -73,13 +73,13 @@ Run it from inside a repository of the queue. It asks the adapter (or the built-
 | `SKIP approved …` | anyone approved: re-reviewing could only comment on code cleared to merge. Its outcome is `approved` (the verdict clears the marker). |
 | `SKIP draft …` | not ready. |
 | `SKIP busy …` | its review worktree is live: a previous pass is still on it. |
-| `SKIP unchanged …` | the head equals the state's `last_reviewed_sha` and no developer note in an open thread of yours is newer than your last note there. |
-| `SKIP stale …` | the adapter says `stale=on`, you hold an unresolved thread, and no commit landed after your last note: you flagged, the developer has not responded. |
+| `SKIP unchanged …` | the head equals the state's `last_reviewed_sha` and no developer note in an open thread of yours, or under your FYI note, is newer than your last note there. `outcome=returned` when an Important of the state stands (`open` or `skipped`) in a thread still open: the developer has not answered it, and a merge request moved back to review by hand goes back to the developer instead of waiting on nobody. Otherwise `outcome=held`. |
+| `SKIP stale …` | the adapter says `stale=on`, you hold an unresolved thread, no commit landed after your last note and nobody answered you since: you flagged, the developer has not responded. `outcome=` as for `unchanged`. |
 | `BLOCKED <refs> <repo_dir> <iid> <url> <reason>` | the environment could not answer for this one (exit 3 of a forge call, exit 4 of `rules`). Not reviewed, not skipped: its own summary line. |
 | `ACTIONABLE <refs> <repo_dir> <iid> <branch> <url> worktree=… state=… standing=N` | review it. |
 | `NOTE <refs> <text>` | keep for the summary. |
 
-Open Nit and Pre-existing threads never make a merge request stale and never withhold `ready`: they are suggestions the developer may decline.
+Open Nit and Pre-existing threads never make a merge request stale, never return it and never withhold `ready`: they are suggestions the developer may decline.
 
 **Exit 3 aborts the pass**: nothing was discovered, so nothing can be judged; show the reason. Never retry from another directory or fall back to reviewing anyway: an unreachable API is indistinguishable from an empty project.
 
@@ -103,10 +103,12 @@ Every command for one merge request runs with `-C <repo_dir>` or from `<repo_dir
    - **new findings** → spec hold first when the return's `spec:` line names a file: `node <root>/bin/jig.mjs review-cycle spec-hold <state> <that file>` prints the ids of spec findings whose `spec_quote` is not in the spec. They are never posted, never counted as new findings, and listed in the summary for the human. Exit 3 → `blocked`. Then the poster → outcome `returned`, unless every new finding was held.
    - **simplifications only** (`optional` in the tally), out-of-diff findings only, or a `## Deepening` section → the poster still posts the FYI note (the deepening comes from the state); the outcome does not change: the manifest has no thread entry.
    - **outcomes `fixed` / `no_change_needed`** on findings with a `discussion_id` → the poster resolves those threads.
-   - **REPLIES** (counter-replies to a dispute that did not hold, answers to a developer's reply) → the poster posts each into its thread → outcome `returned`: the merge request waits on the developer even without new findings. A dispute the engine leaves to a human ("dispute: needs a human") goes to the summary.
-   - **`skipped` / `unverified` with your note last** → nothing posted, nothing resolved; neither status alone withholds `ready`, only a live unresolved thread does. Report the `unverified` count.
-   - **clean**: no new findings, and after the poster's resolves `node <root>/bin/jig.mjs review-cycle unresolved <iid>` prints `0` → outcome `ready`; recommend approval to the human. A non-zero count → outcome `held`. Exit 3 → `blocked`.
-8. **Poster** (role `poster`): the worktree path, the merge request number, the state path, the hold ids or none, the thread ids to resolve, the replies, the path `<root>/skills/jig-review/references/posting.md`. Its report says `discussion ids written: N/M`; N < M → command it to write the ids back again before teardown: a torn state disables duplicate protection and thread resolution on every later pass.
+   - **REPLIES** (counter-replies to a dispute that did not hold, answers to a developer's reply, the note that an Important still stands after a new commit) → the poster posts each into its thread → outcome `returned`: the merge request waits on the developer even without new findings.
+   - **FYI** (an answer under the FYI note, with the optional items it ticked) → the poster posts it and rebuilds the note; the outcome does not change: optional items never return a merge request.
+   - **`skipped` / `unverified` with your note last** and no reply → nothing posted, nothing resolved. Report the `unverified` count.
+   - **no new findings and no REPLIES**: after the poster's resolves, `node <root>/bin/jig.mjs review-cycle standing <iid>` counts the Important findings of the state still `open` or `skipped` in an open thread. Non-zero → outcome `returned`: the defect stands on the developer's side, whether or not this run had anything to say. Zero, and `node <root>/bin/jig.mjs review-cycle unresolved <iid>` prints `0` → outcome `ready`; recommend approval to the human. A non-zero unresolved count → outcome `held`. Exit 3 of either → `blocked`.
+   - **dispute: needs a human** (the engine left a dispute to a human) → outcome `held` whatever the bullets above say: the merge request waits on the human, not on the developer. It goes to the summary.
+8. **Poster** (role `poster`): the worktree path, the merge request number, the state path, the hold ids or none, the thread ids to resolve, the replies and the FYI answer, the path `<root>/skills/jig-review/references/posting.md`. Its report says `discussion ids written: N/M`; N < M → command it to write the ids back again before teardown: a torn state disables duplicate protection and thread resolution on every later pass.
 9. **Teardown** after posting, on every path: `node <root>/bin/jig.mjs worktree remove <worktree>` (it unlinks the worktree's links and junctions first, then runs `git worktree remove --force`, so what a seeded link points to in the main checkout survives; never a bare `git worktree remove` or a recursive delete of the folder), then delete `<state>.before-cycle`. The state file itself is never deleted (except after a degraded first run): it is what makes re-reviews converge instead of resampling.
 
 ## 3. Verdict, last
@@ -117,7 +119,7 @@ After every merge request has run, one call:
 node <root>/bin/jig.mjs review-cycle verdict '<refs>=<outcome>' …
 ```
 
-One argument per merge request processed, skipped or blocked; outcome `returned`, `ready`, `approved` or `held` (`skipped`, `blocked`, `stale`, `unchanged`, `draft`, `busy` mean `held`). Per ref: any merge request `returned` → `returned`; all `ready` (or approved) → `ready`; all approved → `none`; anything else → no transition. It calls the adapter's `transition` once per ref and prints one line each: the adapter's output, `<ref>: <reason>` for a blocked ref (exit 4), `<ref>: status not recorded, <reason>` for exit 3 (the next pass meets the ref unchanged and records it then).
+One argument per merge request processed, skipped or blocked; outcome `returned`, `ready`, `approved` or `held` (`blocked` means `held`). A skipped merge request passes the `outcome=` of its `SKIP` line, never its skip reason: `unchanged` and `stale` can be `returned`. Per ref: any merge request `returned` → `returned`; all `ready` (or approved) → `ready`; all approved → `none`; anything else → no transition. It calls the adapter's `transition` once per ref and prints one line each: the adapter's output, `<ref>: <reason>` for a blocked ref (exit 4), `<ref>: status not recorded, <reason>` for exit 3 (the next pass meets the ref unchanged and records it then).
 
 Then, when any merge request ran a review and the agent keeps subagent transcripts (Claude Code), record the pass's cost from the main checkout: `node <root>/bin/jig.mjs review cost --record` (the latest session of the project: this one). Its per-merge-request `$ · $/1k lines · $/thread` go into the summary rows; `jig review cost --report` compares passes and projects. Spawn descriptions follow `<Role> … !<iid>` (`Review !12`, `Post !12`), or the spend is not attributed.
 
@@ -151,7 +153,7 @@ outside the diff (in the FYI note; a tech-debt issue?):
 - **Link**: a markdown link with the text `!<iid>` (rows from several repositories: `<repo>!<iid>`) and the merge request's `web_url` as the target.
 - **Status**: `returned` · `need approval` (clean, recommended to the human) · `resolved N` / `resolved N + returned` · `blocked | <reason>`; append `· unverified N` whenever the tally has any, and `· dispute: needs a human` when the engine left one.
 - **cost**: from `review cost --record`, one entry per reviewed merge request; omit when the agent keeps no transcripts.
-- **skipped**: the `skipped:` line `queue` printed. Omit when nothing was skipped.
+- **skipped**: the `skipped:` line `queue` printed, then `· returned without review: <links>` for the skipped merge requests whose `outcome=` was `returned`: the pass moved their ref with nothing posted. Omit when nothing was skipped.
 - **tracker**: every `verdict` line and every `NOTE` from `queue`, verbatim. Omit when empty.
 - **WARNING**: the `WARNING` line `queue` printed, verbatim and first. Without it a pass on the built-in queue reads as a pass on the team's.
 - **focus**: printed whenever the focus file exists: without it a narrowed pass reads as a full one.

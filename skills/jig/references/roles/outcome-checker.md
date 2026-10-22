@@ -19,3 +19,5 @@ Return exactly one status per finding, as many out as went in, one line each:
 - `unverified`: the check could not run; list where you searched.
 
 A multi-place finding fixed in part is `skipped` with the remaining places listed.
+
+Optional items, when the input has them: a second list, apart from the statuses and never counted with them. Per item `done` (name the code that did it) or `not done`.

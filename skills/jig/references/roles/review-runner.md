@@ -28,6 +28,7 @@ tally: <the machine line, verbatim>
 <the ## Deepening section verbatim, when the run has one; it is in the state file too>
 OUTCOMES: <id> → <status>, one per line | none
 REPLIES: <discussion_id> → <reply text verbatim>, one per thread the run answers | none
+FYI: <discussion_id> → <the answer under the FYI note verbatim> | none
 ```
 
 Statuses only, no evidence: the caller counts outcomes and never reads their justification.

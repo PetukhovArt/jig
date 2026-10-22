@@ -18,4 +18,4 @@ Read each file once and judge every candidate of the cluster. Return exactly one
 
 Per candidate: verdict, severity, `severity_class`, `severity_gate` (only when a gate cut it), `blocks` (only a blocking finding), angle, category, one-sentence summary with the evidence. No comment prose.
 
-On a re-review with developer replies: judge each reply against the code, return the outcome (`fixed`, `no_change_needed`, `skipped` with a quoted line, `unverified` with where you searched), a learning when the developer's argument holds, and a counter-reply text when it does not.
+On a re-review with developer replies: judge each reply against the code, return the outcome (`fixed`, `no_change_needed`, `skipped` with a quoted line, `unverified` with where you searched), a learning when the developer's argument holds, and a counter-reply text when it does not. Optional items in the input: a second list, per item `done` (name the code that did it) or `not done`, never counted with the outcomes.

@@ -205,6 +205,31 @@ describe('jig review-cycle queue: filter rules', () => {
     }
   })
 
+  it('does not call a re-review stale when the developer answered my open thread without a commit', () => {
+    const answered = thread(
+      'd1',
+      { author: ME, at: '2026-10-10T10:00:00Z', body: '**[🔴 Important]** bug', open: true },
+      { author: DEV, at: '2026-10-10T12:00:00Z', body: 'not a bug: see the guard', open: true },
+    )
+    const mrs = { 1: { commits: ['2026-10-09T10:00:00Z'], discussions: [answered] } }
+    expect(queueLines({ mrs, adapter: adapterQueue([row(1)], 'on') }).map(decisionOf)).toEqual(['ACTIONABLE'])
+  })
+
+  it('reviews again when the developer answered my FYI note, and not when my note there is last', () => {
+    const fyi = (...notes: NoteFixture[]): Record<string, unknown> =>
+      thread('fyi', { author: ME, at: '2026-10-10T10:00:00Z', body: '**[🟡 Nit] Improvements**\n- [ ] a.ts\n<!-- review-fyi -->' }, ...notes)
+    writeState(1, { last_reviewed_sha: 'abc', findings: [] })
+    writeState(2, { last_reviewed_sha: 'abc', findings: [] })
+    const mrs = {
+      1: { sha: 'abc', discussions: [fyi({ author: DEV, at: '2026-10-11T10:00:00Z', body: 'done all three' })] },
+      2: {
+        sha: 'abc',
+        discussions: [fyi({ author: DEV, at: '2026-10-11T10:00:00Z', body: 'done' }, { author: ME, at: '2026-10-11T12:00:00Z', body: 'ticked 3' })],
+      },
+    }
+    expect(queueLines({ mrs, adapter: adapterQueue([row(1), row(2)]) }).map(decisionOf)).toEqual(['ACTIONABLE', 'SKIP unchanged'])
+  })
+
   it('aborts with exit 3 when the adapter queue cannot answer, and blocks one merge request when its forge call fails', () => {
     const down = run({ mrs: {}, adapter: { queue: { code: 3, stdout: '', stderr: 'ERROR projects/x' } } }, ['queue', '--adapter', adapterPath])
     expect(down.code).toBe(3)
@@ -216,6 +241,75 @@ describe('jig review-cycle queue: filter rules', () => {
     const adapter = { queue: ok(`${row(1)}\n`), rules: { code: 4, stdout: '', stderr: 'ref parked on a human' } }
     const [line] = queueLines({ mrs: { 1: {} }, adapter })
     expect(line).toMatch(/^BLOCKED\t.*ref parked on a human$/)
+  })
+})
+
+const outcomeOf = (line: string | undefined): string | undefined => /\toutcome=(\w+)/.exec(line ?? '')?.[1]
+
+const finding = (id: string, severity: string, status: string, discussion: string | null): Record<string, unknown> => ({
+  id,
+  severity,
+  status,
+  discussion_id: discussion,
+})
+
+describe('jig review-cycle queue: the outcome of a skipped merge request', () => {
+  const myThread = (id: string, chip: string, open: boolean): Record<string, unknown> =>
+    thread(id, { author: ME, at: '2026-10-10T10:00:00Z', body: `**[${chip}]** defect`, open })
+
+  it('returns an unchanged merge request whose Important stands in an open thread, and holds the rest', () => {
+    writeState(1, { last_reviewed_sha: 'abc', findings: [finding('a', 'Important', 'skipped', 'd1'), finding('b', 'Important', 'fixed', 'd2')] })
+    writeState(2, { last_reviewed_sha: 'abc', findings: [finding('a', 'Nit', 'skipped', 'd1')] })
+    writeState(3, { last_reviewed_sha: 'abc', findings: [finding('a', 'Important', 'skipped', 'd1')] })
+    writeState(4, { last_reviewed_sha: 'abc', findings: [finding('a', 'Important', 'unverified', 'd1')] })
+    writeState(5, { last_reviewed_sha: 'abc', findings: [finding('a', 'Important', 'open', 'd1')] })
+    const important = [myThread('d1', '🔴 Important', true), myThread('d2', '🔴 Important', false)]
+    const mrs = {
+      1: { sha: 'abc', discussions: important },
+      2: { sha: 'abc', discussions: [myThread('d1', '🟡 Nit', true)] },
+      3: { sha: 'abc', discussions: [myThread('d1', '🔴 Important', false)] },
+      4: { sha: 'abc', discussions: important },
+      5: { sha: 'abc', discussions: important },
+    }
+    const lines = queueLines({ mrs, adapter: adapterQueue([1, 2, 3, 4, 5].map((iid) => row(iid))) })
+    expect(lines.map(decisionOf)).toEqual(Array(5).fill('SKIP unchanged'))
+    expect(lines.map(outcomeOf)).toEqual(['returned', 'held', 'held', 'held', 'returned'])
+  })
+
+  it('returns a stale merge request whose Important stands, holds a stale one without state', () => {
+    writeState(1, { last_reviewed_sha: 'old', findings: [finding('a', 'Important', 'open', 'd1')] })
+    const stale = { sha: 'new', commits: ['2026-10-09T10:00:00Z'], discussions: [MY_OPEN_THREAD] }
+    const lines = queueLines({ mrs: { 1: stale, 2: stale }, adapter: adapterQueue([row(1), row(2)], 'on') })
+    expect(lines.map(decisionOf)).toEqual(['SKIP stale', 'SKIP stale'])
+    expect(lines.map(outcomeOf)).toEqual(['returned', 'held'])
+  })
+
+  it('gives approved its own outcome and holds a draft', () => {
+    const lines = queueLines({ mrs: { 1: {}, 2: {} }, adapter: adapterQueue([row(1, { approved: true }), row(2, { draft: true })]) })
+    expect(lines.map(outcomeOf)).toEqual(['approved', 'held'])
+  })
+})
+
+describe('jig review-cycle standing', () => {
+  it('counts Important findings left open or skipped whose thread is still open', () => {
+    writeState(1, {
+      last_reviewed_sha: 'abc',
+      findings: [
+        finding('a', 'Important', 'skipped', 'd1'),
+        finding('b', 'Important', 'open', 'd2'),
+        finding('c', 'Important', 'skipped', 'd3'),
+        finding('d', 'Nit', 'skipped', 'd1'),
+        finding('e', 'Important', 'unverified', 'd1'),
+        finding('f', 'Important', 'open', null),
+      ],
+    })
+    const discussions = [
+      MY_OPEN_THREAD,
+      thread('d2', { author: ME, at: '2026-10-10T10:00:00Z', body: '**[🔴 Important]** other', open: true }),
+      thread('d3', { author: ME, at: '2026-10-10T10:00:00Z', body: '**[🔴 Important]** resolved', open: false }),
+    ]
+    expect(run({ mrs: { 1: { discussions } } }, ['standing', '1']).out).toEqual(['2'])
+    expect(run({ mrs: { 2: { discussions } } }, ['standing', '2']).out).toEqual(['0'])
   })
 })
 

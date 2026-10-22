@@ -6229,6 +6229,8 @@ var defaultAdapter = (forge, repoDir) => ({
 // src/review-cycle/filter.ts
 var OPTIONAL_OPENING = /^\*\*(\[[^\]]*(Nit|Pre-existing)|(Улучшения|Упрощения) — по желанию)/;
 var isOptionalNote = (note) => OPTIONAL_OPENING.test(note.body.trim());
+var FYI_MARKER = "<!-- review-fyi -->";
+var isFyiNote = (note) => note.body.includes(FYI_MARKER);
 var humanNotes = (discussion) => discussion.notes.filter((note) => !note.system);
 var isOpen = (discussion) => discussion.notes.some((note) => note.resolvable && !note.resolved);
 var time = (iso) => {
@@ -6256,12 +6258,22 @@ var threadFacts = (discussions, me) => {
     const [opening] = discussion.notes;
     const ownsThread = opening !== void 0 && isMine(opening);
     const answeredAfter = discussion.notes.some((note) => !note.system && !isMine(note) && time(note.createdAt) > time(myLastHere));
-    if (open && ownsThread && answeredAfter) unanswered++;
+    const awaitsAnswer = open || opening !== void 0 && isFyiNote(opening);
+    if (awaitsAnswer && ownsThread && answeredAfter) unanswered++;
   }
   return { myLastNote, myUnresolved, unanswered };
 };
+var standingBlocking = (findings, discussions) => {
+  const open = new Set(discussions.filter(isOpen).map((discussion) => discussion.id));
+  return findings.filter((finding) => finding.discussionId !== void 0 && open.has(finding.discussionId)).length;
+};
 var lastCommit = (commitDates) => latest(commitDates);
 var SKIP_REASONS = ["approved", "draft", "busy", "unchanged", "stale"];
+var skipOutcome = (reason, blocking) => {
+  if (reason === "approved") return "approved";
+  if ((reason === "unchanged" || reason === "stale") && blocking > 0) return "returned";
+  return "held";
+};
 var preDecision = (row) => {
   if (row.approved) return { kind: "skip", reason: "approved" };
   if (row.draft) return { kind: "skip", reason: "draft" };
@@ -6273,7 +6285,7 @@ var reviewDecision = (facts2) => {
   const { threads } = facts2;
   const isUnchanged = threads.unanswered === 0 && facts2.reviewedSha !== void 0 && facts2.headSha !== void 0 && facts2.reviewedSha === facts2.headSha;
   if (isUnchanged) return { kind: "skip", reason: "unchanged" };
-  const isStale = threads.myUnresolved > 0 && threads.myLastNote !== void 0 && facts2.lastCommit !== void 0 && time(facts2.lastCommit) <= time(threads.myLastNote);
+  const isStale = threads.myUnresolved > 0 && threads.unanswered === 0 && threads.myLastNote !== void 0 && facts2.lastCommit !== void 0 && time(facts2.lastCommit) <= time(threads.myLastNote);
   if (isStale && facts2.staleRule) return { kind: "skip", reason: "stale" };
   return { kind: "actionable" };
 };
@@ -6489,6 +6501,7 @@ var parseReviewState = (text3, label) => {
     return {
       id: optionalText(entry["id"]) ?? `#${index}`,
       status: entry["status"],
+      severity: optionalText(entry["severity"]),
       category: optionalText(entry["category"]),
       discussionId: optionalText(entry["discussion_id"]),
       specQuote: typeof entry["spec_quote"] === "string" ? entry["spec_quote"] : void 0
@@ -6508,6 +6521,8 @@ var readReviewState = (path2) => {
 };
 var CLOSED = /* @__PURE__ */ new Set(["fixed", "no_change_needed", "optional"]);
 var standingFindings = (state) => state.findings.filter((finding) => !CLOSED.has(finding.status));
+var STANDING = /* @__PURE__ */ new Set(["open", "skipped"]);
+var blockingFindings = (state) => state.findings.filter((finding) => finding.severity === "Important" && STANDING.has(finding.status) && finding.discussionId !== void 0);
 var PRIOR_KEYS = ["prior_fixed", "prior_skipped", "prior_unverified", "prior_no_change_needed"];
 var parseTally = (text3) => {
   let raw;
@@ -6529,11 +6544,11 @@ var parseTally = (text3) => {
 };
 var reconcile = (before, tally) => {
   if (tally.degraded !== void 0) return { kind: "blocked", reason: `degraded: ${tally.degraded}`, firstRun: before === void 0 };
-  const standing = before === void 0 ? 0 : standingFindings(before).length;
-  if (tally.prior < standing) {
-    return { kind: "blocked", reason: `tally accounts for ${tally.prior} of ${standing} standing findings`, firstRun: before === void 0 };
+  const standing2 = before === void 0 ? 0 : standingFindings(before).length;
+  if (tally.prior < standing2) {
+    return { kind: "blocked", reason: `tally accounts for ${tally.prior} of ${standing2} standing findings`, firstRun: before === void 0 };
   }
-  return { kind: "ok", standing, accounted: tally.prior };
+  return { kind: "ok", standing: standing2, accounted: tally.prior };
 };
 var flat = (text3) => text3.replace(/\s+/g, " ").trim();
 var specHold = (state, spec2) => {
@@ -6760,6 +6775,7 @@ var USAGE4 = [
   "  spec <refs> [--adapter <path>]",
   "  reconcile <state-before|none> <tally-file|tally-json>",
   "  unresolved <mr> [--repo <dir>]",
+  "  standing <mr> [--repo <dir>]",
   "  spec-hold <state> <spec>",
   "  withdraw <mr> <discussion-id>... [--repo <dir>]",
   "  verdict <refs>=<outcome>... [--adapter <path>] [--dry-run]"
@@ -6803,17 +6819,21 @@ var judgeRow = (row, adapter, repos) => {
     const repo = repos(row.repoDir);
     const worktree = reviewWorktreePath(repo, row.iid);
     const pre = preDecision({ approved: row.approved, draft: row.draft, busy: isBusy(repo, worktree) });
-    if (pre?.kind === "skip") return { kind: "skip", row, reason: pre.reason, threads: void 0, lastCommit: void 0 };
+    if (pre?.kind === "skip") return { kind: "skip", row, reason: pre.reason, outcome: skipOutcome(pre.reason, 0), threads: void 0, lastCommit: void 0 };
     const staleRule = adapter.rules(row.refs).get("stale") === "on";
     const statePath2 = reviewStatePath(repo.mainRoot, repo.remote, String(row.iid));
     const state = readReviewState(statePath2);
     const me = repo.forge.me();
-    const threads = threadFacts(repo.forge.discussions(row.iid), me);
+    const discussions = repo.forge.discussions(row.iid);
+    const threads = threadFacts(discussions, me);
     const latestCommit = lastCommit(repo.forge.commitDates(row.iid));
     const reviewedSha = state?.lastReviewedSha;
     const headSha = needsHeadSha(threads, reviewedSha) ? repo.forge.headSha(row.iid) : void 0;
     const decision = reviewDecision({ staleRule, threads, lastCommit: latestCommit, reviewedSha, headSha });
-    if (decision.kind === "skip") return { kind: "skip", row, reason: decision.reason, threads, lastCommit: latestCommit };
+    if (decision.kind === "skip") {
+      const blocking = state === void 0 ? 0 : standingBlocking(blockingFindings(state), discussions);
+      return { kind: "skip", row, reason: decision.reason, outcome: skipOutcome(decision.reason, blocking), threads, lastCommit: latestCommit };
+    }
     return {
       kind: "actionable",
       row,
@@ -6836,7 +6856,7 @@ var formatEntry = (entry) => {
     case "actionable":
       return `ACTIONABLE	${id}	${row.sourceBranch}	${row.webUrl}	worktree=${toSlash(entry.worktree)}	state=${entry.state === void 0 ? "none" : toSlash(entry.state)}	standing=${entry.standing}${facts(entry.threads, entry.lastCommit)}`;
     case "skip":
-      return `SKIP	${entry.reason}	${id}	${row.webUrl}${facts(entry.threads, entry.lastCommit)}`;
+      return `SKIP	${entry.reason}	${id}	${row.webUrl}	outcome=${entry.outcome}${facts(entry.threads, entry.lastCommit)}`;
     case "blocked":
       return `BLOCKED	${id}	${row.webUrl}	${entry.reason}`;
     default: {
@@ -6958,6 +6978,14 @@ var unresolved = (args, deps) => {
   deps.print(String(countUnresolved(repo.forge.discussions(mrNumber(positionals[0])))));
   return 0;
 };
+var standing = (args, deps) => {
+  const { values, positionals } = parse(args);
+  const iid = mrNumber(positionals[0]);
+  const repo = repoContext(resolve12(deps.cwd, values.repo ?? "."), deps.exec);
+  const state = readReviewState(reviewStatePath(repo.mainRoot, repo.remote, String(iid)));
+  deps.print(String(state === void 0 ? 0 : standingBlocking(blockingFindings(state), repo.forge.discussions(iid))));
+  return 0;
+};
 var specHoldCommand = (args, deps) => {
   const { positionals } = parse(args);
   const [state, specFile] = positionals;
@@ -7036,6 +7064,7 @@ var subcommands = /* @__PURE__ */ new Map([
   ["spec", spec],
   ["reconcile", reconcileCommand],
   ["unresolved", unresolved],
+  ["standing", standing],
   ["spec-hold", specHoldCommand],
   ["withdraw", withdraw],
   ["verdict", verdict]

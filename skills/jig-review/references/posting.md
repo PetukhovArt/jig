@@ -61,7 +61,7 @@ Post each entry from its payload file. A 201 proves nothing about the body: read
 One unresolvable general note, rebuilt whole on every pass, sections without items left out:
 
 - `**Outside the merge request scope**`: noticed during review, fix when the change is small; no resolve needed. One item per out-of-diff finding: `` `file:line` `` and the first line of its `mrComment` without the chip;
-- `**[🟡 Nit] Improvements: optional, not blocking the merge.**`: one `- [ ]` item per `optional` finding, naming the file;
+- `**[🟡 Nit] Improvements: optional, not blocking the merge.**`: one item per `optional` finding, naming the file: `- [x]` when it is `done` in state, `- [ ]` otherwise;
 - `**Deepening: a proposal, not a finding.**`: the state's `deepening` as one item, `module · what to deepen · effect · blast radius`.
 
 The heading lines are in the comment language. Find your earlier note by the invisible marker `<!-- review-fyi -->` at its end and update it ("Post or update a general note"); create one only when none exists. Keep the marker: without it every pass leaves another note.
@@ -73,7 +73,7 @@ Write the id of each created thread into its finding (`discussion_id`). That kee
 After a re-review, also:
 
 - **resolve** the threads of findings whose outcome became `fixed` or `no_change_needed` ("Resolve a thread"). Never resolve a thread you did not open;
-- **post the replies** of the outcome check into their threads, each body from a file.
+- **post the replies** of the outcome check into their threads, and the FYI answer under the FYI note ("Reply in a thread" with the note's discussion), each body from a file.
 
 ## 10. Report
 

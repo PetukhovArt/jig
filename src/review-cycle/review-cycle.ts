@@ -14,6 +14,8 @@ import {
   preDecision,
   reviewDecision,
   SKIP_REASONS,
+  skipOutcome,
+  standingBlocking,
   threadFacts,
   type Decision,
   type SkipReason,
@@ -21,7 +23,7 @@ import {
 } from './filter'
 import { createForge, detectForge, type Forge } from './forge'
 import { defaultImportDir, importLegacyStates } from './import-state'
-import { parseReviewState, parseTally, readReviewState, reconcile, reviewStatePath, specHold, standingFindings, withdrawFromState } from './state'
+import { blockingFindings, parseReviewState, parseTally, readReviewState, reconcile, reviewStatePath, specHold, standingFindings, withdrawFromState } from './state'
 import { applyVerdicts, foldVerdicts, OUTCOMES, type MrOutcome, type Outcome } from './verdict'
 
 type Command = (args: string[]) => number
@@ -41,6 +43,7 @@ const USAGE = [
   '  spec <refs> [--adapter <path>]',
   '  reconcile <state-before|none> <tally-file|tally-json>',
   '  unresolved <mr> [--repo <dir>]',
+  '  standing <mr> [--repo <dir>]',
   '  spec-hold <state> <spec>',
   '  withdraw <mr> <discussion-id>... [--repo <dir>]',
   '  verdict <refs>=<outcome>... [--adapter <path>] [--dry-run]',
@@ -98,7 +101,7 @@ const isBusy = (repo: Repo, worktree: string): boolean =>
 
 export type QueueEntry =
   | { kind: 'actionable'; row: QueueRow; worktree: string; state: string | undefined; standing: number; threads: ThreadFacts; lastCommit: string | undefined }
-  | { kind: 'skip'; row: QueueRow; reason: SkipReason; threads: ThreadFacts | undefined; lastCommit: string | undefined }
+  | { kind: 'skip'; row: QueueRow; reason: SkipReason; outcome: Outcome; threads: ThreadFacts | undefined; lastCommit: string | undefined }
   | { kind: 'blocked'; row: QueueRow; reason: string }
 
 const judgeRow = (row: QueueRow, adapter: ProcessAdapter, repos: (dir: string) => Repo): QueueEntry => {
@@ -106,17 +109,21 @@ const judgeRow = (row: QueueRow, adapter: ProcessAdapter, repos: (dir: string) =
     const repo = repos(row.repoDir)
     const worktree = reviewWorktreePath(repo, row.iid)
     const pre = preDecision({ approved: row.approved, draft: row.draft, busy: isBusy(repo, worktree) })
-    if (pre?.kind === 'skip') return { kind: 'skip', row, reason: pre.reason, threads: undefined, lastCommit: undefined }
+    if (pre?.kind === 'skip') return { kind: 'skip', row, reason: pre.reason, outcome: skipOutcome(pre.reason, 0), threads: undefined, lastCommit: undefined }
     const staleRule = adapter.rules(row.refs).get('stale') === 'on'
     const statePath = reviewStatePath(repo.mainRoot, repo.remote, String(row.iid))
     const state = readReviewState(statePath)
     const me = repo.forge.me()
-    const threads = threadFacts(repo.forge.discussions(row.iid), me)
+    const discussions = repo.forge.discussions(row.iid)
+    const threads = threadFacts(discussions, me)
     const latestCommit = lastCommit(repo.forge.commitDates(row.iid))
     const reviewedSha = state?.lastReviewedSha
     const headSha = needsHeadSha(threads, reviewedSha) ? repo.forge.headSha(row.iid) : undefined
     const decision: Decision = reviewDecision({ staleRule, threads, lastCommit: latestCommit, reviewedSha, headSha })
-    if (decision.kind === 'skip') return { kind: 'skip', row, reason: decision.reason, threads, lastCommit: latestCommit }
+    if (decision.kind === 'skip') {
+      const blocking = state === undefined ? 0 : standingBlocking(blockingFindings(state), discussions)
+      return { kind: 'skip', row, reason: decision.reason, outcome: skipOutcome(decision.reason, blocking), threads, lastCommit: latestCommit }
+    }
     return {
       kind: 'actionable',
       row,
@@ -142,7 +149,7 @@ const formatEntry = (entry: QueueEntry): string => {
     case 'actionable':
       return `ACTIONABLE\t${id}\t${row.sourceBranch}\t${row.webUrl}\tworktree=${toSlash(entry.worktree)}\tstate=${entry.state === undefined ? 'none' : toSlash(entry.state)}\tstanding=${entry.standing}${facts(entry.threads, entry.lastCommit)}`
     case 'skip':
-      return `SKIP\t${entry.reason}\t${id}\t${row.webUrl}${facts(entry.threads, entry.lastCommit)}`
+      return `SKIP\t${entry.reason}\t${id}\t${row.webUrl}\toutcome=${entry.outcome}${facts(entry.threads, entry.lastCommit)}`
     case 'blocked':
       return `BLOCKED\t${id}\t${row.webUrl}\t${entry.reason}`
     default: {
@@ -284,6 +291,15 @@ const unresolved = (args: string[], deps: CycleDeps): number => {
   return 0
 }
 
+const standing = (args: string[], deps: CycleDeps): number => {
+  const { values, positionals } = parse(args)
+  const iid = mrNumber(positionals[0])
+  const repo = repoContext(resolve(deps.cwd, values.repo ?? '.'), deps.exec)
+  const state = readReviewState(reviewStatePath(repo.mainRoot, repo.remote, String(iid)))
+  deps.print(String(state === undefined ? 0 : standingBlocking(blockingFindings(state), repo.forge.discussions(iid))))
+  return 0
+}
+
 const specHoldCommand = (args: string[], deps: CycleDeps): number => {
   const { positionals } = parse(args)
   const [state, specFile] = positionals
@@ -368,6 +384,7 @@ const subcommands = new Map<string, (args: string[], deps: CycleDeps) => number>
   ['spec', spec],
   ['reconcile', reconcileCommand],
   ['unresolved', unresolved],
+  ['standing', standing],
   ['spec-hold', specHoldCommand],
   ['withdraw', withdraw],
   ['verdict', verdict],

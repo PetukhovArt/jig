@@ -12,7 +12,7 @@ On when state exists and `last_reviewed_sha` is an ancestor of HEAD ([state](03-
 git diff <base>...HEAD | git hash-object --stdin
 ```
 
-The hash equals `diff_hash` in state AND the working tree is clean → only the [developer's replies in threads](#developer-replies-in-threads) can have moved: fetch **only** them and stop. Scope, outcome check, symbol search and finder spawns are skipped. No new replies and no thread whose last note is the developer's without a [reply](#reply-to-every-reply) yet: the run ends with no findings. Such threads exist: the outcome check runs on them only.
+The hash equals `diff_hash` in state AND the working tree is clean → only the [developer's replies in threads](#developer-replies-in-threads) can have moved: fetch **only** them and stop. Scope, outcome check, symbol search and finder spawns are skipped. No new replies and no thread whose last note is the developer's without a [reply](#reply-to-every-reply) yet: the run ends with no findings. Such threads exist: the outcome check runs on them only. Someone wrote under my FYI note after my last note there: the [optional items](#optional-items) are rechecked too.
 
 **The short path's tally is not zero.** Every finding with an open thread (status not `fixed`, not `no_change_needed`, not `optional`) enters `prior_*`: rechecked by a reply with its new outcome, the rest with their carried status (`open` and `skipped` → `prior_skipped`, `unverified` → `prior_unverified`). The diff did not change, so the defect stands. The sum is the one in the [convergence check](08-output.md#write-state). One run on this path reported `prior_skipped: 4`, another zeros, and the zeros blocked the merge request.
 
@@ -110,4 +110,20 @@ The last note of an unresolved thread is the developer's and the outcome is not 
 - `unverified` → what could not be checked and what is needed to decide: a reproduction, a run, an answer to a question.
 - `open` after a dispute → the counter-reply above.
 
-Form and limits as for a counter-reply. The reply returns in the output with its `discussion_id`; posting sends it. My note is already the last in the thread → do not reply: the developer has not answered it yet.
+Form and limits as for a counter-reply. The reply returns in the output with its `discussion_id`; posting sends it. My note is already the last in the thread → do not reply: the developer has not answered it yet, unless a commit answered it ([below](#an-important-that-stands-after-a-new-commit)).
+
+### An Important that stands after a new commit
+
+The developer may answer with a commit and no note: they push, ask for review again and wait. Silence on such a thread leaves them waiting on a review that already decided. Reply once when all hold:
+
+- the finding is `Important` and its outcome in this run is `skipped`;
+- my note is the last in its unresolved thread;
+- this run's range has new commits (not the [short path](#re-review)), and the newest of them (`git log -1 --format=%cI HEAD`) is later than my last note in the thread.
+
+The reply, in the comment language, short ([comment text](07-comments.md)): ``after `<short sha of HEAD>` the defect stands: `<the line it stands on, at its current path>` ``, with that `file:line`; at most one more sentence naming what the commit did not change. Nit and Pre-existing stay silent: they never hold the merge request. The reply makes my note the last again and later than the commit, so the same head never gets a second one.
+
+## Optional items
+
+`optional` findings have no thread and no status of their own; the FYI note shows them as a checklist ([posting](../references/posting.md#8-the-fyi-note-one-per-merge-request)). A re-review rechecks the ones not yet `done` when this run's range has new commits, or when someone wrote under my FYI note after my last note there (the threads read in [adoption](03-state.md) hold it). The subagent of the outcome check gets them as a second list, apart from the findings (no finding to check: role `outcome-checker` with this list alone): per item `done` (name the code that did it) or `not done`. `done` → `"done": true` on the finding in state. They never enter the count line or `prior_*`.
+
+Someone wrote under the FYI note → one short answer there, in the comment language: what is now ticked, and for an item the writer called done but the code does not show, the line that still stands. It returns in the output as the FYI answer with the note's `discussion_id`; posting sends it and rebuilds the note with the ticks.

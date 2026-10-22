@@ -9,6 +9,7 @@ export type FindingStatus = (typeof FINDING_STATUSES)[number]
 export interface Finding {
   id: string
   status: FindingStatus
+  severity: string | undefined
   category: string | undefined
   discussionId: string | undefined
   specQuote: string | undefined
@@ -51,6 +52,7 @@ export const parseReviewState = (text: string, label: string): ReviewState => {
     return {
       id: optionalText(entry['id']) ?? `#${index}`,
       status: entry['status'],
+      severity: optionalText(entry['severity']),
       category: optionalText(entry['category']),
       discussionId: optionalText(entry['discussion_id']),
       specQuote: typeof entry['spec_quote'] === 'string' ? entry['spec_quote'] : undefined,
@@ -75,6 +77,12 @@ const CLOSED: ReadonlySet<FindingStatus> = new Set(['fixed', 'no_change_needed',
 
 /** Findings whose thread is still unresolved: the engine's outcome check must give each one a status. */
 export const standingFindings = (state: ReviewState): Finding[] => state.findings.filter((finding) => !CLOSED.has(finding.status))
+
+const STANDING: ReadonlySet<FindingStatus> = new Set(['open', 'skipped'])
+
+/** Posted Important findings the last outcome check left standing; `unverified` is not among them: the check could not tell. */
+export const blockingFindings = (state: ReviewState): Finding[] =>
+  state.findings.filter((finding) => finding.severity === 'Important' && STANDING.has(finding.status) && finding.discussionId !== undefined)
 
 export interface Tally {
   degraded: string | undefined
