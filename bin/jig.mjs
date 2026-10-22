@@ -3338,10 +3338,10 @@ var PROTECTED_FOR_DENY = [
   ".gitlab-ci.yml",
   ".husky/**"
 ];
-var RECOMMENDED_DENY = PROTECTED_FOR_DENY.flatMap((path2) => [`Edit(${path2})`, `Write(${path2})`]);
+var RECOMMENDED_DENY = PROTECTED_FOR_DENY.map((path2) => `Edit(${path2})`);
 var formatDenyBlock = () => {
-  const pairs = PROTECTED_FOR_DENY.map((path2) => `      "Edit(${path2})", "Write(${path2})"`);
-  return ["{", '  "permissions": {', '    "deny": [', pairs.join(",\n"), "    ]", "  }", "}"].join("\n");
+  const rules = RECOMMENDED_DENY.map((rule) => `      "${rule}"`);
+  return ["{", '  "permissions": {', '    "deny": [', rules.join(",\n"), "    ]", "  }", "}"].join("\n");
 };
 var ok = (text3) => ({ status: "ok", text: text3 });
 var warn = (text3) => ({ status: "warn", text: text3 });

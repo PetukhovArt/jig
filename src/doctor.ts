@@ -36,11 +36,11 @@ const PROTECTED_FOR_DENY = [
   '.husky/**',
 ] as const
 
-const RECOMMENDED_DENY: readonly string[] = PROTECTED_FOR_DENY.flatMap((path) => [`Edit(${path})`, `Write(${path})`])
+const RECOMMENDED_DENY: readonly string[] = PROTECTED_FOR_DENY.map((path) => `Edit(${path})`)
 
 const formatDenyBlock = (): string => {
-  const pairs = PROTECTED_FOR_DENY.map((path) => `      "Edit(${path})", "Write(${path})"`)
-  return ['{', '  "permissions": {', '    "deny": [', pairs.join(',\n'), '    ]', '  }', '}'].join('\n')
+  const rules = RECOMMENDED_DENY.map((rule) => `      "${rule}"`)
+  return ['{', '  "permissions": {', '    "deny": [', rules.join(',\n'), '    ]', '  }', '}'].join('\n')
 }
 
 const ok = (text: string): Check => ({ status: 'ok', text })

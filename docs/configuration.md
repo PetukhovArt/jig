@@ -56,20 +56,20 @@ Slots need a `slots` section; `worktreesDir` is required. The `worktree` section
 
 ## Guard the config files
 
-jig does not guard config files itself. A plugin cannot write permission rules into your project, so add this deny block to `.claude/settings.json`; `jig doctor` warns when it is incomplete:
+jig does not guard config files itself. A plugin cannot write permission rules into your project, so add this deny block to `.claude/settings.json`; `jig doctor` warns when it is incomplete. Claude Code applies an `Edit` rule to every built-in tool that edits files, `Write` included, and warns that a `Write(...)` rule never matches, so the block has only `Edit` rules:
 
 ```json
 {
   "permissions": {
     "deny": [
-      "Edit(.jig/config.jsonc)", "Write(.jig/config.jsonc)",
-      "Edit(eslint.config.*)", "Write(eslint.config.*)",
-      "Edit(tsconfig*.json)", "Write(tsconfig*.json)",
-      "Edit(.oxlintrc.json)", "Write(.oxlintrc.json)",
-      "Edit(stratum.config.jsonc)", "Write(stratum.config.jsonc)",
-      "Edit(.github/workflows/**)", "Write(.github/workflows/**)",
-      "Edit(.gitlab-ci.yml)", "Write(.gitlab-ci.yml)",
-      "Edit(.husky/**)", "Write(.husky/**)"
+      "Edit(.jig/config.jsonc)",
+      "Edit(eslint.config.*)",
+      "Edit(tsconfig*.json)",
+      "Edit(.oxlintrc.json)",
+      "Edit(stratum.config.jsonc)",
+      "Edit(.github/workflows/**)",
+      "Edit(.gitlab-ci.yml)",
+      "Edit(.husky/**)"
     ]
   }
 }

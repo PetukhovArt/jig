@@ -249,6 +249,14 @@ describe('jig doctor', () => {
     write('agent-view.config.json', '{}')
     expect(doctorChecks(root, root).map((check) => check.text)).not.toContainEqual(expect.stringMatching(/no agent-view\.config\.json/))
   })
+
+  it('recommends Edit deny rules only and accepts a block without Write rules', () => {
+    const denyCheck = () => doctorChecks(root, root).find((check) => check.text.startsWith('deny:'))
+    expect(denyCheck()?.block).not.toContain('Write(')
+    const rules = ['.jig/config.jsonc', 'eslint.config.*', 'tsconfig*.json', '.oxlintrc.json', 'stratum.config.jsonc', '.github/workflows/**', '.gitlab-ci.yml', '.husky/**']
+    write('.claude/settings.json', JSON.stringify({ permissions: { deny: rules.map((path) => `Edit(${path})`) } }))
+    expect(denyCheck()?.status).toBe('ok')
+  })
 })
 
 describe('custom checks from config', () => {
