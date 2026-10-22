@@ -15,7 +15,7 @@ Agents are good at writing code and bad at noticing when they broke something. A
 
 - **Checks that run whether the agent remembers or not.** Adding an `eslint-disable` or `@ts-ignore` is refused outright. A new comment or test case gets bounced once along with the rules for it, so the agent has to think before trying again. At the end of every turn, tsc, ESLint, stratum and your own checks run over the files that session touched, and an error keeps the turn open.
 - **UI changes proven in the app.** Before a merge request, `jig pre-mr` wants a replayed use case and a screenshot for each changed component, or a written reason why there are none.
-- **Reviews you can trust.** `jig-review` decides how many reviewers a diff needs, then a different model checks each finding before you see it. `jig-review-cycle` goes through every merge request waiting on you in one pass.
+- **A review that proves every finding.** Code plans the review from the diff. Finders hunt across 17 angles: bugs, security, architecture, ADRs, the spec, tests. A judge on a different model keeps a bug only with a quoted initiator, path and effect. A re-review reads only the new commits and gives every open thread a status, and `jig-review-cycle` clears your whole review queue in one pass. Each change to the review process has to pass reference merge requests before it ships ([review](docs/review.md)).
 - **Works on an old codebase.** ESLint only looks at the lines the agent changed and tsc only at the files it touched. stratum starts from a baseline, so old violations don't block anyone.
 - **Gets out of the way.** After three blocks in a row the gate stops blocking and writes it down, so the agent never loops on it. Edit hooks have a 300 ms budget (p95), the end-of-turn gate 20 s for 20 files, and the [benchmarks](docs/evals.md#benchmarks) check both.
 - **Several agents at once.** Each task can get its own worktree. Finished branches can be shown in a slot with its own dev server and ports. Each session's gate only looks at its own files, and heavy checks take turns instead of all running at once.
@@ -164,7 +164,7 @@ The model can start three of them on its own, because a flow or a schedule needs
 
 **Architecture gets checked too.** Module layers and boundaries live in a [stratum](https://github.com/PetukhovArt/stratum) config and are checked on every edit, fast enough that nobody notices.
 
-**Review findings need evidence.** Reviewers look for problems aggressively. Then a judge on a different model keeps only the findings it can point to on a quoted line.
+**Review findings need evidence.** Finders look for problems aggressively, each with its own question. Then a judge on a different model keeps only what it can prove on quoted lines, so one model's blind spot can't confirm itself. Severity comes from a closed list: `Important` means the merge waits ([review](docs/review.md)).
 
 **Short rules, read when they apply.** There's no giant system prompt. Each rule is a short file (an atom) with a one-line trigger, and the agent reads it only when the work matches.
 
@@ -248,6 +248,6 @@ Only the Claude Code adapter exists for now. The core doesn't depend on the agen
 
 ## Docs
 
-[Hooks and gates](docs/hooks.md) · [Configuration](docs/configuration.md) · [UI proof](docs/ui-proof.md) · [Review cycle](docs/review-cycle.md) · [Flows, atoms and roles](docs/flows.md) · [Commands](docs/commands.md) · [Agents](docs/agents.md) · [Evals and benchmarks](docs/evals.md) · [Issues](docs/issues.md)
+[Hooks and gates](docs/hooks.md) · [Configuration](docs/configuration.md) · [UI proof](docs/ui-proof.md) · [Review](docs/review.md) · [Review cycle](docs/review-cycle.md) · [Flows, atoms and roles](docs/flows.md) · [Commands](docs/commands.md) · [Agents](docs/agents.md) · [Evals and benchmarks](docs/evals.md) · [Issues](docs/issues.md)
 
 MIT © Artem Petukhov
