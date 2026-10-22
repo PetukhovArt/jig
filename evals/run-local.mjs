@@ -213,6 +213,9 @@ const run = (command, args, { cwd, input, timeoutMs, env = isolatedEnv(), onStdo
       if (onStdoutLine && pending) onStdoutLine(pending)
       resolvePromise({ code, stdout, stderr, timedOut, durationMs: Date.now() - started })
     })
+    child.stdin.on('error', (error) => {
+      if (error.code !== 'EPIPE') stderr += String(error)
+    })
     child.stdin.end(input ?? '')
   })
 
