@@ -1,10 +1,12 @@
 {
   "name": "jig",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "license": "MIT",
-  "engines": { "node": ">=20" },
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "build": "node scripts/build.mjs",
     "check": "node scripts/build.mjs --check && node scripts/sync-plugin-version.mjs --check && tsc --noEmit && vitest run && node bin/jig.mjs build --atoms-only",

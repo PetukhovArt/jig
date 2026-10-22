@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 // package.json
-var version = "0.1.0";
+var version = "0.2.0";
 
 // src/atoms/atoms.ts
 import { readdirSync as readdirSync8, readFileSync as readFileSync14 } from "node:fs";

@@ -1,5 +1,0 @@
----
-"jig": minor
----
-
-Initial release.
