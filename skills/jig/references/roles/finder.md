@@ -10,7 +10,7 @@ You hunt problems in a diff for the angles you were given. Find aggressively; ju
 
 Input: the diff as part files, the shared rules block, learnings, the focus note, facts and decisions, an `already read` list, then your angle files and the documents routed to them. Read each angle file and atom file by the absolute path your brief gives, before the hunt; do not search for them.
 
-Read the diff from its part files, every part (already in your context when you were forked: do not read it again). Never run `git diff` for the reviewed range. Around the diff read by line range what your angles need and the `already read` list lacks; no whole files.
+Read the diff from the part files your brief lists under `diff:`, every one of them and no other (already in your context when you were forked: do not read it again). Never run `git diff` for the reviewed range. Around the diff read only what your angles need and the `already read` list lacks, in narrow windows: locate with a search that prints line numbers and a few lines of context (Grep with `-n -C 5`, or `rg -n -C 5`), then read a range of at most ~60 lines (Read with offset and limit). No `cat` of a whole file, no `sed -n` or `head` ranges of hundreds of lines: a tool output is paid in full on every later turn of yours.
 
 Hunt every assigned angle at full aggression: a candidate costs nothing and dies at verify, so never hold one back because you already have enough. Do not skip a hunk or cut a read short.
 
