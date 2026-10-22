@@ -41,7 +41,9 @@ Collect **everything** found, not "first wins": the index at the root and the ru
 
 Drop what is not a rule: meeting notes, release checklists, documents about the *review process*, changelogs, directory overviews, build and test commands, tooling setup, commit and merge request workflow. Those are instructions for building, not criteria for judging; a finder fed with them starts flagging "did not run the linter".
 
-**The filter applies to the input, not the target.** Glossary and ADRs do not go into the shared block: only the rules finder gets them, for [angle 13](../angles/13.architecture.md) sections C and D. When the diff **changes** them, the change is reviewed like code: [angle 11](../angles/11.docs.md), question 2.
+**What is read as input, and nothing else:** the rules indexes of step 1 (`AGENTS.md`, `CLAUDE.md` and the other `discover.rules` names closest to the changed files), the task's spec or PRD ([prepare](01-prepare.md#spec)), and the standard bodies of step 2. A README, a directory overview, an ADR index or a glossary map is not read whole; a document an index links is opened only when a candidate needs the rule it holds.
+
+**The filter applies to the input, not the target.** Glossary and ADRs do not go into the shared block: only the rules finder searches them, for [angle 13](../angles/13.architecture.md) sections C and D, by grep and by path, never whole. When the diff **changes** them, their hunks are in the `docs-*` parts and the change is reviewed like code: [angle 11](../angles/11.docs.md), question 2.
 
 **Priority in a conflict:** the document closest to the code beats the farther one; `REVIEW.md` beats `AGENTS.md` at the same level.
 
