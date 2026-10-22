@@ -7,6 +7,8 @@ argument-hint: "<topic: a plan, a decision, an idea>"
 
 # jig grill
 
+`${CLAUDE_PLUGIN_ROOT}` is the plugin root when the agent sets it, otherwise the directory two levels above this file.
+
 Read `${CLAUDE_PLUGIN_ROOT}/atoms/questions.md` and follow it for the whole interview.
 
 1. Map the topic as a decision tree: every decision branches into the decisions that hang off it. Look up every fact in the code and the docs yourself before the first question.

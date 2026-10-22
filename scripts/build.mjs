@@ -140,6 +140,10 @@ const readmeSkills = () => {
     '| skill | started by | what it does |',
     '| --- | --- | --- |',
     ...skills.map(({ dir, name, description, ['disable-model-invocation']: userOnly }) => {
+      const codexPolicy = join(skillsDir, dir, 'agents', 'openai.yaml')
+      if (userOnly === 'true' && !(existsSync(codexPolicy) && /allow_implicit_invocation:\s*false/.test(readFileSync(codexPolicy, 'utf8')))) {
+        throw new Error(`skills/${dir}: disable-model-invocation needs agents/openai.yaml with allow_implicit_invocation: false, the key Codex reads`)
+      }
       const startedBy = userOnly === 'true' ? 'you' : 'you or the model'
       const what = description.replace(/\s+Use (for|when) .*$/, '')
       return `| [\`/${name}\`](skills/${dir}/SKILL.md) | ${startedBy} | ${cell(what)} |`

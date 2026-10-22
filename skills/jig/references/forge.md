@@ -2,10 +2,10 @@
 
 ## Which host
 
-`git remote get-url origin`:
+`reviewCycle.forge` in `.jig/config.jsonc` or `.jig/config.local.jsonc` decides when set. Otherwise `git remote get-url origin`:
+- contains `github` (GitHub Enterprise included) → `gh`;
 - contains `gitlab` → `glab`;
-- contains `github.com` → `gh`;
-- anything else: ask the user in your reply which forge CLI the repository uses, recommending `glab`.
+- anything else: ask the user in your reply which forge CLI the repository uses, and name `reviewCycle.forge` so the answer sticks.
 
 Run every command from inside the repository: both CLIs take the host and project from its `origin`. Bodies go through a temp file (`mktemp`), never inline `-f body=`: quoting breaks the text. Remove the file once the call succeeds.
 

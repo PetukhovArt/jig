@@ -5,6 +5,8 @@ description: "Give a task its own git worktree, and show finished branches in a 
 
 # jig slots
 
+`${CLAUDE_PLUGIN_ROOT}` is the plugin root when the agent sets it, otherwise the directory two levels above this file.
+
 CLI: `node ${CLAUDE_PLUGIN_ROOT}/bin/jig.mjs slot <new|show|ls|rm>` and `... worktree <seed|sweep|remove>`. Slot settings live in the `slots` section of `.jig/config.jsonc`, seed settings in its `worktree` section; a human edits both.
 
 Terms:

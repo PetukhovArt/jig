@@ -1,0 +1,5 @@
+interface:
+  display_name: "jig-task-status"
+  short_description: "Keep a reviewable decision trail of a long or unattended run"
+policy:
+  allow_implicit_invocation: false

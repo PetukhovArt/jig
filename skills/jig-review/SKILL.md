@@ -6,7 +6,7 @@ argument-hint: "[pre-mr] [<merge request URL or number>] [quick|full|<selector>]
 
 # jig-review
 
-Plugin root: `${CLAUDE_PLUGIN_ROOT}`; below, `<root>` means this path and `<skill>` means `<root>/skills/jig-review`. CLI: `node <root>/bin/jig.mjs <command>`. Atoms: `<root>/atoms/<name>.md`. Role templates: `<root>/skills/jig/references/roles/<name>.md`. Forge commands (`glab`, `gh`): `<root>/skills/jig/references/forge.md`, only when a merge request is involved.
+Plugin root: `${CLAUDE_PLUGIN_ROOT}` when the agent sets it, otherwise the directory two levels above this file; below, `<root>` means this path and `<skill>` means `<root>/skills/jig-review`. CLI: `node <root>/bin/jig.mjs <command>`. Atoms: `<root>/atoms/<name>.md`. Role templates: `<root>/skills/jig/references/roles/<name>.md`. Forge commands (`glab`, `gh`): `<root>/skills/jig/references/forge.md`, only when a merge request is involved.
 
 ## Start here
 

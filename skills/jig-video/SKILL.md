@@ -7,6 +7,8 @@ argument-hint: "<MR/PR url or number | commit range | use-cases list >"
 
 # Feature video
 
+`${CLAUDE_PLUGIN_ROOT}` is the plugin root when the agent sets it, otherwise the directory two levels above this file.
+
 ## Requirements
 
 - `ffmpeg` (`winget install Gyan.FFmpeg`).

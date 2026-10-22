@@ -6,7 +6,7 @@ argument-hint: "[<focus note>] [--no-focus]"
 
 # jig-review-cycle
 
-Plugin root: `${CLAUDE_PLUGIN_ROOT}`; below, `<root>` means this path. CLI: `node <root>/bin/jig.mjs <command>`; `jig <command>` below means this. Roles: `<root>/skills/jig/references/roles/<name>.md`, tier and effort in `<root>/skills/jig/references/roles.md`. Forge commands: `<root>/skills/jig/references/forge.md`. The review engine is jig-review: `<root>/skills/jig-review/SKILL.md`.
+Plugin root: `${CLAUDE_PLUGIN_ROOT}` when the agent sets it, otherwise the directory two levels above this file; below, `<root>` means this path. CLI: `node <root>/bin/jig.mjs <command>`; `jig <command>` below means this. Roles: `<root>/skills/jig/references/roles/<name>.md`, tier and effort in `<root>/skills/jig/references/roles.md`. Forge commands: `<root>/skills/jig/references/forge.md`. The review engine is jig-review: `<root>/skills/jig-review/SKILL.md`.
 
 Discover → filter → review → post → verdict. You are the orchestrator: you **never review or post by hand**. You spawn subagents, own the worktrees and the verdict. What triggers a review and where a verdict is recorded belongs to the team's **process adapter** (`<root>/skills/jig/references/process-adapter.md`); this file never names a label or a tracker status. The deterministic parts are `jig review-cycle <sub>`; never recompute what it prints.
 

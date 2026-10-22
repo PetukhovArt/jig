@@ -80,10 +80,22 @@ describe('resolvePackageBin', () => {
   })
 })
 
+describe('a command installed in the project', () => {
+  it('resolves from node_modules/.bin before PATH', () => {
+    const project = join(workDir, 'local-bin')
+    const script = write(join(project, 'node_modules', 'checker', 'bin', 'check.js'), '')
+    const unixBin = write(join(project, 'node_modules', '.bin', 'checker'), '')
+    write(join(project, 'node_modules', '.bin', 'checker.cmd'), npmShim('..\\checker\\bin\\check.js'))
+    const expected = process.platform === 'win32' ? [process.execPath, script] : [unixBin]
+    expect(resolveBin(project, [], 'checker')).toEqual(expected)
+  })
+})
+
 describe('npm shims in PATH', () => {
   let shims: string
   let jsTarget: string
   let exeTarget: string
+  let npmCliTarget: string
 
   beforeAll(() => {
     shims = join(workDir, 'shims')
@@ -93,10 +105,27 @@ describe('npm shims in PATH', () => {
     write(join(shims, 'exe-tool.cmd'), '@"%~dp0\\tools\\native.exe" %*\r\n')
     write(join(shims, 'junk-tool.bat'), '@echo hello\r\n')
     write(join(shims, 'gone-tool.cmd'), npmShim('node_modules\\gone\\cli.js'))
+    npmCliTarget = write(join(shims, 'node_modules', 'npm', 'bin', 'npx-cli.js'), '')
+    write(join(shims, 'node_modules', 'npm', 'bin', 'npm-prefix.js'), '')
+    write(
+      join(shims, 'npx.cmd'),
+      [
+        '@ECHO OFF',
+        'SET "NODE_EXE=%~dp0\\node.exe"',
+        'SET "NPM_PREFIX_JS=%~dp0\\node_modules\\npm\\bin\\npm-prefix.js"',
+        'SET "NPX_CLI_JS=%~dp0\\node_modules\\npm\\bin\\npx-cli.js"',
+        `FOR /F "delims=" %%F IN ('CALL "%NODE_EXE%" "%NPM_PREFIX_JS%"') DO (`,
+        '  SET "NPM_PREFIX_NPX_CLI_JS=%%F\\node_modules\\npm\\bin\\npx-cli.js"',
+        ')',
+        '"%NODE_EXE%" "%NPX_CLI_JS%" %*',
+        '',
+      ].join('\r\n'),
+    )
   })
 
   it.each([
     ['a js target runs through node', 'js-tool.cmd', () => [process.execPath, jsTarget]],
+    ["node's own npx.cmd runs its cli through node", 'npx.cmd', () => [process.execPath, npmCliTarget]],
     ['an exe target runs directly', 'exe-tool.cmd', () => [exeTarget]],
     ['an unrecognized shim is not found', 'junk-tool.bat', () => undefined],
     ['a missing target is not found', 'gone-tool.cmd', () => undefined],

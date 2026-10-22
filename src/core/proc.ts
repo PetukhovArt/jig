@@ -114,6 +114,8 @@ export const findInPath = (name: string, env: NodeJS.ProcessEnv = process.env): 
 const SHIM_EXTENSIONS = new Set(['.cmd', '.bat'])
 const SCRIPT_EXTENSIONS = new Set(['.js', '.mjs', '.cjs'])
 const SHIM_TARGET = /"%(?:~dp0|dp0%)\\([^"%]+)"/gi
+const SHIM_VARIABLE = /^\s*SET\s+"(\w+)=%~dp0\\([^"%]+)"/gim
+const SHIM_VARIABLE_USE = /"%NODE_EXE%"\s+"%(\w+)%"/gi
 const NODE_EXECUTABLE = /^node(?:\.exe)?$/i
 
 const isShim = (path: string): boolean => SHIM_EXTENSIONS.has(extname(path).toLowerCase())
@@ -126,10 +128,19 @@ const readText = (path: string): string | undefined => {
   }
 }
 
+const shimVariables = (text: string): Map<string, string> =>
+  new Map([...text.matchAll(SHIM_VARIABLE)].map((match) => [(match[1] ?? '').toUpperCase(), match[2] ?? '']))
+
+const variableTargets = (text: string): string[] => {
+  const variables = shimVariables(text)
+  return [...text.matchAll(SHIM_VARIABLE_USE)].flatMap((match) => variables.get((match[1] ?? '').toUpperCase()) ?? [])
+}
+
 export const resolveShimTarget = (shimPath: string): string[] | undefined => {
   const text = readText(shimPath) ?? ''
-  const targets = [...text.matchAll(SHIM_TARGET)]
-    .map((match) => (match[1] ?? '').replace(/\\/g, '/'))
+  const direct = [...text.matchAll(SHIM_TARGET)].map((match) => match[1] ?? '')
+  const targets = [...direct, ...variableTargets(text)]
+    .map((target) => target.replace(/\\/g, '/'))
     .filter((target) => !NODE_EXECUTABLE.test(basename(target)))
   const target = targets.at(-1)
   if (target === undefined) return undefined
@@ -155,6 +166,10 @@ export const resolveBin = (projectRoot: string, pkgs: readonly string[], command
     const bin = resolvePackageBin(projectRoot, pkg, command)
     if (bin !== undefined) return bin
   }
+  const local = searchDirs(projectRoot)
+    .map((dir) => findInPath(command, { PATH: join(dir, 'node_modules', '.bin'), PATHEXT: '.CMD' }))
+    .find((path) => path !== undefined)
+  if (local !== undefined) return isShim(local) ? resolveShimTarget(local) : [local]
   const found = findInPath(command)
   if (found === undefined) return undefined
   return isShim(found) ? resolveShimTarget(found) : [found]

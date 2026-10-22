@@ -1,8 +1,10 @@
 import { spawnSync } from 'node:child_process'
 import { basename, resolve } from 'node:path'
+import { loadConfig } from '../core/config'
 import { git, gitToplevel } from '../core/git'
 import { toSlash } from '../core/paths'
 import { findInPath } from '../core/proc'
+import { detectForge } from '../review-cycle/forge'
 import { slotNumber } from '../slot/slot'
 import { samePath, type Worktree } from './list'
 import { removeLinkedWorktree } from './remove'
@@ -40,7 +42,7 @@ const branchNames = (value: unknown, field: string): string[] => {
 
 export const openMrBranches = (cwd: string): Set<string> => {
   const remote = git(['remote', 'get-url', 'origin'], cwd).stdout
-  const isGithub = remote.includes('github.com')
+  const isGithub = (loadConfig(cwd).reviewCycle?.forge ?? detectForge(remote)) === 'github'
   const tool = isGithub ? findInPath('gh') : findInPath('glab')
   if (tool === undefined) return new Set()
   const branches = isGithub

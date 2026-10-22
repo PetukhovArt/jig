@@ -1072,6 +1072,8 @@ var findInPath = (name, env = process.env) => {
 var SHIM_EXTENSIONS = /* @__PURE__ */ new Set([".cmd", ".bat"]);
 var SCRIPT_EXTENSIONS2 = /* @__PURE__ */ new Set([".js", ".mjs", ".cjs"]);
 var SHIM_TARGET = /"%(?:~dp0|dp0%)\\([^"%]+)"/gi;
+var SHIM_VARIABLE = /^\s*SET\s+"(\w+)=%~dp0\\([^"%]+)"/gim;
+var SHIM_VARIABLE_USE = /"%NODE_EXE%"\s+"%(\w+)%"/gi;
 var NODE_EXECUTABLE = /^node(?:\.exe)?$/i;
 var isShim = (path2) => SHIM_EXTENSIONS.has(extname2(path2).toLowerCase());
 var readText = (path2) => {
@@ -1081,9 +1083,15 @@ var readText = (path2) => {
     return void 0;
   }
 };
+var shimVariables = (text3) => new Map([...text3.matchAll(SHIM_VARIABLE)].map((match) => [(match[1] ?? "").toUpperCase(), match[2] ?? ""]));
+var variableTargets = (text3) => {
+  const variables = shimVariables(text3);
+  return [...text3.matchAll(SHIM_VARIABLE_USE)].flatMap((match) => variables.get((match[1] ?? "").toUpperCase()) ?? []);
+};
 var resolveShimTarget = (shimPath) => {
   const text3 = readText(shimPath) ?? "";
-  const targets = [...text3.matchAll(SHIM_TARGET)].map((match) => (match[1] ?? "").replace(/\\/g, "/")).filter((target2) => !NODE_EXECUTABLE.test(basename(target2)));
+  const direct = [...text3.matchAll(SHIM_TARGET)].map((match) => match[1] ?? "");
+  const targets = [...direct, ...variableTargets(text3)].map((target2) => target2.replace(/\\/g, "/")).filter((target2) => !NODE_EXECUTABLE.test(basename(target2)));
   const target = targets.at(-1);
   if (target === void 0) return void 0;
   const absolute = resolve2(dirname2(shimPath), target);
@@ -1105,6 +1113,8 @@ var resolveBin = (projectRoot, pkgs, command) => {
     const bin = resolvePackageBin(projectRoot, pkg, command);
     if (bin !== void 0) return bin;
   }
+  const local = searchDirs(projectRoot).map((dir) => findInPath(command, { PATH: join3(dir, "node_modules", ".bin"), PATHEXT: ".CMD" })).find((path2) => path2 !== void 0);
+  if (local !== void 0) return isShim(local) ? resolveShimTarget(local) : [local];
   const found = findInPath(command);
   if (found === void 0) return void 0;
   return isShim(found) ? resolveShimTarget(found) : [found];
@@ -3417,6 +3427,8 @@ var checkDeny = (projectRoot) => {
   const text3 = `deny: ${path2} misses ${missing.length} of ${RECOMMENDED_DENY.length} rules, add the recommended block:`;
   return { ...warn(text3), block: formatDenyBlock() };
 };
+var AGENTS_READING_CLAUDE_SETTINGS = /* @__PURE__ */ new Set(["claude", UNKNOWN_AGENT]);
+var denyApplies = (agent) => AGENTS_READING_CLAUDE_SETTINGS.has(agent);
 var checkJournal = (projectRoot) => {
   const files = listJournalFiles(projectRoot);
   const bytes = files.reduce((total, file) => total + file.size, 0);
@@ -3450,7 +3462,7 @@ var doctorChecks = (projectRoot, pluginRoot) => {
     ...agentViewSetup === void 0 ? [] : [agentViewSetup],
     ...checkCustom(config),
     checkGitignore(projectRoot),
-    checkDeny(projectRoot),
+    ...denyApplies(detectAgent(void 0)) ? [checkDeny(projectRoot)] : [],
     checkJournal(projectRoot),
     checkLock(paths.heavyLock),
     checkLock(join17(paths.cache, "slot.lock"))
@@ -7584,7 +7596,7 @@ var branchNames = (value, field) => {
 };
 var openMrBranches = (cwd) => {
   const remote = git(["remote", "get-url", "origin"], cwd).stdout;
-  const isGithub = remote.includes("github.com");
+  const isGithub = (loadConfig(cwd).reviewCycle?.forge ?? detectForge(remote)) === "github";
   const tool = isGithub ? findInPath("gh") : findInPath("glab");
   if (tool === void 0) return /* @__PURE__ */ new Set();
   const branches = isGithub ? branchNames(runJson(tool, ["pr", "list", "--state", "open", "--limit", "200", "--json", "headRefName"], cwd), "headRefName") : branchNames(runJson(tool, ["mr", "list", "--per-page", "100", "--output", "json"], cwd), "source_branch");

@@ -9,7 +9,7 @@ import { jigPaths, resolvePluginRoot, resolveProjectRoot } from './core/paths'
 import { resolveTools, type PlanTools } from './core/plan'
 import { findUnresolvedShim, isLockAbandoned, readLock } from './core/proc'
 import { discover, type Discovery } from './init/discover'
-import { detectAgent, isUserMapped, loadUserConfig, resolveTiers, tierEntries } from './tiers/tiers'
+import { detectAgent, isUserMapped, loadUserConfig, resolveTiers, tierEntries, UNKNOWN_AGENT } from './tiers/tiers'
 
 type Command = (args: string[]) => number | Promise<number>
 
@@ -129,6 +129,9 @@ const checkDeny = (projectRoot: string): Check => {
   return { ...warn(text), block: formatDenyBlock() }
 }
 
+const AGENTS_READING_CLAUDE_SETTINGS = new Set(['claude', UNKNOWN_AGENT])
+const denyApplies = (agent: string): boolean => AGENTS_READING_CLAUDE_SETTINGS.has(agent)
+
 const checkJournal = (projectRoot: string): Check => {
   const files = listJournalFiles(projectRoot)
   const bytes = files.reduce((total, file) => total + file.size, 0)
@@ -164,7 +167,7 @@ export const doctorChecks = (projectRoot: string, pluginRoot: string): Check[] =
     ...(agentViewSetup === undefined ? [] : [agentViewSetup]),
     ...checkCustom(config),
     checkGitignore(projectRoot),
-    checkDeny(projectRoot),
+    ...(denyApplies(detectAgent(undefined)) ? [checkDeny(projectRoot)] : []),
     checkJournal(projectRoot),
     checkLock(paths.heavyLock),
     checkLock(join(paths.cache, 'slot.lock')),
