@@ -465,6 +465,7 @@ export interface ReportOptions {
   mode?: Mode
   mergeRequest?: boolean
   noState?: boolean
+  rereview?: boolean
   pluginRoot?: string
   paths?: readonly string[]
 }
@@ -492,6 +493,7 @@ export const buildReport = (root: string, options: ReportOptions): ReviewPlanRep
     selector: options.selector,
     angles: project?.config.angles ?? {},
     grades: project?.config.grades ?? {},
+    rereview: options.rereview === true,
   })
   const loaded = loadUserConfig()
   if (loaded.error !== undefined) throw new Error(`${loaded.label}: ${loaded.error}`)
@@ -535,7 +537,7 @@ export const buildReport = (root: string, options: ReportOptions): ReviewPlanRep
 }
 
 const isMode = (value: string): value is Mode => (MODES as readonly string[]).includes(value)
-const USAGE = 'usage: jig review-plan [<base>] [--selector full|quick|auto|<tokens>] [--layout auto|inline|fanout|lean|solo] [--spec] [--mode review|pre-mr] [--mr] [--no-state] [--agent <id>] [--json] [-- <pathspec>...]'
+const USAGE = 'usage: jig review-plan [<base>] [--selector full|quick|auto|<tokens>] [--layout auto|inline|fanout|lean|solo] [--spec] [--mode review|pre-mr] [--mr] [--no-state] [--rereview] [--agent <id>] [--json] [-- <pathspec>...]'
 
 export const splitPathspec = (args: readonly string[]): { options: string[]; paths: string[] | undefined } => {
   const separator = args.indexOf('--')
@@ -571,6 +573,7 @@ export const runReviewPlan: Command = (args) => {
       mode: { type: 'string' },
       mr: { type: 'boolean' },
       'no-state': { type: 'boolean' },
+      rereview: { type: 'boolean' },
       json: { type: 'boolean' },
     },
   })
@@ -590,6 +593,7 @@ export const runReviewPlan: Command = (args) => {
     mode,
     mergeRequest: values.mr === true,
     noState: values['no-state'] === true,
+    rereview: values.rereview === true,
     paths,
   })
   process.stdout.write(`${values.json ? JSON.stringify(report) : formatReport(report)}\n`)

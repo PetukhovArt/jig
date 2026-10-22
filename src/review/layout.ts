@@ -129,9 +129,16 @@ export interface PlanInput {
   selector?: string | undefined
   angles?: Readonly<Partial<Record<Angle, AngleSettings>>>
   grades?: Readonly<Record<string, Grade>>
+  rereview?: boolean
 }
 
-export type FinderKind = 'bugs' | 'cleanup' | 'rules' | 'mechanical'
+export type FinderKind = 'bugs' | 'cleanup' | 'rules' | 'mechanical' | 'rereview'
+
+export const REREVIEW_FULL_LAYOUT_LINES = 600
+const REREVIEW_GRADE: Grade = { tier: 'standard', effort: 'high' }
+
+export const isLightRereview = (rereview: boolean | undefined, n: number, lines: number): boolean =>
+  rereview === true && n > AUTO_INLINE_MAX_N && lines < REREVIEW_FULL_LAYOUT_LINES
 
 export interface Finder extends Grade {
   name: string
@@ -292,8 +299,11 @@ export const planReview = (input: PlanInput): Plan => {
   ANGLES.filter((angle) => angles.includes(angle) && !usedForCode.includes(angle)).forEach((angle) =>
     skipped.push({ angle, reason: 'no counted code lines' }),
   )
-  const wantsDeepening = selection.tokens.length === 0 ? input.shape.newSourceFiles > 0 : selection.tokens.includes('deepening')
+  const light = isLightRereview(input.rereview, n, input.lines)
+  const wantsDeepening = !light && (selection.tokens.length === 0 ? input.shape.newSourceFiles > 0 : selection.tokens.includes('deepening'))
   const path: ReviewPath = usedForCode.length === 0 ? 'none' : inline ? 'inline' : 'subagents'
+  const finders: Finder[] =
+    path !== 'subagents' ? [] : light ? [{ name: 'rereview', kind: 'rereview', angles: usedForCode, ...REREVIEW_GRADE }] : layoutFinders(n, usedForCode, grades)
   const judging: Judging = path !== 'subagents' || layout === 'lean' ? 'important' : layout === 'solo' ? 'self' : 'clusters'
   return {
     lines: input.lines,
@@ -305,7 +315,7 @@ export const planReview = (input: PlanInput): Plan => {
     outputTokens: selection.tokens.filter((token) => token !== 'deepening'),
     angles: usedForCode,
     skipped: skipped.sort((left, right) => left.angle - right.angle),
-    finders: path === 'subagents' ? layoutFinders(n, usedForCode, grades) : [],
+    finders,
     deepening: wantsDeepening && n > 0 ? roleGrade('deepening', grades) : undefined,
     verify: roleGrade('verify', grades),
     outcome: roleGrade('outcome', grades),

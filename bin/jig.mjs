@@ -4810,6 +4810,9 @@ var resolveAuto = (layout, n) => {
   if (layout !== "auto") return layout;
   return n <= AUTO_INLINE_MAX_N ? "inline" : "lean";
 };
+var REREVIEW_FULL_LAYOUT_LINES = 600;
+var REREVIEW_GRADE = { tier: "standard", effort: "high" };
+var isLightRereview = (rereview, n, lines2) => rereview === true && n > AUTO_INLINE_MAX_N && lines2 < REREVIEW_FULL_LAYOUT_LINES;
 var finderCount = (lines2) => Math.min(MAX_FINDERS, Math.ceil(Math.max(0, lines2) / LINES_PER_FINDER));
 var ceilingOf = (angle, settings) => settings?.[angle]?.severityCeiling ?? (IMPORTANT_ANGLES.includes(angle) ? "Important" : "Nit");
 var autoTokens = (shape, n) => {
@@ -4911,8 +4914,10 @@ var planReview = (input) => {
   ANGLES.filter((angle) => angles.includes(angle) && !usedForCode.includes(angle)).forEach(
     (angle) => skipped.push({ angle, reason: "no counted code lines" })
   );
-  const wantsDeepening = selection.tokens.length === 0 ? input.shape.newSourceFiles > 0 : selection.tokens.includes("deepening");
+  const light = isLightRereview(input.rereview, n, input.lines);
+  const wantsDeepening = !light && (selection.tokens.length === 0 ? input.shape.newSourceFiles > 0 : selection.tokens.includes("deepening"));
   const path2 = usedForCode.length === 0 ? "none" : inline ? "inline" : "subagents";
+  const finders = path2 !== "subagents" ? [] : light ? [{ name: "rereview", kind: "rereview", angles: usedForCode, ...REREVIEW_GRADE }] : layoutFinders(n, usedForCode, grades);
   const judging = path2 !== "subagents" || layout === "lean" ? "important" : layout === "solo" ? "self" : "clusters";
   return {
     lines: input.lines,
@@ -4924,7 +4929,7 @@ var planReview = (input) => {
     outputTokens: selection.tokens.filter((token) => token !== "deepening"),
     angles: usedForCode,
     skipped: skipped.sort((left, right) => left.angle - right.angle),
-    finders: path2 === "subagents" ? layoutFinders(n, usedForCode, grades) : [],
+    finders,
     deepening: wantsDeepening && n > 0 ? roleGrade("deepening", grades) : void 0,
     verify: roleGrade("verify", grades),
     outcome: roleGrade("outcome", grades),
@@ -5304,7 +5309,8 @@ var buildReport = (root, options) => {
     layout: layout.name,
     selector: options.selector,
     angles: project?.config.angles ?? {},
-    grades: project?.config.grades ?? {}
+    grades: project?.config.grades ?? {},
+    rereview: options.rereview === true
   });
   const loaded = loadUserConfig();
   if (loaded.error !== void 0) throw new Error(`${loaded.label}: ${loaded.error}`);
@@ -5347,7 +5353,7 @@ var buildReport = (root, options) => {
   };
 };
 var isMode = (value) => MODES.includes(value);
-var USAGE2 = "usage: jig review-plan [<base>] [--selector full|quick|auto|<tokens>] [--layout auto|inline|fanout|lean|solo] [--spec] [--mode review|pre-mr] [--mr] [--no-state] [--agent <id>] [--json] [-- <pathspec>...]";
+var USAGE2 = "usage: jig review-plan [<base>] [--selector full|quick|auto|<tokens>] [--layout auto|inline|fanout|lean|solo] [--spec] [--mode review|pre-mr] [--mr] [--no-state] [--rereview] [--agent <id>] [--json] [-- <pathspec>...]";
 var splitPathspec = (args) => {
   const separator = args.indexOf("--");
   return separator === -1 ? { options: [...args], paths: void 0 } : { options: args.slice(0, separator), paths: args.slice(separator + 1) };
@@ -5379,6 +5385,7 @@ var runReviewPlan = (args) => {
       mode: { type: "string" },
       mr: { type: "boolean" },
       "no-state": { type: "boolean" },
+      rereview: { type: "boolean" },
       json: { type: "boolean" }
     }
   });
@@ -5398,6 +5405,7 @@ var runReviewPlan = (args) => {
     mode,
     mergeRequest: values.mr === true,
     noState: values["no-state"] === true,
+    rereview: values.rereview === true,
     paths
   });
   process.stdout.write(`${values.json ? JSON.stringify(report) : formatReport(report)}

@@ -92,6 +92,14 @@ describe('layouts', () => {
     expect(finders('solo').every((finder) => finder.includes(':deep/'))).toBe(true)
   })
 
+  it('a re-review range under 600 lines gets one finder for every angle and no deepening; from 600 lines the full layout', () => {
+    const rereview = (lines: number) => planReview({ lines, shape: EVERY_SHAPE, rereview: true })
+    expect(rereview(450).finders.map((finder) => `${finder.name}:${finder.tier}/${finder.effort}:${finder.angles.length}`)).toEqual(['rereview:standard/high:17'])
+    expect(rereview(450).deepening).toBeUndefined()
+    expect(rereview(600).finders.length).toBeGreaterThan(1)
+    expect(rereview(600).deepening).toBeDefined()
+  })
+
   it('judges by layout: clusters for fanout, the session plus one Important judge for lean and inline, the finders for solo', () => {
     const judging = (name: Layout) => {
       const plan = planReview({ lines: 900, shape: CODE_ONLY, layout: name })
