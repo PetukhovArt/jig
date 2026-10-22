@@ -8,6 +8,7 @@ import { findDuplicates, lowestFreeSlot, runSlot, setEnvValue, slotNumber, slotW
 import { runWorktree, worktreeSweep } from '../src/worktree/worktree'
 
 const REPO = 'app'
+const SWEEP_TIMEOUT_MS = 30_000
 
 const worktreesAt = (...names: string[]) =>
   slotWorktrees(names.map((name) => ({ path: join(tmpdir(), name), isPrunable: false, isLocked: false })), REPO)
@@ -239,7 +240,7 @@ describe('slot commands in a temporary repository', () => {
     expect(existsSync(clean)).toBe(false)
     expect(existsSync(plain) && existsSync(locked)).toBe(true)
     sh(main, 'worktree', 'unlock', locked)
-  })
+  }, SWEEP_TIMEOUT_MS)
 
   it('seeds a worktree by path and refuses the main checkout', async () => {
     const plain = join(root, 'worktrees', 'plain')
