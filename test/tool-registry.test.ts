@@ -53,7 +53,7 @@ const plan = (tools: Record<string, ToolSetting>, extra: Partial<JigConfig> = {}
 const ALL_ON = { beta: ON, gamma: ON, alpha: ON, styles: ON }
 
 const stopChecks = (tools: Record<string, ToolSetting> = ALL_ON) =>
-  runStopChecks({ projectRoot: root, pluginRoot: root, plan: plan(tools), diff: { files: ['src/a.ts'], stamps: {}, fingerprint: '' } })
+  runStopChecks({ projectRoot: root, pluginRoot: root, plan: plan(tools), diff: { files: ['src/a.ts'], stamps: {}, fingerprint: '', foreign: [] } })
 
 const stopRules = async (tools: Record<string, ToolSetting> = ALL_ON): Promise<string[]> => (await stopChecks(tools)).steps.map((step) => step.rule)
 
