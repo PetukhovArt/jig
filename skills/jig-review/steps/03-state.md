@@ -17,6 +17,8 @@ file = <main checkout>/.jig/runs/review/<KEY>.json
 
 Schema and field semantics: [`../references/state-schema.md`](../references/state-schema.md). Read it before reading or writing state.
 
+**Look at a state through `node <root>/bin/jig.mjs review state <path>`**: shas, runs, the non-zero tally, and one line per finding (status, severity, angle, `file:line`, thread, id, summary). Never `cat` the JSON: comment bodies make it several times longer, and the whole file is paid on every later turn. Open the JSON only to write it, or to read the one finding whose body you need.
+
 **The file decides the mode, not ancestry.** File exists → [re-review](09-rereview.md). No file → first run.
 
 `last_reviewed_sha` is an ancestor of HEAD: the scope is incremental. The ancestry broke (force-push): the run stays a re-review, and the scope is restored by [patch comparison](09-rereview.md#scope-after-a-force-push); no scope from it → the full diff. The full diff is a wider scope, not another mode: earlier findings still have open threads, and the outcome check must run anyway.

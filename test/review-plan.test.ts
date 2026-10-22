@@ -282,28 +282,35 @@ describe('buildReport on a repository', () => {
     expect(report.diffFiles).toBeNull()
   })
 
-  it('writes the diff for subagents once, in parts that keep each file whole and an index of line ranges', () => {
+  it('writes the diff for subagents once, compact, in parts that keep each file whole and an index of line ranges', () => {
     const root = mkdtempSync(join(tmpdir(), 'jig-review-plan-'))
     dirs.push(root)
     vi.stubEnv('JIG_USER_CONFIG', join(root, 'absent.jsonc'))
     const run = (...args: string[]) => expect(git(['-c', 'user.email=t@t', '-c', 'user.name=t', ...args], root).ok).toBe(true)
     run('init', '-q', '-b', 'main')
     write(root, 'a.ts', 'export const a = 1\n')
+    write(root, 'old.ts', 'export const o = 1\nexport const p = 2\n')
     run('add', '-A')
     run('commit', '-qm', 'base')
     write(root, 'big.ts', Array.from({ length: 1600 }, (_, index) => `export const b${index} = ${index}`).join('\n') + '\n')
     write(root, 'a.ts', 'export const a = 2\n')
+    write(root, 'package-lock.json', '{}\n')
+    rmSync(join(root, 'old.ts'))
     run('add', '-A')
     run('commit', '-qm', 'feature')
 
     const files = buildReport(root, { base: 'HEAD~1', spec: false, agent: 'claude', layout: 'lean' }).diffFiles
 
-    const whole = git(['diff', '--no-color', 'HEAD~1'], root).stdout
-    expect(files?.parts.map((part) => readFileSync(part, 'utf8')).join('')).toBe(whole)
+    const text = files?.parts.map((part) => readFileSync(part, 'utf8')).join('') ?? ''
+    expect(text.startsWith('=== a.ts\n@@ -1 +1 @@\n-export const a = 1\n+export const a = 2\n=== big.ts (new)\n@@ -0,0 +1,1600 @@\n')).toBe(true)
+    expect(text.endsWith('\n=== old.ts (deleted, 2 lines)\n')).toBe(true)
+    expect(text).not.toMatch(/^(diff --git|index |--- |\+\+\+ )/m)
     const index = readFileSync(files?.index ?? '', 'utf8').trim().split('\n').map((line) => line.split('\t'))
     expect(index).toEqual([
-      ['a.ts', 'code-01.diff:1-7'],
-      ['big.ts', 'code-02.diff:1-1606'],
+      ['a.ts', 'code-01.diff:1-4'],
+      ['big.ts', 'code-02.diff:1-1602'],
+      ['old.ts', 'code-03.diff:1-1'],
+      ['package-lock.json', 'not written: lock file, minified, source map or snapshot'],
     ])
   })
 

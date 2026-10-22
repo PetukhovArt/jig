@@ -4658,6 +4658,7 @@ var samePath = (left, right, platform = process.platform) => {
 
 // src/review/diff-files.ts
 var DIFF_PART_MAX_LINES = 1500;
+var DIFF_FORMAT = "audiences-compact-1";
 var DIFF_DIR_PREFIX = "diff-";
 var DIFF_DIR_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1e3;
 var AUDIENCES = ["code", "tests", "docs"];
@@ -4671,6 +4672,27 @@ var chunkPath = (chunk) => {
   return side("+++ ") ?? side("--- ") ?? header?.[2] ?? chunk[0] ?? "";
 };
 var partName = (audience, index) => `${audience}-${String(index + 1).padStart(2, "0")}.diff`;
+var isUnreviewed = createMatcher([
+  "**/{package-lock.json,npm-shrinkwrap.json,yarn.lock,pnpm-lock.yaml,bun.lockb,Cargo.lock,poetry.lock,Gemfile.lock,composer.lock,go.sum}",
+  "**/*.{min.js,min.css,map,snap}",
+  "**/__snapshots__/**"
+]);
+var compactChunk = (chunk, path2) => {
+  if (isUnreviewed(path2)) return void 0;
+  const firstHunk = chunk.findIndex((line) => line.startsWith("@@"));
+  const header = firstHunk === -1 ? chunk : chunk.slice(0, firstHunk);
+  const renamedFrom = header.find((line) => line.startsWith("rename from "))?.slice("rename from ".length);
+  if (header.some((line) => line.startsWith("deleted file mode"))) {
+    const removed = chunk.filter((line) => line.startsWith("-") && !line.startsWith("--- ")).length;
+    return [`=== ${path2} (deleted, ${removed} lines)`];
+  }
+  if (header.some((line) => line.startsWith("Binary files"))) return [`=== ${path2} (binary)`];
+  const notes = [
+    ...header.some((line) => line.startsWith("new file mode")) ? ["new"] : [],
+    ...renamedFrom === void 0 ? [] : [`renamed from ${renamedFrom}`]
+  ];
+  return [`=== ${path2}${notes.length > 0 ? ` (${notes.join(", ")})` : ""}`, ...firstHunk === -1 ? [] : chunk.slice(firstHunk)];
+};
 var splitDiff = (text3, audienceOf2 = () => "code", maxLines = DIFF_PART_MAX_LINES) => {
   const lines2 = text3.split("\n");
   if (lines2.at(-1) === "") lines2.pop();
@@ -4681,11 +4703,17 @@ var splitDiff = (text3, audienceOf2 = () => "code", maxLines = DIFF_PART_MAX_LIN
   }
   const parts = [];
   const files = [];
+  const skipped = [];
   for (const audience of AUDIENCES) {
     const own = [];
-    for (const chunk of chunks) {
-      const path2 = chunkPath(chunk);
+    for (const raw of chunks) {
+      const path2 = chunkPath(raw);
       if (audienceOf2(path2) !== audience) continue;
+      const chunk = compactChunk(raw, path2);
+      if (chunk === void 0) {
+        skipped.push(path2);
+        continue;
+      }
       const current = own.at(-1);
       const part = current !== void 0 && current.length + chunk.length <= maxLines ? current : [];
       if (part !== current) own.push(part);
@@ -4695,7 +4723,7 @@ var splitDiff = (text3, audienceOf2 = () => "code", maxLines = DIFF_PART_MAX_LIN
     parts.push(...own.map((part, index) => ({ name: partName(audience, index), text: `${part.join("\n")}
 ` })));
   }
-  return { parts, files };
+  return { parts, files, skipped };
 };
 var pruneOldDiffDirs = (reviewDir, keep, now) => {
   for (const name of readdirSync10(reviewDir)) {
@@ -4709,14 +4737,18 @@ var writeDiffFiles = (root, diffArgs, audienceOf2, now = Date.now()) => {
   if (!result.ok) throw new Error(`git diff failed: ${result.stderr.trim()}`);
   const main = listWorktrees(root)[0]?.path ?? root;
   const reviewDir = join22(ensureJigDir(main).runs, "review");
-  const dir = join22(reviewDir, `${DIFF_DIR_PREFIX}${createHash6("sha1").update(result.stdout).digest("hex").slice(0, 12)}`);
+  const dir = join22(reviewDir, `${DIFF_DIR_PREFIX}${createHash6("sha1").update(DIFF_FORMAT).update(result.stdout).digest("hex").slice(0, 12)}`);
   mkdirSync11(dir, { recursive: true });
   pruneOldDiffDirs(reviewDir, dir, now);
-  const { parts, files } = splitDiff(result.stdout, audienceOf2);
+  const { parts, files, skipped } = splitDiff(result.stdout, audienceOf2);
   for (const part of parts) writeFileSync7(join22(dir, part.name), part.text);
   const index = join22(dir, "index.txt");
-  writeFileSync7(index, files.map((file) => `${file.path}	${file.part}:${file.start}-${file.end}
-`).join(""));
+  writeFileSync7(
+    index,
+    [...files.map((file) => `${file.path}	${file.part}:${file.start}-${file.end}
+`), ...skipped.map((path2) => `${path2}	not written: lock file, minified, source map or snapshot
+`)].join("")
+  );
   const pathOf = (name) => toSlash(join22(dir, name));
   const audiences = Object.fromEntries(AUDIENCES.map((audience) => [audience, parts.filter((part) => part.name.startsWith(`${audience}-`)).map((part) => pathOf(part.name))]));
   return { dir: toSlash(dir), index: toSlash(index), parts: parts.map((part) => pathOf(part.name)), audiences };
@@ -5992,14 +6024,51 @@ var runReviewCost = (args) => {
   }
   return 0;
 };
+
+// src/review/state-summary.ts
+import { readFileSync as readFileSync24 } from "node:fs";
+var SUMMARY_WIDTH = 100;
+var SHA_WIDTH = 12;
+var short = (value, width) => {
+  if (value === void 0) return "-";
+  return value.length > width ? `${value.slice(0, width - 1)}\u2026` : value;
+};
+var summarizeState = (state) => {
+  const findings = state.findings ?? [];
+  const byStatus = /* @__PURE__ */ new Map();
+  findings.forEach((finding) => byStatus.set(finding.status ?? "?", (byStatus.get(finding.status ?? "?") ?? 0) + 1));
+  const tally = Object.entries(state.tally ?? {}).filter(([, count]) => count > 0).map(([name, count]) => `${name} ${count}`).join(", ");
+  return [
+    `key ${state.key ?? "-"} \xB7 target ${state.target ?? "-"} \xB7 runs ${state.runs ?? 0} \xB7 base ${short(state.base_sha, SHA_WIDTH)} \xB7 last reviewed ${short(state.last_reviewed_sha, SHA_WIDTH)} \xB7 diff hash ${short(state.diff_hash, SHA_WIDTH)}`,
+    `tally: ${tally === "" ? "all zero" : tally}`,
+    `findings: ${findings.length}${byStatus.size > 0 ? ` (${[...byStatus.entries()].map(([status, count]) => `${status} ${count}`).join(", ")})` : ""} \xB7 deepening ${state.deepening === void 0 ? "no" : "yes"}`,
+    ...findings.map(
+      (finding) => `  ${finding.status ?? "?"} \xB7 ${finding.severity ?? "?"} \xB7 angle ${finding.angle ?? "?"} \xB7 ${finding.file ?? "?"}:${finding.line ?? "?"} \xB7 thread ${short(finding.discussion_id, SHA_WIDTH)} \xB7 ${finding.id ?? "?"} \xB7 ${short(finding.summary, SUMMARY_WIDTH)}`
+    )
+  ].join("\n");
+};
+var runReviewState = (args) => {
+  const [path2] = args;
+  if (path2 === void 0 || args.length > 1) throw new Error("usage: jig review state <state file>");
+  process.stdout.write(`${summarizeState(JSON.parse(readFileSync24(path2, "utf8")))}
+`);
+  return 0;
+};
+
+// src/review/review.ts
+var SUBCOMMANDS = /* @__PURE__ */ new Map([
+  ["cost", runReviewCost],
+  ["state", runReviewState]
+]);
 var runReview = (args) => {
   const [sub, ...rest] = args;
-  if (sub === "cost") return runReviewCost(rest);
-  throw new Error(USAGE3);
+  const command = sub === void 0 ? void 0 : SUBCOMMANDS.get(sub);
+  if (command === void 0) throw new Error(`usage: jig review <${[...SUBCOMMANDS.keys()].join("|")}> ...`);
+  return command(rest);
 };
 
 // src/review-cycle/review-cycle.ts
-import { existsSync as existsSync16, readFileSync as readFileSync26 } from "node:fs";
+import { existsSync as existsSync16, readFileSync as readFileSync27 } from "node:fs";
 import { basename as basename6, relative as relative6, resolve as resolve12 } from "node:path";
 import { parseArgs as parseArgs5 } from "node:util";
 
@@ -6390,13 +6459,13 @@ var createForge = (name, exec, cwd) => name === "github" ? githubForge(exec, cwd
 
 // src/review-cycle/import-state.ts
 import { createHash as createHash8 } from "node:crypto";
-import { copyFileSync as copyFileSync3, existsSync as existsSync15, mkdirSync as mkdirSync13, readdirSync as readdirSync13, readFileSync as readFileSync25, statSync as statSync11, writeFileSync as writeFileSync9 } from "node:fs";
+import { copyFileSync as copyFileSync3, existsSync as existsSync15, mkdirSync as mkdirSync13, readdirSync as readdirSync13, readFileSync as readFileSync26, statSync as statSync11, writeFileSync as writeFileSync9 } from "node:fs";
 import { tmpdir as tmpdir2 } from "node:os";
 import { basename as basename5, dirname as dirname11, join as join28 } from "node:path";
 
 // src/review-cycle/state.ts
 import { createHash as createHash7 } from "node:crypto";
-import { copyFileSync as copyFileSync2, existsSync as existsSync14, readFileSync as readFileSync24, writeFileSync as writeFileSync8 } from "node:fs";
+import { copyFileSync as copyFileSync2, existsSync as existsSync14, readFileSync as readFileSync25, writeFileSync as writeFileSync8 } from "node:fs";
 import { join as join27 } from "node:path";
 var FINDING_STATUSES = ["open", "fixed", "skipped", "unverified", "no_change_needed", "optional"];
 var reviewStateKey = (remote, target) => {
@@ -6431,7 +6500,7 @@ var readReviewState = (path2) => {
   if (!existsSync14(path2)) return void 0;
   let text3;
   try {
-    text3 = readFileSync24(path2, "utf8");
+    text3 = readFileSync25(path2, "utf8");
   } catch (error) {
     throw new EnvironmentError(`${path2}: ${error instanceof Error ? error.message : String(error)}`);
   }
@@ -6474,7 +6543,7 @@ var specHold = (state, spec2) => {
 };
 var withdrawFromState = (path2, gone, now = /* @__PURE__ */ new Date()) => {
   if (gone.length === 0 || !existsSync14(path2)) return 0;
-  const raw = JSON.parse(readFileSync24(path2, "utf8"));
+  const raw = JSON.parse(readFileSync25(path2, "utf8"));
   if (!isObject5(raw) || !Array.isArray(raw["findings"])) throw new EnvironmentError(`${path2}: no findings array`);
   const hits = raw["findings"].filter(
     (finding) => isObject5(finding) && typeof finding["discussion_id"] === "string" && gone.includes(finding["discussion_id"])
@@ -6575,7 +6644,7 @@ var finishedAt = (raw, path2) => {
 };
 var readJson = (path2) => {
   try {
-    return JSON.parse(readFileSync25(path2, "utf8"));
+    return JSON.parse(readFileSync26(path2, "utf8"));
   } catch {
     return void 0;
   }
@@ -6863,7 +6932,7 @@ var spec = (args, deps) => {
 };
 var readText4 = (path2) => {
   try {
-    return readFileSync26(path2, "utf8");
+    return readFileSync27(path2, "utf8");
   } catch (error) {
     throw new EnvironmentError(`${path2}: ${error instanceof Error ? error.message : String(error)}`);
   }
@@ -7001,7 +7070,7 @@ var runReviewCycle = (args) => runReviewCycleWith(args, { exec: spawnExec, cwd: 
 
 // src/slot/slot.ts
 import { spawnSync as spawnSync4 } from "node:child_process";
-import { existsSync as existsSync17, mkdirSync as mkdirSync15, readFileSync as readFileSync27, rmSync as rmSync7, writeFileSync as writeFileSync10 } from "node:fs";
+import { existsSync as existsSync17, mkdirSync as mkdirSync15, readFileSync as readFileSync28, rmSync as rmSync7, writeFileSync as writeFileSync10 } from "node:fs";
 import { basename as basename7, dirname as dirname12, isAbsolute as isAbsolute6, join as join30, relative as relative7, resolve as resolve13 } from "node:path";
 import { parseArgs as parseArgs6 } from "node:util";
 
@@ -7278,13 +7347,13 @@ var insideDir = (dir, file) => {
 var writePorts = (dir, slots, slot) => {
   for (const [key, port] of Object.entries(slots.ports ?? {})) {
     const path2 = insideDir(dir, port.target);
-    const text3 = existsSync17(path2) ? readFileSync27(path2, "utf8") : "";
+    const text3 = existsSync17(path2) ? readFileSync28(path2, "utf8") : "";
     writeLocalFile(dir, port.target, setEnvValue(text3, key, String(port.base + slot * port.step)));
   }
 };
 var readJsonObject = (path2) => {
   if (!existsSync17(path2)) return {};
-  const value = parseJsonc(readFileSync27(path2, "utf8"));
+  const value = parseJsonc(readFileSync28(path2, "utf8"));
   const isObject7 = typeof value === "object" && value !== null && !Array.isArray(value);
   return isObject7 ? value : {};
 };

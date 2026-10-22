@@ -427,9 +427,3 @@ export const runReviewCost: Command = (args) => {
   }
   return 0
 }
-
-export const runReview: Command = (args) => {
-  const [sub, ...rest] = args
-  if (sub === 'cost') return runReviewCost(rest)
-  throw new Error(USAGE)
-}
