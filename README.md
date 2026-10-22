@@ -248,6 +248,6 @@ Only the Claude Code adapter exists for now. The core doesn't depend on the agen
 
 ## Docs
 
-[Hooks and gates](docs/hooks.md) · [Configuration](docs/configuration.md) · [UI proof](docs/ui-proof.md) · [Review](docs/review.md) · [Review cycle](docs/review-cycle.md) · [Flows, atoms and roles](docs/flows.md) · [Commands](docs/commands.md) · [Agents](docs/agents.md) · [Evals and benchmarks](docs/evals.md) · [Issues](docs/issues.md)
+[Hooks and gates](docs/hooks.md) · [Configuration](docs/configuration.md) · [UI proof](docs/ui-proof.md) · [Review](docs/review.md) · [Review cycle](docs/review-cycle.md) · [Flows, atoms and roles](docs/flows.md) · [Commands](docs/commands.md) · [Agents](docs/agents.md) · [Evals and benchmarks](docs/evals.md) · [Issues](docs/issues.md) · [Changelog](CHANGELOG.md)
 
 MIT © Artem Petukhov
