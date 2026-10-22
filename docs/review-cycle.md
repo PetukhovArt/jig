@@ -19,6 +19,12 @@ The skill never schedules itself (`jig loop` is the weekly journal loop, not thi
 - Claude Code: `/loop 2h /jig-review-cycle`. A new focus later: run `/jig-review-cycle <focus>` once; it is stored in `.jig/runs/review-cycle/focus.md` and every later firing reads it.
 - cron, a CI schedule or Task Scheduler: a headless agent run of the skill in the repository, e.g. `claude -p "/jig-review-cycle"` every two hours. The pass is idempotent, so an overlapping firing skips what the previous one is still reviewing.
 
+## Cost
+
+Each pass records its estimated cost with `jig review cost --record`; `jig review cost --report --by project` (or `--by week`) compares $ per 1000 diff lines and $ per thread across projects and over time, so a change to the process shows its effect ([commands](commands.md)).
+
+Every subagent of a pass (a runner, its finders, judges and poster: twenty or more) starts with the session's fixed context: instructions, the skill list, MCP server instructions. A plugin no review role uses still costs in each of them: on one pass an unused design plugin was ~2.7k tokens per subagent, about a twelfth of all input. Turn such plugins off in a project where review cycles run unattended (Claude Code: `enabledPlugins` in the project's `.claude/settings.local.json`), and on again for the work that needs them.
+
 ## Importing older review state
 
 Coming from review skills that kept their state under the OS temp folder (`<temp>/claude-review/<repo>-<key>.json`): `jig review-cycle import-state [--from <dir>] [--dry-run]`, run in the repository, copies the files of its `origin` into `.jig/runs/review/`, so the first pass skips what they already reviewed. A file jig's state parser rejects is skipped with the reason, fields outside jig's schema are dropped and listed, and a jig state that finished at the same time or later is never replaced. It writes nothing unless `.jig/runs/` is gitignored.
