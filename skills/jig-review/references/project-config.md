@@ -1,6 +1,6 @@
 # Project config
 
-Optional: `.jig/review.jsonc` in the repository, committed. No file: the defaults below. `jig review-plan` reads `angles`, `tiers`, `maxParallel` and `layout` from it and rejects a malformed value with its path; the agent reads the rest.
+Optional: `.jig/review.jsonc` in the repository, committed. No file: the defaults below. `jig review-plan` reads `angles`, `tiers`, `maxParallel`, `layout` and `testPaths` from it and rejects a malformed value with its path; the agent reads the rest.
 
 Merge at the top level: a declared key replaces the default one whole; the others come from the default. Exceptions: `angles` and `tiers` merge per entry. The summary always says `config: .jig/review.jsonc` or `config: default`.
 
@@ -22,7 +22,8 @@ Merge at the top level: a declared key replaces the default one whole; the other
   "angles": {},
   "tiers": {},
   "maxParallel": 6,
-  "layout": "auto"
+  "layout": "auto",
+  "testPaths": []
 }
 ```
 
@@ -40,6 +41,7 @@ Merge at the top level: a declared key replaces the default one whole; the other
 - **`tiers`**: tier and effort per token or role over the defaults in the [selector](selector.md#tiers), the same shape: `{ "tests": { "tier": "deep", "effort": "medium" } }`. A declared entry replaces one default entry; the others stay. Which models serve a tier is not a project matter: `~/.jig/config.jsonc`, key `tiers`, per agent (`jig tiers`).
 - **`maxParallel`**: the cap on subagents running at once ([rules for the whole run](../SKILL.md#rules-for-the-whole-run)).
 - **`layout`**: `auto` (default), `inline`, `fanout`, `lean` or `solo` ([paths](../SKILL.md#paths)). `--layout` and the environment variable `JIG_REVIEW_LAYOUT` win over it.
+- **`testPaths`**: globs of test files on top of the built-in ones (test file names of each language, `test/`, `tests/`, `__tests__/`, `_tests_/`, fixtures and snapshots). Test files go into the `tests-*` diff parts, which only the finder with [angle 16](../angles/16.tests.md) reads ([finders](../steps/04-finders.md#spawn)).
 
 The skill has no caps on the number of threads: whatever survives verify reaches the author.
 

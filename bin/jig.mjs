@@ -4660,6 +4660,7 @@ var samePath = (left, right, platform = process.platform) => {
 var DIFF_PART_MAX_LINES = 1500;
 var DIFF_DIR_PREFIX = "diff-";
 var DIFF_DIR_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1e3;
+var AUDIENCES = ["code", "tests", "docs"];
 var chunkPath = (chunk) => {
   const side = (prefix) => {
     const line = chunk.find((candidate) => candidate.startsWith(prefix));
@@ -4669,8 +4670,8 @@ var chunkPath = (chunk) => {
   const header = /^diff --git a\/(.*) b\/(.*?)\r?$/.exec(chunk[0] ?? "");
   return side("+++ ") ?? side("--- ") ?? header?.[2] ?? chunk[0] ?? "";
 };
-var partName = (index) => `part-${String(index + 1).padStart(2, "0")}.diff`;
-var splitDiff = (text3, maxLines = DIFF_PART_MAX_LINES) => {
+var partName = (audience, index) => `${audience}-${String(index + 1).padStart(2, "0")}.diff`;
+var splitDiff = (text3, audienceOf2 = () => "code", maxLines = DIFF_PART_MAX_LINES) => {
   const lines2 = text3.split("\n");
   if (lines2.at(-1) === "") lines2.pop();
   const chunks = [];
@@ -4680,15 +4681,21 @@ var splitDiff = (text3, maxLines = DIFF_PART_MAX_LINES) => {
   }
   const parts = [];
   const files = [];
-  for (const chunk of chunks) {
-    const current = parts.at(-1);
-    const part = current !== void 0 && current.length + chunk.length <= maxLines ? current : [];
-    if (part !== current) parts.push(part);
-    files.push({ path: chunkPath(chunk), part: partName(parts.length - 1), start: part.length + 1, end: part.length + chunk.length });
-    part.push(...chunk);
+  for (const audience of AUDIENCES) {
+    const own = [];
+    for (const chunk of chunks) {
+      const path2 = chunkPath(chunk);
+      if (audienceOf2(path2) !== audience) continue;
+      const current = own.at(-1);
+      const part = current !== void 0 && current.length + chunk.length <= maxLines ? current : [];
+      if (part !== current) own.push(part);
+      files.push({ path: path2, audience, part: partName(audience, own.length - 1), start: part.length + 1, end: part.length + chunk.length });
+      part.push(...chunk);
+    }
+    parts.push(...own.map((part, index) => ({ name: partName(audience, index), text: `${part.join("\n")}
+` })));
   }
-  return { parts: parts.map((part, index) => ({ name: partName(index), text: `${part.join("\n")}
-` })), files };
+  return { parts, files };
 };
 var pruneOldDiffDirs = (reviewDir, keep, now) => {
   for (const name of readdirSync10(reviewDir)) {
@@ -4697,7 +4704,7 @@ var pruneOldDiffDirs = (reviewDir, keep, now) => {
     if (now - statSync9(dir).mtimeMs > DIFF_DIR_MAX_AGE_MS) rmSync5(dir, { recursive: true, force: true });
   }
 };
-var writeDiffFiles = (root, diffArgs, now = Date.now()) => {
+var writeDiffFiles = (root, diffArgs, audienceOf2, now = Date.now()) => {
   const result = git(["diff", "--no-color", "--no-ext-diff", ...diffArgs], root);
   if (!result.ok) throw new Error(`git diff failed: ${result.stderr.trim()}`);
   const main = listWorktrees(root)[0]?.path ?? root;
@@ -4705,12 +4712,14 @@ var writeDiffFiles = (root, diffArgs, now = Date.now()) => {
   const dir = join22(reviewDir, `${DIFF_DIR_PREFIX}${createHash6("sha1").update(result.stdout).digest("hex").slice(0, 12)}`);
   mkdirSync11(dir, { recursive: true });
   pruneOldDiffDirs(reviewDir, dir, now);
-  const { parts, files } = splitDiff(result.stdout);
+  const { parts, files } = splitDiff(result.stdout, audienceOf2);
   for (const part of parts) writeFileSync7(join22(dir, part.name), part.text);
   const index = join22(dir, "index.txt");
   writeFileSync7(index, files.map((file) => `${file.path}	${file.part}:${file.start}-${file.end}
 `).join(""));
-  return { dir: toSlash(dir), index: toSlash(index), parts: parts.map((part) => toSlash(join22(dir, part.name))) };
+  const pathOf = (name) => toSlash(join22(dir, name));
+  const audiences = Object.fromEntries(AUDIENCES.map((audience) => [audience, parts.filter((part) => part.name.startsWith(`${audience}-`)).map((part) => pathOf(part.name))]));
+  return { dir: toSlash(dir), index: toSlash(index), parts: parts.map((part) => pathOf(part.name)), audiences };
 };
 
 // src/review/layout.ts
@@ -4966,7 +4975,7 @@ var angleNumber = (key) => {
 
 // src/review/review-plan.ts
 var PROJECT_CONFIG = "review.jsonc";
-var isTestPath = createMatcher(["**/{test,tests,__tests__}/**"]);
+var isTestPath = createMatcher(["**/{test,tests,__tests__,_tests_}/**"]);
 var isFixturePath = createMatcher(["**/{fixture,fixtures,__fixtures__,__snapshots__}/**", "**/*.snap"]);
 var isMarkdown = createMatcher(["**/*.md"]);
 var isChangelog = createMatcher(["**/CHANGELOG.md"]);
@@ -4976,6 +4985,19 @@ var exclusionOf = (path2, root) => {
   if (isFixturePath(path2)) return "fixture";
   return void 0;
 };
+var audienceOf = (path2, root, testPaths = []) => {
+  const exclusion = exclusionOf(path2, root);
+  if (exclusion === "markdown") return "docs";
+  if (exclusion !== void 0 || testPaths.length > 0 && createMatcher([...testPaths])(path2)) return "tests";
+  return "code";
+};
+var TESTS_ANGLES = [16];
+var DOCS_ANGLES = [11, 15];
+var audiencesFor = (angles) => [
+  "code",
+  ...angles.some((angle) => TESTS_ANGLES.includes(angle)) ? ["tests"] : [],
+  ...angles.some((angle) => DOCS_ANGLES.includes(angle)) ? ["docs"] : []
+];
 var parseNumstat = (output) => {
   const tokens = output.split("\0");
   const stats = [];
@@ -5036,7 +5058,7 @@ var hasAddedComment = (file, source, added) => {
     return false;
   });
 };
-var PROJECT_KEYS = ["$schema", "iterationsMemory", "discover", "review", "severity", "route", "angles", "tiers", "maxParallel", "layout"];
+var PROJECT_KEYS = ["$schema", "iterationsMemory", "discover", "review", "severity", "route", "angles", "tiers", "maxParallel", "layout", "testPaths"];
 var readAngles = (validator, value) => {
   const object = validator.object(value, "$.angles", void 0);
   if (object === void 0) return {};
@@ -5085,8 +5107,9 @@ var parseProjectConfig = (text3, label) => {
   const grades = root?.["tiers"] === void 0 ? {} : readGrades(validator, root["tiers"]);
   const maxParallel = root?.["maxParallel"] === void 0 ? MAX_PARALLEL : validator.integer(root["maxParallel"], "$.maxParallel", 1);
   const layout = root?.["layout"] === void 0 ? void 0 : validator.oneOf(root["layout"], "$.layout", LAYOUTS);
+  const testPaths = root?.["testPaths"] === void 0 ? [] : validator.strings(root["testPaths"], "$.testPaths");
   if (validator.errors.length > 0) throw new Error(`${label}: ${validator.errors.join("; ")}`);
-  return { layout, angles, grades, maxParallel: maxParallel ?? MAX_PARALLEL };
+  return { layout, angles, grades, maxParallel: maxParallel ?? MAX_PARALLEL, testPaths: testPaths ?? [] };
 };
 var loadProjectConfig = (root) => {
   const path2 = join23(jigPaths(root).dir, PROJECT_CONFIG);
@@ -5168,7 +5191,7 @@ var readsFor = (pluginRoot, angles) => {
   const names = existsSync10(angleDir) ? readdirSync11(angleDir) : [];
   const files = angles.flatMap((angle) => names.filter((name) => name.startsWith(`${angle}.`) && name.endsWith(".md")).map((name) => join23(angleDir, name)));
   const atoms = [...new Set(files.flatMap((file) => angleAtoms(readFileSync22(file, "utf8"))))].map((name) => join23(atomDir, `${name}.md`)).filter((path2) => existsSync10(path2));
-  return { angles: files.map(toSlash), atoms: atoms.map(toSlash) };
+  return { angles: files.map(toSlash), atoms: atoms.map(toSlash), diff: [] };
 };
 var angleList = (angles) => angles.join("+");
 var gradeText = (grade, models) => {
@@ -5198,7 +5221,11 @@ var stateText = (report) => {
   if (report.mode === "pre-mr") return "off (mode pre-mr: track progress in your todo list)";
   return "off (no merge request or --no-state: no state file, no comment texts, no posting)";
 };
-var readLines = (reads) => reads === void 0 ? [] : [`  read: ${reads.angles.join(" ")}`, ...reads.atoms.length > 0 ? [`  atoms: ${reads.atoms.join(" ")}`] : []];
+var readLines = (reads) => reads === void 0 ? [] : [
+  ...reads.diff.length > 0 ? [`  diff: ${reads.diff.join(" ")}`] : [],
+  `  read: ${reads.angles.join(" ")}`,
+  ...reads.atoms.length > 0 ? [`  atoms: ${reads.atoms.join(" ")}`] : []
+];
 var formatReport = (report) => {
   const { plan, models } = report;
   const excluded = Object.entries(report.files.excluded).filter(([, count]) => count > 0).map(([kind, count]) => `${count} ${kind}`);
@@ -5206,7 +5233,9 @@ var formatReport = (report) => {
     `base: ${report.base.ref} (merge base ${report.base.mergeBase.slice(0, 8)}, from ${report.base.source})`,
     `lines: ${plan.lines} in ${report.files.counted} files${report.scope.length > 0 ? ` (scope: ${report.scope.join(" ")})` : ""}${excluded.length > 0 ? `; excluded: ${excluded.join(", ")}` : ""}${report.files.untracked > 0 ? `; untracked files not counted: ${report.files.untracked} (git add -N to count them)` : ""}`,
     `diff: ${report.diff}`,
-    ...report.diffFiles === null ? [] : [`diff files: ${report.diffFiles.index} \xB7 ${report.diffFiles.parts.length} part${report.diffFiles.parts.length === 1 ? "" : "s"} of at most ${DIFF_PART_MAX_LINES} lines, each file whole; subagents read these, never the diff command`],
+    ...report.diffFiles === null ? [] : [
+      `diff files: ${report.diffFiles.index} \xB7 ${report.diffFiles.parts.length} part${report.diffFiles.parts.length === 1 ? "" : "s"} of at most ${DIFF_PART_MAX_LINES} lines, each file whole, split into code, tests and docs; each finder reads only the parts under its \`diff:\`, never the diff command`
+    ],
     `finders: ${report.formula}`,
     layoutLine(report),
     `shape: tests ${report.shape.tests ? "yes" : "no"} \xB7 added comments ${report.shape.comments ? "yes" : "no"} \xB7 markdown ${report.shape.docs ? "yes" : "no"} \xB7 new source files ${report.shape.newSourceFiles} \xB7 spec ${report.shape.spec ? "yes" : "no"}`,
@@ -5288,12 +5317,18 @@ var buildReport = (root, options) => {
   const state = mode === "review" && options.mergeRequest === true && options.noState !== true;
   const pluginRoot = options.pluginRoot ?? resolvePluginRoot();
   const readers = plan.path === "inline" ? [[INLINE_READER, plan.angles]] : plan.finders.map((finder) => [finder.name, finder.angles]);
+  const testPaths = project?.config.testPaths ?? [];
+  const diffFiles = plan.path === "subagents" ? writeDiffFiles(root, [base.mergeBase, ...pathspec(paths)], (path2) => audienceOf(path2, root, testPaths)) : null;
+  const readsOf = (angles) => ({
+    ...readsFor(pluginRoot, angles),
+    diff: diffFiles === null ? [] : audiencesFor(angles).flatMap((audience) => diffFiles.audiences[audience])
+  });
   return {
     base: { ref: base.ref, mergeBase: base.mergeBase, source: base.source },
     files: { counted, excluded, untracked },
     scope: [...paths],
     diff: diffCommand(base.mergeBase, paths),
-    diffFiles: plan.path === "subagents" ? writeDiffFiles(root, [base.mergeBase, ...pathspec(paths)]) : null,
+    diffFiles,
     formula: `ceil(${lines2}/${LINES_PER_FINDER}) = ${Math.ceil(lines2 / LINES_PER_FINDER)}, max ${MAX_FINDERS} \u2192 N = ${plan.n}`,
     layout,
     shape,
@@ -5302,7 +5337,7 @@ var buildReport = (root, options) => {
     state,
     skill: toSlash(join23(pluginRoot, "skills", "jig-review")),
     steps: stepsFor(plan, mode, state),
-    reads: Object.fromEntries(readers.map(([name, angles]) => [name, readsFor(pluginRoot, angles)])),
+    reads: Object.fromEntries(readers.map(([name, angles]) => [name, readsOf(angles)])),
     maxParallel: project?.config.maxParallel ?? MAX_PARALLEL,
     config: project?.label ?? null,
     agent,

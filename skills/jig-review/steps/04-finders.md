@@ -48,7 +48,7 @@ Spawn every finder of the layout **in one batch**, in parallel, within the [suba
 **Every call carries the model and effort of its tier explicitly**, not the session's model. Before spawning print the plan; it goes into the [cost line](08-output.md#output): `finders: 1+4 deep/high opus · 8+14 standard/high sonnet · 2+3+5+12 deep/high opus · …`, each marked `fork` or `fresh`.
 
 **The brief order is fixed**: the shared prefix first, the personal tail last, so the shared part hits the prompt cache of the whole batch:
-1. the diff: the index and part paths `jig review-plan` printed under `diff files:` (a fork has the text already: name the paths anyway);
+1. the diff: the index, and the part paths `jig review-plan` printed under this finder's `diff:` (a fork has the text already: name the paths anyway). The parts are split by audience: `code-*` goes to every finder, `tests-*` only to the finder with angle 16, `docs-*` only to the finder with angles 11 or 15. A finder reads no part outside its `diff:` list; it may open a test or document by path when a candidate needs one;
 2. the shared rules block ([project rules](02-rules.md)): only severity (verbatim) and skip rules; convention bodies go to the rules finder;
 3. the learnings block ([state](03-state.md#learnings));
 4. the project root;

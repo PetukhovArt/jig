@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { git } from '../src/core/git'
-import { LAYOUTS, finderCount, gateFiles, judgeModels, planReview, stepsFor, type Layout, type Mode, type Shape } from '../src/review/layout'
+import { LAYOUTS, finderCount, gateFiles, judgeModels, planReview, stepsFor, type Angle, type Layout, type Mode, type Shape } from '../src/review/layout'
 import { addedLines, buildReport, countLines, parseNumstat, parseProjectConfig, readsFor, resolveLayout } from '../src/review/review-plan'
 
 const CODE_ONLY: Shape = { tests: false, comments: false, docs: false, newSourceFiles: 0, spec: false }
@@ -294,8 +294,35 @@ describe('buildReport on a repository', () => {
     expect(files?.parts.map((part) => readFileSync(part, 'utf8')).join('')).toBe(whole)
     const index = readFileSync(files?.index ?? '', 'utf8').trim().split('\n').map((line) => line.split('\t'))
     expect(index).toEqual([
-      ['a.ts', 'part-01.diff:1-7'],
-      ['big.ts', 'part-02.diff:1-1606'],
+      ['a.ts', 'code-01.diff:1-7'],
+      ['big.ts', 'code-02.diff:1-1606'],
     ])
+  })
+
+  it('gives test files only to the finder with angle 16 and documents only to the one with angles 11 and 15', () => {
+    const root = mkdtempSync(join(tmpdir(), 'jig-review-plan-'))
+    dirs.push(root)
+    vi.stubEnv('JIG_USER_CONFIG', join(root, 'absent.jsonc'))
+    const run = (...args: string[]) => expect(git(['-c', 'user.email=t@t', '-c', 'user.name=t', ...args], root).ok).toBe(true)
+    run('init', '-q', '-b', 'main')
+    write(root, 'a.ts', 'export const a = 1\n')
+    run('add', '-A')
+    run('commit', '-qm', 'base')
+    write(root, 'src/store.ts', Array.from({ length: 500 }, (_, index) => `export const s${index} = ${index}`).join('\n') + '\n')
+    write(root, 'src/model/_tests_/store.ts', "it('s', () => {})\n")
+    write(root, 'src/spec/store.check.ts', "it('c', () => {})\n")
+    write(root, 'docs/store.md', '# Store\n')
+    write(root, '.jig/review.jsonc', '{ "testPaths": ["**/spec/**"] }\n')
+    run('add', '-A')
+    run('commit', '-qm', 'feature')
+
+    const report = buildReport(root, { base: 'HEAD~1', spec: true, agent: 'claude', layout: 'lean' })
+
+    const partsOf = (angle: Angle): string[] =>
+      (report.reads[report.plan.finders.find((finder) => finder.angles.includes(angle))?.name ?? ''] ?? { diff: [] }).diff.map((path) => path.split('/').pop() ?? '')
+    expect(partsOf(1)).toEqual(['code-01.diff'])
+    expect(partsOf(16)).toEqual(['code-01.diff', 'tests-01.diff'])
+    expect(partsOf(15)).toEqual(['code-01.diff', 'docs-01.diff'])
+    expect(readFileSync(report.diffFiles?.audiences.tests[0] ?? '', 'utf8')).toMatch(/_tests_\/store\.ts[\s\S]*spec\/store\.check\.ts/)
   })
 })

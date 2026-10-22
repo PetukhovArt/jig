@@ -10,7 +10,7 @@ import { realPath } from '../core/proc'
 import { fileSource, isTestFile } from '../catalog/languages'
 import { lexComments } from '../catalog/languages'
 import { detectAgent, loadUserConfig, resolveTiers, type TierMap } from '../tiers/tiers'
-import { DIFF_PART_MAX_LINES, writeDiffFiles, type DiffFiles } from './diff-files'
+import { DIFF_PART_MAX_LINES, writeDiffFiles, type Audience, type DiffFiles } from './diff-files'
 import {
   AUTO_INLINE_MAX_N,
   CEILINGS,
@@ -52,7 +52,7 @@ export type Exclusion = 'test' | 'fixture' | 'markdown'
 
 export const PROJECT_CONFIG = 'review.jsonc'
 
-const isTestPath = createMatcher(['**/{test,tests,__tests__}/**'])
+const isTestPath = createMatcher(['**/{test,tests,__tests__,_tests_}/**'])
 const isFixturePath = createMatcher(['**/{fixture,fixtures,__fixtures__,__snapshots__}/**', '**/*.snap'])
 const isMarkdown = createMatcher(['**/*.md'])
 const isChangelog = createMatcher(['**/CHANGELOG.md'])
@@ -63,6 +63,22 @@ export const exclusionOf = (path: string, root?: string): Exclusion | undefined 
   if (isFixturePath(path)) return 'fixture'
   return undefined
 }
+
+export const audienceOf = (path: string, root?: string, testPaths: readonly string[] = []): Audience => {
+  const exclusion = exclusionOf(path, root)
+  if (exclusion === 'markdown') return 'docs'
+  if (exclusion !== undefined || (testPaths.length > 0 && createMatcher([...testPaths])(path))) return 'tests'
+  return 'code'
+}
+
+const TESTS_ANGLES: readonly Angle[] = [16]
+const DOCS_ANGLES: readonly Angle[] = [11, 15]
+
+export const audiencesFor = (angles: readonly Angle[]): Audience[] => [
+  'code',
+  ...(angles.some((angle) => TESTS_ANGLES.includes(angle)) ? (['tests'] as const) : []),
+  ...(angles.some((angle) => DOCS_ANGLES.includes(angle)) ? (['docs'] as const) : []),
+]
 
 export const parseNumstat = (output: string): FileStat[] => {
   const tokens = output.split('\0')
@@ -133,9 +149,10 @@ export interface ProjectReviewConfig {
   angles: Partial<Record<Angle, AngleSettings>>
   grades: Record<string, Grade>
   maxParallel: number
+  testPaths: string[]
 }
 
-const PROJECT_KEYS = ['$schema', 'iterationsMemory', 'discover', 'review', 'severity', 'route', 'angles', 'tiers', 'maxParallel', 'layout']
+const PROJECT_KEYS = ['$schema', 'iterationsMemory', 'discover', 'review', 'severity', 'route', 'angles', 'tiers', 'maxParallel', 'layout', 'testPaths']
 
 const readAngles = (validator: Validator, value: unknown): Partial<Record<Angle, AngleSettings>> => {
   const object = validator.object(value, '$.angles', undefined)
@@ -187,8 +204,9 @@ export const parseProjectConfig = (text: string, label: string): ProjectReviewCo
   const grades = root?.['tiers'] === undefined ? {} : readGrades(validator, root['tiers'])
   const maxParallel = root?.['maxParallel'] === undefined ? MAX_PARALLEL : validator.integer(root['maxParallel'], '$.maxParallel', 1)
   const layout = root?.['layout'] === undefined ? undefined : validator.oneOf(root['layout'], '$.layout', LAYOUTS)
+  const testPaths = root?.['testPaths'] === undefined ? [] : validator.strings(root['testPaths'], '$.testPaths')
   if (validator.errors.length > 0) throw new Error(`${label}: ${validator.errors.join('; ')}`)
-  return { layout, angles, grades, maxParallel: maxParallel ?? MAX_PARALLEL }
+  return { layout, angles, grades, maxParallel: maxParallel ?? MAX_PARALLEL, testPaths: testPaths ?? [] }
 }
 
 const loadProjectConfig = (root: string): { label: string; config: ProjectReviewConfig } | undefined => {
@@ -272,6 +290,7 @@ export const diffCommand = (mergeBase: string, paths: readonly string[]): string
 export interface Reads {
   angles: string[]
   atoms: string[]
+  diff: string[]
 }
 
 export interface ReviewPlanReport {
@@ -328,7 +347,7 @@ export const readsFor = (pluginRoot: string, angles: readonly Angle[]): Reads =>
   const names = existsSync(angleDir) ? readdirSync(angleDir) : []
   const files = angles.flatMap((angle) => names.filter((name) => name.startsWith(`${angle}.`) && name.endsWith('.md')).map((name) => join(angleDir, name)))
   const atoms = [...new Set(files.flatMap((file) => angleAtoms(readFileSync(file, 'utf8'))))].map((name) => join(atomDir, `${name}.md`)).filter((path) => existsSync(path))
-  return { angles: files.map(toSlash), atoms: atoms.map(toSlash) }
+  return { angles: files.map(toSlash), atoms: atoms.map(toSlash), diff: [] }
 }
 
 const angleList = (angles: readonly number[]): string => angles.join('+')
@@ -367,7 +386,13 @@ const stateText = (report: ReviewPlanReport): string => {
 }
 
 const readLines = (reads: Reads | undefined): string[] =>
-  reads === undefined ? [] : [`  read: ${reads.angles.join(' ')}`, ...(reads.atoms.length > 0 ? [`  atoms: ${reads.atoms.join(' ')}`] : [])]
+  reads === undefined
+    ? []
+    : [
+        ...(reads.diff.length > 0 ? [`  diff: ${reads.diff.join(' ')}`] : []),
+        `  read: ${reads.angles.join(' ')}`,
+        ...(reads.atoms.length > 0 ? [`  atoms: ${reads.atoms.join(' ')}`] : []),
+      ]
 
 export const formatReport = (report: ReviewPlanReport): string => {
   const { plan, models } = report
@@ -380,7 +405,9 @@ export const formatReport = (report: ReviewPlanReport): string => {
     `diff: ${report.diff}`,
     ...(report.diffFiles === null
       ? []
-      : [`diff files: ${report.diffFiles.index} · ${report.diffFiles.parts.length} part${report.diffFiles.parts.length === 1 ? '' : 's'} of at most ${DIFF_PART_MAX_LINES} lines, each file whole; subagents read these, never the diff command`]),
+      : [
+          `diff files: ${report.diffFiles.index} · ${report.diffFiles.parts.length} part${report.diffFiles.parts.length === 1 ? '' : 's'} of at most ${DIFF_PART_MAX_LINES} lines, each file whole, split into code, tests and docs; each finder reads only the parts under its \`diff:\`, never the diff command`,
+        ]),
     `finders: ${report.formula}`,
     layoutLine(report),
     `shape: tests ${report.shape.tests ? 'yes' : 'no'} · added comments ${report.shape.comments ? 'yes' : 'no'} · markdown ${report.shape.docs ? 'yes' : 'no'} · new source files ${report.shape.newSourceFiles} · spec ${report.shape.spec ? 'yes' : 'no'}`,
@@ -477,12 +504,18 @@ export const buildReport = (root: string, options: ReportOptions): ReviewPlanRep
   const state = mode === 'review' && options.mergeRequest === true && options.noState !== true
   const pluginRoot = options.pluginRoot ?? resolvePluginRoot()
   const readers: [string, readonly Angle[]][] = plan.path === 'inline' ? [[INLINE_READER, plan.angles]] : plan.finders.map((finder) => [finder.name, finder.angles])
+  const testPaths = project?.config.testPaths ?? []
+  const diffFiles = plan.path === 'subagents' ? writeDiffFiles(root, [base.mergeBase, ...pathspec(paths)], (path) => audienceOf(path, root, testPaths)) : null
+  const readsOf = (angles: readonly Angle[]): Reads => ({
+    ...readsFor(pluginRoot, angles),
+    diff: diffFiles === null ? [] : audiencesFor(angles).flatMap((audience) => diffFiles.audiences[audience]),
+  })
   return {
     base: { ref: base.ref, mergeBase: base.mergeBase, source: base.source },
     files: { counted, excluded, untracked },
     scope: [...paths],
     diff: diffCommand(base.mergeBase, paths),
-    diffFiles: plan.path === 'subagents' ? writeDiffFiles(root, [base.mergeBase, ...pathspec(paths)]) : null,
+    diffFiles,
     formula: `ceil(${lines}/${LINES_PER_FINDER}) = ${Math.ceil(lines / LINES_PER_FINDER)}, max ${MAX_FINDERS} → N = ${plan.n}`,
     layout,
     shape,
@@ -491,7 +524,7 @@ export const buildReport = (root: string, options: ReportOptions): ReviewPlanRep
     state,
     skill: toSlash(join(pluginRoot, 'skills', 'jig-review')),
     steps: stepsFor(plan, mode, state),
-    reads: Object.fromEntries(readers.map(([name, angles]) => [name, readsFor(pluginRoot, angles)])),
+    reads: Object.fromEntries(readers.map(([name, angles]) => [name, readsOf(angles)])),
     maxParallel: project?.config.maxParallel ?? MAX_PARALLEL,
     config: project?.label ?? null,
     agent,
