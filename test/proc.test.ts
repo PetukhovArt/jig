@@ -122,3 +122,14 @@ describe('npm shims in PATH', () => {
     expect(findUnresolvedShim('absent-tool.cmd', env)).toBeUndefined()
   })
 })
+
+describe('a command given as a path', () => {
+  it.each([
+    ['an absolute binary runs directly', () => join(workDir, 'shims', 'tools', 'native.exe'), () => [join(workDir, 'shims', 'tools', 'native.exe')]],
+    ['a relative script runs through node', () => 'shims/node_modules/js-tool/bin/cli.js', () => [process.execPath, join(workDir, 'shims', 'node_modules', 'js-tool', 'bin', 'cli.js')]],
+    ['a shim resolves to its target', () => join(workDir, 'shims', 'exe-tool.cmd'), () => [join(workDir, 'shims', 'tools', 'native.exe')]],
+    ['a missing file is not found', () => join(workDir, 'absent', 'tool.exe'), () => undefined],
+  ])('%s', (_name, command, expected) => {
+    expect(resolveBin(workDir, [], command())).toEqual(expected())
+  })
+})

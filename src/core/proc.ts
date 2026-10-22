@@ -140,7 +140,17 @@ export const resolveShimTarget = (shimPath: string): string[] | undefined => {
   return extension === '.exe' ? [absolute] : undefined
 }
 
+const isPathCommand = (command: string): boolean => isAbsolute(command) || /[\\/]/.test(command)
+
+const resolvePathCommand = (projectRoot: string, command: string): string[] | undefined => {
+  const path = resolve(projectRoot, command)
+  if (!isFile(path)) return undefined
+  if (isShim(path)) return resolveShimTarget(path)
+  return SCRIPT_EXTENSIONS.has(extname(path).toLowerCase()) ? [process.execPath, path] : [path]
+}
+
 export const resolveBin = (projectRoot: string, pkgs: readonly string[], command: string): string[] | undefined => {
+  if (isPathCommand(command)) return resolvePathCommand(projectRoot, command)
   for (const pkg of pkgs) {
     const bin = resolvePackageBin(projectRoot, pkg, command)
     if (bin !== undefined) return bin

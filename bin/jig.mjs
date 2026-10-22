@@ -1092,7 +1092,15 @@ var resolveShimTarget = (shimPath) => {
   if (SCRIPT_EXTENSIONS2.has(extension)) return [process.execPath, absolute];
   return extension === ".exe" ? [absolute] : void 0;
 };
+var isPathCommand = (command) => isAbsolute2(command) || /[\\/]/.test(command);
+var resolvePathCommand = (projectRoot, command) => {
+  const path2 = resolve2(projectRoot, command);
+  if (!isFile(path2)) return void 0;
+  if (isShim(path2)) return resolveShimTarget(path2);
+  return SCRIPT_EXTENSIONS2.has(extname2(path2).toLowerCase()) ? [process.execPath, path2] : [path2];
+};
 var resolveBin = (projectRoot, pkgs, command) => {
+  if (isPathCommand(command)) return resolvePathCommand(projectRoot, command);
   for (const pkg of pkgs) {
     const bin = resolvePackageBin(projectRoot, pkg, command);
     if (bin !== void 0) return bin;
