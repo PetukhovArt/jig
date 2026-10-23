@@ -44,7 +44,7 @@ const drawPage = (page: string): DrawnPage => {
     querySelector: () => ({ addEventListener: () => undefined }),
     querySelectorAll: () => [],
   }
-  runInNewContext(script, { document, localStorage: { getItem: () => null } })
+  runInNewContext(script, { document, location: { pathname: '/task-status.html' }, localStorage: { getItem: () => null } })
   return { lang: htmlElement.lang, title: document.title, html: app.innerHTML }
 }
 
@@ -136,7 +136,7 @@ describe('jig task-status open', () => {
     expect(existsSync(join(runDir(), 'task-status.html'))).toBe(false)
 
     stdout = []
-    expect(await taskStatus(4, 'open')).toBe(0)
+    expect(await taskStatus(4, 'open', '--no-browser')).toBe(0)
     expect(stdout).toEqual([`${slash(root)}/.jig/runs/feat_status-x/task-status.html\n`])
     expect(pageData(pageText())).toEqual({
       branch: 'feat_status-x',
@@ -150,13 +150,15 @@ describe('jig task-status open', () => {
     expect(drawn.title).toBe('Ship </script><b>')
     expect(drawn.html).toContain('1<small> / 2 steps done</small>')
     expect(drawn.html).toContain('Open questions <span class="pill accent">1</span>')
+    expect(drawn.html).toContain('<textarea class="reply" rows="2" placeholder="Your answer" aria-label="Answer to: Dark theme default?" hidden></textarea>')
+    expect(drawn.html).toContain('<button class="copy" type="button">Copy answers</button>')
   })
 
   it('rebuilds the page with rows logged after the last open', async () => {
     await taskStatus(0, 'log', 'start', 'Ship')
-    await taskStatus(1, 'open')
+    await taskStatus(1, 'open', '--no-browser')
     await taskStatus(2, 'log', 'design', 'Later decision')
-    await taskStatus(3, 'open')
+    await taskStatus(3, 'open', '--no-browser')
 
     expect(pageData(pageText())).toMatchObject({ builtAt: minutes(3), rows: [{ decision: 'Ship' }, { decision: 'Later decision' }] })
   })
@@ -166,7 +168,7 @@ describe('jig task-status open', () => {
     { lang: 'en', label: 'Open questions', foreign: 'Открытые вопросы' },
   ])('draws $lang labels from --lang', async ({ lang, label, foreign }) => {
     await taskStatus(0, 'log', 'question', 'Какой хостинг?', '--why', 'glab')
-    await taskStatus(1, 'open', '--lang', lang)
+    await taskStatus(1, 'open', '--no-browser', '--lang', lang)
 
     const drawn = drawPage(pageText())
     expect(drawn.lang).toBe(lang)
@@ -175,12 +177,14 @@ describe('jig task-status open', () => {
   })
 
   it('exits 1 without a journal and 2 on a wrong --lang', async () => {
-    expect(await taskStatus(0, 'open')).toBe(1)
+    expect(await taskStatus(0, 'open', '--no-browser')).toBe(1)
     expect(stderr.at(-1)).toMatch(/^jig: no task-status journal for branch feat_status-x/)
     expect(await taskStatus(0, 'path')).toBe(1)
 
     await taskStatus(0, 'log', 'start', 'Ship')
     expect(await taskStatus(1, 'open', '--lang', 'de')).toBe(2)
+    expect(await taskStatus(1, 'open', '--browser')).toBe(2)
+    expect(stderr.at(-1)).toMatch(/usage: task-status open \[--lang en\|ru\] \[--no-browser\]/)
   })
 })
 

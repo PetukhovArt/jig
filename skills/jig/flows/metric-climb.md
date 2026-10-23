@@ -19,4 +19,6 @@ One change, one measurement, keep or revert. Never stack untested changes; never
 7. Stop when the predicate holds, or when the remaining ideas cost more than they can win. Never relax the predicate to meet it; never stop while cheap untried hypotheses remain. Stuck: say so.
 8. `flows/mr.md` with the kept commits in the order they landed.
 
+Before the reply run `jig task-status open` in the session language: the page opens in the browser.
+
 Reply: the metric and target, baseline to final with the percent delta and the run count, attempts run (kept and reverted), each kept win in one line, the log, the next idea you would try.

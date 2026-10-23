@@ -33,7 +33,7 @@ h1 { font: 500 26px/1.15 var(--serif); margin-bottom: 8px; text-wrap: balance; o
 h2 { font: 500 22px/1.25 var(--serif); margin-bottom: 12px; display: flex; align-items: baseline; gap: 10px; }
 a { color: var(--accent); text-underline-offset: 3px; }
 button { font: inherit; color: inherit; cursor: pointer; }
-a:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+a:focus-visible, button:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 time, .mono { font: 12px/1.5 var(--mono); color: var(--ink-3); font-variant-numeric: tabular-nums; }
 .pill { display: inline-block; font: 550 12px/1 var(--sans); padding: 4px 8px; border-radius: 99px; background: var(--sunk); color: var(--ink-2); border: 1px solid var(--line); white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
 .pill.accent { background: var(--accent-soft); color: var(--accent); border-color: transparent; }
@@ -67,10 +67,13 @@ time, .mono { font: 12px/1.5 var(--mono); color: var(--ink-3); font-variant-nume
 .runs li { padding: 2px 0; overflow-wrap: anywhere; }
 
 .inbox { margin-bottom: 32px; }
-.ask { padding: 16px; background: var(--card); border: 1px solid var(--accent); border-radius: 12px; margin-bottom: 14px; }
+.ask { padding: 16px; background: var(--card); border: 1px solid var(--accent); border-radius: 12px; margin-bottom: 14px; cursor: pointer; }
+.ask[aria-expanded="true"] { cursor: default; }
+.ask:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .ask .k { font-size: 12px; font-weight: 550; color: var(--ink-3); margin-bottom: 8px; }
 .ask .q { font-weight: 600; margin-bottom: 6px; overflow-wrap: anywhere; }
-.ask .def { font-size: 14px; color: var(--ink-2); overflow-wrap: anywhere; }
+.ask .def { font-size: 14px; color: var(--ink-2); overflow-wrap: anywhere; margin-bottom: 8px; }
+.ask .reply { display: block; width: 100%; resize: vertical; font: inherit; font-size: 15px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); color: var(--ink); }
 
 .chips { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 18px; position: sticky; top: 0; z-index: 4; background: var(--paper); padding: 10px 0; border-bottom: 1px solid var(--line-2); }
 .chips button { font-size: 13px; font-weight: 550; line-height: 1; padding: 7px 11px; border-radius: 99px; border: 1px solid var(--line); background: var(--card); color: var(--ink-2); }
@@ -96,6 +99,8 @@ time, .mono { font: 12px/1.5 var(--mono); color: var(--ink-3); font-variant-nume
 
 .bar { position: fixed; z-index: 10; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom)); display: flex; gap: 8px; align-items: center; }
 .theme { width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--line); background: var(--card); box-shadow: var(--float); color: var(--ink-2); }
+.copy { font-size: 14px; font-weight: 550; line-height: 1; padding: 13px 16px; border-radius: 99px; border: 0; background: var(--ink); color: var(--paper); box-shadow: var(--float); }
+.copy:disabled { background: var(--sunk); color: var(--ink-3); border: 1px solid var(--line); cursor: default; }
 
 @media (max-width: 900px) {
   .page { grid-template-columns: minmax(0, 1fr); gap: 0; padding: 0 16px 110px; }
@@ -113,6 +118,8 @@ time, .mono { font: 12px/1.5 var(--mono); color: var(--ink-3); font-variant-nume
   .ev > time { display: none; }
   .ev::before { left: 11px; }
   .item .top time { display: inline; }
+  .bar { left: 16px; }
+  .copy { flex: 1; }
 }
 </style>
 </head>
@@ -139,6 +146,13 @@ const LABELS = {
     theme: 'Light or dark theme',
     open: 'Open questions',
     taken: 'went with',
+    answerLabel: question => `Answer to: ${question}`,
+    answerPlaceholder: 'Your answer',
+    answerHint: 'Click to answer',
+    copy: 'Copy answers',
+    copied: n => `copied (${n})`,
+    copyFailed: 'copy failed',
+    answersFor: title => `Answers for run "${title}":`,
     journal: 'Journal',
     all: 'All',
     decisions: 'Decisions',
@@ -167,6 +181,13 @@ const LABELS = {
     theme: 'Светлая или тёмная тема',
     open: 'Открытые вопросы',
     taken: 'выбрано',
+    answerLabel: question => `Ответ на: ${question}`,
+    answerPlaceholder: 'Ваш ответ',
+    answerHint: 'Нажмите, чтобы ответить',
+    copy: 'Скопировать ответы',
+    copied: n => `скопировано (${n})`,
+    copyFailed: 'не удалось скопировать',
+    answersFor: title => `Ответы по прогону «${title}»:`,
     journal: 'Журнал',
     all: 'Всё',
     decisions: 'Решения',
@@ -244,7 +265,26 @@ const savedFilter = localStorage.getItem('jig-task-status-filter');
 const filter = FILTERS.some(([k, , count]) => k === savedFilter && count) ? savedFilter : 'all';
 
 const stepLine = s => `<li class="${s.status}"><i class="dot ${s.status}"></i><div>${esc(s.decision)}${s.result ? `<small>${esc(s.result)}</small>` : ''}</div></li>`;
-const askCard = q => `<section class="ask"><div class="k">${dayHm(q.ts)}</div><p class="q">${esc(q.decision)}</p>${q.why ? `<p class="def">${L.taken}: ${esc(q.why)}</p>` : ''}</section>`;
+const askCard = (q, i) => `<section class="ask" data-i="${i}" tabindex="0" aria-expanded="${Boolean(drafts[i])}" title="${L.answerHint}"><div class="k">${dayHm(q.ts)}</div><p class="q">${esc(q.decision)}</p>${q.why ? `<p class="def">${L.taken}: ${esc(q.why)}</p>` : ''}
+  <textarea class="reply" rows="2" placeholder="${L.answerPlaceholder}" aria-label="${esc(L.answerLabel(q.decision))}"${drafts[i] ? '' : ' hidden'}></textarea></section>`;
+
+const draftKey = q => `jig-task-status-answer:${location.pathname}:${q.ts}:${q.decision}`;
+const readDraft = q => {
+  try {
+    return localStorage.getItem(draftKey(q)) ?? '';
+  } catch {
+    return '';
+  }
+};
+const drafts = openQuestions.map(readDraft);
+const answersText = () => {
+  const items = openQuestions
+    .map((q, i) => ({q, answer: String(drafts[i] ?? '').trim()}))
+    .filter(item => item.answer !== '')
+    .map(({q, answer}) => `${q.decision}\n→ ${answer}`);
+  return {count: items.length, text: items.length ? `${L.answersFor(title)}\n\n${items.join('\n\n')}` : ''};
+};
+const COPIED_MS = 2500;
 
 document.documentElement.lang = lang;
 const theme = localStorage.getItem('jig-task-status-theme');
@@ -268,7 +308,67 @@ document.getElementById('app').innerHTML = `<div class="page">
     ${[...rows].reverse().map(row => `<div class="ev ${kindOf(row)}"><time>${hm(row.ts)}</time><span class="ico">${ICON[kindOf(row)]}</span>${rowItem(row)}</div>`).join('')}` : `<p class="empty">${L.nothing}</p>`}
   </main>
 </div>
-<div class="bar"><button class="theme" type="button" aria-label="${L.theme}">&#9680;</button></div>`;
+<div class="bar"><button class="theme" type="button" aria-label="${L.theme}">&#9680;</button>${openQuestions.length ? `<button class="copy" type="button">${L.copy}</button>` : ''}</div>`;
+
+const copyButton = document.querySelector('.copy');
+const refreshCopy = () => {
+  if (copyButton) copyButton.disabled = answersText().count === 0;
+};
+
+const writeClipboard = async text => {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    const area = document.createElement('textarea');
+    area.value = text;
+    area.setAttribute('readonly', '');
+    area.style.position = 'fixed';
+    area.style.opacity = '0';
+    document.body.append(area);
+    area.select();
+    const isCopied = document.execCommand('copy');
+    area.remove();
+    return isCopied;
+  }
+};
+
+for (const box of document.querySelectorAll('.ask')) {
+  const i = Number(box.dataset.i);
+  const q = openQuestions[i];
+  const reply = box.querySelector('.reply');
+  reply.value = drafts[i];
+  const showReply = () => {
+    if (!reply.hidden) return;
+    reply.hidden = false;
+    box.setAttribute('aria-expanded', 'true');
+    reply.focus();
+  };
+  box.addEventListener('click', showReply);
+  box.addEventListener('keydown', event => {
+    if (event.target === box && (event.key === 'Enter' || event.key === ' ')) {
+      event.preventDefault();
+      showReply();
+    }
+  });
+  reply.addEventListener('input', () => {
+    drafts[i] = reply.value;
+    try {
+      if (reply.value.trim() === '') localStorage.removeItem(draftKey(q));
+      else localStorage.setItem(draftKey(q), reply.value);
+    } catch {}
+    refreshCopy();
+  });
+}
+
+refreshCopy();
+copyButton?.addEventListener('click', async () => {
+  const {text, count} = answersText();
+  if (count === 0) return;
+  const isCopied = await writeClipboard(text);
+  copyButton.textContent = isCopied ? L.copied(count) : L.copyFailed;
+  setTimeout(() => { copyButton.textContent = L.copy; }, COPIED_MS);
+});
 
 for (const chip of document.querySelectorAll('.chips button')) {
   chip.addEventListener('click', () => {

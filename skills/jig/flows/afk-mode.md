@@ -21,4 +21,6 @@ Mode: one task (default), or a queue of tasks delivered as a stack of merge requ
 7. Queue mode, per item: a fresh delegate builds it through its flow up to the merge request. An item that depends on another branches from that item's branch, not from the trunk. You are the only writer of the stack's shape: you alone rebase or retarget a link; delegates push only their own branch and report its tip and intended parent. Each merge request targets its parent's branch and carries its verdict (pre-MR review and verification) in its description. Before landing starts, absorb trunk drift by rebasing the stack bottom-up. Never merge, never arm auto-merge: the human lands the stack (`flows/mr-watching.md`, merge step, on their command). One task: `skip: one task`.
 8. At the end: one subagent with role `journal-auditor` compares the task-status log with `git log` and the diff, and lists claims without evidence.
 
+Before the reply run `jig task-status open` in the session language: the page opens in the browser.
+
 Reply: the done condition, iterations run, what landed (commits, or the stack from root to tip with one verdict line per link), what was reverted or parked and why, each question with the default taken, the final state of the condition, the auditor's list, the task-status log path.

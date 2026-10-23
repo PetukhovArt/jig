@@ -16,4 +16,6 @@ Atoms: prove-shippable, small-steps, design-it-twice, shared-state, do-less, les
 6. Verify the whole against the predicate from step 1 on the real product, not only the harness. A correction you made twice becomes a check (atom lessons-to-checks).
 7. Code changed: `flows/mr.md`. Otherwise `skip: no code changed`.
 
+Before the reply run `jig task-status open` in the session language: the page opens in the browser.
+
 Reply: the workflow you designed, the rigor and why, the trail, what is verified against the predicate, what is still open.

@@ -1,3 +1,4 @@
+import { spawn } from 'node:child_process'
 import { appendFileSync, mkdirSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { gitCurrentBranch, gitShortSha } from '../core/git'
@@ -172,12 +173,46 @@ const parseLog = (args: string[]): RowInput => {
 
 const isPageLang = (value: string | undefined): value is PageLang => PAGE_LANGS.some((lang) => lang === value)
 
-const parseOpen = (args: string[]): PageLang => {
-  if (args.length === 0) return 'en'
-  const [flag, value, ...rest] = args
-  if (flag !== '--lang' || rest.length > 0) throw usage('usage: task-status open [--lang en|ru]')
-  if (!isPageLang(value)) throw usage(`--lang must be ${PAGE_LANGS.join(' or ')}, got ${value ?? 'nothing'}`)
-  return value
+const OPEN_USAGE = 'usage: task-status open [--lang en|ru] [--no-browser]'
+
+interface OpenOptions {
+  lang: PageLang
+  isBrowser: boolean
+}
+
+const parseOpen = (args: string[]): OpenOptions => {
+  const options: OpenOptions = { lang: 'en', isBrowser: true }
+  for (let index = 0; index < args.length; index++) {
+    const token = args[index]
+    if (token === '--no-browser') {
+      options.isBrowser = false
+      continue
+    }
+    if (token !== '--lang') throw usage(OPEN_USAGE)
+    const value = args[index + 1]
+    if (!isPageLang(value)) throw usage(`--lang must be ${PAGE_LANGS.join(' or ')}, got ${value ?? 'nothing'}`)
+    options.lang = value
+    index++
+  }
+  return options
+}
+
+const browserCommand = (platform: NodeJS.Platform, path: string): string[] => {
+  if (platform === 'win32') return ['explorer.exe', path]
+  if (platform === 'darwin') return ['open', path]
+  return ['xdg-open', path]
+}
+
+const showInBrowserBestEffort = (path: string): void => {
+  if (process.env['CI'] !== undefined) return
+  const [command = '', ...args] = browserCommand(process.platform, path)
+  try {
+    const child = spawn(command, args, { detached: true, stdio: 'ignore' })
+    child.on('error', () => undefined)
+    child.unref()
+  } catch {
+    return
+  }
 }
 
 export interface PageData {
@@ -197,11 +232,12 @@ const noJournal = (location: JournalLocation): TaskStatusFailure =>
   new TaskStatusFailure(EXIT_NOT_MET, `no task-status journal for branch ${location.branch}, start one with: task-status log start "<task title>"`)
 
 const openPage = (location: JournalLocation, args: string[], now: Date): string => {
-  const lang = parseOpen(args)
+  const { lang, isBrowser } = parseOpen(args)
   const rows = readJournalRows(location.journal)
   if (rows === undefined) throw noJournal(location)
   const journal = toSlash(location.journal)
   writeFileAtomic(location.page, renderPage({ branch: location.branch, journal, builtAt: now.toISOString(), lang, rows }))
+  if (isBrowser) showInBrowserBestEffort(location.page)
   return toSlash(location.page)
 }
 
