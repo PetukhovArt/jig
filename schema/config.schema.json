@@ -41,7 +41,8 @@
             "default": "exit",
             "description": "exit: a non-zero exit is one finding; jsonl: jig finding lines; a tool name: that tool's output parser"
           },
-          "level": { "$ref": "#/$defs/severity", "default": "error" }
+          "level": { "$ref": "#/$defs/severity", "default": "error" },
+          "timeout": { "$ref": "#/$defs/timeout", "default": 30 }
         }
       }
     },
@@ -106,6 +107,12 @@
   },
   "$defs": {
     "severity": { "enum": ["off", "warn", "error"] },
+    "timeout": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 110,
+      "description": "Seconds it may run at the end of a turn; every end-of-turn check shares 110 s. A run that does not finish leaves the result unknown and blocks the turn once."
+    },
     "tool": {
       "description": "A catalog tool or proof by name. {} turns it on, false turns it off; a name missing from the config never runs.",
       "oneOf": [
@@ -116,7 +123,8 @@
           "properties": {
             "level": { "$ref": "#/$defs/severity", "default": "error" },
             "command": { "type": "string", "minLength": 1, "description": "Replaces the catalog command, e.g. vue-tsc for tsc" },
-            "ignoreRules": { "type": "array", "items": { "type": "string" }, "description": "Rule globs whose findings are dropped, e.g. boundaries/*" }
+            "ignoreRules": { "type": "array", "items": { "type": "string" }, "description": "Rule globs whose findings are dropped, e.g. boundaries/*" },
+            "timeout": { "$ref": "#/$defs/timeout", "description": "Seconds the tool may run at the end of a turn; default eslint 30 plus 1 per file, tsc 60, stratum 15" }
           }
         }
       ]

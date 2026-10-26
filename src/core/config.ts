@@ -20,6 +20,7 @@ export interface ToolSettings {
   level: Severity
   command?: string
   ignoreRules: string[]
+  timeout?: number
 }
 
 export type ToolSetting = ToolSettings | false
@@ -34,6 +35,7 @@ export interface CustomCheck {
   run: string
   format: string
   level: Severity
+  timeout?: number
 }
 
 const RUNTIMES = ['electron', 'tauri', 'browser', 'none'] as const
@@ -158,7 +160,11 @@ const required = (validator: Validator, object: Json, path: string, keys: readon
   return missing.length === 0
 }
 
-const TOOL_KEYS = ['level', 'command', 'ignoreRules'] as const
+const TOOL_KEYS = ['level', 'command', 'ignoreRules', 'timeout'] as const
+const MAX_TIMEOUT_S = 110
+
+const readTimeout = (validator: Validator, value: unknown, path: string): number | undefined =>
+  validator.integer(value, path, 1, MAX_TIMEOUT_S)
 
 const readToolSetting = (validator: Validator, value: unknown, path: string): ToolSetting | undefined => {
   if (value === false) return false
@@ -175,6 +181,10 @@ const readToolSetting = (validator: Validator, value: unknown, path: string): To
   }
   if (object['ignoreRules'] !== undefined) {
     setting.ignoreRules = validator.strings(object['ignoreRules'], childPath(path, 'ignoreRules')) ?? []
+  }
+  if (object['timeout'] !== undefined) {
+    const timeout = readTimeout(validator, object['timeout'], childPath(path, 'timeout'))
+    if (timeout !== undefined) setting.timeout = timeout
   }
   return setting
 }
@@ -194,7 +204,7 @@ const readNamed = (validator: Validator, root: Json, names: readonly string[]): 
 const readGlobs = (validator: Validator, value: unknown, path: string): string[] | undefined =>
   typeof value === 'string' ? [value] : validator.strings(value, path)
 
-const CHECK_KEYS = ['name', 'files', 'on', 'run', 'format', 'level'] as const
+const CHECK_KEYS = ['name', 'files', 'on', 'run', 'format', 'level', 'timeout'] as const
 const CHECK_NAME = /^[\w.-]+$/
 const FILES_TOKEN = '{files}'
 
@@ -210,11 +220,12 @@ const readCheck = (validator: Validator, value: unknown, path: string): CustomCh
   if (run !== undefined && !run.includes(FILES_TOKEN)) validator.report(childPath(path, 'run'), `needs the ${FILES_TOKEN} placeholder`)
   const format = object['format'] === undefined ? EXIT_FORMAT : validator.oneOf(object['format'], childPath(path, 'format'), OUTPUT_FORMATS)
   const level = object['level'] === undefined ? DEFAULT_SEVERITY : validator.oneOf(object['level'], childPath(path, 'level'), SEVERITIES)
+  const timeout = object['timeout'] === undefined ? undefined : readTimeout(validator, object['timeout'], childPath(path, 'timeout'))
   const isValid = validator.errors.length === before
   if (!isValid || name === undefined || files === undefined || on === undefined || run === undefined || format === undefined || level === undefined) {
     return undefined
   }
-  return { name, files, on, run, format, level }
+  return { name, files, on, run, format, level, ...(timeout !== undefined && { timeout }) }
 }
 
 const readChecks = (validator: Validator, value: unknown): CustomCheck[] => {

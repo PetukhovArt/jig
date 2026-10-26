@@ -32,6 +32,7 @@ export const ESLINT_CONFIGS = [
 ] as const
 
 export const ESLINT_TIMEOUT_MS = 30_000
+export const ESLINT_FILE_MS = 1_000
 
 const OK_CODES = [0, 1]
 const ERROR_SEVERITY = 2
@@ -95,7 +96,7 @@ export const eslintTool = defineTool({
     }
     const runs: ToolRun[] = []
     for (const group of groups) {
-      const timeoutMs = input.budget(ESLINT_TIMEOUT_MS)
+      const timeoutMs = input.budget(ESLINT_TIMEOUT_MS + ESLINT_FILE_MS * group.files.length)
       if (timeoutMs === 0) break
       runs.push(await runEslint({ bin: entry.bin, config: group.marker }, input.projectRoot, group.files, timeoutMs, dirname(group.marker)))
     }

@@ -1360,6 +1360,7 @@ var ESLINT_CONFIGS = [
   ".eslintrc.yaml"
 ];
 var ESLINT_TIMEOUT_MS = 3e4;
+var ESLINT_FILE_MS = 1e3;
 var OK_CODES = [0, 1];
 var ERROR_SEVERITY = 2;
 var parseEslint = (stdout, projectRoot, cwd = projectRoot) => {
@@ -1412,7 +1413,7 @@ var eslintTool = defineTool({
     }
     const runs = [];
     for (const group of groups) {
-      const timeoutMs = input.budget(ESLINT_TIMEOUT_MS);
+      const timeoutMs = input.budget(ESLINT_TIMEOUT_MS + ESLINT_FILE_MS * group.files.length);
       if (timeoutMs === 0) break;
       runs.push(await runEslint({ bin: entry.bin, config: group.marker }, input.projectRoot, group.files, timeoutMs, dirname4(group.marker)));
     }
@@ -2092,7 +2093,9 @@ var required = (validator, object, path2, keys) => {
   missing.forEach((key) => validator.report(childPath(path2, key), "is required"));
   return missing.length === 0;
 };
-var TOOL_KEYS = ["level", "command", "ignoreRules"];
+var TOOL_KEYS = ["level", "command", "ignoreRules", "timeout"];
+var MAX_TIMEOUT_S = 110;
+var readTimeout = (validator, value, path2) => validator.integer(value, path2, 1, MAX_TIMEOUT_S);
 var readToolSetting = (validator, value, path2) => {
   if (value === false) return false;
   const object = validator.object(value, path2, TOOL_KEYS);
@@ -2109,6 +2112,10 @@ var readToolSetting = (validator, value, path2) => {
   if (object["ignoreRules"] !== void 0) {
     setting.ignoreRules = validator.strings(object["ignoreRules"], childPath(path2, "ignoreRules")) ?? [];
   }
+  if (object["timeout"] !== void 0) {
+    const timeout = readTimeout(validator, object["timeout"], childPath(path2, "timeout"));
+    if (timeout !== void 0) setting.timeout = timeout;
+  }
   return setting;
 };
 var readNamed = (validator, root, names) => {
@@ -2123,7 +2130,7 @@ var readNamed = (validator, root, names) => {
   return settings;
 };
 var readGlobs = (validator, value, path2) => typeof value === "string" ? [value] : validator.strings(value, path2);
-var CHECK_KEYS = ["name", "files", "on", "run", "format", "level"];
+var CHECK_KEYS = ["name", "files", "on", "run", "format", "level", "timeout"];
 var CHECK_NAME = /^[\w.-]+$/;
 var FILES_TOKEN = "{files}";
 var readCheck = (validator, value, path2) => {
@@ -2138,11 +2145,12 @@ var readCheck = (validator, value, path2) => {
   if (run3 !== void 0 && !run3.includes(FILES_TOKEN)) validator.report(childPath(path2, "run"), `needs the ${FILES_TOKEN} placeholder`);
   const format = object["format"] === void 0 ? EXIT_FORMAT : validator.oneOf(object["format"], childPath(path2, "format"), OUTPUT_FORMATS);
   const level = object["level"] === void 0 ? DEFAULT_SEVERITY : validator.oneOf(object["level"], childPath(path2, "level"), SEVERITIES2);
+  const timeout = object["timeout"] === void 0 ? void 0 : readTimeout(validator, object["timeout"], childPath(path2, "timeout"));
   const isValid = validator.errors.length === before;
   if (!isValid || name === void 0 || files === void 0 || on === void 0 || run3 === void 0 || format === void 0 || level === void 0) {
     return void 0;
   }
-  return { name, files, on, run: run3, format, level };
+  return { name, files, on, run: run3, format, level, ...timeout !== void 0 && { timeout } };
 };
 var readChecks = (validator, value) => {
   if (value === void 0) return [];
@@ -3867,6 +3875,8 @@ var STOP_HARD_LIMIT_MS = 11e4;
 var MAX_CONSECUTIVE_BLOCKS = 3;
 var EXIT_FINDINGS = 1;
 var EXIT_USAGE2 = 2;
+var EXIT_INCOMPLETE = 3;
+var MS_PER_S = 1e3;
 var NONE = { type: "none" };
 var isBlocking = (finding) => finding.severity === "error";
 var failureNotes = (runs) => runs.filter((toolRun) => toolRun.failure !== void 0).map((toolRun) => ({ kind: "tool-failure", tool: toolRun.tool, message: toolRun.failure ?? "", durationMs: toolRun.durationMs }));
@@ -3875,23 +3885,45 @@ var timed = async (rule, body) => {
   const { runs, findings } = await body();
   return { rule, runs, findings, durationMs: Date.now() - startedAt };
 };
-var createBudget = (startedAt) => (ownMs) => Math.max(0, Math.min(ownMs, startedAt + STOP_HARD_LIMIT_MS - Date.now()));
+var createBudget = (startedAt) => {
+  let isSpent = false;
+  const take = (ownMs) => {
+    const ms = Math.max(0, Math.min(ownMs, startedAt + STOP_HARD_LIMIT_MS - Date.now()));
+    isSpent ||= ms === 0;
+    return ms;
+  };
+  return { take, isSpent: () => isSpent };
+};
+var withTimeout = (budget, timeout) => timeout === void 0 ? budget : () => budget(timeout * MS_PER_S);
 var toolStep = (tool, input, toolInput) => timed(tool.rule, async () => {
   const setting = toolSetting(input.plan.config, tool);
   const files = toolFiles(tool, toolInput.files);
   if (setting === void 0 || tool.stop === void 0 || files.length === 0) return { runs: [], findings: [] };
-  const { runs, findings } = await tool.stop(input.plan.tools, { ...toolInput, files });
+  const { runs, findings } = await tool.stop(input.plan.tools, { ...toolInput, files, budget: withTimeout(toolInput.budget, setting.timeout) });
   return { runs, findings: applySetting(findings, setting) };
 });
 var CUSTOM_CHECK_TIMEOUT_MS = 3e4;
 var customStep = (check2, input, toolInput) => timed(checkRule(check2), async () => {
   const files = checkFiles(check2, toolInput.files);
-  const timeoutMs = toolInput.budget(CUSTOM_CHECK_TIMEOUT_MS);
+  const timeoutMs = withTimeout(toolInput.budget, check2.timeout)(CUSTOM_CHECK_TIMEOUT_MS);
   if (check2.level === "off" || files.length === 0 || timeoutMs === 0) return { runs: [], findings: [] };
   const toolRun = await runCustomCheck(input.projectRoot, check2, files, timeoutMs);
   return { runs: [toolRun], findings: toolRun.findings };
 });
 var isStopTool = (tool) => tool.stop !== void 0;
+var LOCK_BUSY = "the heavy checks lock is busy";
+var incompleteReasons = (runs, isSpent) => [
+  ...runs.flatMap((toolRun) => toolRun.failure === void 0 ? [] : [`${toolRun.tool} did not finish (${toolRun.failure})`]),
+  ...isSpent ? [`the ${STOP_HARD_LIMIT_MS / MS_PER_S} s budget ran out`] : []
+];
+var incompleteFinding = (reasons) => ({
+  tool: "jig",
+  rule: "gate/incomplete",
+  severity: "error",
+  file: "",
+  line: 0,
+  message: `jig: the end-of-turn checks did not finish, so their result is unknown: ${reasons.join("; ")}. Run that tool on this turn's files yourself and fix its errors; a slow tool gets more time from "timeout" (seconds) on its entry in .jig/config.jsonc, which the user sets.`
+});
 var runStopChecks = async (input) => {
   const startedAt = Date.now();
   const budget = createBudget(startedAt);
@@ -3900,14 +3932,14 @@ var runStopChecks = async (input) => {
   const isStopped = () => steps.some((step) => step.findings.some(isBlocking));
   const acquired = await acquireLock(jigPaths(input.projectRoot).heavyLock);
   if (acquired === void 0) {
-    notes.push({ kind: "gate-skipped", tool: "jig", message: "heavy checks lock is busy" });
+    notes.push({ kind: "gate-skipped", tool: "jig", message: LOCK_BUSY });
   } else {
     const lock = { path: acquired.path, isTransferred: false };
     const transfer = (pid) => {
       transferLock(lock.path, pid);
       lock.isTransferred = true;
     };
-    const toolInput = { projectRoot: input.projectRoot, files: input.diff.files, budget, lock: { path: lock.path, transfer }, notes };
+    const toolInput = { projectRoot: input.projectRoot, files: input.diff.files, budget: budget.take, lock: { path: lock.path, transfer }, notes };
     try {
       const queue2 = [
         ...TOOLS.filter(isStopTool).map((tool) => () => toolStep(tool, input, toolInput)),
@@ -3924,8 +3956,11 @@ var runStopChecks = async (input) => {
     }
   }
   const findings = steps.flatMap((step) => step.findings);
-  notes.push(...failureNotes(steps.flatMap((step) => step.runs)));
-  return { steps, findings, blocking: findings.filter(isBlocking), notes, durationMs: Date.now() - startedAt };
+  const runs = steps.flatMap((step) => step.runs);
+  notes.push(...failureNotes(runs));
+  const incomplete = incompleteReasons(runs, budget.isSpent());
+  const blocking = [...findings.filter(isBlocking), ...incomplete.length === 0 ? [] : [incompleteFinding(incomplete)]];
+  return { steps, findings, blocking, incomplete, isLockBusy: acquired === void 0, notes, durationMs: Date.now() - startedAt };
 };
 var findingsFingerprint = (findings) => createHash5("sha1").update(collapseFindings(findings).sort().join("\n")).digest("hex");
 var blockReason = (blocking, pluginRoot) => {
@@ -3984,6 +4019,16 @@ var printFailures = (runs) => {
     }
   }
 };
+var stopSummary = (checks, pluginRoot) => {
+  const incomplete = [...checks.incomplete, ...checks.isLockBusy ? [LOCK_BUSY] : []];
+  const lines2 = [
+    ...formatFindings(checks.findings, STOP_LINE_LIMIT, pluginRoot),
+    ...incomplete.length === 0 ? [] : [`incomplete: ${incomplete.join("; ")}`]
+  ];
+  if (checks.findings.some(isBlocking)) return { text: lines2.join("\n"), code: EXIT_FINDINGS };
+  if (incomplete.length > 0) return { text: lines2.join("\n"), code: EXIT_INCOMPLETE };
+  return { text: lines2.length === 0 ? "clean" : lines2.join("\n"), code: 0 };
+};
 var checkStopCommand = async (projectRoot, pluginRoot) => {
   const diff = turnDiff(projectRoot, {}, []);
   if (diff.files.length === 0) {
@@ -3991,14 +4036,10 @@ var checkStopCommand = async (projectRoot, pluginRoot) => {
     return 0;
   }
   const checks = await runStopChecks({ projectRoot, pluginRoot, plan: loadPlan(projectRoot, pluginRoot), diff });
-  printFailures(checks.steps.flatMap((step) => step.runs));
-  if (checks.findings.length === 0) {
-    process.stdout.write("clean\n");
-    return 0;
-  }
-  process.stdout.write(`${formatFindings(checks.findings, STOP_LINE_LIMIT, pluginRoot).join("\n")}
+  const summary = stopSummary(checks, pluginRoot);
+  process.stdout.write(`${summary.text}
 `);
-  return checks.blocking.length > 0 ? EXIT_FINDINGS : 0;
+  return summary.code;
 };
 var checkEditCommand = async (projectRoot, pluginRoot, file) => {
   if (file === void 0 || file === "") {

@@ -80,6 +80,8 @@ describe('validateConfig', () => {
     ['tool wrong level', { eslint: { level: 'fatal' } }, ['$.eslint.level: expected one of off, warn, error']],
     ['tool empty command', { tsc: { command: ' ' } }, ['$.tsc.command: is empty']],
     ['ignoreRules not strings', { eslint: { ignoreRules: [1] } }, ['$.eslint.ignoreRules[0]: expected a string']],
+    ['tool timeout zero', { eslint: { timeout: 0 } }, ['$.eslint.timeout: expected an integer 1..110']],
+    ['check timeout fractional', { checks: [{ name: 'a', files: ['**'], on: 'stop', run: 'x {files}', timeout: 1.5 }] }, ['$.checks[0].timeout: expected an integer 1..110']],
     ['check files not globs', { checks: [{ name: 'a', files: 1, on: 'stop', run: 'x {files}' }] }, ['$.checks[0].files: expected an array of strings']],
     ['checks not an array', { checks: {} }, ['$.checks: expected an array']],
     ['check missing run', { checks: [{ name: 'a', files: ['**'], on: 'stop' }] }, ['$.checks[0].run: is required']],
@@ -123,6 +125,15 @@ describe('schema/config.schema.json', () => {
     expect(Object.keys(schema.properties).sort()).toEqual([...ROOT_KEYS].sort())
     expect(Object.keys(schema.properties)).toEqual(expect.arrayContaining([...TOOL_NAMES, ...PROOF_NAMES]))
     expect(schema.properties.checks.items.properties.format.enum).toEqual(OUTPUT_FORMATS)
+  })
+})
+
+describe('timeout', () => {
+  it('reads a tool timeout and a check timeout in seconds', () => {
+    const { config, errors } = validateConfig({ eslint: { timeout: 90 }, checks: [{ name: 'a', files: ['**'], on: 'stop', run: 'x {files}', timeout: 100 }] })
+    expect(errors).toEqual([])
+    expect(config.tools['eslint']).toEqual({ level: 'error', ignoreRules: [], timeout: 90 })
+    expect(config.checks[0]?.timeout).toBe(100)
   })
 })
 

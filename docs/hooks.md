@@ -25,4 +25,6 @@ At runtime jig reads only `.jig/config.jsonc` and `.jig/config.local.jsonc`; a t
 
 Type checking is the project's job when it declares one: a root `package.json` script whose command runs `ts-decl-check` (it takes a file list) makes `jig init` propose `"tsc": false` and a check `{ "name": "types", "files": [<the project's .ts/.tsx/.mts/.cts/.vue globs>], "on": "stop", "run": "<the script's command> {files}" }`. A script named like `typecheck` that takes no file list (`vue-tsc --noEmit`) or needs a shell (`&&`, `|`) is reported and not proposed; jig's `tsc` stays.
 
-`jig check edit <file>` and `jig check stop` run the same paths by hand.
+A tool or check that times out, crashes or is cut off by the shared 110 s budget leaves the result unknown: the turn is blocked once with the rule `gate/incomplete`, which names the tool, so the agent runs it itself; a slow tool gets more time from its `timeout` ([configuration](configuration.md)).
+
+`jig check edit <file>` and `jig check stop` run the same paths by hand. `jig check stop` prints `clean` only when every check ran to the end; otherwise it prints the findings and an `incomplete:` line, and exits 1 on an error finding, 3 when the result is unknown (the heavy checks lock busy included).

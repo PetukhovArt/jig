@@ -4,7 +4,7 @@ Run as `node <plugin root>/bin/jig.mjs <command>`.
 
 | Command | What it does |
 | --- | --- |
-| `check edit <file>` / `check stop` | findings for one file / the end-of-turn gate against HEAD |
+| `check edit <file>` / `check stop` | findings for one file / the end-of-turn gate against HEAD; `check stop` exits 3 with an `incomplete:` line when a check did not finish |
 | `build [--atoms-only] [--check]` | validates atoms, role templates and flows; without `--atoms-only`, writes the tool plan to `.jig/cache/plan.json` |
 | `atom <name>` | prints an atom |
 | `init [--update] [--json]` | discovery by the catalog: found tools, what to ask the user, a proposed `.jig/config.jsonc` (with `--update`, the current config plus what it does not name); writes nothing |
