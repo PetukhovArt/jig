@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { CATALOG, type CatalogEntry } from './catalog'
@@ -8,7 +9,7 @@ import { JOURNAL_MAX_BYTES, listJournalFiles } from './core/journal'
 import { parseJsonc } from './core/jsonc'
 import { jigPaths, resolvePluginRoot, resolveProjectRoot } from './core/paths'
 import { resolveTools, type PlanTools } from './core/plan'
-import { findUnresolvedShim, isLockAbandoned, readLock } from './core/proc'
+import { findInPath, findUnresolvedShim, isLockAbandoned, readLock } from './core/proc'
 import { discover, projectFiles, type Discovery } from './init/discover'
 import { detectAgent, isUserMapped, loadUserConfig, resolveTiers, tierEntries, UNKNOWN_AGENT } from './tiers/tiers'
 
@@ -52,6 +53,18 @@ const checkNode = (): Check => {
   const version = process.versions.node
   const major = Number(version.split('.')[0])
   return major >= MIN_NODE_MAJOR ? ok(`node: ${version}`) : fail(`node: ${version}, Node >= ${MIN_NODE_MAJOR} required`)
+}
+
+const NODE_NOT_ON_PATH =
+  'node: not on PATH, so every hook (it runs a bare `node`) fails. An agent started from the macOS Dock or Finder gets the launchd PATH without nvm: start it from a terminal, or link node into /usr/local/bin'
+
+/** The hooks run `node` from PATH, which may differ from the node running this command. */
+const checkNodeOnPath = (env: NodeJS.ProcessEnv): Check | undefined => {
+  const node = findInPath('node', env)
+  if (node === undefined) return warn(NODE_NOT_ON_PATH)
+  const version = spawnSync(node, ['--version'], { encoding: 'utf8', windowsHide: true }).stdout?.trim().replace(/^v/, '') ?? ''
+  const major = Number(version.split('.')[0])
+  return major >= MIN_NODE_MAJOR ? undefined : warn(`node: ${node} on PATH is ${version || 'unknown'}, the hooks need Node >= ${MIN_NODE_MAJOR}`)
 }
 
 const checkConfig = (config: LoadedConfig): Check => {
@@ -160,8 +173,10 @@ export const doctorChecks = (projectRoot: string, pluginRoot: string): Check[] =
   const { tools } = resolveTools(projectRoot, config)
   const discovery = discover(projectRoot)
   const agentViewSetup = checkAgentViewSetup(projectRoot, discovery)
+  const nodeOnPath = checkNodeOnPath(process.env)
   return [
     checkNode(),
+    ...(nodeOnPath === undefined ? [] : [nodeOnPath]),
     ok(`plugin: ${pluginRoot}`),
     ok(`project: ${projectRoot}`),
     checkConfig(config),

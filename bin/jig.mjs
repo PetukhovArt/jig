@@ -3166,6 +3166,7 @@ var runAtom = (args) => {
 };
 
 // src/doctor.ts
+import { spawnSync as spawnSync3 } from "node:child_process";
 import { existsSync as existsSync7, readFileSync as readFileSync17 } from "node:fs";
 import { join as join17 } from "node:path";
 
@@ -3422,6 +3423,14 @@ var checkNode = () => {
   const major = Number(version2.split(".")[0]);
   return major >= MIN_NODE_MAJOR ? ok(`node: ${version2}`) : fail2(`node: ${version2}, Node >= ${MIN_NODE_MAJOR} required`);
 };
+var NODE_NOT_ON_PATH = "node: not on PATH, so every hook (it runs a bare `node`) fails. An agent started from the macOS Dock or Finder gets the launchd PATH without nvm: start it from a terminal, or link node into /usr/local/bin";
+var checkNodeOnPath = (env) => {
+  const node = findInPath("node", env);
+  if (node === void 0) return warn(NODE_NOT_ON_PATH);
+  const version2 = spawnSync3(node, ["--version"], { encoding: "utf8", windowsHide: true }).stdout?.trim().replace(/^v/, "") ?? "";
+  const major = Number(version2.split(".")[0]);
+  return major >= MIN_NODE_MAJOR ? void 0 : warn(`node: ${node} on PATH is ${version2 || "unknown"}, the hooks need Node >= ${MIN_NODE_MAJOR}`);
+};
 var checkConfig = (config) => {
   if (config.files.length === 0) return warn("config: no .jig/config.jsonc, no tool runs; run jig init");
   const files = config.files.join(" + ");
@@ -3514,8 +3523,10 @@ var doctorChecks = (projectRoot, pluginRoot) => {
   const { tools } = resolveTools(projectRoot, config);
   const discovery = discover(projectRoot);
   const agentViewSetup = checkAgentViewSetup(projectRoot, discovery);
+  const nodeOnPath = checkNodeOnPath(process.env);
   return [
     checkNode(),
+    ...nodeOnPath === void 0 ? [] : [nodeOnPath],
     ok(`plugin: ${pluginRoot}`),
     ok(`project: ${projectRoot}`),
     checkConfig(config),
@@ -4738,7 +4749,7 @@ var runLoop = (args) => {
 };
 
 // src/pre-mr/pre-mr.ts
-import { spawnSync as spawnSync3 } from "node:child_process";
+import { spawnSync as spawnSync4 } from "node:child_process";
 import { copyFileSync, existsSync as existsSync11, mkdtempSync, rmSync as rmSync6 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join as join24, resolve as resolve10 } from "node:path";
@@ -5613,7 +5624,7 @@ var workingTree = (root) => {
     const index = join24(dir, "index");
     const current = gitLine2(["rev-parse", "--git-path", "index"], root);
     if (current !== void 0 && existsSync11(resolve10(root, current))) copyFileSync(resolve10(root, current), index);
-    const withIndex = (args) => spawnSync3("git", args, { cwd: root, env: { ...process.env, GIT_INDEX_FILE: index }, encoding: "utf8", windowsHide: true, maxBuffer: MAX_BUFFER2 });
+    const withIndex = (args) => spawnSync4("git", args, { cwd: root, env: { ...process.env, GIT_INDEX_FILE: index }, encoding: "utf8", windowsHide: true, maxBuffer: MAX_BUFFER2 });
     const added = withIndex(["add", "-A"]);
     if (added.status !== 0) throw new Error(`git add -A into a temporary index failed: ${String(added.stderr).trim()}`);
     const tree = withIndex(["write-tree"]);
@@ -5854,7 +5865,7 @@ jig pre-mr passes with this level until the next edit
   return 0;
 }, ctx.io);
 var shellExec = (command, cwd) => {
-  const result = spawnSync3(command, { cwd, shell: true, stdio: "inherit", windowsHide: true });
+  const result = spawnSync4(command, { cwd, shell: true, stdio: "inherit", windowsHide: true });
   if (result.error !== void 0) {
     process.stderr.write(`jig: ${result.error.message}
 `);
@@ -6220,10 +6231,10 @@ import { homedir as homedir3 } from "node:os";
 import { dirname as dirname10, extname as extname4, isAbsolute as isAbsolute5, join as join26, resolve as resolve11 } from "node:path";
 
 // src/review-cycle/exec.ts
-import { spawnSync as spawnSync4 } from "node:child_process";
+import { spawnSync as spawnSync5 } from "node:child_process";
 var MAX_BUFFER3 = 256 * 1024 * 1024;
 var spawnExec = (command, args, cwd) => {
-  const result = spawnSync4(command, args, { cwd, encoding: "utf8", windowsHide: true, maxBuffer: MAX_BUFFER3 });
+  const result = spawnSync5(command, args, { cwd, encoding: "utf8", windowsHide: true, maxBuffer: MAX_BUFFER3 });
   if (result.error) return { code: null, stdout: "", stderr: "", error: result.error.message };
   return { code: result.status, stdout: result.stdout, stderr: result.stderr };
 };
@@ -7240,7 +7251,7 @@ var runReviewCycle = (args) => runReviewCycleWith(args, { exec: spawnExec, cwd: 
 `) });
 
 // src/slot/slot.ts
-import { spawnSync as spawnSync5 } from "node:child_process";
+import { spawnSync as spawnSync6 } from "node:child_process";
 import { existsSync as existsSync17, mkdirSync as mkdirSync15, readFileSync as readFileSync28, rmSync as rmSync7, writeFileSync as writeFileSync10 } from "node:fs";
 import { basename as basename7, dirname as dirname12, isAbsolute as isAbsolute6, join as join30, relative as relative7, resolve as resolve13 } from "node:path";
 import { parseArgs as parseArgs6 } from "node:util";
@@ -7591,7 +7602,7 @@ var reserveSlot = async (context, slots, options) => {
     lock.release();
   }
 };
-var runInstall = (install, dir) => spawnSync5(install, { cwd: dir, shell: true, windowsHide: true, stdio: ["ignore", 2, 2] }).status;
+var runInstall = (install, dir) => spawnSync6(install, { cwd: dir, shell: true, windowsHide: true, stdio: ["ignore", 2, 2] }).status;
 var slotNew = async (args) => {
   const { values } = parseArgs6({ args, options: { slug: { type: "string" }, branch: { type: "string" } }, strict: true });
   const slug = values.slug;
@@ -7727,14 +7738,14 @@ import { createInterface } from "node:readline/promises";
 import { parseArgs as parseArgs7 } from "node:util";
 
 // src/worktree/sweep.ts
-import { spawnSync as spawnSync6 } from "node:child_process";
+import { spawnSync as spawnSync7 } from "node:child_process";
 import { basename as basename8, resolve as resolve14 } from "node:path";
 var KEPT_BUCKETS = /* @__PURE__ */ new Set(["hold-current", "hold-locked", "hold-wip"]);
 var RECENT_MS = 24 * 60 * 60 * 1e3;
 var MS_PER_SECOND = 1e3;
 var SLOT_ITEM = /^s?(\d+)$/;
 var runJson = (bin, args, cwd) => {
-  const result = spawnSync6(bin, args, { cwd, encoding: "utf8", windowsHide: true });
+  const result = spawnSync7(bin, args, { cwd, encoding: "utf8", windowsHide: true });
   if (result.status !== 0) return void 0;
   try {
     return JSON.parse(result.stdout);

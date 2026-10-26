@@ -1,7 +1,7 @@
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, relative, resolve } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { catalogEntry, isTestFile, languageFor, outputParser, PROOF_NAMES, TOOL_NAMES } from '../src/catalog'
 import { splitCommand } from '../src/core/command'
 import { loadConfig, validateConfig, type CustomCheck } from '../src/core/config'
@@ -273,6 +273,17 @@ describe('jig doctor', () => {
     expect(agentViewTexts()).toContainEqual(expect.stringMatching(/^warn agent-view: no agent-view\.config\.json; .*agent-view init$/))
     write('agent-view.config.json', '{}')
     expect(doctorChecks(root, root).map((check) => check.text)).not.toContainEqual(expect.stringMatching(/no agent-view\.config\.json/))
+  })
+
+  it('warns when the hooks would find no node on PATH', () => {
+    const nodeTexts = () => doctorChecks(root, root).map((check) => check.text).filter((text) => text.includes('not on PATH'))
+    expect(nodeTexts()).toEqual([])
+    vi.stubEnv('PATH', join(root, 'empty'))
+    try {
+      expect(nodeTexts()).toEqual([expect.stringMatching(/^node: not on PATH, so every hook .* fails/)])
+    } finally {
+      vi.unstubAllEnvs()
+    }
   })
 
   it('recommends Edit deny rules only and accepts a block without Write rules', () => {
