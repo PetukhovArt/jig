@@ -180,7 +180,7 @@ Three invariants:
 
 ## Windows launch
 
-Applies to **every** detached launch typed into the Bash tool on Windows (`dev`, an `agent-view launch`, a bare `webpack serve`), main session included. The Bash tool is Git Bash (MSYS2): it rewrites arguments **before** `cmd.exe` sees them, and each failure raises a **modal dialog** that blocks the calling shell until a human clicks OK:
+Applies to **every** detached launch typed into the agent's shell tool on Windows (`dev`, an `agent-view launch`, a bare `webpack serve`), main session included. When that shell is Git Bash (MSYS2; Claude Code's Bash tool), it rewrites arguments **before** `cmd.exe` sees them, and each failure raises a **modal dialog** that blocks the calling shell until a human clicks OK:
 
 | One-liner | What cmd received | Symptom |
 |---|---|---|
@@ -188,7 +188,7 @@ Applies to **every** detached launch typed into the Bash tool on Windows (`dev`,
 | `cmd /c start "title" cmd /c …` | quotes stripped → `start title …` | dialog `Windows cannot find 'title'` |
 | `cmd /c "X:\a\b.cmd"` | `\a\b` → `ab` (bash eats `\` inside double quotes) | `'X:ab.cmd' is not recognized` |
 
-**Do not fix this with escaping.** Write two `.cmd` files with the Write tool (or a quoted heredoc, `<<'EOF'`; `printf` and `node -e` read `\f`, `\U`, `\u` in Windows paths as escapes) into the scratch dir `%TEMP%\jig-slots\<repo>-s<N>\` (`<scratch>`), outside the worktree:
+**Do not fix this with escaping.** Write two `.cmd` files with the agent's file-write tool (Claude Code: Write; or a quoted heredoc, `<<'EOF'`; `printf` and `node -e` read `\f`, `\U`, `\u` in Windows paths as escapes) into the scratch dir `%TEMP%\jig-slots\<repo>-s<N>\` (`<scratch>`), outside the worktree:
 
 ```cmd
 :: <scratch>\slot-dev-run.cmd
@@ -206,7 +206,7 @@ start "slot<N> <worktreeDir> [<branch>] localhost:<devPort>" /min cmd /c <scratc
 
 - Title = slot number, the worktree **dir name** (no path), the branch in square brackets, the dev URL. Never use `|`, `&` or `>` in it: `title` is a `cmd` builtin and those are shell operators.
 - **The delayed `title` line is required.** `npx`/`cross-env`/the bundler rewrite the console title after start, so every slot window ends up named `webpack`. The 16-ping (~15 s) delay must outlast the dev server's own startup output.
-- Invoke with the absolute path in **single** quotes: `MSYS_NO_PATHCONV=1 cmd /c '<scratch>\slot-dev-detach.cmd'` → expect `rc=0`, then prove liveness by port, never by exit code. Relative invocation was observed to fail.
+- Invoke with the absolute path in **single** quotes: from Git Bash `MSYS_NO_PATHCONV=1 cmd /c '<scratch>\slot-dev-detach.cmd'`, from PowerShell (no path conversion there) `cmd /c '<scratch>\slot-dev-detach.cmd'` → expect `rc=0`, then prove liveness by port, never by exit code. Relative invocation was observed to fail.
 - **A failed launch is a modal dialog, not an error string.** After the *first* timeout, stop retrying the one-liner and switch to the `.cmd` launcher.
 - **`cross-env` (and other `node_modules/.bin` tools) won't resolve bare in a `launch` string** run by `agent-view`/`cmd`: npm only adds `.bin` to PATH for `npm run`. Use `npx cross-env …`, the `.bin` path, or `cmd /c set "K=v"&& …`.
 

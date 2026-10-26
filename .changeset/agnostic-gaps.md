@@ -8,3 +8,4 @@ Agnostic gaps from the pre-release audit (#17):
 - `jig review cost` says it reads Claude Code transcripts only when it finds no session.
 - `jig doctor` suggests setting agent-view up only in a project with markup or style files.
 - Review step examples name `<deep model>`, `<standard model>` and `<model A> → judge <model B>` instead of Claude model names.
+- The slot references name the agent's shell and file-write tools instead of Claude Code's, launch detached with `nohup` on macOS, which has no `setsid`, and give the PowerShell form of the Windows launch.
