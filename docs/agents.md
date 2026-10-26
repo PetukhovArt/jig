@@ -2,6 +2,8 @@
 
 v1 supports Claude Code only. The core and its event model do not depend on the agent: the CLI `bin/jig.mjs` (Node >= 20, no runtime dependencies) takes hook events through a thin adapter, so Cursor and Codex adapters can be added later.
 
+The project root is `JIG_PROJECT_DIR` when set, else the variable the agent sets (Claude Code: `CLAUDE_PROJECT_DIR`; each adapter names its own), else the git top level of the working directory.
+
 ## The harness pyramid
 
 The bottom layers (execution, safety, verification) are durable and get the investment; the top layers (context, orchestration, evolution) get thinner as models absorb them, so jig keeps them small.

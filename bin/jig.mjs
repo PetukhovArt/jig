@@ -208,6 +208,11 @@ var parseFrontmatter = (text3) => {
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 
+// src/adapters/project-dir.ts
+var JIG_PROJECT_DIR = "JIG_PROJECT_DIR";
+var AGENT_PROJECT_DIRS = { claude: "CLAUDE_PROJECT_DIR" };
+var PROJECT_DIR_ENVS = [JIG_PROJECT_DIR, ...Object.values(AGENT_PROJECT_DIRS)];
+
 // src/core/git.ts
 import { spawnSync } from "node:child_process";
 var MAX_BUFFER = 64 * 1024 * 1024;
@@ -265,8 +270,8 @@ runs/
 cache/
 ${LOCAL_CONFIG}
 `;
-var resolveProjectRoot = (cwd, env = process.env) => {
-  const fromEnv = env["CLAUDE_PROJECT_DIR"];
+var resolveProjectRoot = (cwd, env = process.env, names = PROJECT_DIR_ENVS) => {
+  const fromEnv = names.map((name) => env[name]).find(Boolean);
   if (fromEnv) return resolve(fromEnv);
   return resolve(gitToplevel(cwd) ?? cwd);
 };
@@ -4234,7 +4239,7 @@ var parseHookInput = (name, raw, env = process.env) => {
   const sessionId = text(input, "session_id");
   if (sessionId === void 0) return void 0;
   const cwd = resolve7(text(input, "cwd") ?? process.cwd());
-  const projectRoot = resolveProjectRoot(cwd, env);
+  const projectRoot = resolveProjectRoot(cwd, env, [JIG_PROJECT_DIR, AGENT_PROJECT_DIRS.claude]);
   const event = toEvent(name, input, { projectRoot, cwd });
   if (event === void 0) return void 0;
   const agentId = text(input, "agent_id");

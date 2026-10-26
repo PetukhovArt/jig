@@ -2,9 +2,20 @@ import { spawnSync } from 'node:child_process'
 import { join, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { ADAPTERS, resolveAdapter } from '../src/adapters'
+import { resolveProjectRoot } from '../src/core/paths'
 import { parseHookArgs } from '../src/hook/dispatch'
 
 const bin = join(resolve(__dirname, '..'), 'bin', 'jig.mjs')
+
+describe('project root', () => {
+  it.each([
+    ['JIG_PROJECT_DIR under any agent', { JIG_PROJECT_DIR: '/work/app' }, resolve('/work/app')],
+    ["the agent's own variable", { CLAUDE_PROJECT_DIR: '/work/claude' }, resolve('/work/claude')],
+    ['JIG_PROJECT_DIR before the agent', { JIG_PROJECT_DIR: '/work/app', CLAUDE_PROJECT_DIR: '/work/claude' }, resolve('/work/app')],
+  ])('%s', (_name, env, expected) => {
+    expect(resolveProjectRoot(__dirname, env)).toBe(expected)
+  })
+})
 
 describe('adapter selection', () => {
   it('picks claude when no --agent is given', () => {

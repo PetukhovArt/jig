@@ -1,5 +1,6 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
+import { PROJECT_DIR_ENVS } from '../adapters/project-dir'
 import { gitToplevel } from './git'
 
 export interface JigPaths {
@@ -20,8 +21,8 @@ export interface JigPaths {
 const LOCAL_CONFIG = 'config.local.jsonc'
 const JIG_GITIGNORE = `journal/\nruns/\ncache/\n${LOCAL_CONFIG}\n`
 
-export const resolveProjectRoot = (cwd: string, env: NodeJS.ProcessEnv = process.env): string => {
-  const fromEnv = env['CLAUDE_PROJECT_DIR']
+export const resolveProjectRoot = (cwd: string, env: NodeJS.ProcessEnv = process.env, names: readonly string[] = PROJECT_DIR_ENVS): string => {
+  const fromEnv = names.map((name) => env[name]).find(Boolean)
   if (fromEnv) return resolve(fromEnv)
   return resolve(gitToplevel(cwd) ?? cwd)
 }

@@ -3,6 +3,7 @@ import { isAbsolute, resolve } from 'node:path'
 import { resolveProjectRoot, toProjectPath } from '../core/paths'
 import type { EditPair, EventBase, JigEvent, Outcome, SessionSource } from '../hook/types'
 import type { AgentAdapter, ParsedHook } from './adapter'
+import { AGENT_PROJECT_DIRS, JIG_PROJECT_DIR } from './project-dir'
 
 type Json = Record<string, unknown>
 
@@ -134,7 +135,7 @@ export const parseHookInput = (name: string, raw: string, env: NodeJS.ProcessEnv
   const sessionId = text(input, 'session_id')
   if (sessionId === undefined) return undefined
   const cwd = resolve(text(input, 'cwd') ?? process.cwd())
-  const projectRoot = resolveProjectRoot(cwd, env)
+  const projectRoot = resolveProjectRoot(cwd, env, [JIG_PROJECT_DIR, AGENT_PROJECT_DIRS.claude])
   const event = toEvent(name, input, { projectRoot, cwd })
   if (event === undefined) return undefined
   const agentId = text(input, 'agent_id')
