@@ -12,13 +12,12 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const [cmd, dirArg, ...rest] = process.argv.slice(2)
-const AGENT_VIEW = process.env.AGENT_VIEW_JS ?? path.join(process.env.APPDATA ?? '', 'npm/node_modules/@petukhovart/agent-view/dist/cli/index.js')
-const HAS_AGENT_VIEW = existsSync(AGENT_VIEW)
 if (cmd === 'cdp') {
   const output = await cdp(process.argv.slice(3))
   if (output !== undefined) console.log(output)
   process.exit(0)
 }
+const AGENT_VIEW = resolveAgentView()
 if (!cmd || !dirArg) fail('usage: fv.mjs <narrate|rehearse|record|assemble> <workdir> [--case caseId] [--window "title"] [--region x,y,w,h] [--from stepId]\n       fv.mjs cdp <click|fill|wait|eval|drag|screenshot> [agent-view flags]')
 const dir = path.resolve(dirArg)
 const flags = {}
@@ -176,9 +175,28 @@ async function glideCursor(args) {
   await agentView(['eval', '--await', ...(window ? ['--window', window] : []), script])
 }
 
+// The agent-view CLI as an argv prefix: AGENT_VIEW_JS, the global npm root (nvm and nvm-windows included), then the
+// `agent-view` command on PATH (volta's shim is an .exe; an npm .cmd shim is read for its script). undefined: not installed.
+function resolveAgentView() {
+  const script = '@petukhovart/agent-view/dist/cli/index.js'
+  if (process.env.AGENT_VIEW_JS) return [process.execPath, process.env.AGENT_VIEW_JS]
+  const isWindows = process.platform === 'win32'
+  const npmRoot = spawnSync(isWindows ? 'npm.cmd' : 'npm', ['root', '-g'], { encoding: 'utf8', shell: isWindows })
+  const global = npmRoot.status === 0 ? path.join(npmRoot.stdout.trim(), script) : undefined
+  if (global !== undefined && existsSync(global)) return [process.execPath, global]
+  const found = spawnSync(isWindows ? 'where' : 'which', ['agent-view'], { encoding: 'utf8' })
+  const runnable = isWindows ? /\.(exe|cmd|bat)$/i : /./
+  const bin = found.status === 0 ? found.stdout.split(/\r?\n/).map((line) => line.trim()).find((line) => runnable.test(line)) : undefined
+  if (bin === undefined) return undefined
+  if (!/\.(cmd|bat)$/i.test(bin)) return [bin]
+  const target = /"%~?dp0%?\\([^"%]+\.js)"/i.exec(readFileSync(bin, 'utf8'))?.[1]
+  return target === undefined ? undefined : [process.execPath, path.join(path.dirname(bin), target)]
+}
+
 async function agentView(args) {
-  if (!HAS_AGENT_VIEW) return cdp(args)
-  const r = spawnSync(process.execPath, [AGENT_VIEW, ...args], { encoding: 'utf8' })
+  if (AGENT_VIEW === undefined) return cdp(args)
+  const [bin, ...prefix] = AGENT_VIEW
+  const r = spawnSync(bin, [...prefix, ...args], { encoding: 'utf8' })
   if (r.status !== 0) fail(`agent-view ${args.slice(0, 3).join(' ')} failed:\n${r.stdout}\n${r.stderr}`)
   return r.stdout
 }
