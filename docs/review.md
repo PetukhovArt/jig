@@ -51,7 +51,7 @@ A re-review under 600 new lines runs one finder with every angle. A selector nar
 With state, the next run on a merge request:
 
 - compares the diff hash first: a rebase with the same content reviews nothing and only reads new replies;
-- after a force-push, restores the scope from per-file patches instead of reviewing the whole branch again;
+- takes the scope from per-file patches against the base (`jig review-plan <base> --rereview --state <path>`), so a force-push or a base merged into the branch counts only the branch's own new work;
 - reviews only the new range, and checks every open finding against the current tree: `fixed`, `open`, `no_change_needed` or `unverified`, each with its line;
 - answers every developer reply in its thread.
 

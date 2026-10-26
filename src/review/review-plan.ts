@@ -11,6 +11,7 @@ import { fileSource, isTestFile } from '../catalog/languages'
 import { lexComments } from '../catalog/languages'
 import { detectAgent, loadUserConfig, resolveTiers, type TierMap } from '../tiers/tiers'
 import { DIFF_PART_MAX_LINES, writeDiffFiles, type Audience, type DiffFiles } from './diff-files'
+import { readReviewedState, rereviewScope, type RereviewScope } from './scope'
 import {
   AUTO_INLINE_MAX_N,
   CEILINGS,
@@ -305,6 +306,7 @@ export interface ReviewPlanReport {
   plan: Plan
   mode: Mode
   state: boolean
+  rereview: RereviewScope | null
   skill: string
   steps: StepRef[]
   reads: Record<string, Reads>
@@ -414,6 +416,7 @@ export const formatReport = (report: ReviewPlanReport): string => {
     `selector: ${plan.selection.input}${plan.selection.tokens.length > 0 && plan.selection.input !== plan.selection.tokens.join(',') ? ` → ${plan.selection.tokens.join(',')}` : ''}${SELECTOR_NOTES[plan.selection.source]}`,
     `config: ${report.config ?? 'default'} · agent: ${report.agent} · max parallel subagents: ${report.maxParallel}`,
     `mode: ${report.mode} · state: ${stateText(report)}`,
+    ...(report.rereview === null ? [] : [`re-review scope: ${rereviewText(report.rereview)}`]),
     '',
   ]
   if (plan.path === 'none') lines.push('finders: none (nothing to review)')
@@ -466,22 +469,46 @@ export interface ReportOptions {
   mergeRequest?: boolean
   noState?: boolean
   rereview?: boolean
+  statePath?: string | undefined
   pluginRoot?: string
   paths?: readonly string[]
 }
 
+interface Scoped {
+  stats: FileStat[]
+  diffBase: string
+  paths: string[]
+  rereview: RereviewScope | null
+}
+
+const scopeOf = (root: string, base: Base, paths: readonly string[], statePath: string | undefined): Scoped => {
+  if (statePath === undefined) return { stats: base.stats, diffBase: base.mergeBase, paths: [...paths], rereview: null }
+  const state = readReviewedState(statePath)
+  const rereview = rereviewScope(root, state, base.mergeBase)
+  const diffBase = rereview.kind === 'patches' && state.last_reviewed_sha !== undefined ? state.last_reviewed_sha : base.mergeBase
+  return { stats: rereview.files, diffBase, paths: rereview.files.map((file) => file.path), rereview }
+}
+
+const rereviewText = (scope: RereviewScope): string => {
+  if (scope.kind === 'unchanged') return `unchanged: the merge request diff is the reviewed one (${scope.hash.slice(0, 12)}); only the developer's replies can have moved`
+  const files = scope.files.map((file) => `${file.path} +${file.added} -${file.deleted}`).join(', ')
+  const counted = `${scope.files.length} of ${scope.total} files${files === '' ? '' : `: ${files}`}`
+  return scope.kind === 'patches' ? `patches: ${counted}, the branch's own changes since the last review` : `full (${scope.reason}): ${counted}`
+}
+
 export const buildReport = (root: string, options: ReportOptions): ReviewPlanReport => {
-  const paths = options.paths ?? []
-  const base = resolveBase(root, options.base, 'review-plan', paths)
-  const untracked = untrackedCount(root, paths)
-  requireScopedChanges(paths, base.stats.length + untracked, base.ref)
-  const { lines, counted, excluded } = countLines(base.stats, root)
-  const changed = base.stats.filter((stat) => stat.added > 0)
+  const base = resolveBase(root, options.base, 'review-plan', options.paths ?? [])
+  const { stats, diffBase, paths, rereview } = scopeOf(root, base, options.paths ?? [], options.statePath)
+  const isEmpty = rereview !== null && stats.length === 0
+  const untracked = isEmpty ? 0 : untrackedCount(root, paths)
+  if (rereview === null) requireScopedChanges(paths, stats.length + untracked, base.ref)
+  const { lines, counted, excluded } = countLines(stats, root)
+  const changed = stats.filter((stat) => stat.added > 0)
   const shape: Shape = {
     tests: changed.some((stat) => exclusionOf(stat.path, root) === 'test'),
-    comments: anyAddedComment(root, base.mergeBase, base.stats),
+    comments: anyAddedComment(root, diffBase, stats),
     docs: changed.some((stat) => exclusionOf(stat.path) === 'markdown' && !isChangelog(stat.path)),
-    newSourceFiles: addedNewSourceFiles(root, base.mergeBase, paths),
+    newSourceFiles: isEmpty ? 0 : addedNewSourceFiles(root, diffBase, paths),
     spec: options.spec,
   }
   const project = loadProjectConfig(root)
@@ -493,7 +520,7 @@ export const buildReport = (root: string, options: ReportOptions): ReviewPlanRep
     selector: options.selector,
     angles: project?.config.angles ?? {},
     grades: project?.config.grades ?? {},
-    rereview: options.rereview === true,
+    rereview: options.rereview === true || rereview !== null,
   })
   const loaded = loadUserConfig()
   if (loaded.error !== undefined) throw new Error(`${loaded.label}: ${loaded.error}`)
@@ -507,7 +534,7 @@ export const buildReport = (root: string, options: ReportOptions): ReviewPlanRep
   const pluginRoot = options.pluginRoot ?? resolvePluginRoot()
   const readers: [string, readonly Angle[]][] = plan.path === 'inline' ? [[INLINE_READER, plan.angles]] : plan.finders.map((finder) => [finder.name, finder.angles])
   const testPaths = project?.config.testPaths ?? []
-  const diffFiles = plan.path === 'subagents' ? writeDiffFiles(root, [base.mergeBase, ...pathspec(paths)], (path) => audienceOf(path, root, testPaths)) : null
+  const diffFiles = plan.path === 'subagents' ? writeDiffFiles(root, [diffBase, ...pathspec(paths)], (path) => audienceOf(path, root, testPaths)) : null
   const readsOf = (angles: readonly Angle[]): Reads => ({
     ...readsFor(pluginRoot, angles),
     diff: diffFiles === null ? [] : audiencesFor(angles).flatMap((audience) => diffFiles.audiences[audience]),
@@ -516,7 +543,7 @@ export const buildReport = (root: string, options: ReportOptions): ReviewPlanRep
     base: { ref: base.ref, mergeBase: base.mergeBase, source: base.source },
     files: { counted, excluded, untracked },
     scope: [...paths],
-    diff: diffCommand(base.mergeBase, paths),
+    diff: diffCommand(diffBase, paths),
     diffFiles,
     formula: `ceil(${lines}/${LINES_PER_FINDER}) = ${Math.ceil(lines / LINES_PER_FINDER)}, max ${MAX_FINDERS} → N = ${plan.n}`,
     layout,
@@ -524,6 +551,7 @@ export const buildReport = (root: string, options: ReportOptions): ReviewPlanRep
     plan,
     mode,
     state,
+    rereview,
     skill: toSlash(join(pluginRoot, 'skills', 'jig-review')),
     steps: stepsFor(plan, mode, state),
     reads: Object.fromEntries(readers.map(([name, angles]) => [name, readsOf(angles)])),
@@ -537,7 +565,7 @@ export const buildReport = (root: string, options: ReportOptions): ReviewPlanRep
 }
 
 const isMode = (value: string): value is Mode => (MODES as readonly string[]).includes(value)
-const USAGE = 'usage: jig review-plan [<base>] [--selector full|quick|auto|<tokens>] [--layout auto|inline|fanout|lean|solo] [--spec] [--mode review|pre-mr] [--mr] [--no-state] [--rereview] [--agent <id>] [--json] [-- <pathspec>...]'
+const USAGE = 'usage: jig review-plan [<base>] [--selector full|quick|auto|<tokens>] [--layout auto|inline|fanout|lean|solo] [--spec] [--mode review|pre-mr] [--mr] [--no-state] [--rereview] [--state <path>] [--agent <id>] [--json] [-- <pathspec>...]'
 
 export const splitPathspec = (args: readonly string[]): { options: string[]; paths: string[] | undefined } => {
   const separator = args.indexOf('--')
@@ -574,6 +602,7 @@ export const runReviewPlan: Command = (args) => {
       mr: { type: 'boolean' },
       'no-state': { type: 'boolean' },
       rereview: { type: 'boolean' },
+      state: { type: 'string' },
       json: { type: 'boolean' },
     },
   })
@@ -594,6 +623,7 @@ export const runReviewPlan: Command = (args) => {
     mergeRequest: values.mr === true,
     noState: values['no-state'] === true,
     rereview: values.rereview === true,
+    statePath: values.state,
     paths,
   })
   process.stdout.write(`${values.json ? JSON.stringify(report) : formatReport(report)}\n`)

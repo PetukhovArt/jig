@@ -4,55 +4,33 @@ Mode `review` only. Mode `pre-mr` never re-reviews.
 
 ## Re-review
 
-On when state exists and `last_reviewed_sha` is an ancestor of HEAD ([state](03-state.md)). The ancestry broke: the [scope is restored from patches](#scope-after-a-force-push), and the run stays a re-review. Unavailable with `--no-state`.
+On when the state file exists ([state](03-state.md)), whether or not `last_reviewed_sha` is still an ancestor of HEAD. Unavailable with `--no-state`.
 
-**Compare the diff first, not the sha.** A rebase moves HEAD and leaves the diff as it was, so compare content (`<base>` as in [prepare](01-prepare.md), substituted literally):
+**Plan the round from the state, not from shas.** `<base>` is the current base from [prepare](01-prepare.md):
 
-```bash
-git diff <base>...HEAD | git hash-object --stdin
+```
+node "<root>/bin/jig.mjs" review-plan <base> --rereview --state <state path> --mr
 ```
 
-The hash equals `diff_hash` in state AND the working tree is clean → only the [developer's replies in threads](#developer-replies-in-threads) can have moved: fetch **only** them and stop. Scope, outcome check, symbol search and finder spawns are skipped. No new replies and no thread whose last note is the developer's without a [reply](#reply-to-every-reply) yet: the run ends with no findings. Such threads exist: the outcome check runs on them only. Someone wrote under my FYI note after my last note there: the [optional items](#optional-items) are rechecked too.
+It compares content, so a rebase or a base merged into the branch costs nothing, and prints one `re-review scope:` line:
+
+- `unchanged`: the merge request's diff hashes to `diff_hash` and the working tree is clean. Only the [developer's replies in threads](#developer-replies-in-threads) can have moved: fetch **only** them and stop. Scope, outcome check, symbol search and finder spawns are skipped. No new replies and no thread whose last note is the developer's without a [reply](#reply-to-every-reply) yet: the run ends with no findings. Such threads exist: the outcome check runs on them only. Someone wrote under my FYI note after my last note there: the [optional items](#optional-items) are rechecked too.
+- `patches`: the files of the merge request whose patch against the base changed since the last review, each with the branch's own changed lines (`+a -d`). The plan below it (finders, layout, `diff:`, diff parts) is planned on exactly these files and lines. Empty: the branch has no new work; only the outcome check runs.
+- `full (<reason>)`: the state cannot say what was reviewed (`base_sha` or `last_reviewed_sha` missing locally, or `diff_hash` does not match their range). Every file of the merge request is in scope; say so in the summary.
 
 **The short path's tally is not zero.** Every finding with an open thread (status not `fixed`, not `no_change_needed`, not `optional`) enters `prior_*`: rechecked by a reply with its new outcome, the rest with their carried status (`open` and `skipped` → `prior_skipped`, `unverified` → `prior_unverified`). The diff did not change, so the defect stands. The sum is the one in the [convergence check](08-output.md#write-state). One run on this path reported `prior_skipped: 4`, another zeros, and the zeros blocked the merge request.
 
-### Scope after a force-push
+### Why patches
 
-`last_reviewed_sha` is no longer an ancestor of HEAD: the branch was rebuilt (rebase, cherry-pick onto a new base, amend). On such branches this is normal, and the full diff is the most expensive part of a run: it reviews the whole branch again for a few changed files.
+A rebuild (rebase, cherry-pick onto a new base, amend) changes the sha of every commit and leaves the branch's own work byte for byte, and a merge of the base into the branch brings the base's hunks into `<last_reviewed_sha>..HEAD`, often into the merge request's own files. Neither is the author's new work. The patch of a file against its base (`git diff <base>...HEAD -- <file>`) holds only the branch's change, so comparing it with the reviewed patch (`git diff <base_sha>...<last_reviewed_sha> -- <file>`) leaves exactly the new work; jig counts the changed lines that differ between the two, so moved hunk headers count nothing. A file whose only difference is moved hunk headers has no new work and stays out; the outcome check still reads the tree wherever the code now lives.
 
-Compare **patches per file** first: a rebuild changes the sha of every commit and leaves the branch's own work byte for byte.
-
-Applicable when state has `base_sha` and `last_reviewed_sha` and both objects exist locally (`git cat-file -e <sha>^{commit}`). Either missing: the full diff, and say so in the summary.
-
-Check that the state entry describes that very patch:
-
-```bash
-git diff <base_sha>...<last_reviewed_sha> | git hash-object --stdin
-```
-
-Not equal to `diff_hash`: the entry is inconsistent, the full diff.
-
-Equal: the scope is the files whose patch changed (`<base>` is the current base from [prepare](01-prepare.md)):
-
-```bash
-for f in $(git diff --name-only <base>...HEAD); do
-  o=$(git diff <base_sha>...<last_reviewed_sha> -- "$f" | git hash-object --stdin)
-  n=$(git diff <base>...HEAD -- "$f" | git hash-object --stdin)
-  [ "$o" = "$n" ] || echo "$f"
-done
-```
-
-The printed files are the scope of new findings; the other round rules hold as usual. Empty: the branch has no new work; only the outcome check runs.
-
-**A file enters the scope when only its hunk headers moved, too.** The new base touched the same file: line numbers in the patch differ, the hash differs, the file is read again. The caution goes the right way: the evidence of earlier findings is tied to lines this file no longer has.
-
-Summary: `force-push: scope restored from patches, N of M files`.
+Summary: `scope: patches, N of M files` (or `unchanged`, or `full (<reason>)`).
 
 ### Round rules
 
-- **Scope = `git diff <last_reviewed_sha>..HEAD`, intersected with the files of the merge request** (`git diff --name-only <base>...HEAD`), plus uncommitted changes; after a force-push the first range is replaced by the files from the [patch comparison](#scope-after-a-force-push). The first range picks up the base merged into the branch: foreign files that are not in the merge request. The forge rejects a comment on their lines, so a finding there reaches nobody whatever the verdict. Name the cut files in the summary as `outside the merge request: N files (merge of <base>)`, never silently.
+- **Scope = the files `review-plan --state` printed**, plus uncommitted changes. Only files of the merge request can be in it: the forge rejects a comment on a line outside the merge request, so a finding there would reach nobody whatever the verdict.
   **The link to your code is not lost:** the right to a finding is cut, not the right to read. A foreign file that broke your call goes into a finding as evidence, and the finding sits on your line, which is in the merge request.
-  Run `jig review-plan <last_reviewed_sha> --rereview -- <scope files>` for the layout on THIS scope: the budgets count from it. Under 600 counted lines it plans one finder for every angle and no deepening: a re-review is the outcome check plus a look at the new range, and a full layout on seven fix commits cost almost a first run. From 600 lines the range is new work and gets the full layout. Code reviewed earlier outside it is not reread for new findings. The scope limits **only new findings**: the outcome check reads the tree wherever the code now lives.
+  The layout `review-plan --state` printed is the layout on THIS scope: the budgets count from the branch's own changes. Under 600 counted lines it plans one finder for every angle and no deepening: a re-review is the outcome check plus a look at the new range, and a full layout on seven fix commits cost almost a first run. From 600 lines the range is new work and gets the full layout. Code reviewed earlier outside it is not reread for new findings. The scope limits **only new findings**: the outcome check reads the tree wherever the code now lives.
 - **Only Important on fix hunks.** A fix hunk (defined below) is the author's answer to an earlier finding: new Nit and Pre-existing on it are suppressed, and a counter remains in the summary. A hunk the map linked to nothing is new work (a new module or function in a fix commit): severity by the general rules, Nits are printed as in round 1. Otherwise code that first appeared after round 1 never gets a Nit.
 - **Lifting `blocks`.** The outcome check for earlier blocking findings ([verify](../gates/severity.md#blocking-finding)) runs before the finders spawn: the scope depends on it. A finding became `fixed` or `no_change_needed` → the files of its `blocks` and the file the code moved to (the outcome check found it) enter the scope with the full patch of the merge request (`git diff <base>...HEAD -- <file>`), not the delta, and their hunks count as new work even when the map linked them to the finding. Nits in those files were muted under rework ([ranking](06-rank.md)); the move to `fixed` happens once, and this is the only round where they can be read. Summary: `lifting blocks: N files with the full patch`.
 - **Triage before the judges.** A candidate on a fix hunk whose severity ceiling is `Nit` anyway ([severity](../gates/severity.md)) is doomed in this round: judging it pays for a known verdict. Drop it before clustering, by angle and line, without reading code: cleanup (angles 7, 9, 11, 16, 17) and any documentation finding. Exceptions stay and are judged: a memory leak of angle 8 and an ownership break of angle 13 can be `Important`. The dropped go into `suppressed_nits`.
