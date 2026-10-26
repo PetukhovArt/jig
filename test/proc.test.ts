@@ -1,9 +1,9 @@
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { git } from '../src/core/git'
-import { findUnresolvedShim, resolveBin, resolvePackageBin, resolveShimTarget } from '../src/core/proc'
+import { findUnresolvedShim, resolveBin, resolvePackageBin, resolveShimTarget, run } from '../src/core/proc'
 
 let workDir: string
 
@@ -161,4 +161,34 @@ describe('a command given as a path', () => {
   ])('%s', (_name, command, expected) => {
     expect(resolveBin(workDir, [], command())).toEqual(expected())
   })
+})
+
+describe('a command that times out', () => {
+  const isAlive = (pid: number): boolean => {
+    try {
+      process.kill(pid, 0)
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  it('ends with its grandchildren, which hold its output pipes', async () => {
+    const pidFile = join(workDir, 'grandchild.pid')
+    const parent = write(
+      join(workDir, 'tree', 'parent.cjs'),
+      [
+        "const { spawn } = require('node:child_process')",
+        "const detached = process.platform === 'win32'",
+        "const child = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 60000)'], { stdio: 'inherit', detached })",
+        `require('node:fs').writeFileSync(${JSON.stringify(pidFile)}, String(child.pid))`,
+        'setTimeout(() => {}, 60000)',
+      ].join('\n'),
+    )
+    const startedAt = Date.now()
+    const result = await run([process.execPath, parent], { cwd: workDir, timeoutMs: 1_000 })
+    expect(result.timedOut).toBe(true)
+    expect(Date.now() - startedAt).toBeLessThan(10_000)
+    expect(isAlive(Number(readFileSync(pidFile, 'utf8')))).toBe(false)
+  }, 70_000)
 })

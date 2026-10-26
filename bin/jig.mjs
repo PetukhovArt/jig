@@ -991,7 +991,7 @@ import { statSync as statSync2 } from "node:fs";
 import { dirname as dirname3, join as join4, relative as relative3, resolve as resolve3 } from "node:path";
 
 // src/core/proc.ts
-import { spawn } from "node:child_process";
+import { spawn, spawnSync as spawnSync2 } from "node:child_process";
 import { existsSync as existsSync2, mkdirSync as mkdirSync2, readFileSync as readFileSync3, realpathSync, rmSync, statSync, writeFileSync as writeFileSync2 } from "node:fs";
 import { setPriority } from "node:os";
 import { basename, delimiter, dirname as dirname2, extname as extname2, isAbsolute as isAbsolute2, join as join3, relative as relative2, resolve as resolve2 } from "node:path";
@@ -1058,9 +1058,9 @@ var isFile = (path2) => {
   }
 };
 var findInPath = (name, env = process.env) => {
-  const isWindows = process.platform === "win32";
+  const isWindows2 = process.platform === "win32";
   const pathValue = env["PATH"] ?? env["Path"] ?? "";
-  const extensions = isWindows && extname2(name) === "" ? (env["PATHEXT"] ?? ".COM;.EXE;.BAT;.CMD").split(";").filter(Boolean) : [""];
+  const extensions = isWindows2 && extname2(name) === "" ? (env["PATHEXT"] ?? ".COM;.EXE;.BAT;.CMD").split(";").filter(Boolean) : [""];
   for (const dir of pathValue.split(delimiter).filter(Boolean)) {
     for (const extension of extensions) {
       const candidate = join3(dir, name + extension.toLowerCase());
@@ -1132,6 +1132,19 @@ var lowerPriority = (pid) => {
     return;
   }
 };
+var isWindows = process.platform === "win32";
+var killTree = (child, signal) => {
+  if (child.pid === void 0) return;
+  if (isWindows) {
+    spawnSync2("taskkill", ["/PID", String(child.pid), "/T", "/F"], { stdio: "ignore", windowsHide: true });
+    return;
+  }
+  try {
+    process.kill(-child.pid, signal);
+  } catch {
+    child.kill(signal);
+  }
+};
 var run = (argv, options) => {
   const [command, ...args] = argv;
   const startedAt = Date.now();
@@ -1143,7 +1156,8 @@ var run = (argv, options) => {
       cwd: options.cwd,
       env: options.env ?? process.env,
       windowsHide: true,
-      stdio: ["pipe", "pipe", "pipe"]
+      stdio: ["pipe", "pipe", "pipe"],
+      detached: !isWindows
     });
     lowerPriority(child.pid);
     const stdout = [];
@@ -1161,15 +1175,10 @@ var run = (argv, options) => {
     child.stderr.on("data", collect(stderr));
     child.stdin.on("error", () => void 0);
     child.stdin.end(options.input ?? "");
-    const timer = setTimeout(() => {
-      timedOut = true;
-      child.kill();
-      setTimeout(() => child.kill("SIGKILL"), KILL_GRACE_MS).unref();
-    }, options.timeoutMs);
-    child.on("error", (error) => {
-      spawnError = error.message;
-    });
-    child.on("close", (code) => {
+    let isSettled = false;
+    const settle = (code) => {
+      if (isSettled) return;
+      isSettled = true;
       clearTimeout(timer);
       const result = {
         code,
@@ -1179,7 +1188,23 @@ var run = (argv, options) => {
         durationMs: Date.now() - startedAt
       };
       resolveRun(spawnError === void 0 ? result : { ...result, error: spawnError });
+    };
+    const timer = setTimeout(() => {
+      timedOut = true;
+      killTree(child, "SIGTERM");
+      if (!isWindows) setTimeout(() => killTree(child, "SIGKILL"), KILL_GRACE_MS).unref();
+    }, options.timeoutMs);
+    child.on("error", (error) => {
+      spawnError = error.message;
     });
+    child.on("exit", (code) => {
+      setTimeout(() => {
+        child.stdout.destroy();
+        child.stderr.destroy();
+        settle(code);
+      }, KILL_GRACE_MS).unref();
+    });
+    child.on("close", settle);
   });
 };
 var isAlive = (pid) => {
@@ -4691,7 +4716,7 @@ var runLoop = (args) => {
 };
 
 // src/pre-mr/pre-mr.ts
-import { spawnSync as spawnSync2 } from "node:child_process";
+import { spawnSync as spawnSync3 } from "node:child_process";
 import { copyFileSync, existsSync as existsSync11, mkdtempSync, rmSync as rmSync6 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join as join24, resolve as resolve10 } from "node:path";
@@ -5566,7 +5591,7 @@ var workingTree = (root) => {
     const index = join24(dir, "index");
     const current = gitLine2(["rev-parse", "--git-path", "index"], root);
     if (current !== void 0 && existsSync11(resolve10(root, current))) copyFileSync(resolve10(root, current), index);
-    const withIndex = (args) => spawnSync2("git", args, { cwd: root, env: { ...process.env, GIT_INDEX_FILE: index }, encoding: "utf8", windowsHide: true, maxBuffer: MAX_BUFFER2 });
+    const withIndex = (args) => spawnSync3("git", args, { cwd: root, env: { ...process.env, GIT_INDEX_FILE: index }, encoding: "utf8", windowsHide: true, maxBuffer: MAX_BUFFER2 });
     const added = withIndex(["add", "-A"]);
     if (added.status !== 0) throw new Error(`git add -A into a temporary index failed: ${String(added.stderr).trim()}`);
     const tree = withIndex(["write-tree"]);
@@ -5807,7 +5832,7 @@ jig pre-mr passes with this level until the next edit
   return 0;
 }, ctx.io);
 var shellExec = (command, cwd) => {
-  const result = spawnSync2(command, { cwd, shell: true, stdio: "inherit", windowsHide: true });
+  const result = spawnSync3(command, { cwd, shell: true, stdio: "inherit", windowsHide: true });
   if (result.error !== void 0) {
     process.stderr.write(`jig: ${result.error.message}
 `);
@@ -6172,10 +6197,10 @@ import { homedir as homedir3 } from "node:os";
 import { dirname as dirname10, extname as extname4, isAbsolute as isAbsolute5, join as join26, resolve as resolve11 } from "node:path";
 
 // src/review-cycle/exec.ts
-import { spawnSync as spawnSync3 } from "node:child_process";
+import { spawnSync as spawnSync4 } from "node:child_process";
 var MAX_BUFFER3 = 256 * 1024 * 1024;
 var spawnExec = (command, args, cwd) => {
-  const result = spawnSync3(command, args, { cwd, encoding: "utf8", windowsHide: true, maxBuffer: MAX_BUFFER3 });
+  const result = spawnSync4(command, args, { cwd, encoding: "utf8", windowsHide: true, maxBuffer: MAX_BUFFER3 });
   if (result.error) return { code: null, stdout: "", stderr: "", error: result.error.message };
   return { code: result.status, stdout: result.stdout, stderr: result.stderr };
 };
@@ -7192,7 +7217,7 @@ var runReviewCycle = (args) => runReviewCycleWith(args, { exec: spawnExec, cwd: 
 `) });
 
 // src/slot/slot.ts
-import { spawnSync as spawnSync4 } from "node:child_process";
+import { spawnSync as spawnSync5 } from "node:child_process";
 import { existsSync as existsSync17, mkdirSync as mkdirSync15, readFileSync as readFileSync28, rmSync as rmSync7, writeFileSync as writeFileSync10 } from "node:fs";
 import { basename as basename7, dirname as dirname12, isAbsolute as isAbsolute6, join as join30, relative as relative7, resolve as resolve13 } from "node:path";
 import { parseArgs as parseArgs6 } from "node:util";
@@ -7513,7 +7538,7 @@ var reserveSlot = async (context, slots, options) => {
     lock.release();
   }
 };
-var runInstall = (install, dir) => spawnSync4(install, { cwd: dir, shell: true, windowsHide: true, stdio: ["ignore", 2, 2] }).status;
+var runInstall = (install, dir) => spawnSync5(install, { cwd: dir, shell: true, windowsHide: true, stdio: ["ignore", 2, 2] }).status;
 var slotNew = async (args) => {
   const { values } = parseArgs6({ args, options: { slug: { type: "string" }, branch: { type: "string" } }, strict: true });
   const slug = values.slug;
@@ -7649,14 +7674,14 @@ import { createInterface } from "node:readline/promises";
 import { parseArgs as parseArgs7 } from "node:util";
 
 // src/worktree/sweep.ts
-import { spawnSync as spawnSync5 } from "node:child_process";
+import { spawnSync as spawnSync6 } from "node:child_process";
 import { basename as basename8, resolve as resolve14 } from "node:path";
 var KEPT_BUCKETS = /* @__PURE__ */ new Set(["hold-current", "hold-locked", "hold-wip"]);
 var RECENT_MS = 24 * 60 * 60 * 1e3;
 var MS_PER_SECOND = 1e3;
 var SLOT_ITEM = /^s?(\d+)$/;
 var runJson = (bin, args, cwd) => {
-  const result = spawnSync5(bin, args, { cwd, encoding: "utf8", windowsHide: true });
+  const result = spawnSync6(bin, args, { cwd, encoding: "utf8", windowsHide: true });
   if (result.status !== 0) return void 0;
   try {
     return JSON.parse(result.stdout);

@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process'
+import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { setPriority } from 'node:os'
 import { basename, delimiter, dirname, extname, isAbsolute, join, relative, resolve } from 'node:path'
@@ -190,6 +190,22 @@ const lowerPriority = (pid: number | undefined): void => {
   }
 }
 
+const isWindows = process.platform === 'win32'
+
+/** Ends the child with everything it started: a grandchild that inherited the pipes would keep `close` from firing. */
+const killTree = (child: ChildProcess, signal: NodeJS.Signals): void => {
+  if (child.pid === undefined) return
+  if (isWindows) {
+    spawnSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], { stdio: 'ignore', windowsHide: true })
+    return
+  }
+  try {
+    process.kill(-child.pid, signal)
+  } catch {
+    child.kill(signal)
+  }
+}
+
 export const run = (argv: readonly string[], options: RunOptions): Promise<RunResult> => {
   const [command, ...args] = argv
   const startedAt = Date.now()
@@ -202,6 +218,7 @@ export const run = (argv: readonly string[], options: RunOptions): Promise<RunRe
       env: options.env ?? process.env,
       windowsHide: true,
       stdio: ['pipe', 'pipe', 'pipe'],
+      detached: !isWindows,
     })
     lowerPriority(child.pid)
     const stdout: Buffer[] = []
@@ -219,15 +236,10 @@ export const run = (argv: readonly string[], options: RunOptions): Promise<RunRe
     child.stderr.on('data', collect(stderr))
     child.stdin.on('error', () => undefined)
     child.stdin.end(options.input ?? '')
-    const timer = setTimeout(() => {
-      timedOut = true
-      child.kill()
-      setTimeout(() => child.kill('SIGKILL'), KILL_GRACE_MS).unref()
-    }, options.timeoutMs)
-    child.on('error', (error) => {
-      spawnError = error.message
-    })
-    child.on('close', (code) => {
+    let isSettled = false
+    const settle = (code: number | null): void => {
+      if (isSettled) return
+      isSettled = true
       clearTimeout(timer)
       const result: RunResult = {
         code,
@@ -237,7 +249,23 @@ export const run = (argv: readonly string[], options: RunOptions): Promise<RunRe
         durationMs: Date.now() - startedAt,
       }
       resolveRun(spawnError === undefined ? result : { ...result, error: spawnError })
+    }
+    const timer = setTimeout(() => {
+      timedOut = true
+      killTree(child, 'SIGTERM')
+      if (!isWindows) setTimeout(() => killTree(child, 'SIGKILL'), KILL_GRACE_MS).unref()
+    }, options.timeoutMs)
+    child.on('error', (error) => {
+      spawnError = error.message
     })
+    child.on('exit', (code) => {
+      setTimeout(() => {
+        child.stdout.destroy()
+        child.stderr.destroy()
+        settle(code)
+      }, KILL_GRACE_MS).unref()
+    })
+    child.on('close', settle)
   })
 }
 
