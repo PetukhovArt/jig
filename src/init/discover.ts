@@ -1,6 +1,6 @@
 import { readdirSync, readFileSync, type Dirent } from 'node:fs'
 import { join, posix } from 'node:path'
-import { CATALOG, catalogMarkers, type CatalogEntry } from '../catalog'
+import { ALL_MARKERS, CATALOG, catalogMarkers, type CatalogEntry } from '../catalog'
 import type { JigConfig, ToolSetting } from '../core/config'
 import { git } from '../core/git'
 import { resolveBin } from '../core/proc'
@@ -58,6 +58,20 @@ export const projectFiles = (projectRoot: string): string[] => {
   return files.map((file) => file.replace(/\\/g, '/')).filter((file) => !isSkippedPath(file))
 }
 
+/**
+ * Ignored marker configs outside ignored folders: a project may keep `stratum.config.jsonc` in `.git/info/exclude`,
+ * and the tool still reads it.
+ */
+const ignoredMarkers = (projectRoot: string): string[] => {
+  const listed = git(['ls-files', '-z', '--others', '--ignored', '--exclude-standard', '--directory', '--no-empty-directory'], projectRoot)
+  if (!listed.ok) return []
+  const markerNames = new Set(ALL_MARKERS)
+  return listed.stdout
+    .split('\0')
+    .map((file) => file.replace(/\\/g, '/'))
+    .filter((file) => markerNames.has(posix.basename(file)) && !isSkippedPath(file))
+}
+
 const readDependencies = (path: string): string[] => {
   try {
     const manifest = JSON.parse(readFileSync(path, 'utf8')) as Record<string, unknown>
@@ -99,7 +113,8 @@ export const discover = (projectRoot: string): Discovery => {
   const files = projectFiles(projectRoot)
   const packageFiles = files.filter((file) => posix.basename(file) === 'package.json')
   const declared = new Set(packageFiles.flatMap((file) => readDependencies(join(projectRoot, file))))
-  const found = CATALOG.map((entry) => inspect(projectRoot, entry, files, declared)).filter((item): item is Found => item !== undefined)
+  const markerFiles = [...files, ...ignoredMarkers(projectRoot)]
+  const found = CATALOG.map((entry) => inspect(projectRoot, entry, markerFiles, declared)).filter((item): item is Found => item !== undefined)
   return { found, packages: [...declared].sort(), packageFiles, typeCheck: detectTypeCheck(projectRoot, files) }
 }
 

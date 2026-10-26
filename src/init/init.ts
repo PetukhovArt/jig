@@ -76,12 +76,10 @@ const typeCheckLine = (detection: TypeCheckDetection): string => {
   return `type check: ${named} takes files: proposed as check "${TYPES_CHECK_NAME}" with "tsc": false`
 }
 
-const questionsFor = (discovery: Discovery, boundaries: boolean): string[] => {
+const questionsFor = (discovery: Discovery, boundaries: boolean, hasSlots: boolean): string[] => {
   const byName = new Map(discovery.found.map((found) => [found.name, found]))
   const setupOf = (name: string): string => catalogEntry(name)?.setup.join(', then ') ?? ''
-  const questions = [
-    'App run command (slots.dev) and install command (slots.install), if the project runs an app.',
-  ]
+  const questions = hasSlots ? [] : ['App run command (slots.dev) and install command (slots.install), if the project runs an app.']
   const agentView = byName.get('agent-view')
   const agentViewState = agentView === undefined ? 'not installed' : agentView.status === 'ready' ? 'configured' : 'installed, no agent-view.config.json'
   questions.push(`agent-view for UI proof (${agentViewState}): needed? Setup: ${setupOf('agent-view')}.`)
@@ -105,7 +103,7 @@ export const buildInitReport = (projectRoot: string, update: boolean): InitRepor
   const boundaries = discovery.packages.includes(BOUNDARIES_PLUGIN)
   const drift = update ? configDrift(projectRoot, config, resolveTools(projectRoot, config).unresolved) : []
   const listed = update ? config : { tools: {}, proofs: {} }
-  return { update, discovery, boundaries, drift, questions: questionsFor(discovery, boundaries), proposal: buildProposal(base, discovery, listed) }
+  return { update, discovery, boundaries, drift, questions: questionsFor(discovery, boundaries, config.slots !== undefined), proposal: buildProposal(base, discovery, listed) }
 }
 
 const foundLine = (found: Found): string => {

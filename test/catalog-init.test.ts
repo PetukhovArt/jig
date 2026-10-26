@@ -1,6 +1,6 @@
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join, resolve } from 'node:path'
+import { dirname, join, relative, resolve } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { catalogEntry, isTestFile, languageFor, outputParser, PROOF_NAMES, TOOL_NAMES } from '../src/catalog'
 import { splitCommand } from '../src/core/command'
@@ -197,6 +197,28 @@ describe('discovery and drift', () => {
       tsc: { command: 'vue-tsc' },
     })
     expect(update.drift).toContain('found tsc, not in config')
+  })
+})
+
+describe('jig init: a locally excluded marker and a global binary', () => {
+  const originalPath = process.env['PATH']
+
+  afterEach(() => {
+    process.env['PATH'] = originalPath
+  })
+
+  it('reports stratum configured and asks nothing about slots the config has', () => {
+    write('stratum.config.jsonc', '{}')
+    write('.git/info/exclude', 'stratum.config.jsonc\n')
+    write('.jig/config.jsonc', '{ "slots": { "worktreesDir": ".." } }')
+    const binary = join(root, 'global-bin', process.platform === 'win32' ? 'stratum-lint.exe' : 'stratum-lint')
+    write(relative(root, binary), '')
+    process.env['PATH'] = dirname(binary)
+    const report = buildInitReport(root, true)
+    const stratum = report.discovery.found.find((item) => item.name === 'stratum')
+    expect([stratum?.status, stratum?.markers, stratum?.bin]).toEqual(['ready', ['stratum.config.jsonc'], [binary]])
+    expect(report.questions.join('\n')).not.toContain('slots.dev')
+    expect(report.questions.join('\n')).toContain('stratum for module layers (configured)')
   })
 })
 

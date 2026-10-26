@@ -19,7 +19,7 @@ Read `<root>/atoms/questions.md` before the first question and follow it. Ask in
    Its `type check:` line names the project's type-check script; when it takes files, the proposal already holds `"tsc": false` and the `types` check: keep them, the project owns type checking and jig only calls its command.
 2. Read the repo for the rest: `package.json` scripts, the README, CI files, workspace layout. A fact found there is not a question: the dev and install commands usually are in the scripts.
 3. Ask what is left, one question block per choice, each with a recommendation:
-   - the command that runs the app (`slots.dev`) and installs packages (`slots.install`), when the repo did not say;
+   - the command that runs the app (`slots.dev`) and installs packages (`slots.install`), when the repo did not say and the config has no `slots`;
    - whether UI changes get proven in the running app with agent-view;
    - whether stratum checks the module layers.
    Do not ask about the comment gate: it is on by default, and a project turns it off itself with `"rules": { "jig/comments": "off" }`. A tool the project has but the user wants off is written as `false`, so the next start does not report it as drift.

@@ -7,7 +7,7 @@ Run as `node <plugin root>/bin/jig.mjs <command>`.
 | `check edit <file>` / `check stop` | findings for one file / the end-of-turn gate against HEAD; `check stop` exits 3 with an `incomplete:` line when a check did not finish |
 | `build [--atoms-only] [--check]` | validates atoms, role templates and flows; without `--atoms-only`, writes the tool plan to `.jig/cache/plan.json` |
 | `atom <name>` | prints an atom |
-| `init [--update] [--json]` | discovery by the catalog: found tools, what to ask the user, a proposed `.jig/config.jsonc` (with `--update`, the current config plus what it does not name); writes nothing |
+| `init [--update] [--json]` | discovery by the catalog: found tools (a marker config kept out of git, as in `.git/info/exclude`, counts), what to ask the user, a proposed `.jig/config.jsonc` (with `--update`, the current config plus what it does not name); writes nothing |
 | `slot new [--slug <s>] [--branch <b>]` | creates a slot worktree with offset ports and its own `agent-view.config.json`, seeded from the main checkout |
 | `slot show <N> <branch\|commit>` | checks the branch out detached in slot N (refuses on tracked changes) and runs the install command when a lock file changed |
 | `slot ls [--json]` | slots and their ports |

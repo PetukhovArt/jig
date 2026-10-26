@@ -2006,6 +2006,12 @@ var projectFiles = (projectRoot) => {
   const files = listed.ok ? listed.stdout.split("\0").filter(Boolean) : walk(projectRoot);
   return files.map((file) => file.replace(/\\/g, "/")).filter((file) => !isSkippedPath(file));
 };
+var ignoredMarkers = (projectRoot) => {
+  const listed = git(["ls-files", "-z", "--others", "--ignored", "--exclude-standard", "--directory", "--no-empty-directory"], projectRoot);
+  if (!listed.ok) return [];
+  const markerNames = new Set(ALL_MARKERS);
+  return listed.stdout.split("\0").map((file) => file.replace(/\\/g, "/")).filter((file) => markerNames.has(posix2.basename(file)) && !isSkippedPath(file));
+};
 var readDependencies = (path2) => {
   try {
     const manifest = JSON.parse(readFileSync8(path2, "utf8"));
@@ -2043,7 +2049,8 @@ var discover = (projectRoot) => {
   const files = projectFiles(projectRoot);
   const packageFiles = files.filter((file) => posix2.basename(file) === "package.json");
   const declared = new Set(packageFiles.flatMap((file) => readDependencies(join7(projectRoot, file))));
-  const found = CATALOG.map((entry) => inspect(projectRoot, entry, files, declared)).filter((item) => item !== void 0);
+  const markerFiles = [...files, ...ignoredMarkers(projectRoot)];
+  const found = CATALOG.map((entry) => inspect(projectRoot, entry, markerFiles, declared)).filter((item) => item !== void 0);
   return { found, packages: [...declared].sort(), packageFiles, typeCheck: detectTypeCheck(projectRoot, files) };
 };
 var settingsOf = (config, kind) => kind === "tool" ? config.tools : config.proofs;
@@ -4534,12 +4541,10 @@ var typeCheckLine = (detection) => {
   if (detection.globs.length === 0) return `type check: ${named} takes files, but the project has no .ts, .tsx or .vue files`;
   return `type check: ${named} takes files: proposed as check "${TYPES_CHECK_NAME}" with "tsc": false`;
 };
-var questionsFor = (discovery, boundaries) => {
+var questionsFor = (discovery, boundaries, hasSlots) => {
   const byName = new Map(discovery.found.map((found) => [found.name, found]));
   const setupOf = (name) => catalogEntry(name)?.setup.join(", then ") ?? "";
-  const questions = [
-    "App run command (slots.dev) and install command (slots.install), if the project runs an app."
-  ];
+  const questions = hasSlots ? [] : ["App run command (slots.dev) and install command (slots.install), if the project runs an app."];
   const agentView = byName.get("agent-view");
   const agentViewState = agentView === void 0 ? "not installed" : agentView.status === "ready" ? "configured" : "installed, no agent-view.config.json";
   questions.push(`agent-view for UI proof (${agentViewState}): needed? Setup: ${setupOf("agent-view")}.`);
@@ -4562,7 +4567,7 @@ var buildInitReport = (projectRoot, update) => {
   const boundaries = discovery.packages.includes(BOUNDARIES_PLUGIN);
   const drift = update ? configDrift(projectRoot, config, resolveTools(projectRoot, config).unresolved) : [];
   const listed = update ? config : { tools: {}, proofs: {} };
-  return { update, discovery, boundaries, drift, questions: questionsFor(discovery, boundaries), proposal: buildProposal(base, discovery, listed) };
+  return { update, discovery, boundaries, drift, questions: questionsFor(discovery, boundaries, config.slots !== void 0), proposal: buildProposal(base, discovery, listed) };
 };
 var foundLine = (found) => {
   const facts2 = [
