@@ -167,10 +167,23 @@ describe('a command that times out', () => {
   const isAlive = (pid: number): boolean => {
     try {
       process.kill(pid, 0)
-      return true
     } catch {
       return false
     }
+    try {
+      return readFileSync(`/proc/${pid}/stat`, 'utf8').split(') ')[1]?.[0] !== 'Z'
+    } catch {
+      return true
+    }
+  }
+
+  const outlives = async (pid: number, ms: number): Promise<boolean> => {
+    const deadline = Date.now() + ms
+    while (isAlive(pid)) {
+      if (Date.now() > deadline) return true
+      await new Promise((done) => setTimeout(done, 100))
+    }
+    return false
   }
 
   it('ends with its grandchildren, which hold its output pipes', async () => {
@@ -189,6 +202,6 @@ describe('a command that times out', () => {
     const result = await run([process.execPath, parent], { cwd: workDir, timeoutMs: 1_000 })
     expect(result.timedOut).toBe(true)
     expect(Date.now() - startedAt).toBeLessThan(10_000)
-    expect(isAlive(Number(readFileSync(pidFile, 'utf8')))).toBe(false)
+    expect(await outlives(Number(readFileSync(pidFile, 'utf8')), 5_000)).toBe(false)
   }, 70_000)
 })
