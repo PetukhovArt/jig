@@ -30,6 +30,8 @@ The skill never schedules itself (`jig loop` is the weekly journal loop, not thi
 
 ## Cost
 
+A re-review is planned before its runner is spawned (`jig review-plan <base> --rereview --state <path>`): one that runs inline gets a fork of the orchestrator, which starts from its prompt cache; one with finders gets a fresh runner, since a fork cannot fan out. The scope counts only the branch's own changes since the last review, so a base merged into the branch does not inflate it.
+
 Each pass records its estimated cost with `jig review cost --record`; `jig review cost --report --by project` (or `--by week`) compares $ per 1000 diff lines and $ per thread across projects and over time, so a change to the process shows its effect ([commands](commands.md)).
 
 Every subagent of a pass (a runner, its finders, judges and poster: twenty or more) starts with the session's fixed context: instructions, the skill list, MCP server instructions. A plugin no review role uses still costs in each of them: on one pass an unused design plugin was ~2.7k tokens per subagent, about a twelfth of all input. Turn such plugins off in a project where review cycles run unattended (Claude Code: `enabledPlugins` in the project's `.claude/settings.local.json`), and on again for the work that needs them.

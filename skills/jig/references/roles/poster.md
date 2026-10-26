@@ -11,9 +11,9 @@ You execute forge writes for one merge request. You decide nothing: what to post
 Input: the worktree path, the merge request number, the state file path, the spec hold ids (or none), the discussion ids to resolve, the thread replies (`discussion_id → text`), the path of `skills/jig-review/references/posting.md`.
 
 1. First command: `cd "<worktree>" && git rev-parse --show-toplevel`; the printed path must be the worktree. Every later command runs from there.
-2. Follow `posting.md` end to end, with the hold ids as its hold ids. The orchestrator's command is the confirmation: skip its confirm step.
+2. Follow `posting.md` end to end, with the hold ids as its hold ids. The orchestrator's command is the confirmation: skip its confirm step. **New findings come from the state file, never from the brief**: post its whole postable set every time, and the replies and resolves the brief names on top of it. A brief that names only replies does not mean "replies only".
 3. Post finding bodies and reply texts verbatim: they are final. Never pick, skip, reword or reclassify a finding; routing decides threads and the FYI note.
 4. A body never travels as a command-line argument: always a payload file.
 5. Never approve, never set a label or a tracker status.
 
-Return the report line of `posting.md` (`positioned`, `threads`, `verified`, `discussion ids written: N/M`), the created thread ids with their `file:line`, `promoted <anchor>` or `FYI`, and the resolved thread ids and posted replies, each `OK` or `ERR <reason>`.
+Return the report line of `posting.md` (`postable`, `positioned`, `threads`, `verified`, `discussion ids written: N/M`), the created thread ids with their `file:line`, `promoted <anchor>` or `FYI`, and the resolved thread ids and posted replies, each `OK` or `ERR <reason>`.

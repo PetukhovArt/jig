@@ -16,6 +16,8 @@ With `--post`, step 6 is skipped: the flag IS the confirmation.
 
 Postable = `open` and not yet posted (no `discussion_id`), plus **all** `optional` items, earlier ones included, plus the state's `deepening` when present: the note is rebuilt from the whole set, and an update without the old items would erase them.
 
+**The postable set comes from the state file, always.** A caller's brief never lists new findings; the replies, resolves and FYI answer it names come on top of the postable set and never narrow it. `node "<root>/bin/jig.mjs" review state <state>` prints its size as `postable: N open without a thread · K optional · deepening yes|no`. One re-review posted only its reply, reported `threads 0/0`, and left its new findings and the FYI note unposted until it was sent back.
+
 **Hold ids.** A caller may name finding ids to hold back (a review cycle holds spec findings whose quote is not in the spec). They leave the postable set before routing: not posted, not in the note, not counted.
 
 ## 3. Head and routing
@@ -77,4 +79,4 @@ After a re-review, also:
 
 ## 10. Report
 
-`positioned: P/M · threads: T/M · verified: V/C · discussion ids written: N/M` (M = thread and promoted entries of the manifest), the unmatched `file:line` when N < M, and each resolve or reply as `OK` or `ERR <first 300 characters of the answer>`. N < M is a torn state: write the ids back again (step 1 finds them) before anything else, since a lost id disables both duplicate protection and thread resolution on every later run.
+`postable: <the state's postable line> · positioned: P/M · threads: T/M · verified: V/C · discussion ids written: N/M` (M = thread and promoted entries of the manifest; M plus the FYI items is the state's `open without a thread` minus the hold ids), the unmatched `file:line` when N < M, and each resolve or reply as `OK` or `ERR <first 300 characters of the answer>`. N < M is a torn state: write the ids back again (step 1 finds them) before anything else, since a lost id disables both duplicate protection and thread resolution on every later run.
