@@ -45,7 +45,7 @@ What every finder needs is read **once**, by you, before the first spawn. Tool o
 
 Spawn every finder of the layout **in one batch**, in parallel, within the [subagent cap](../SKILL.md#rules-for-the-whole-run). Brief each with role `finder`: pass the path of its template, `<root>/skills/jig/references/roles/finder.md`, and let the subagent read it.
 
-**Every call carries the model and effort of its tier explicitly**, not the session's model. Before spawning print the plan; it goes into the [cost line](08-output.md#output): `finders: 1+4 deep/high opus · 8+14 standard/high sonnet · 2+3+5+12 deep/high opus · …`, each marked `fork` or `fresh`.
+**Every call carries the model and effort of its tier explicitly**, not the session's model. Before spawning print the plan; it goes into the [cost line](08-output.md#output): `finders: 1+4 deep/high <deep model> · 8+14 standard/high <standard model> · 2+3+5+12 deep/high <deep model> · …`, each marked `fork` or `fresh`.
 
 **The brief order is fixed**: the shared prefix first, the personal tail last, so the shared part hits the prompt cache of the whole batch:
 1. the diff: the index, and the part paths `jig review-plan` printed under this finder's `diff:` (a fork has the text already: name the paths anyway). The parts are split by audience: `code-*` goes to every finder, `tests-*` only to the finder with angle 16, `docs-*` only to the finder with angles 11 or 15. A finder reads no part outside its `diff:` list; it may open a test or document by path when a candidate needs one;

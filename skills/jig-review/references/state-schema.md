@@ -18,7 +18,7 @@
       "angle": 1, "category": "correctness", "severity": "Important",
       "severity_class": "broken", "severity_gate": null,
       "verdict": "CONFIRMED",
-      "models": { "finders": ["opus"], "judge": "sonnet" },
+      "models": { "finders": ["<deep model>"], "judge": "<second deep model>" },
       "summary": "one sentence: the claim only, no reasoning",
       "mrComment": "the full comment, ready to post",
       "caused_by": { "file": "…", "line": 1, "diff_line": "…", "victim_line": "…" },

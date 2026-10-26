@@ -28,7 +28,7 @@ Survivors of dedup are clustered **by their nearest common directory and by the 
 
 One judge subagent per cluster, role `verifier`, tier and effort from its template, in parallel across clusters within the [subagent cap](../SKILL.md#rules-for-the-whole-run); a refused spawn joins the [queue](04-finders.md#refused-spawn). It reads its files once and judges all its candidates.
 
-**The judge runs on a different model of its tier than the finder whose candidates it judges.** `jig review-plan` prints the pairs (`candidates from opus → judge sonnet`). A defect that survives a second model is the "two models found it" signal; a judge on the finder's own model shares its blind spots. The tier has one model only: use it, and the summary says `judge: same model as the finder`.
+**The judge runs on a different model of its tier than the finder whose candidates it judges.** `jig review-plan` prints the pairs (`candidates from <model A> → judge <model B>`). A defect that survives a second model is the "two models found it" signal; a judge on the finder's own model shares its blind spots. The tier has one model only: use it, and the summary says `judge: same model as the finder`.
 
 **Fork or fresh, in the foreground.** A judge whose model is your own is forked after dedup, as [finders](04-finders.md#shared-context) are: it inherits the diff, the read set and the candidates. Others are spawned fresh with the brief below. Run them in the foreground; never `sleep`, never read their output files in a loop: each such turn re-sends the whole context.
 
@@ -54,7 +54,7 @@ Only when `jig review-plan` printed `layout: lean`: the finders ran on the deep 
 
 1. Judge every deduped candidate yourself by the gate files the steps list, the self-check of `gates/bugs.md` asked literally before each bug `CONFIRMED`; refute with a quoted line, not with doubt.
 2. No `CONFIRMED` `Important`: no subagent; the output says `judge: you only (no Important candidate)`.
-3. One or more: **one** judge subagent for all of them, role `verifier`, on the model and grade `jig review-plan` printed (`candidates from sonnet → judge opus`), briefed as the [inline judge](04-inline.md#second-model-only-for-important). Its verdict stands, as there.
+3. One or more: **one** judge subagent for all of them, role `verifier`, on the model and grade `jig review-plan` printed (`candidates from <model A> → judge <model B>`), briefed as the [inline judge](04-inline.md#second-model-only-for-important). Its verdict stands, as there.
 
 ## Layout solo
 
