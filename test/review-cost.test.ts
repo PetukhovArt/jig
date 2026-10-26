@@ -103,6 +103,7 @@ describe('resolveSessionDir', () => {
     expect(resolveSessionDir('s1', 'C:/work/app', projects)).toBe(join(slug, 's1'))
     expect(resolveSessionDir(undefined, 'C:/work/app', projects)).toBe(join(slug, 's1'))
     expect(() => resolveSessionDir('missing', 'C:/work/app', projects)).toThrow(/not found/)
+    expect(() => resolveSessionDir(undefined, 'C:/work/other', projects)).toThrow(/reads Claude Code transcripts only/)
   })
 })
 

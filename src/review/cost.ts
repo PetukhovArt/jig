@@ -158,6 +158,8 @@ export const claudeProjectsDir = (env: NodeJS.ProcessEnv = process.env): string 
 
 export const projectSlug = (dir: string): string => dir.replace(/[^a-zA-Z0-9]/g, '-')
 
+const TRANSCRIPTS_ONLY = 'jig review cost reads Claude Code transcripts only'
+
 /** `given` is a session id or a session directory; without it, the most recently changed session of the project that has subagents. */
 export const resolveSessionDir = (given: string | undefined, projectDir: string, projectsDir: string): string => {
   if (given !== undefined && existsSync(join(given, 'subagents'))) return given
@@ -167,16 +169,16 @@ export const resolveSessionDir = (given: string | undefined, projectDir: string,
           .map((slug) => join(projectsDir, slug, given))
           .find((dir) => existsSync(dir))
       : undefined
-    if (found === undefined) throw new Error(`session ${given} not found under ${toSlash(projectsDir)}`)
+    if (found === undefined) throw new Error(`session ${given} not found under ${toSlash(projectsDir)}; ${TRANSCRIPTS_ONLY}`)
     return found
   }
   const slugDir = join(projectsDir, projectSlug(projectDir))
-  if (!existsSync(slugDir)) throw new Error(`no sessions for ${toSlash(projectDir)} under ${toSlash(projectsDir)}`)
+  if (!existsSync(slugDir)) throw new Error(`no sessions for ${toSlash(projectDir)} under ${toSlash(projectsDir)}; ${TRANSCRIPTS_ONLY}`)
   const sessions = readdirSync(slugDir)
     .map((name) => join(slugDir, name))
     .filter((dir) => existsSync(join(dir, 'subagents')))
     .sort((left, right) => statSync(right).mtimeMs - statSync(left).mtimeMs)
-  if (sessions[0] === undefined) throw new Error(`no session with subagents under ${toSlash(slugDir)}`)
+  if (sessions[0] === undefined) throw new Error(`no session with subagents under ${toSlash(slugDir)}; ${TRANSCRIPTS_ONLY}`)
   return sessions[0]
 }
 

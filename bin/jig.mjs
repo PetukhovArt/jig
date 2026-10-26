@@ -5945,17 +5945,18 @@ var roleOf = (description) => ROLE_PATTERNS.find(([, pattern]) => pattern.test(d
 var mrOf = (description) => /(?:!|\bMR\s*#?)(\d+)/i.exec(description)?.[1];
 var claudeProjectsDir = (env = process.env) => join25(env["CLAUDE_CONFIG_DIR"] ?? join25(homedir2(), ".claude"), "projects");
 var projectSlug = (dir) => dir.replace(/[^a-zA-Z0-9]/g, "-");
+var TRANSCRIPTS_ONLY = "jig review cost reads Claude Code transcripts only";
 var resolveSessionDir = (given, projectDir, projectsDir) => {
   if (given !== void 0 && existsSync12(join25(given, "subagents"))) return given;
   if (given !== void 0) {
     const found = existsSync12(projectsDir) ? readdirSync12(projectsDir).map((slug) => join25(projectsDir, slug, given)).find((dir) => existsSync12(dir)) : void 0;
-    if (found === void 0) throw new Error(`session ${given} not found under ${toSlash(projectsDir)}`);
+    if (found === void 0) throw new Error(`session ${given} not found under ${toSlash(projectsDir)}; ${TRANSCRIPTS_ONLY}`);
     return found;
   }
   const slugDir = join25(projectsDir, projectSlug(projectDir));
-  if (!existsSync12(slugDir)) throw new Error(`no sessions for ${toSlash(projectDir)} under ${toSlash(projectsDir)}`);
+  if (!existsSync12(slugDir)) throw new Error(`no sessions for ${toSlash(projectDir)} under ${toSlash(projectsDir)}; ${TRANSCRIPTS_ONLY}`);
   const sessions = readdirSync12(slugDir).map((name) => join25(slugDir, name)).filter((dir) => existsSync12(join25(dir, "subagents"))).sort((left, right) => statSync10(right).mtimeMs - statSync10(left).mtimeMs);
-  if (sessions[0] === void 0) throw new Error(`no session with subagents under ${toSlash(slugDir)}`);
+  if (sessions[0] === void 0) throw new Error(`no session with subagents under ${toSlash(slugDir)}; ${TRANSCRIPTS_ONLY}`);
   return sessions[0];
 };
 var readAgents = (sessionDir2, prices) => {
