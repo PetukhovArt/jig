@@ -36,7 +36,9 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           version=$(node -p "require('./package.json').version")
-          gh issue list --state closed --label fixed-on-main --limit 200 --json number -q '.[].number' | while read -r n; do
-            gh issue comment "$n" --body "Released in jig $version: https://github.com/${{ github.repository }}/releases"
-            gh issue edit "$n" --remove-label fixed-on-main
-          done
+          retry() { for wait in 5 15 45; do "$@" && return 0; sleep "$wait"; done; "$@"; }
+          retry gh issue list --state closed --label fixed-on-main --limit 200 --json number -q '.[].number' > fixed.txt
+          while read -r n; do
+            retry gh issue edit "$n" --remove-label fixed-on-main
+            retry gh issue comment "$n" --body "Released in jig $version: https://github.com/${{ github.repository }}/releases"
+          done < fixed.txt

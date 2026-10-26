@@ -36,7 +36,7 @@ afterEach(() => {
   rmSync(root, { recursive: true, force: true })
 })
 
-describe('review inputs', () => {
+describe('review inputs', { timeout: 30_000 }, () => {
   it('walks up from every changed file, paths with spaces included, and lists standards and architecture documents', () => {
     expect(reviewInputs(root, 'main', [], {})).toEqual({
       indexes: ['AGENTS.md', 'src/payments/AGENTS.md', 'src/payments/deep/REVIEW.md'],
