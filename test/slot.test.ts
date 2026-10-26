@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { git } from '../src/core/git'
 import { toSlash } from '../src/core/paths'
-import { findDuplicates, lowestFreeSlot, runSlot, setEnvValue, slotNumber, slotWorktrees } from '../src/slot/slot'
+import { findDuplicates, lowestFreeSlot, runSlot, setEnvValue, slotNumber, slotUrl, slotWorktrees } from '../src/slot/slot'
 import { runWorktree, worktreeSweep } from '../src/worktree/worktree'
 
 const REPO = 'app'
@@ -51,6 +51,19 @@ describe('env key', () => {
   })
 })
 
+describe('agent-view url of a slot', () => {
+  const ports = { VITE_PORT: { base: 3000, step: 10, target: '.env' } }
+
+  it.each([
+    ['a base port moves with the slot', 'http://localhost:3000/app', 'http://localhost:3020/app'],
+    ['a loopback address too', 'http://127.0.0.1:3000/', 'http://127.0.0.1:3020/'],
+    ['a local port no ports entry offsets is dropped', 'http://localhost:5173/', undefined],
+    ['a remote host stays', 'https://staging.example.test/', 'https://staging.example.test/'],
+  ])('%s', (_name, url, expected) => {
+    expect(slotUrl(url, ports, 2)).toBe(expected)
+  })
+})
+
 describe('slot commands in a temporary repository', () => {
   let root: string
   let main: string
@@ -86,12 +99,13 @@ describe('slot commands in a temporary repository', () => {
           runtime: 'electron',
           ports: { VITE_SERVER_PORT: { base: 3000, step: 10 } },
           cdp: { base: 9900, step: 1 },
+          slotEnv: { key: 'SLOT' },
           install: 'node -e "require(\'fs\').writeFileSync(\'installed.txt\', \'x\')"',
         },
         worktree: { copyFiles: ['env/.env.local'] },
       }),
     )
-    writeFileSync(join(main, 'agent-view.config.json'), JSON.stringify({ runtime: 'browser', port: 9900, launch: 'npm start' }))
+    writeFileSync(join(main, 'agent-view.config.json'), JSON.stringify({ runtime: 'browser', port: 9900, url: 'http://localhost:3000/', launch: 'npm start' }))
     sh(main, 'add', '.')
     sh(main, 'commit', '-q', '-m', 'init')
     writeFileSync(join(main, '.env'), 'API=https://example.test\nVITE_SERVER_PORT=3000\n')
@@ -125,12 +139,13 @@ describe('slot commands in a temporary repository', () => {
     expect(first.stdout).toBe(`slot 1 ${toSlash(join(root, 'worktrees', `${REPO}-s1-one`))} ports VITE_SERVER_PORT=3010 cdp 9901\n`)
     expect(second.code).toBe(0)
     expect(second.stdout).toBe(`slot 2 ${toSlash(dir)} ports VITE_SERVER_PORT=3020 cdp 9902\n`)
-    expect(readFileSync(join(dir, '.env'), 'utf8')).toBe('API=https://example.test\nVITE_SERVER_PORT=3020\n')
+    expect(readFileSync(join(dir, '.env'), 'utf8')).toBe('API=https://example.test\nVITE_SERVER_PORT=3020\nSLOT=2\n')
     expect(readFileSync(join(dir, '.env.local'), 'utf8')).toBe('LOCAL=1\n')
     expect(readFileSync(join(dir, 'env', '.env.local'), 'utf8')).toBe('NESTED=1\n')
     expect(JSON.parse(readFileSync(join(dir, 'agent-view.config.json'), 'utf8'))).toEqual({
       runtime: 'electron',
       port: 9902,
+      url: 'http://localhost:3020/',
       launch: 'npm start',
     })
     expect(sh(dir, 'status', '--porcelain', '--untracked-files=no')).toBe('')

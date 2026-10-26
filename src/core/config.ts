@@ -49,6 +49,11 @@ export interface PortConfig {
   target: string
 }
 
+export interface SlotEnvConfig {
+  key: string
+  target: string
+}
+
 export interface CdpConfig {
   base: number
   step: number
@@ -63,6 +68,7 @@ export interface SlotsConfig {
   linkedPackages?: string[]
   ports?: Record<string, PortConfig>
   cdp?: CdpConfig
+  slotEnv?: SlotEnvConfig
   instance?: Record<string, unknown>
   clearCache?: string[]
 }
@@ -282,6 +288,17 @@ const readPorts = (validator: Validator, value: unknown, path: string): Record<s
   return ports
 }
 
+const ENV_KEY = /^[A-Za-z_]\w*$/
+
+const readSlotEnv = (validator: Validator, value: unknown, path: string): SlotEnvConfig | undefined => {
+  const object = validator.object(value, path, ['key', 'target'])
+  if (object === undefined || !required(validator, object, path, ['key'])) return undefined
+  const key = validator.string(object['key'], childPath(path, 'key'))
+  if (key !== undefined && !ENV_KEY.test(key)) return validator.report(childPath(path, 'key'), 'expected an env variable name')
+  const target = object['target'] === undefined ? DEFAULT_PORT_TARGET : validator.string(object['target'], childPath(path, 'target'))
+  return key === undefined || target === undefined ? undefined : { key, target }
+}
+
 const SLOT_KEYS = [
   'worktreesDir',
   'install',
@@ -291,6 +308,7 @@ const SLOT_KEYS = [
   'linkedPackages',
   'ports',
   'cdp',
+  'slotEnv',
   'instance',
   'clearCache',
 ] as const
@@ -309,6 +327,7 @@ const readSlots = (validator: Validator, value: unknown): SlotsConfig | undefine
     linkedPackages: (raw) => validator.strings(raw, at('linkedPackages')),
     ports: (raw) => readPorts(validator, raw, at('ports')),
     cdp: (raw) => readStep(validator, raw, at('cdp'), ['base', 'step']),
+    slotEnv: (raw) => readSlotEnv(validator, raw, at('slotEnv')),
     instance: (raw) => validator.object(raw, at('instance'), undefined),
     clearCache: (raw) => validator.strings(raw, at('clearCache')),
   }

@@ -2,7 +2,7 @@ import { spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
-import { loadConfig, type SlotsConfig, type WorktreeConfig } from '../core/config'
+import { loadConfig, type PortConfig, type SlotsConfig, type WorktreeConfig } from '../core/config'
 import { git } from '../core/git'
 import { parseJsonc } from '../core/jsonc'
 import { ensureJigDir, resolveProjectRoot, toSlash } from '../core/paths'
@@ -81,12 +81,42 @@ export const setEnvValue = (text: string, key: string, value: string): string =>
   return `${text}${separator}${key}=${value}${eol}`
 }
 
+const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]', '0.0.0.0'])
+
+/**
+ * The main checkout's app URL as the slot sees it: a local port that a `ports` entry starts at moves with the slot,
+ * another local port is dropped (it would reach slot 0), a remote URL stays.
+ */
+export const slotUrl = (url: string, ports: Readonly<Record<string, PortConfig>>, slot: number): string | undefined => {
+  let parsed: URL
+  try {
+    parsed = new URL(url)
+  } catch {
+    return url
+  }
+  if (!LOCAL_HOSTS.has(parsed.hostname) || parsed.port === '') return url
+  const port = Object.values(ports).find((entry) => entry.base === Number(parsed.port))
+  if (port === undefined) return undefined
+  parsed.port = String(port.base + slot * port.step)
+  return parsed.toString()
+}
+
 const agentViewConfig = (
   base: Record<string, unknown>,
   config: SlotsConfig,
+  slot: number,
   cdpPort: number,
 ): Record<string, unknown> => {
   const result: Record<string, unknown> = { ...base, port: cdpPort }
+  if (typeof base['url'] === 'string') {
+    const url = slotUrl(base['url'], config.ports ?? {}, slot)
+    if (url === undefined) {
+      delete result['url']
+      process.stderr.write(`jig: agent-view url ${base['url']} names a local port no slots.ports entry starts at: left out of the slot's ${AGENT_VIEW_CONFIG}\n`)
+    } else {
+      result['url'] = url
+    }
+  }
   const runtime = config.verifyRuntime ?? config.runtime
   if (runtime !== undefined && runtime !== 'none') {
     result['runtime'] = runtime
@@ -148,11 +178,18 @@ const insideDir = (dir: string, file: string): string => {
   return path
 }
 
+const writeEnv = (dir: string, target: string, key: string, value: number): void => {
+  const path = insideDir(dir, target)
+  const text = existsSync(path) ? readFileSync(path, 'utf8') : ''
+  writeLocalFile(dir, target, setEnvValue(text, key, String(value)))
+}
+
 const writePorts = (dir: string, slots: SlotsConfig, slot: number): void => {
   for (const [key, port] of Object.entries(slots.ports ?? {})) {
-    const path = insideDir(dir, port.target)
-    const text = existsSync(path) ? readFileSync(path, 'utf8') : ''
-    writeLocalFile(dir, port.target, setEnvValue(text, key, String(port.base + slot * port.step)))
+    writeEnv(dir, port.target, key, port.base + slot * port.step)
+  }
+  if (slots.slotEnv !== undefined) {
+    writeEnv(dir, slots.slotEnv.target, slots.slotEnv.key, slot)
   }
 }
 
@@ -163,10 +200,10 @@ const readJsonObject = (path: string): Record<string, unknown> => {
   return isObject ? (value as Record<string, unknown>) : {}
 }
 
-const writeAgentView = (mainRoot: string, dir: string, slots: SlotsConfig, cdpPort: number): void => {
+const writeAgentView = (mainRoot: string, dir: string, slots: SlotsConfig, slot: number, cdpPort: number): void => {
   const own = join(dir, AGENT_VIEW_CONFIG)
   const base = readJsonObject(existsSync(own) ? own : join(mainRoot, AGENT_VIEW_CONFIG))
-  writeLocalFile(dir, AGENT_VIEW_CONFIG, `${JSON.stringify(agentViewConfig(base, slots, cdpPort), null, 2)}\n`)
+  writeLocalFile(dir, AGENT_VIEW_CONFIG, `${JSON.stringify(agentViewConfig(base, slots, slot, cdpPort), null, 2)}\n`)
 }
 
 const branchExists = (cwd: string, branch: string): boolean =>
@@ -230,7 +267,7 @@ const slotNew = async (args: string[]): Promise<number> => {
   writePorts(dir, slots, slot)
   const cdpPort = slotCdpPort(slots, slot)
   if (cdpPort !== undefined) {
-    writeAgentView(context.mainRoot, dir, slots, cdpPort)
+    writeAgentView(context.mainRoot, dir, slots, slot, cdpPort)
   }
   for (const cache of slots.clearCache ?? []) {
     rmSync(insideDir(dir, cache), { recursive: true, force: true })

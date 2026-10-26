@@ -79,6 +79,16 @@
             "step": { "type": "integer", "minimum": 1 }
           }
         },
+        "slotEnv": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["key"],
+          "description": "Writes the slot number itself into an env file, for a dev script that derives its ports from it",
+          "properties": {
+            "key": { "type": "string", "pattern": "^[A-Za-z_]\\w*$" },
+            "target": { "type": "string", "default": ".env" }
+          }
+        },
         "instance": { "type": "object" },
         "clearCache": { "type": "array", "items": { "type": "string" } }
       }

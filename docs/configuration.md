@@ -49,11 +49,14 @@ Slots need a `slots` section; `worktreesDir` is required. The `worktree` section
     "worktreesDir": "..",
     "install": "npm ci",
     "ports": { "VITE_PORT": { "base": 5173, "step": 10 } },
-    "cdp": { "base": 9222, "step": 1 }
+    "cdp": { "base": 9222, "step": 1 },
+    "slotEnv": { "key": "SLOT", "target": ".env" }
   },
   "worktree": { "seedExclude": ["coverage"] }
 }
 ```
+
+`slots.slotEnv` writes the slot number itself into an env file, for a dev script that derives its ports from it. A slot's `agent-view.config.json` takes the main checkout's `url` with a `ports` base moved to the slot's port ([slots](../skills/jig-slots/references/app-slots.md)).
 
 ## Guard the config files
 

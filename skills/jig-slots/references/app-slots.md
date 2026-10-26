@@ -18,6 +18,7 @@ All project-specific knobs live there; a human edits it. Missing section: `jig s
     "VITE_SERVER_PORT": { "base": 3000, "step": 10, "target": ".env" }
   },
   "cdp": { "base": 9876, "step": 1 }, // remote-debugging port for agent-view/verify
+  "slotEnv": { "key": "SLOT", "target": ".env" }, // optional: the slot number itself, for a dev script that derives its ports from it
   "instance": { },                  // per-runtime identity so N app instances coexist, see Instance isolation
   "clearCache": []                  // build-cache dirs to wipe per slot when env is baked at build time
 },
@@ -41,6 +42,7 @@ What to detect:
 | `worktree.seedExclude` | Ignored files that must not reach another checkout: large local dumps, per-machine state. `[]` if none. |
 | `clearCache` | Build-cache dirs to wipe per slot **when env is baked at build time** (webpack `DefinePlugin`, Vite `define`). Usually `["node_modules/.cache"]`. `[]` when env is read at runtime, **or** when the project derives its cache key from the baked env (Install and build cache). |
 | `cdp` | Default `{ "base": 9876, "step": 1 }`. Avoid 9222 (Chrome's own default). |
+| `slotEnv` | Only when the dev script already derives its ports from a slot number in the env (`SLOT`, `INSTANCE`): `{ "key": "<that variable>", "target": "<the env file the script loads>" }` (`target` defaults to `.env`). The slot's file then carries `<key>=N`, so the base `dev` and `launch` start slot N's instance unchanged. Omit otherwise. |
 | `instance` | **electron:** `{ "userDataFlag": "--user-data-dir", "userDataDir": "<scratch>/userdata" }`. **tauri:** `{ "identifierBase": "<identifier from tauri.conf.json>", "configPatch": true, "cdpEnv": "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS" (Win) / "WEBKIT_INSPECTOR_SERVER" (Linux) }`. **browser:** `{ "userDataFlag": "--user-data-dir", "userDataDir": "<scratch>/chrome-profile" }`. |
 
 Rules for the proposal:
@@ -61,12 +63,12 @@ Leave a gap of at least `10 × step` between CDP bands. Avoid `9222` and anythin
 
 ## Provision
 
-`jig slot new [--slug <s>] [--branch <b>]` does, in order: `git worktree prune`; the lowest free N; `git worktree add`; `jig worktree seed` (every gitignored file and symlink of the main checkout, see Seed); writes each port key `base + N*step` into its `target`; writes the slot's `agent-view.config.json` with `cdp.base + N*cdp.step`; wipes `clearCache`; runs `install` in the slot. It prints `slot <N> <path> ports <k=v ...> cdp <port>`.
+`jig slot new [--slug <s>] [--branch <b>]` does, in order: `git worktree prune`; the lowest free N; `git worktree add`; `jig worktree seed` (every gitignored file and symlink of the main checkout, see Seed); writes each port key `base + N*step` into its `target`, and `slotEnv.key=N` into its `target`; writes the slot's `agent-view.config.json` with `cdp.base + N*cdp.step` and the main checkout's `url` moved to the slot (a local port that a `ports` entry starts at becomes that entry's slot port; another local port is left out with a warning, since it would reach slot 0; a remote URL stays); wipes `clearCache`; runs `install` in the slot. It prints `slot <N> <path> ports <k=v ...> cdp <port>`.
 
 Then, inside the printed path:
 1. **Relink**: re-link every `linkedPackages` entry: a plain `npm ci`/`install` reverts local `npm link` deps to the registry copy.
 2. **Env files**: check the dotenv path in the bundler config. An env file inside a folder ignored in full is not seeded, and the miss is silent: the build falls back to the tracked defaults and the app points at the wrong backend with no error. Tell the user which `worktree.copyFiles` entry to add.
-3. **Instance identity and launch** (hard requirement): every slot runs its **own app process** alongside the others. Apply the per-slot app identity and bake the CDP port and identity into the `launch` string of the slot's `agent-view.config.json` (Instance isolation, below). Provisioning is **not complete** until the multi-instance sanity check passes.
+3. **Instance identity and launch** (hard requirement): every slot runs its **own app process** alongside the others. `launch` is copied from the main checkout (or `dev`) as is: it reaches slot N's ports only when the command reads them from the env files jig wrote (`ports`, `slotEnv`). Otherwise apply the per-slot app identity and bake the CDP port and identity into the `launch` string of the slot's `agent-view.config.json` (Instance isolation, below). Provisioning is **not complete** until the multi-instance sanity check passes.
 4. Print a summary: dir, branch, slot N, each dev port and URL, CDP port, and the dev/verify commands to run **from the slot dir**.
 
 ## Seed

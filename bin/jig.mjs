@@ -2234,6 +2234,15 @@ var readPorts = (validator, value, path2) => {
   }
   return ports;
 };
+var ENV_KEY = /^[A-Za-z_]\w*$/;
+var readSlotEnv = (validator, value, path2) => {
+  const object = validator.object(value, path2, ["key", "target"]);
+  if (object === void 0 || !required(validator, object, path2, ["key"])) return void 0;
+  const key = validator.string(object["key"], childPath(path2, "key"));
+  if (key !== void 0 && !ENV_KEY.test(key)) return validator.report(childPath(path2, "key"), "expected an env variable name");
+  const target = object["target"] === void 0 ? DEFAULT_PORT_TARGET : validator.string(object["target"], childPath(path2, "target"));
+  return key === void 0 || target === void 0 ? void 0 : { key, target };
+};
 var SLOT_KEYS = [
   "worktreesDir",
   "install",
@@ -2243,6 +2252,7 @@ var SLOT_KEYS = [
   "linkedPackages",
   "ports",
   "cdp",
+  "slotEnv",
   "instance",
   "clearCache"
 ];
@@ -2260,6 +2270,7 @@ var readSlots = (validator, value) => {
     linkedPackages: (raw) => validator.strings(raw, at("linkedPackages")),
     ports: (raw) => readPorts(validator, raw, at("ports")),
     cdp: (raw) => readStep(validator, raw, at("cdp"), ["base", "step"]),
+    slotEnv: (raw) => readSlotEnv(validator, raw, at("slotEnv")),
     instance: (raw) => validator.object(raw, at("instance"), void 0),
     clearCache: (raw) => validator.strings(raw, at("clearCache"))
   };
@@ -7452,8 +7463,32 @@ var setEnvValue = (text3, key, value) => {
   const separator = text3 === "" || text3.endsWith("\n") ? "" : eol;
   return `${text3}${separator}${key}=${value}${eol}`;
 };
-var agentViewConfig = (base, config, cdpPort) => {
+var LOCAL_HOSTS = /* @__PURE__ */ new Set(["localhost", "127.0.0.1", "[::1]", "0.0.0.0"]);
+var slotUrl = (url, ports, slot) => {
+  let parsed;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return url;
+  }
+  if (!LOCAL_HOSTS.has(parsed.hostname) || parsed.port === "") return url;
+  const port = Object.values(ports).find((entry) => entry.base === Number(parsed.port));
+  if (port === void 0) return void 0;
+  parsed.port = String(port.base + slot * port.step);
+  return parsed.toString();
+};
+var agentViewConfig = (base, config, slot, cdpPort) => {
   const result = { ...base, port: cdpPort };
+  if (typeof base["url"] === "string") {
+    const url = slotUrl(base["url"], config.ports ?? {}, slot);
+    if (url === void 0) {
+      delete result["url"];
+      process.stderr.write(`jig: agent-view url ${base["url"]} names a local port no slots.ports entry starts at: left out of the slot's ${AGENT_VIEW_CONFIG2}
+`);
+    } else {
+      result["url"] = url;
+    }
+  }
   const runtime = config.verifyRuntime ?? config.runtime;
   if (runtime !== void 0 && runtime !== "none") {
     result["runtime"] = runtime;
@@ -7497,11 +7532,17 @@ var insideDir = (dir, file) => {
   if (rel === "" || rel.startsWith("..") || isAbsolute6(rel)) throw new Error(`path ${file} leaves the slot dir`);
   return path2;
 };
+var writeEnv = (dir, target, key, value) => {
+  const path2 = insideDir(dir, target);
+  const text3 = existsSync17(path2) ? readFileSync28(path2, "utf8") : "";
+  writeLocalFile(dir, target, setEnvValue(text3, key, String(value)));
+};
 var writePorts = (dir, slots, slot) => {
   for (const [key, port] of Object.entries(slots.ports ?? {})) {
-    const path2 = insideDir(dir, port.target);
-    const text3 = existsSync17(path2) ? readFileSync28(path2, "utf8") : "";
-    writeLocalFile(dir, port.target, setEnvValue(text3, key, String(port.base + slot * port.step)));
+    writeEnv(dir, port.target, key, port.base + slot * port.step);
+  }
+  if (slots.slotEnv !== void 0) {
+    writeEnv(dir, slots.slotEnv.target, slots.slotEnv.key, slot);
   }
 };
 var readJsonObject = (path2) => {
@@ -7510,10 +7551,10 @@ var readJsonObject = (path2) => {
   const isObject7 = typeof value === "object" && value !== null && !Array.isArray(value);
   return isObject7 ? value : {};
 };
-var writeAgentView = (mainRoot, dir, slots, cdpPort) => {
+var writeAgentView = (mainRoot, dir, slots, slot, cdpPort) => {
   const own = join30(dir, AGENT_VIEW_CONFIG2);
   const base = readJsonObject(existsSync17(own) ? own : join30(mainRoot, AGENT_VIEW_CONFIG2));
-  writeLocalFile(dir, AGENT_VIEW_CONFIG2, `${JSON.stringify(agentViewConfig(base, slots, cdpPort), null, 2)}
+  writeLocalFile(dir, AGENT_VIEW_CONFIG2, `${JSON.stringify(agentViewConfig(base, slots, slot, cdpPort), null, 2)}
 `);
 };
 var branchExists = (cwd, branch) => git(["show-ref", "--verify", "--quiet", `refs/heads/${branch}`], cwd).ok;
@@ -7564,7 +7605,7 @@ var slotNew = async (args) => {
   writePorts(dir, slots, slot);
   const cdpPort = slotCdpPort(slots, slot);
   if (cdpPort !== void 0) {
-    writeAgentView(context.mainRoot, dir, slots, cdpPort);
+    writeAgentView(context.mainRoot, dir, slots, slot, cdpPort);
   }
   for (const cache of slots.clearCache ?? []) {
     rmSync7(insideDir(dir, cache), { recursive: true, force: true });
