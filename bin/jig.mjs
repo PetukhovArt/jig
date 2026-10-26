@@ -3456,9 +3456,10 @@ var checkCatalogEntry = (entry, config, tools, discovery) => {
   if (shim !== void 0) return warn(`${entry.name}: shim ${shim} has no recognizable target, tool not used`);
   return warn(`${entry.name}: on in config, binary not installed, tool not used`);
 };
-var checkAgentViewSetup = (discovery) => {
+var hasUiFiles = (projectRoot) => projectFiles(projectRoot).some(createMatcher(agentViewCheck.files));
+var checkAgentViewSetup = (projectRoot, discovery) => {
   const agentView = discovery.found.find((item) => item.name === agentViewCheck.name);
-  if (agentView?.status === "ready") return void 0;
+  if (agentView?.status === "ready" || !hasUiFiles(projectRoot)) return void 0;
   const setup = agentViewCheck.setup?.join(", then ") ?? "agent-view init";
   return warn(`agent-view: no ${AGENT_VIEW_CONFIG}; UI changes cannot be proven in the running app. Set it up: ${setup}`);
 };
@@ -3512,7 +3513,7 @@ var doctorChecks = (projectRoot, pluginRoot) => {
   const config = loadConfig(projectRoot);
   const { tools } = resolveTools(projectRoot, config);
   const discovery = discover(projectRoot);
-  const agentViewSetup = checkAgentViewSetup(discovery);
+  const agentViewSetup = checkAgentViewSetup(projectRoot, discovery);
   return [
     checkNode(),
     ok(`plugin: ${pluginRoot}`),

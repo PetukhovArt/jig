@@ -27,7 +27,7 @@ Run as `node <plugin root>/bin/jig.mjs <command>`.
 | `task-status open [--lang en\|ru] [--no-browser]` / `task-status path` | builds the HTML page from the journal, opens it in the default browser (not with `--no-browser` or `CI` set) and prints its path; the page takes answers to open questions and copies them for the chat / prints the journal path |
 | `tiers [--agent <id>] [--json]` | the models of each tier for the agent |
 | `loop [--days 7]` | aggregates the journal into improvement candidates |
-| `doctor` | diagnostics: Node, config, each catalog tool, agent-view setup, deny block (in Claude Code or a plain terminal), journal size, locks |
+| `doctor` | diagnostics: Node, config, each catalog tool, agent-view setup (in a project with markup or style files), deny block (in Claude Code or a plain terminal), journal size, locks |
 | `version` | plugin version |
 
 `hook <name>` is the entry point for `hooks/hooks.json`, not for people.

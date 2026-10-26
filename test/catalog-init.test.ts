@@ -265,9 +265,12 @@ describe('jig init: the project type-check script', () => {
 })
 
 describe('jig doctor', () => {
-  it('suggests setting agent-view up when the project has no agent-view.config.json', () => {
-    const texts = doctorChecks(root, root).map((check) => `${check.status} ${check.text}`)
-    expect(texts).toContainEqual(expect.stringMatching(/^warn agent-view: no agent-view\.config\.json; .*agent-view init$/))
+  it('suggests setting agent-view up when the project has UI files and no agent-view.config.json', () => {
+    const agentViewTexts = () => doctorChecks(root, root).map((check) => `${check.status} ${check.text}`).filter((text) => text.includes('agent-view.config.json'))
+    write('src/server.ts', 'export {}\n')
+    expect(agentViewTexts()).toEqual([])
+    write('src/App.vue', '<template />\n')
+    expect(agentViewTexts()).toContainEqual(expect.stringMatching(/^warn agent-view: no agent-view\.config\.json; .*agent-view init$/))
     write('agent-view.config.json', '{}')
     expect(doctorChecks(root, root).map((check) => check.text)).not.toContainEqual(expect.stringMatching(/no agent-view\.config\.json/))
   })

@@ -3,12 +3,13 @@ import { join } from 'node:path'
 import { CATALOG, type CatalogEntry } from './catalog'
 import { AGENT_VIEW_CONFIG, agentViewCheck } from './catalog/proofs'
 import { loadConfig, type LoadedConfig, type ToolSettings } from './core/config'
+import { createMatcher } from './core/glob'
 import { JOURNAL_MAX_BYTES, listJournalFiles } from './core/journal'
 import { parseJsonc } from './core/jsonc'
 import { jigPaths, resolvePluginRoot, resolveProjectRoot } from './core/paths'
 import { resolveTools, type PlanTools } from './core/plan'
 import { findUnresolvedShim, isLockAbandoned, readLock } from './core/proc'
-import { discover, type Discovery } from './init/discover'
+import { discover, projectFiles, type Discovery } from './init/discover'
 import { detectAgent, isUserMapped, loadUserConfig, resolveTiers, tierEntries, UNKNOWN_AGENT } from './tiers/tiers'
 
 type Command = (args: string[]) => number | Promise<number>
@@ -91,9 +92,11 @@ const checkCatalogEntry = (entry: CatalogEntry, config: LoadedConfig, tools: Pla
   return warn(`${entry.name}: on in config, binary not installed, tool not used`)
 }
 
-const checkAgentViewSetup = (discovery: Discovery): Check | undefined => {
+const hasUiFiles = (projectRoot: string): boolean => projectFiles(projectRoot).some(createMatcher(agentViewCheck.files))
+
+const checkAgentViewSetup = (projectRoot: string, discovery: Discovery): Check | undefined => {
   const agentView = discovery.found.find((item) => item.name === agentViewCheck.name)
-  if (agentView?.status === 'ready') return undefined
+  if (agentView?.status === 'ready' || !hasUiFiles(projectRoot)) return undefined
   const setup = agentViewCheck.setup?.join(', then ') ?? 'agent-view init'
   return warn(`agent-view: no ${AGENT_VIEW_CONFIG}; UI changes cannot be proven in the running app. Set it up: ${setup}`)
 }
@@ -156,7 +159,7 @@ export const doctorChecks = (projectRoot: string, pluginRoot: string): Check[] =
   const config = loadConfig(projectRoot)
   const { tools } = resolveTools(projectRoot, config)
   const discovery = discover(projectRoot)
-  const agentViewSetup = checkAgentViewSetup(discovery)
+  const agentViewSetup = checkAgentViewSetup(projectRoot, discovery)
   return [
     checkNode(),
     ok(`plugin: ${pluginRoot}`),
