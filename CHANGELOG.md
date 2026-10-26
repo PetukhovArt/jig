@@ -1,5 +1,41 @@
 # jig
 
+## 0.3.0
+
+### Minor Changes
+
+- [`ee2e3ca`](https://github.com/PetukhovArt/jig/commit/ee2e3ca783c559db5269e7f8ec825a0d4f3de27d) Thanks [@PetukhovArt](https://github.com/PetukhovArt)! - The task-status page takes answers again and opens itself when a run ends.
+
+  - A click on an open question opens its answer box; drafts survive a reload, and `Copy answers` puts them on the clipboard as `<question>` then `→ <answer>`, ready for the chat.
+  - `jig task-status open` opens the page in the default browser (`--no-browser` or `CI` set: build only); afk-mode, metric-climb and custom-flow run it before their reply.
+
+### Patch Changes
+
+- [`d5940dd`](https://github.com/PetukhovArt/jig/commit/d5940dda4b123039fd487646cba3c9122b798684) Thanks [@PetukhovArt](https://github.com/PetukhovArt)! - Agnostic gaps from the pre-release audit ([#17](https://github.com/PetukhovArt/jig/issues/17)):
+
+  - The project root comes from `JIG_PROJECT_DIR` under any agent, then the variable the agent's adapter names (Claude Code: `CLAUDE_PROJECT_DIR`), then the git top level.
+  - `jig review cost` says it reads Claude Code transcripts only when it finds no session.
+  - `jig doctor` suggests setting agent-view up only in a project with markup or style files.
+  - Review step examples name `<deep model>`, `<standard model>` and `<model A> → judge <model B>` instead of Claude model names.
+  - The slot references name the agent's shell and file-write tools instead of Claude Code's, launch detached with `nohup` on macOS, which has no `setsid`, and give the PowerShell form of the Windows launch.
+  - `jig-video` finds agent-view through `AGENT_VIEW_JS`, the global npm root or the `agent-view` command on `PATH`, so nvm-windows and volta installs work.
+  - `jig doctor` warns when `PATH` has no `node` (or one older than 20), which the hooks run bare; `docs/hooks.md` explains the macOS Dock and nvm case.
+  - `evals/run-local.mjs` starts an npm-installed `claude.cmd` on Windows through node, as `resolveBin` does.
+
+- [`5bc519b`](https://github.com/PetukhovArt/jig/commit/5bc519bdff608213444de38631b41cbae844980d) Thanks [@PetukhovArt](https://github.com/PetukhovArt)! - `jig init` finds a marker config kept out of git (`.git/info/exclude` or `.gitignore`, outside ignored folders), so a locally excluded `stratum.config.jsonc` with a global `stratum-lint` reads as configured, and it no longer asks for `slots.dev` and `slots.install` when the config already has a `slots` section. ([#7](https://github.com/PetukhovArt/jig/issues/7))
+
+- [`3158f9c`](https://github.com/PetukhovArt/jig/commit/3158f9c227f55b2b1c183a47698216b629737585) Thanks [@PetukhovArt](https://github.com/PetukhovArt)! - Skill snippets no longer need bash. `jig review rules [<base>]` prints the rules indexes on the walk up from the changed files, the standard documents and the architecture documents (paths with spaces included), replacing the `xargs`/`while read` walk and the `grep` searches; `jig review-plan --state` replaces the hash and per-file patch loops of a re-review. `mermaid-ascii` reads a file, forge bodies are written with the agent's file-write tool with the PowerShell form given, the CLI path is quoted (`node "<root>/bin/jig.mjs"`), and `docs/agents.md` says what remains POSIX shell. ([#16](https://github.com/PetukhovArt/jig/issues/16))
+
+- [`7689c62`](https://github.com/PetukhovArt/jig/commit/7689c6244a0bcef24fc6928820e6a193cb1d06ae) Thanks [@PetukhovArt](https://github.com/PetukhovArt)! - A tool or check that times out is ended with its whole process tree (`taskkill /T` on Windows, the process group elsewhere), and the run settles shortly after the tool exits even when a grandchild still holds its output, so the stop hook reports the timeout at once instead of hanging. ([#15](https://github.com/PetukhovArt/jig/issues/15))
+
+- [`6ae8a7c`](https://github.com/PetukhovArt/jig/commit/6ae8a7c7911cfb865a67b32937d608a14c1f1a75) Thanks [@PetukhovArt](https://github.com/PetukhovArt)! - Re-reviews in a review cycle cost what their new work costs. `jig review-plan <base> --rereview --state <path>` takes the scope from per-file patches against the base, so a base merged into the branch or a force-push counts only the branch's own changes, and prints a `re-review scope:` line; the cycle runs it before spawning and forks a runner only for an inline re-review. The poster always posts the state's whole postable set, whatever replies its brief lists, and `jig review state` prints that set as a `postable:` line the cycle checks the poster's report against. ([#19](https://github.com/PetukhovArt/jig/issues/19))
+
+- [`8bde7d4`](https://github.com/PetukhovArt/jig/commit/8bde7d440f1c782ef3af7ea8165d2b87a6ccaf59) Thanks [@PetukhovArt](https://github.com/PetukhovArt)! - A direct review is cheaper and fully counted. `jig review cost` reads the session's own transcript: its turns from a `jig-review` invocation to the next human prompt count as the `runner` of the merge request, so $ per 1000 lines and $ per thread compare with a review cycle's. A review whose plan has finders runs in one review-runner subagent instead of the session that asked for it (`jig review-plan` prints a `runner:` line), and the runner reads no state, posting doc or later step before forking its finders, so forks inherit only the review's context. ([#18](https://github.com/PetukhovArt/jig/issues/18))
+
+- [`5665d14`](https://github.com/PetukhovArt/jig/commit/5665d14c026bb85c222fc6b07a8937edab0d7066) Thanks [@PetukhovArt](https://github.com/PetukhovArt)! - `jig slot new` writes the slot's `agent-view.config.json` with the main checkout's `url` moved to the slot: a local port that a `ports` entry starts at becomes the slot's port, another local port is left out with a warning instead of pointing at slot 0. A new `slots.slotEnv` (`{ "key": "SLOT", "target": ".env" }`) writes the slot number itself into an env file, so a dev script that derives its ports from it starts the slot's own instance from the unchanged `dev` or `launch`. ([#8](https://github.com/PetukhovArt/jig/issues/8))
+
+- [`9505d9b`](https://github.com/PetukhovArt/jig/commit/9505d9be9a67b40e3c565b0c8ed16015ac05725f) Thanks [@PetukhovArt](https://github.com/PetukhovArt)! - The end-of-turn gate no longer passes when a check did not finish. A tool or check that times out, crashes or runs out of the shared budget blocks the turn once with `gate/incomplete`, naming the tool, and `jig check stop` prints an `incomplete:` line and exits 3 instead of `clean`. Each tool and check takes a `timeout` in seconds, and eslint's default grows by a second per file. ([#6](https://github.com/PetukhovArt/jig/issues/6))
+
 ## 0.2.0
 
 ### Minor Changes

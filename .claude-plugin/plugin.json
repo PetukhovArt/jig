@@ -1,6 +1,6 @@
 {
   "name": "jig",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Deterministic rails for AI coding agents: gates on every edit and at the end of a turn, knowledge atoms delivered when they apply, and flows for common developer tasks.",
   "author": { "name": "Artem Petukhov", "url": "https://github.com/PetukhovArt" },
   "homepage": "https://github.com/PetukhovArt/jig",
