@@ -159,6 +159,22 @@ const findBash = () => {
 }
 const BASH = findBash()
 
+// spawn starts only .exe and .com on Windows: an npm-installed `claude.cmd` runs its script with node instead,
+// the rule resolveBin in src/core/proc.ts follows.
+const resolveCommand = (name, env = process.env, platform = process.platform) => {
+  if (platform !== 'win32') return [name]
+  for (const dir of (env.PATH ?? env.Path ?? '').split(';').filter(Boolean)) {
+    if (['.exe', '.com'].some((extension) => existsSync(join(dir, name + extension)))) return [join(dir, name)]
+    const shim = join(dir, `${name}.cmd`)
+    if (!existsSync(shim)) continue
+    const target = [...readFileSync(shim, 'utf8').matchAll(/"%~?dp0%?\\([^"%]+\.js)"/gi)].at(-1)?.[1]
+    if (target !== undefined) return [process.execPath, join(dir, ...target.split('\\'))]
+  }
+  return [name]
+}
+const CLAUDE = resolveCommand('claude')
+const runClaude = (args, options) => run(CLAUDE[0], [...CLAUDE.slice(1), ...args], options)
+
 const isolatedEnv = () => {
   const env = {}
   for (const [key, value] of Object.entries(process.env)) {
@@ -361,7 +377,7 @@ const gradeLlm = async (grader, context, options) => {
   const evidence = raw === undefined || raw === '' ? '(empty: nothing found)' : cap(raw, JUDGE_INPUT_CAP)
   const images = focus === 'ui' ? context.ui.screenshots.filter((path) => existsSync(path)) : []
   const args = ['-p', '--model', options.judgeModel, '--effort', options.judgeEffort, '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose', '--max-turns', '1', '--tools', '', ...ISOLATION_FLAGS]
-  const result = await run('claude', args, { cwd: tmpdir(), input: judgeInput(judgePrompt(grader, evidence, focusLabel(focus)), images), timeoutMs: 300_000 })
+  const result = await runClaude(args, { cwd: tmpdir(), input: judgeInput(judgePrompt(grader, evidence, focusLabel(focus)), images), timeoutMs: 300_000 })
   const verdict = parseStream(result.stdout).findLast((event) => event.type === 'result')
   if (!verdict) return { passed: false, reason: `judge failed: ${cap(result.stderr || result.stdout, 300)}`, costUsd: 0 }
   const text = String(verdict.result ?? '').trim()
@@ -495,7 +511,7 @@ const runAgent = async (testCase, arm, index, options, outDir, runDir, tempDir, 
   record.cdpPort = await ownCdpPort(runDir)
   const base = git(runDir, ['rev-parse', 'HEAD']).stdout.trim()
   const tracePath = join(outDir, 'traces', `${testCase.name}-${arm}-${index + 1}.jsonl`)
-  const agent = await run('claude', agentArgs(testCase, arm, options), {
+  const agent = await runClaude(agentArgs(testCase, arm, options), {
     cwd: runDir,
     env: { ...isolatedEnv(), TMPDIR: tempDir, TEMP: tempDir, TMP: tempDir },
     input: testCase.prompt,
@@ -837,7 +853,7 @@ const main = async () => {
   process.stdout.write(`\n${summary}\nwritten ${join(outDir, 'summary.md')}\n`)
 }
 
-export { BASH, TRACE_CAP, cap, diffAgainstBase, git, gradeAll, lastMessage, loadCases, parseStream, removeDir, run, runHiddenTests, runUiCheck, scaffoldInto, toolCallText, traceText, uiContext, weightedScore, withApp }
+export { BASH, TRACE_CAP, resolveCommand, cap, diffAgainstBase, git, gradeAll, lastMessage, loadCases, parseStream, removeDir, run, runHiddenTests, runUiCheck, scaffoldInto, toolCallText, traceText, uiContext, weightedScore, withApp }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url))
   main().catch((error) => {

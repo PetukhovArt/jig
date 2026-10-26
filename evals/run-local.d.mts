@@ -36,4 +36,5 @@ export declare const runHiddenTests: (testCase: EvalCase, runDir: string, tempDi
 
 export declare const runUiCheck: (testCase: EvalCase, runDir: string, tempDir: string, outDir: string, id: string) => Promise<UiCheck>
 
+export declare const resolveCommand: (name: string, env?: NodeJS.ProcessEnv, platform?: NodeJS.Platform) => string[]
 export declare const withApp: <T>(task: () => Promise<T>) => Promise<T>

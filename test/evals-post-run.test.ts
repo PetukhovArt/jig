@@ -3,7 +3,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, wr
 import { tmpdir } from 'node:os'
 import { delimiter, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { runHiddenTests, runUiCheck, withApp, type EvalCase } from '../evals/run-local.mjs'
+import { resolveCommand, runHiddenTests, runUiCheck, withApp, type EvalCase } from '../evals/run-local.mjs'
 
 const slash = (path: string) => path.replace(/\\/g, '/')
 const git = (cwd: string, ...args: string[]) => spawnSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', ...args], { cwd, encoding: 'utf8' })
@@ -172,5 +172,19 @@ fi
     await Promise.all([withApp(task('a', 30)), withApp(task('b', 1)), withApp(async () => Promise.reject(new Error('x'))).catch(() => undefined), withApp(task('c', 1))])
 
     expect(events).toEqual(['a start', 'a end', 'b start', 'b end', 'c start', 'c end'])
+  })
+})
+
+describe('the claude command on Windows', () => {
+  it('runs an npm .cmd shim through node and keeps a native claude.exe', () => {
+    const shims = join(root, 'npm')
+    mkdirSync(shims, { recursive: true })
+    writeFileSync(join(shims, 'claude.cmd'), '@ECHO off\r\n"%_prog%"  "%dp0%\\node_modules\\@anthropic-ai\\claude-code\\cli.js" %*\r\n')
+    expect(resolveCommand('claude', { PATH: shims }, 'win32')).toEqual([process.execPath, join(shims, 'node_modules', '@anthropic-ai', 'claude-code', 'cli.js')])
+    const native = join(root, 'native')
+    mkdirSync(native, { recursive: true })
+    writeFileSync(join(native, 'claude.exe'), '')
+    expect(resolveCommand('claude', { PATH: [native, shims].join(';') }, 'win32')).toEqual([join(native, 'claude')])
+    expect(resolveCommand('claude', { PATH: shims }, 'linux')).toEqual(['claude'])
   })
 })
