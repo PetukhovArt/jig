@@ -1,6 +1,6 @@
 # Tiers
 
-Every role template names a tier and an effort in its frontmatter: `metadata.tier` (`deep`, `standard` or `fast`) and `metadata.effort` (`low`, `medium` or `high`). They describe the job, not a model. `node <root>/bin/jig.mjs tiers` prints which models of the current agent serve each tier.
+Every role template names a tier and an effort in its frontmatter: `metadata.tier` (`deep`, `standard` or `fast`) and `metadata.effort` (`low`, `medium` or `high`). They describe the job, not a model. `node "<root>/bin/jig.mjs" tiers` prints which models of the current agent serve each tier.
 
 ## Tier
 

@@ -2,7 +2,7 @@
 
 Turns a week of repeated signals from the journal into proposals. The human approves; you apply nothing without that approval.
 
-1. Run `node <root>/bin/jig.mjs loop` (`--days <n>` for another window than 7 days). It aggregates `.jig/journal/*.jsonl` and prints the path of `.jig/runs/_loop/<YYYY-MM-DD>/candidates.md`.
+1. Run `node "<root>/bin/jig.mjs" loop` (`--days <n>` for another window than 7 days). It aggregates `.jig/journal/*.jsonl` and prints the path of `.jig/runs/_loop/<YYYY-MM-DD>/candidates.md`.
 2. Read the candidates file: a table of signal, rule, count and examples with `file:line` and time. No candidates: say so and stop.
 3. Spawn three subagents in parallel, with roles `reflect-judgment`, `reflect-tooling` and `reflect-divergent`. Each gets the path of its role file and the candidates file path.
 4. Spawn one subagent with role `reflect-synthesizer` on the three tables.

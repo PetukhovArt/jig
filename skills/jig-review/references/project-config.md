@@ -1,6 +1,6 @@
 # Project config
 
-Optional: `.jig/review.jsonc` in the repository, committed. No file: the defaults below. `jig review-plan` reads `angles`, `tiers`, `maxParallel`, `layout` and `testPaths` from it and rejects a malformed value with its path; the agent reads the rest.
+Optional: `.jig/review.jsonc` in the repository, committed. No file: the defaults below. `jig review-plan` reads `angles`, `tiers`, `maxParallel`, `layout` and `testPaths` from it and rejects a malformed value with its path; `jig review rules` reads `discover.rules`, `.standards` and `.exclude`; the agent reads the rest.
 
 Merge at the top level: a declared key replaces the default one whole; the others come from the default. Exceptions: `angles` and `tiers` merge per entry. The summary always says `config: .jig/review.jsonc` or `config: default`.
 

@@ -8,7 +8,7 @@ disable-model-invocation: true
 
 The trail is one append-only TSV journal per branch: `.jig/runs/<branch>/task-status.tsv` in the project, kept out of git. A reviewer who stepped away reads it, or the page built from it, and follows the evidence.
 
-CLI: `node <root>/bin/jig.mjs task-status <log|open|path>`. `<root>` is the plugin root: `${CLAUDE_PLUGIN_ROOT}` when the agent sets it, otherwise the directory two levels above this file.
+CLI: `node "<root>/bin/jig.mjs" task-status <log|open|path>`. `<root>` is the plugin root: `${CLAUDE_PLUGIN_ROOT}` when the agent sets it, otherwise the directory two levels above this file.
 
 ## Commands
 

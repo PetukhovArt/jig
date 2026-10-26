@@ -64,8 +64,10 @@ src/
 - Show component interaction, control flow, or data flow with **mermaid-ascii**. Always run it, never hand-draw and never emit a ```mermaid block. It renders `graph` only, so express everything as a graph (`graph LR` / `graph TD`) and paste the raw output into a ```text block:
 
 ```
-printf 'graph LR\nUser-->|prompt|UI\nUI-->|request|Daemon\nDaemon-->|stream|UI\n' | mermaid-ascii
+mermaid-ascii -f <temp dir>/graph.mmd
 ```
+
+  Write the graph to that file with the agent's file-write tool first (`graph LR`, then `User-->|prompt|UI`, `UI-->|request|Daemon`, `Daemon-->|stream|UI`, one per line): a file works in every shell, where `printf … | mermaid-ascii` needs bash.
 
   No sequence diagrams: a message exchange is a graph with labelled edges, a lifecycle is a `graph TD` of states. Keep one graph under ~8 nodes; split otherwise. mermaid-ascii is optional. If the binary is missing, say so and give the install: prebuilt zips at https://github.com/AlexanderGrooff/mermaid-ascii/releases, or `go install github.com/AlexanderGrooff/mermaid-ascii@latest`. Then explain without the graph, using the other views.
 

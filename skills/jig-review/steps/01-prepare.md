@@ -25,7 +25,7 @@ The reviewed diff is `git diff $(git merge-base <base> HEAD)`: the commits of th
 
 **Scope in mode `pre-mr`.** The working tree is part of the diff, so uncommitted work that is not the task's (another agent, a parallel task, the user's edits) would be counted and reviewed. `git status` shows changes outside the task's files → pass the task's paths after `--` to `jig review-plan` (relative to the current directory, as in git). It counts, shapes and prints the diff for those paths only, and fails when nothing under them changed.
 
-**Three dots, never two.** `<base>..HEAD` pulls in everything merged into the branch from the base: on a branch with a merge that is dozens of foreign files every finder reads and nobody can post on. A range computed with two dots anywhere in the run is intersected with `git diff --name-only <base>...HEAD`, and what was cut is named in the summary ([re-review](09-rereview.md) computes its scope this way).
+**Three dots, never two.** `<base>..HEAD` pulls in everything merged into the branch from the base: on a branch with a merge that is dozens of foreign files every finder reads and nobody can post on. A range computed with two dots anywhere in the run is intersected with `git diff --name-only <base>...HEAD`, and what was cut is named in the summary ([re-review](09-rereview.md) avoids two-dot ranges altogether: its scope comes from per-file patches against the base).
 
 ## Selector
 
@@ -64,10 +64,10 @@ The merge request description is only a source of references: the author of the 
 
 ## Layout
 
-**A re-review plans on its new range, not here.** Mode `review` with a merge request whose state file exists (`jig review-cycle state-path <number>` prints a path that exists): skip the command below, read [02-rules](02-rules.md), [03-state](03-state.md) and [09-rereview](09-rereview.md); 09 runs `jig review-plan --rereview` on the new range, and its list is the steps for the rest of the run. A full-diff plan of a re-review lists finder and verify steps the run never takes.
+**A re-review plans on its new range, not here.** Mode `review` with a merge request whose state file exists (`jig review-cycle state-path <number>` prints a path that exists): skip the command below, read [02-rules](02-rules.md), [03-state](03-state.md) and [09-rereview](09-rereview.md); 09 runs `jig review-plan <base> --rereview --state <state path> --mr` on the new range, and its list is the steps for the rest of the run. A full-diff plan of a re-review lists finder and verify steps the run never takes.
 
 ```bash
-node <root>/bin/jig.mjs review-plan <base> [--selector <selector>] [--layout <layout>] [--spec] [--mode pre-mr] [--mr] [--no-state] [-- <path>...]
+node "<root>/bin/jig.mjs" review-plan <base> [--selector <selector>] [--layout <layout>] [--spec] [--mode pre-mr] [--mr] [--no-state] [-- <path>...]
 ```
 
 `--spec` when a spec was found. `--mode pre-mr` in mode `pre-mr`. `--mr` in mode `review` when a merge request is known: it turns state, comment texts, re-review and posting on. `--no-state` passes the flag of the same name. No selector argument: pass none; the command picks the default. It prints, and with `--json` returns as data:

@@ -8,7 +8,7 @@ argument-hint: "<task, with how you will know it is done>"
 # jig
 
 Plugin root: `${CLAUDE_PLUGIN_ROOT}` when the agent sets it, otherwise the directory two levels above this file. Below, `<root>` means this path.
-CLI: `node <root>/bin/jig.mjs <command>`; `jig <command>` in flows means this. Atoms: `<root>/atoms/<name>.md`. Flows: `<root>/skills/jig/flows/<name>.md`. Roles: `<root>/skills/jig/references/roles/<name>.md`, indexed with tier and effort in `<root>/skills/jig/references/roles.md`.
+CLI: `node "<root>/bin/jig.mjs" <command>`; `jig <command>` in flows means this. Atoms: `<root>/atoms/<name>.md`. Flows: `<root>/skills/jig/flows/<name>.md`. Roles: `<root>/skills/jig/references/roles/<name>.md`, indexed with tier and effort in `<root>/skills/jig/references/roles.md`.
 
 ## Non-negotiables
 These hold for the whole task, in every flow.

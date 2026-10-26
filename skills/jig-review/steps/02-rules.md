@@ -6,20 +6,13 @@ What to look for comes from `discover` in the [project config](../references/pro
 
 A rules document is **searched for, not assumed**: a repository need not call it `REVIEW.md`, and the main rules often sit next to the code, not at the root.
 
-Take the directories the diff touches and walk from each up to the root, collecting files named in `discover.rules`. Shared ancestors collapse: two files in one directory make one walk.
+Take the directories the diff touches and walk from each up to the root, collecting files named in `discover.rules`:
 
-```bash
-git diff --name-only <base>...HEAD | xargs -n1 dirname | sort -u | while read d; do
-  while [ -n "$d" ] && [ "$d" != "." ]; do
-    for f in AGENTS.md CLAUDE.md CLAUDE.local.md REVIEW.md; do
-      [ -f "$d/$f" ] && echo "$d/$f"
-    done
-    d=$(dirname "$d")
-  done
-done | sort -u
+```
+node "<root>/bin/jig.mjs" review rules <base> [-- <path>...]
 ```
 
-Plus the same names at the repository root. Use the names from `discover.rules`, not the literal list above, when the config sets them.
+It prints `index <path>` for each rules index on the walk up from every changed file's directory to the repository root, root included, by the names of `discover.rules` (default `AGENTS.md`, `CLAUDE.md`, `CLAUDE.local.md`, `REVIEW.md`); `standard <path>` for the standard documents of step 2; `architecture <path>` for the documents [angle 13](../angles/13.architecture.md) section B may need. It reads `discover` from `.jig/review.jsonc` itself.
 
 **A file's scope is its directory.** A rule from `src/payments/AGENTS.md` applies only to files under `src/payments/`. A finding by it outside that directory is invalid.
 
@@ -29,11 +22,7 @@ Plus the same names at the repository root. Use the names from `discover.rules`,
 
 Only when the [selector](../references/selector.md) runs angle 6, 10 or 13: only the rules finder reads standard bodies.
 
-```bash
-git ls-files --cached --others --exclude-standard '*.md' | grep -iE 'review|convention|standard|code[-_ ]?style|guideline'
-```
-
-`$REVIEW_RULES` (a path or glob) wins when set; otherwise the globs of `discover.standards`. Subtract the globs of `discover.exclude`. The default drops commit formats, ADRs and versioning: they are about operating the repository, not about judging code.
+The `standard` lines of `review rules`: Markdown files named like a review document, a convention, a standard, a code style or a guideline, plus the globs of `discover.standards`, minus the globs of `discover.exclude`; `$REVIEW_RULES` (a path or glob) replaces both when set. The default drops commit formats, ADRs and versioning: they are about operating the repository, not about judging code.
 
 ## 3. Filter
 

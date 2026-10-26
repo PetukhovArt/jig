@@ -60,7 +60,7 @@ claude plugin marketplace add PetukhovArt/jig
 claude plugin install jig@petukhovart
 ```
 
-Then run `/jig-init` in your project. `node <plugin root>/bin/jig.mjs doctor` shows the config, each tool and anything missing.
+Then run `/jig-init` in your project. `node "<plugin root>/bin/jig.mjs" doctor` shows the config, each tool and anything missing.
 
 </details>
 

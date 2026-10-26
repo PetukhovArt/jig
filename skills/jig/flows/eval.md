@@ -13,7 +13,7 @@ Blinding holds for everything a candidate agent sees (directories, file names, t
 1. Frame: the variant under test (the diff to the atom, flow or skill) and the behavior that counts as success. Write the rubric, 3 to 6 concrete criteria, for the judge only.
 2. Case: an existing case under `<root>/evals/agent/` that exercises the behavior, or a new one next to them (`case.yaml`, `prompt.md`, `fixture/`, `graders/`, `scaffold.sh`). The prompt reads as an organic user request: the goal, not the meta.
 3. Two plugin trees: the base and the variant, each in its own worktree.
-4. Run both with `node <root>/evals/run-local.mjs --plugin <tree> --case <name> --runs <N> --out <dir>`, once per tree, on two or more models (`--model`, in the order `jig tiers` prints). Add `--arms with,without` when the question is whether the plugin helps at all.
+4. Run both with `node "<root>/evals/run-local.mjs" --plugin <tree> --case <name> --runs <N> --out <dir>`, once per tree, on two or more models (`--model`, in the order `jig tiers` prints). Add `--arms with,without` when the question is whether the plugin helps at all.
 5. Judge blind: the graders run on a model other than the candidates' (`--judge-model`) and see outputs by run label, never by model or variant. Base and variant are scored on one scale.
 6. Grade chain-following from the traces (`<out>/traces/*.jsonl`): which files each run actually read and what code it produced. Never from the run's own claims.
 7. Read every run's output yourself. Compare with the graders; a disagreement means a biased model or an ambiguous rubric, so look again before deciding.

@@ -7,7 +7,7 @@ argument-hint: "<merge request url or number | folder | repo>"
 
 # jig prune comments
 
-Plugin root: `${CLAUDE_PLUGIN_ROOT}` when the agent sets it, otherwise the directory two levels above this file; `jig` means `node ${CLAUDE_PLUGIN_ROOT}/bin/jig.mjs`. Rule: `${CLAUDE_PLUGIN_ROOT}/atoms/comments.md`; read it before step 3.
+Plugin root: `${CLAUDE_PLUGIN_ROOT}` when the agent sets it, otherwise the directory two levels above this file; `jig` means `node "${CLAUDE_PLUGIN_ROOT}/bin/jig.mjs"`. Rule: `${CLAUDE_PLUGIN_ROOT}/atoms/comments.md`; read it before step 3.
 
 1. Scope to files: a merge request → the files its diff changes (`${CLAUDE_PLUGIN_ROOT}/skills/jig/references/forge.md`); a folder → `git ls-files <folder>`; `repo` → `git ls-files`. Keep source files only: no generated, vendored, lock or fixture files.
 2. Split the files into batches of about 20, grouped by folder. A batch has one owner; no two batches share a file.

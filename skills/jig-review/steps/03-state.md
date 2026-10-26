@@ -13,11 +13,11 @@ KEY  = the first 12 characters of: printf '%s' "<remote_url>:<target>" | git has
 file = <main checkout>/.jig/runs/review/<KEY>.json
 ```
 
-`node <root>/bin/jig.mjs review-cycle state-path <merge request number>` prints this path from inside the repository; use it rather than computing the key by hand. `target` is the merge request number when known, otherwise the name of the reviewed branch. `remote_url` from `git remote get-url origin`. The **main checkout** is the first entry of `git worktree list`: a review that runs in a linked worktree (a review cycle gives each merge request its own) reads and writes the same file as one in the main checkout, and the file outlives the worktree. `.jig/runs/` stays out of git. Write the file with an absolute path resolved in the same command that uses it: shell state does not survive between tool calls.
+`node "<root>/bin/jig.mjs" review-cycle state-path <merge request number>` prints this path from inside the repository; use it rather than computing the key by hand. `target` is the merge request number when known, otherwise the name of the reviewed branch. `remote_url` from `git remote get-url origin`. The **main checkout** is the first entry of `git worktree list`: a review that runs in a linked worktree (a review cycle gives each merge request its own) reads and writes the same file as one in the main checkout, and the file outlives the worktree. `.jig/runs/` stays out of git. Write the file with an absolute path resolved in the same command that uses it: shell state does not survive between tool calls.
 
 Schema and field semantics: [`../references/state-schema.md`](../references/state-schema.md). Read it before reading or writing state.
 
-**Look at a state through `node <root>/bin/jig.mjs review state <path>`**: shas, runs, the non-zero tally, and one line per finding (status, severity, angle, `file:line`, thread, id, summary). Never `cat` the JSON: comment bodies make it several times longer, and the whole file is paid on every later turn. Open the JSON only to write it, or to read the one finding whose body you need.
+**Look at a state through `node "<root>/bin/jig.mjs" review state <path>`**: shas, runs, the non-zero tally, and one line per finding (status, severity, angle, `file:line`, thread, id, summary). Never `cat` the JSON: comment bodies make it several times longer, and the whole file is paid on every later turn. Open the JSON only to write it, or to read the one finding whose body you need.
 
 **The file decides the mode, not ancestry.** File exists → [re-review](09-rereview.md). No file → first run.
 

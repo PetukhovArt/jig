@@ -7,7 +7,7 @@
 - contains `gitlab` → `glab`;
 - anything else: ask the user in your reply which forge CLI the repository uses, and name `reviewCycle.forge` so the answer sticks.
 
-Run every command from inside the repository: both CLIs take the host and project from its `origin`. Bodies go through a temp file (`mktemp`), never inline `-f body=`: quoting breaks the text. Remove the file once the call succeeds.
+Run every command from inside the repository: both CLIs take the host and project from its `origin`. Bodies go through a temp file, never inline `-f body=`: quoting breaks the text. Write it with the agent's file-write tool into the system temp directory (`$BODY` below is its path), and remove it once the call succeeds. The commands are written for a POSIX shell (Claude Code on Windows runs Git Bash); under PowerShell, `"$(cat "$BODY")"` is `(Get-Content -Raw $BODY)` and `"$BODY"` is `$BODY`.
 
 ## By task
 

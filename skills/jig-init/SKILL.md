@@ -9,7 +9,7 @@ argument-hint: "[--update]"
 
 At runtime jig reads only `.jig/config.jsonc` (in git) and `.jig/config.local.jsonc` (personal, outside git, laid over the shared file). A catalog tool or proof that the config does not name never runs. This skill writes that explicit config.
 
-CLI: `node <root>/bin/jig.mjs <command>`. `<root>` is the plugin root: `${CLAUDE_PLUGIN_ROOT}` when the agent sets it, otherwise the directory two levels above this file. Schema of the config: `<root>/schema/config.schema.json`.
+CLI: `node "<root>/bin/jig.mjs" <command>`. `<root>` is the plugin root: `${CLAUDE_PLUGIN_ROOT}` when the agent sets it, otherwise the directory two levels above this file. Schema of the config: `<root>/schema/config.schema.json`.
 
 Read `<root>/atoms/questions.md` before the first question and follow it. Ask in your reply, as text; never through a blocking question tool.
 
