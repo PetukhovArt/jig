@@ -5463,6 +5463,7 @@ var readLines = (reads) => reads === void 0 ? [] : [
   `  read: ${reads.angles.join(" ")}`,
   ...reads.atoms.length > 0 ? [`  atoms: ${reads.atoms.join(" ")}`] : []
 ];
+var RUNNER_LINE = "runner: a review with finders runs in one review runner, never in the session that asked for it: that session spawns role review-runner with this run and waits for its return; a review runner (a review cycle's, or one spawned so) goes on";
 var formatReport = (report) => {
   const { plan, models } = report;
   const excluded = Object.entries(report.files.excluded).filter(([, count]) => count > 0).map(([kind, count]) => `${count} ${kind}`);
@@ -5487,6 +5488,7 @@ var formatReport = (report) => {
     lines2.push(`path: inline: review in this session, angles ${angleList(plan.angles)}; no finder subagents; no judge subagents unless an Important candidate survives your own gates`);
     lines2.push(...readLines(report.reads[INLINE_READER]));
   }
+  if (plan.path === "subagents") lines2.push(RUNNER_LINE);
   for (const finder of plan.finders) {
     lines2.push(`finder ${finder.name}: angles ${angleList(finder.angles)} \xB7 ${gradeText(finder, models)}`);
     lines2.push(...readLines(report.reads[finder.name]));
@@ -5997,18 +5999,21 @@ var toUsage = (raw) => {
     output: raw.output_tokens ?? 0
   };
 };
+var parseEntry = (line) => {
+  if (line.trim() === "") return void 0;
+  try {
+    return JSON.parse(line);
+  } catch {
+    return void 0;
+  }
+};
 var readTranscript = (text3) => {
   const usageByMessageId = /* @__PURE__ */ new Map();
   let model = "";
   let startedAt = "";
   for (const line of text3.split("\n")) {
-    if (line.trim() === "") continue;
-    let entry;
-    try {
-      entry = JSON.parse(line);
-    } catch {
-      continue;
-    }
+    const entry = parseEntry(line);
+    if (entry === void 0) continue;
     if (startedAt === "" && typeof entry.timestamp === "string") startedAt = entry.timestamp;
     const message = entry.message;
     if (message?.usage === void 0) continue;
@@ -6021,6 +6026,66 @@ var readTranscript = (text3) => {
 };
 var roleOf = (description) => ROLE_PATTERNS.find(([, pattern]) => pattern.test(description))?.[0] ?? "other";
 var mrOf = (description) => /(?:!|\bMR\s*#?)(\d+)/i.exec(description)?.[1];
+var mrOfArgs = (args) => mrOf(args) ?? /\/(?:merge_requests|pull)\/(\d+)/.exec(args)?.[1];
+var REVIEW_SKILL = /^(?:[\w-]+:)?(jig-review(?:-cycle)?)$/;
+var REVIEW_COMMAND = /<command-name>\/(?:[\w-]+:)?(jig-review(?:-cycle)?)<\/command-name>(?:\s*<command-args>([\s\S]*?)<\/command-args>)?/;
+var invocationOf = (entry) => {
+  const content = entry.message?.content;
+  if (typeof content === "string") {
+    const command = REVIEW_COMMAND.exec(content);
+    return command?.[1] === void 0 ? void 0 : { skill: command[1], args: command[2] ?? "" };
+  }
+  if (!Array.isArray(content)) return void 0;
+  for (const block of content) {
+    const skill = block.type === "tool_use" && block.name === "Skill" && typeof block.input?.skill === "string" ? REVIEW_SKILL.exec(block.input.skill)?.[1] : void 0;
+    if (skill !== void 0) return { skill, args: typeof block.input?.args === "string" ? block.input.args : "" };
+  }
+  return void 0;
+};
+var isHumanPrompt = (entry) => entry.type === "user" && entry.origin?.kind === "human";
+var mostSpawnedMr = (agents, run3) => {
+  const counts = /* @__PURE__ */ new Map();
+  for (const agent of agents) {
+    if (agent.mr !== void 0 && agent.startedAt >= run3.startedAt && agent.startedAt <= run3.endedAt) counts.set(agent.mr, (counts.get(agent.mr) ?? 0) + 1);
+  }
+  return [...counts].sort((left, right) => right[1] - left[1])[0]?.[0];
+};
+var readSessionRuns = (text3, session, prices, subagents) => {
+  const runs = [];
+  let current;
+  for (const line of text3.split("\n")) {
+    const entry = parseEntry(line);
+    if (entry === void 0) continue;
+    const invocation = invocationOf(entry);
+    if (invocation !== void 0) {
+      current = { ...invocation, startedAt: entry.timestamp ?? "", endedAt: entry.timestamp ?? "", model: "", usage: /* @__PURE__ */ new Map() };
+      runs.push(current);
+    } else if (isHumanPrompt(entry)) {
+      current = void 0;
+    }
+    const message = entry.message;
+    if (current === void 0 || message?.usage === void 0) continue;
+    if (typeof message.model === "string" && !message.model.startsWith("<")) current.model = message.model;
+    current.usage.set(message.id ?? entry.uuid ?? String(current.usage.size), toUsage(message.usage));
+    if (entry.timestamp !== void 0) current.endedAt = entry.timestamp;
+  }
+  return runs.filter((run3) => run3.model !== "").map((run3, index) => {
+    const usage2 = emptyUsage();
+    for (const each of run3.usage.values()) addUsage(usage2, each);
+    const isRunner = run3.skill === "jig-review";
+    return {
+      id: `${session}#${index + 1}`,
+      description: `${run3.skill} in the session`,
+      role: isRunner ? "runner" : "other",
+      mr: isRunner ? mrOfArgs(run3.args) ?? mostSpawnedMr(subagents, run3) : void 0,
+      model: run3.model,
+      turns: run3.usage.size,
+      startedAt: run3.startedAt,
+      usage: usage2,
+      dollars: dollarsOf(usage2, priceOf(run3.model, prices))
+    };
+  });
+};
 var claudeProjectsDir = (env = process.env) => join25(env["CLAUDE_CONFIG_DIR"] ?? join25(homedir2(), ".claude"), "projects");
 var projectSlug = (dir) => dir.replace(/[^a-zA-Z0-9]/g, "-");
 var TRANSCRIPTS_ONLY = "jig review cost reads Claude Code transcripts only";
@@ -6120,7 +6185,7 @@ var formatSession = (session, agents, groups) => {
   const byRole = {};
   for (const agent of agents) byRole[agent.role] = (byRole[agent.role] ?? 0) + agent.dollars;
   const lines2 = [
-    `session: ${session} \xB7 subagents: ${agents.length} \xB7 total ${money(total)} (estimate) \xB7 cache hit ${(cacheHit(usage2) * 100).toFixed(0)}%`,
+    `session: ${session} \xB7 agents: ${agents.length} \xB7 total ${money(total)} (estimate) \xB7 cache hit ${(cacheHit(usage2) * 100).toFixed(0)}%`,
     `by role: ${roleCell(byRole)}`,
     ""
   ];
@@ -6225,7 +6290,9 @@ var runReviewCost = (args) => {
   const prices = { ...DEFAULT_PRICES, ...loaded.config.prices };
   const sessionDir2 = resolveSessionDir(positionals[0], projectRoot, claudeProjectsDir());
   const session = basename4(sessionDir2);
-  const agents = readAgents(sessionDir2, prices);
+  const subagents = readAgents(sessionDir2, prices);
+  const transcript = `${sessionDir2}.jsonl`;
+  const agents = [...existsSync13(transcript) ? readSessionRuns(readFileSync24(transcript, "utf8"), session, prices, subagents) : [], ...subagents];
   const groups = groupByLatestRunner(agents);
   attachStates(groups, projectRoot);
   if (values.json === true) {

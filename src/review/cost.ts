@@ -127,18 +127,30 @@ const toUsage = (raw: RawUsage): Usage => {
   }
 }
 
+interface TranscriptEntry {
+  type?: string
+  timestamp?: string
+  uuid?: string
+  origin?: { kind?: string }
+  message?: { id?: string; model?: string; usage?: RawUsage; content?: unknown }
+}
+
+const parseEntry = (line: string): TranscriptEntry | undefined => {
+  if (line.trim() === '') return undefined
+  try {
+    return JSON.parse(line) as TranscriptEntry
+  } catch {
+    return undefined
+  }
+}
+
 export const readTranscript = (text: string): { model: string; turns: number; startedAt: string; usage: Usage } => {
   const usageByMessageId = new Map<string, Usage>()
   let model = ''
   let startedAt = ''
   for (const line of text.split('\n')) {
-    if (line.trim() === '') continue
-    let entry: { timestamp?: string; uuid?: string; message?: { id?: string; model?: string; usage?: RawUsage } }
-    try {
-      entry = JSON.parse(line)
-    } catch {
-      continue
-    }
+    const entry = parseEntry(line)
+    if (entry === undefined) continue
     if (startedAt === '' && typeof entry.timestamp === 'string') startedAt = entry.timestamp
     const message = entry.message
     if (message?.usage === undefined) continue
@@ -153,6 +165,89 @@ export const readTranscript = (text: string): { model: string; turns: number; st
 export const roleOf = (description: string): Role => ROLE_PATTERNS.find(([, pattern]) => pattern.test(description))?.[0] ?? 'other'
 
 export const mrOf = (description: string): string | undefined => /(?:!|\bMR\s*#?)(\d+)/i.exec(description)?.[1]
+
+const mrOfArgs = (args: string): string | undefined => mrOf(args) ?? /\/(?:merge_requests|pull)\/(\d+)/.exec(args)?.[1]
+
+const REVIEW_SKILL = /^(?:[\w-]+:)?(jig-review(?:-cycle)?)$/
+const REVIEW_COMMAND = /<command-name>\/(?:[\w-]+:)?(jig-review(?:-cycle)?)<\/command-name>(?:\s*<command-args>([\s\S]*?)<\/command-args>)?/
+
+interface Invocation {
+  skill: string
+  args: string
+}
+
+const invocationOf = (entry: TranscriptEntry): Invocation | undefined => {
+  const content = entry.message?.content
+  if (typeof content === 'string') {
+    const command = REVIEW_COMMAND.exec(content)
+    return command?.[1] === undefined ? undefined : { skill: command[1], args: command[2] ?? '' }
+  }
+  if (!Array.isArray(content)) return undefined
+  for (const block of content as { type?: string; name?: string; input?: { skill?: unknown; args?: unknown } }[]) {
+    const skill = block.type === 'tool_use' && block.name === 'Skill' && typeof block.input?.skill === 'string' ? REVIEW_SKILL.exec(block.input.skill)?.[1] : undefined
+    if (skill !== undefined) return { skill, args: typeof block.input?.args === 'string' ? block.input.args : '' }
+  }
+  return undefined
+}
+
+const isHumanPrompt = (entry: TranscriptEntry): boolean => entry.type === 'user' && entry.origin?.kind === 'human'
+
+interface SessionRun extends Invocation {
+  startedAt: string
+  endedAt: string
+  model: string
+  usage: Map<string, Usage>
+}
+
+const mostSpawnedMr = (agents: readonly AgentCost[], run: SessionRun): string | undefined => {
+  const counts = new Map<string, number>()
+  for (const agent of agents) {
+    if (agent.mr !== undefined && agent.startedAt >= run.startedAt && agent.startedAt <= run.endedAt) counts.set(agent.mr, (counts.get(agent.mr) ?? 0) + 1)
+  }
+  return [...counts].sort((left, right) => right[1] - left[1])[0]?.[0]
+}
+
+/**
+ * The turns of the session itself from each jig-review or jig-review-cycle invocation to the next human prompt, as agents:
+ * a direct jig-review is the runner of its merge request (from the arguments, else the one its subagents name); the
+ * review cycle's orchestrator is role `other`.
+ */
+export const readSessionRuns = (text: string, session: string, prices: Readonly<Record<string, Price>>, subagents: readonly AgentCost[]): AgentCost[] => {
+  const runs: SessionRun[] = []
+  let current: SessionRun | undefined
+  for (const line of text.split('\n')) {
+    const entry = parseEntry(line)
+    if (entry === undefined) continue
+    const invocation = invocationOf(entry)
+    if (invocation !== undefined) {
+      current = { ...invocation, startedAt: entry.timestamp ?? '', endedAt: entry.timestamp ?? '', model: '', usage: new Map() }
+      runs.push(current)
+    } else if (isHumanPrompt(entry)) {
+      current = undefined
+    }
+    const message = entry.message
+    if (current === undefined || message?.usage === undefined) continue
+    if (typeof message.model === 'string' && !message.model.startsWith('<')) current.model = message.model
+    current.usage.set(message.id ?? entry.uuid ?? String(current.usage.size), toUsage(message.usage))
+    if (entry.timestamp !== undefined) current.endedAt = entry.timestamp
+  }
+  return runs.filter((run) => run.model !== '').map((run, index) => {
+    const usage = emptyUsage()
+    for (const each of run.usage.values()) addUsage(usage, each)
+    const isRunner = run.skill === 'jig-review'
+    return {
+      id: `${session}#${index + 1}`,
+      description: `${run.skill} in the session`,
+      role: isRunner ? 'runner' : 'other',
+      mr: isRunner ? (mrOfArgs(run.args) ?? mostSpawnedMr(subagents, run)) : undefined,
+      model: run.model,
+      turns: run.usage.size,
+      startedAt: run.startedAt,
+      usage,
+      dollars: dollarsOf(usage, priceOf(run.model, prices)),
+    }
+  })
+}
 
 export const claudeProjectsDir = (env: NodeJS.ProcessEnv = process.env): string => join(env['CLAUDE_CONFIG_DIR'] ?? join(homedir(), '.claude'), 'projects')
 
@@ -288,7 +383,7 @@ export const formatSession = (session: string, agents: readonly AgentCost[], gro
   const byRole: Partial<Record<Role, number>> = {}
   for (const agent of agents) byRole[agent.role] = (byRole[agent.role] ?? 0) + agent.dollars
   const lines = [
-    `session: ${session} · subagents: ${agents.length} · total ${money(total)} (estimate) · cache hit ${(cacheHit(usage) * 100).toFixed(0)}%`,
+    `session: ${session} · agents: ${agents.length} · total ${money(total)} (estimate) · cache hit ${(cacheHit(usage) * 100).toFixed(0)}%`,
     `by role: ${roleCell(byRole)}`,
     '',
   ]
@@ -414,7 +509,9 @@ export const runReviewCost: Command = (args) => {
   const prices = { ...DEFAULT_PRICES, ...loaded.config.prices }
   const sessionDir = resolveSessionDir(positionals[0], projectRoot, claudeProjectsDir())
   const session = basename(sessionDir)
-  const agents = readAgents(sessionDir, prices)
+  const subagents = readAgents(sessionDir, prices)
+  const transcript = `${sessionDir}.jsonl`
+  const agents = [...(existsSync(transcript) ? readSessionRuns(readFileSync(transcript, 'utf8'), session, prices, subagents) : []), ...subagents]
   const groups = groupByLatestRunner(agents)
   attachStates(groups, projectRoot)
   if (values.json === true) {

@@ -77,5 +77,5 @@ In the review cycle a posted `Important` that still stands sends the merge reque
 
 ## Measured
 
-- **Cost**: `jig review cost` estimates a run's spend per role and per merge request, with $ per 1000 diff lines and $ per thread; `--record` and `--report` compare runs across projects and weeks ([commands](commands.md)).
+- **Cost**: `jig review cost` estimates a run's spend per role and per merge request, the session that ran the review included, with $ per 1000 diff lines and $ per thread; `--record` and `--report` compare runs across projects and weeks ([commands](commands.md)). A review with finders runs in one review-runner subagent, so its finders fork from the review's context, not from the conversation that asked for it.
 - **Quality**: an edit of the review's steps, angles, gates, tiers or briefs runs on reference merge requests, old and new versions blind to a judge. It does not merge when it misses a defect the old version found or posts a false finding the old one did not. Every missed defect and every false thread found later joins the corpus ([eval](../skills/jig-review/references/eval.md)).

@@ -396,6 +396,9 @@ const readLines = (reads: Reads | undefined): string[] =>
         ...(reads.atoms.length > 0 ? [`  atoms: ${reads.atoms.join(' ')}`] : []),
       ]
 
+const RUNNER_LINE =
+  'runner: a review with finders runs in one review runner, never in the session that asked for it: that session spawns role review-runner with this run and waits for its return; a review runner (a review cycle\'s, or one spawned so) goes on'
+
 export const formatReport = (report: ReviewPlanReport): string => {
   const { plan, models } = report
   const excluded = Object.entries(report.files.excluded)
@@ -424,6 +427,7 @@ export const formatReport = (report: ReviewPlanReport): string => {
     lines.push(`path: inline: review in this session, angles ${angleList(plan.angles)}; no finder subagents; no judge subagents unless an Important candidate survives your own gates`)
     lines.push(...readLines(report.reads[INLINE_READER]))
   }
+  if (plan.path === 'subagents') lines.push(RUNNER_LINE)
   for (const finder of plan.finders) {
     lines.push(`finder ${finder.name}: angles ${angleList(finder.angles)} · ${gradeText(finder, models)}`)
     lines.push(...readLines(report.reads[finder.name]))

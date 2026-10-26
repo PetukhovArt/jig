@@ -10,6 +10,7 @@ import {
   isoWeek,
   mrOf,
   readAgents,
+  readSessionRuns,
   readTranscript,
   recordRuns,
   resolveSessionDir,
@@ -92,6 +93,37 @@ describe('groupByLatestRunner', () => {
       ['r1', 40, { runner: 25, finder: 15 }],
       ['r2', 50, { runner: 25, poster: 25 }],
     ])
+  })
+})
+
+describe('the session that runs the review itself', () => {
+  const human = (text: string, timestamp: string): string => JSON.stringify({ type: 'user', timestamp, origin: { kind: 'human' }, message: { role: 'user', content: text } })
+  const skillCall = (skill: string, args: string, timestamp: string): string =>
+    JSON.stringify({ type: 'assistant', timestamp, message: { id: `call-${timestamp}`, model: 'claude-opus-5-5', usage: { output_tokens: 1e6 }, content: [{ type: 'tool_use', name: 'Skill', input: { skill, args } }] } })
+  const turn = (id: string, timestamp: string): string => JSON.stringify({ type: 'assistant', timestamp, message: { id, model: 'claude-opus-5-5', usage: { output_tokens: 1e6 } } })
+
+  it('counts the turns from the skill invocation to the next human prompt as the runner of its merge request', () => {
+    const transcript = [
+      human('review !42 please', '2026-10-22T08:00:00Z'),
+      turn('before', '2026-10-22T07:59:00Z'),
+      skillCall('jig:jig-review', '!42', '2026-10-22T08:00:10Z'),
+      turn('t1', '2026-10-22T08:01:00Z'),
+      turn('t2', '2026-10-22T08:30:00Z'),
+      human('thanks, now something else', '2026-10-22T09:00:00Z'),
+      turn('after', '2026-10-22T09:01:00Z'),
+    ].join('\n')
+    const runs = readSessionRuns(transcript, 's1', DEFAULT_PRICES, [])
+    expect(runs.map((run) => [run.role, run.mr, run.turns, run.dollars])).toEqual([['runner', '42', 3, 75]])
+    const finder = { id: 'f1', description: 'Finder bugs-1 MR42', role: 'finder' as const, mr: '42', model: 'claude-sonnet-5-5', turns: 1, startedAt: '2026-10-22T08:02:00Z', usage: { input: 0, write5m: 0, write1h: 0, read: 0, output: 1e6 }, dollars: 15 }
+    expect(groupByLatestRunner([...runs, finder]).map((group) => [group.runner, group.dollars, group.byRole])).toEqual([['s1#1', 90, { runner: 75, finder: 15 }]])
+  })
+
+  it('takes the merge request from a slash command URL, or from the subagents the run spawned', () => {
+    const command = JSON.stringify({ type: 'user', timestamp: '2026-10-22T08:00:00Z', origin: { kind: 'human' }, message: { role: 'user', content: '<command-name>/jig:jig-review</command-name>\n<command-args>https://forge.example/group/app/-/merge_requests/7</command-args>' } })
+    expect(readSessionRuns([command, turn('t1', '2026-10-22T08:01:00Z')].join('\n'), 's1', DEFAULT_PRICES, [])[0]?.mr).toBe('7')
+    const bare = [skillCall('jig-review', '', '2026-10-22T08:00:00Z'), turn('t1', '2026-10-22T08:05:00Z')].join('\n')
+    const finder = { id: 'f1', description: 'Finder bugs-1 MR9', role: 'finder' as const, mr: '9', model: 'claude-sonnet-5-5', turns: 1, startedAt: '2026-10-22T08:02:00Z', usage: { input: 0, write5m: 0, write1h: 0, read: 0, output: 1e6 }, dollars: 15 }
+    expect(readSessionRuns(bare, 's1', DEFAULT_PRICES, [finder])[0]?.mr).toBe('9')
   })
 })
 
