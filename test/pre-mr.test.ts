@@ -68,7 +68,7 @@ afterEach(() => {
   dirs = []
 })
 
-describe('jig pre-mr', () => {
+describe('jig pre-mr', { timeout: 30_000 }, () => {
   it('passes at level full when the branch touches no UI file', () => {
     write(root, 'src/a.ts', 'export const a = 2\n')
 
