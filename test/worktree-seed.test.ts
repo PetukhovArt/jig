@@ -1,4 +1,4 @@
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { appendFileSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, posix, win32 } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -142,6 +142,11 @@ describe('seed a worktree from the main checkout', () => {
       symlinkSync(join('docs', 'readme.md'), join(main, 'link-docs'), 'file')
       symlinkSync(join(shared, 'SKILL.md'), join(main, 'node_modules', 'outside-link'), 'file')
     }
+    appendFileSync(join(main, '.git', 'info', 'exclude'), '.jig/\n')
+    mkdirSync(join(main, '.jig', 'cache'), { recursive: true })
+    writeFileSync(join(main, '.jig', 'config.jsonc'), '{"rules":{}}')
+    writeFileSync(join(main, '.jig', 'review.jsonc'), '{"maxParallel":2}')
+    writeFileSync(join(main, '.jig', 'cache', 'plan.json'), '{}')
     sh(main, 'worktree', 'add', '-q', worktree, 'feat')
   })
 
@@ -187,6 +192,15 @@ describe('seed a worktree from the main checkout', () => {
     expect(lstatSync(docs).isSymbolicLink()).toBe(true)
     expect(samePath(readlinkSync(docs), join(worktree, 'docs', 'readme.md'))).toBe(true)
     expect(lstatSync(join(worktree, 'node_modules', 'outside-link')).isSymbolicLink()).toBe(true)
+  })
+
+  it("copies jig's project config out of a .jig folder ignored in full, not its cache", () => {
+    const items = seedWorktree(main, worktree)
+
+    expect(read('.jig', 'config.jsonc')).toBe('{"rules":{}}')
+    expect(read('.jig', 'review.jsonc')).toBe('{"maxParallel":2}')
+    expect(() => lstatSync(join(worktree, '.jig', 'cache'))).toThrow()
+    expect(items.filter((item) => item.path.startsWith('.jig/') && item.action !== 'kept' && item.action !== 'copied')).toEqual([])
   })
 })
 

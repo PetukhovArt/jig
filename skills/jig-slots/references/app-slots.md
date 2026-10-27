@@ -73,7 +73,7 @@ Then, inside the printed path:
 
 ## Seed
 
-`jig worktree seed <dir>` fills a worktree from the main checkout with what `git worktree add` leaves behind. It copies every gitignored file and recreates every gitignored symlink: a link into the main checkout is re-pointed at the same path in the worktree, any other link keeps its target. It looks one level into each folder ignored in full for symlinks (a linked skill under `.claude/skills/`). It copies no folder (`node_modules`, `dist`: each checkout builds its own), skips `worktree.seedExclude`, and never overwrites a file already there, so a file the branch tracks wins. It prints one line per copied or linked file and a count. Run it again at any time: it only adds what is missing. On Windows a directory link needs Developer Mode; without it seed makes a junction.
+`jig worktree seed <dir>` fills a worktree from the main checkout with what `git worktree add` leaves behind. It copies every gitignored file and recreates every gitignored symlink: a link into the main checkout is re-pointed at the same path in the worktree, any other link keeps its target. It looks one level into each folder ignored in full for symlinks (a linked skill under `.claude/skills/`), and copies jig's own project config (`.jig/config.jsonc`, `.jig/config.local.jsonc`, `.jig/review.jsonc`) when `.jig/` is ignored in full. It copies no folder (`node_modules`, `dist`: each checkout builds its own), skips `worktree.seedExclude`, and never overwrites a file already there, so a file the branch tracks wins. It prints one line per copied or linked file and a count. Run it again at any time: it only adds what is missing. On Windows a directory link needs Developer Mode; without it seed makes a junction.
 
 ## Show a branch
 

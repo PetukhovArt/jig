@@ -144,10 +144,13 @@ const copyFileItem = (
   return place(main, worktree, path)
 }
 
+const JIG_CONFIG_FILES = ['.jig/config.jsonc', '.jig/config.local.jsonc', '.jig/review.jsonc'] as const
+
 /**
  * Fills a fresh `worktree` with what `git worktree add` leaves behind: the gitignored files of
  * `main` are copied and its gitignored symlinks recreated, including the links sitting directly in a
- * folder ignored in full. Ignored folders themselves are not copied, and nothing already present
+ * folder ignored in full, and jig's own project config even when `.jig/` is ignored in full.
+ * Ignored folders themselves are not copied, and nothing already present
  * (a file the branch tracks) is overwritten. Best effort: one failed item is reported, not thrown.
  * Behaviour ported from pacer `crates/pacer-daemon/src/worktree_seed.rs`.
  */
@@ -162,6 +165,11 @@ export const seedWorktree = (main: string, worktree: string, options: SeedOption
   for (const file of options.copyFiles ?? []) {
     items.push(copyFileItem(main, worktree, file, ignoredDirs, fileSet))
   }
+  const listed = new Set(items.map((item) => item.path))
+  const jigConfig = JIG_CONFIG_FILES.filter(
+    (file) => !listed.has(file) && !isExcluded(file) && ignoredDirs.some((dir) => file.startsWith(dir)) && exists(nodePath.join(main, file)),
+  )
+  items.push(...jigConfig.map((file) => place(main, worktree, file)))
   return items
 }
 
