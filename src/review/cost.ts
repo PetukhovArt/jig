@@ -43,6 +43,7 @@ export interface AgentCost {
   description: string
   role: Role
   mr: string | undefined
+  parent?: string | undefined
   model: string
   turns: number
   startedAt: string
@@ -144,22 +145,34 @@ const parseEntry = (line: string): TranscriptEntry | undefined => {
   }
 }
 
-export const readTranscript = (text: string): { model: string; turns: number; startedAt: string; usage: Usage } => {
+export const messageIds = (text: string): Set<string> => {
+  const ids = new Set<string>()
+  for (const line of text.split('\n')) {
+    const id = parseEntry(line)?.message?.id
+    if (id !== undefined) ids.add(id)
+  }
+  return ids
+}
+
+/** `inherited`: message ids of the parent transcript, which a fork copies with their usage; they are not counted again. */
+export const readTranscript = (text: string, inherited: ReadonlySet<string> = new Set()): { model: string; turns: number; startedAt: string; usage: Usage } => {
   const usageByMessageId = new Map<string, Usage>()
   let model = ''
+  let firstTimestamp = ''
   let startedAt = ''
   for (const line of text.split('\n')) {
     const entry = parseEntry(line)
     if (entry === undefined) continue
-    if (startedAt === '' && typeof entry.timestamp === 'string') startedAt = entry.timestamp
+    if (firstTimestamp === '' && typeof entry.timestamp === 'string') firstTimestamp = entry.timestamp
     const message = entry.message
-    if (message?.usage === undefined) continue
+    if (message?.usage === undefined || (message.id !== undefined && inherited.has(message.id))) continue
+    if (startedAt === '' && typeof entry.timestamp === 'string') startedAt = entry.timestamp
     if (typeof message.model === 'string' && !message.model.startsWith('<')) model = message.model
     usageByMessageId.set(message.id ?? entry.uuid ?? String(usageByMessageId.size), toUsage(message.usage))
   }
   const usage = emptyUsage()
   for (const each of usageByMessageId.values()) addUsage(usage, each)
-  return { model, turns: usageByMessageId.size, startedAt, usage }
+  return { model, turns: usageByMessageId.size, startedAt: inherited.size === 0 || startedAt === '' ? firstTimestamp : startedAt, usage }
 }
 
 export const roleOf = (description: string): Role => ROLE_PATTERNS.find(([, pattern]) => pattern.test(description))?.[0] ?? 'other'
@@ -277,37 +290,57 @@ export const resolveSessionDir = (given: string | undefined, projectDir: string,
   return sessions[0]
 }
 
+/** A subagent's parent is `parentAgentId` from its meta; without one, the session itself, whose history a fork of the session copies. */
 export const readAgents = (sessionDir: string, prices: Readonly<Record<string, Price>>): AgentCost[] => {
   const subagents = join(sessionDir, 'subagents')
-  return readdirSync(subagents)
+  const sessionTranscript = `${sessionDir}.jsonl`
+  const sessionIds = existsSync(sessionTranscript) ? messageIds(readFileSync(sessionTranscript, 'utf8')) : new Set<string>()
+  const read = readdirSync(subagents)
     .filter((name) => name.endsWith('.jsonl'))
     .map((name) => {
-      const id = name.replace(/^agent-/, '').replace(/\.jsonl$/, '')
       const metaPath = join(subagents, name.replace(/\.jsonl$/, '.meta.json'))
-      const meta = existsSync(metaPath) ? (JSON.parse(readFileSync(metaPath, 'utf8')) as { description?: string }) : {}
-      const description = meta.description ?? ''
-      const transcript = readTranscript(readFileSync(join(subagents, name), 'utf8'))
-      return {
-        id,
-        description,
-        role: roleOf(description),
-        mr: mrOf(description),
-        ...transcript,
-        dollars: dollarsOf(transcript.usage, priceOf(transcript.model, prices)),
-      }
+      const meta = existsSync(metaPath) ? (JSON.parse(readFileSync(metaPath, 'utf8')) as { description?: string; parentAgentId?: string }) : {}
+      return { id: name.replace(/^agent-/, '').replace(/\.jsonl$/, ''), meta, text: readFileSync(join(subagents, name), 'utf8') }
     })
+  const idsByAgent = new Map(read.map((agent) => [agent.id, messageIds(agent.text)]))
+  return read.map(({ id, meta, text }) => {
+    const description = meta.description ?? ''
+    const transcript = readTranscript(text, (meta.parentAgentId === undefined ? undefined : idsByAgent.get(meta.parentAgentId)) ?? sessionIds)
+    return {
+      id,
+      description,
+      role: roleOf(description),
+      mr: mrOf(description),
+      parent: meta.parentAgentId,
+      ...transcript,
+      dollars: dollarsOf(transcript.usage, priceOf(transcript.model, prices)),
+    }
+  })
 }
 
+const runnerAncestor = (agent: AgentCost, byId: ReadonlyMap<string, AgentCost>): AgentCost | undefined => {
+  const seen = new Set([agent.id])
+  for (let parent = byId.get(agent.parent ?? ''); parent !== undefined && !seen.has(parent.id); parent = byId.get(parent.parent ?? '')) {
+    if (parent.role === 'runner') return parent
+    seen.add(parent.id)
+  }
+  return undefined
+}
+
+/** An agent spawned under a runner belongs to that runner; any other agent to the latest runner of the merge request its description names. */
 export const groupByLatestRunner = (agents: readonly AgentCost[]): MrCost[] => {
   const sorted = [...agents].sort((left, right) => left.startedAt.localeCompare(right.startedAt))
+  const byId = new Map(agents.map((agent) => [agent.id, agent]))
   const groups = new Map<string, MrCost>()
   const latestRunner = new Map<string, string>()
   for (const agent of sorted) {
-    if (agent.mr === undefined) continue
-    if (agent.role === 'runner') latestRunner.set(agent.mr, agent.id)
-    const runner = latestRunner.get(agent.mr)
-    const key = `${agent.mr}:${runner ?? ''}`
-    const group = groups.get(key) ?? { mr: agent.mr, runner, agents: [], dollars: 0, byRole: {}, rerun: undefined, diff: undefined, threads: undefined }
+    const owner = runnerAncestor(agent, byId)
+    const mr = owner?.mr ?? agent.mr
+    if (mr === undefined) continue
+    if (owner === undefined && agent.role === 'runner') latestRunner.set(mr, agent.id)
+    const runner = owner?.id ?? latestRunner.get(mr)
+    const key = `${mr}:${runner ?? ''}`
+    const group = groups.get(key) ?? { mr, runner, agents: [], dollars: 0, byRole: {}, rerun: undefined, diff: undefined, threads: undefined }
     group.agents.push(agent)
     group.dollars += agent.dollars
     group.byRole[agent.role] = (group.byRole[agent.role] ?? 0) + agent.dollars

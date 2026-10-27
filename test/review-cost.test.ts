@@ -33,11 +33,11 @@ afterEach(() => {
 const line = (id: string, model: string, usage: object, timestamp = '2026-10-22T08:00:00Z'): string =>
   JSON.stringify({ timestamp, message: { id, model, usage } })
 
-const writeAgent = (sessionDir: string, id: string, description: string, lines: string[]): void => {
+const writeAgent = (sessionDir: string, id: string, description: string, lines: string[], parentAgentId?: string): void => {
   const subagents = join(sessionDir, 'subagents')
   mkdirSync(subagents, { recursive: true })
   writeFileSync(join(subagents, `agent-${id}.jsonl`), `${lines.join('\n')}\n`)
-  writeFileSync(join(subagents, `agent-${id}.meta.json`), JSON.stringify({ description }))
+  writeFileSync(join(subagents, `agent-${id}.meta.json`), JSON.stringify({ description, parentAgentId }))
 }
 
 describe('readTranscript', () => {
@@ -92,6 +92,22 @@ describe('groupByLatestRunner', () => {
     expect(groups.map((group) => [group.runner, group.dollars, group.byRole])).toEqual([
       ['r1', 40, { runner: 25, finder: 15 }],
       ['r2', 50, { runner: 25, poster: 25 }],
+    ])
+  })
+
+  it('puts the forks of a runner subagent under it and counts the history a fork copies once', () => {
+    const session = tempDir()
+    const usage = { output_tokens: 1e6 }
+    const runnerTurns = [line('a', 'claude-opus-5-5', usage, '2026-10-22T08:00:00Z'), line('b', 'claude-opus-5-5', usage, '2026-10-22T08:01:00Z')]
+    writeFileSync(`${session}.jsonl`, `${line('s', 'claude-opus-5-5', usage, '2026-10-22T07:00:00Z')}\n`)
+    writeAgent(session, 'r1', 'Review !460', runnerTurns)
+    writeAgent(session, 'f1', 'Finder bugs-1 !460', [...runnerTurns, line('c', 'claude-opus-5-5', usage, '2026-10-22T08:05:00Z')], 'r1')
+    writeAgent(session, 'j1', 'Judge Important', [line('d', 'claude-sonnet-5-5', usage, '2026-10-22T08:10:00Z')], 'r1')
+    writeAgent(session, 'r2', 'Review !433', [line('s', 'claude-opus-5-5', usage, '2026-10-22T07:00:00Z'), line('e', 'claude-opus-5-5', usage, '2026-10-22T08:20:00Z')])
+    const groups = groupByLatestRunner(readAgents(session, DEFAULT_PRICES))
+    expect(groups.map((group) => [group.mr, group.runner, group.dollars, group.byRole])).toEqual([
+      ['460', 'r1', 90, { runner: 50, finder: 25, judge: 15 }],
+      ['433', 'r2', 25, { runner: 25 }],
     ])
   })
 })

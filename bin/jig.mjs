@@ -6007,22 +6007,32 @@ var parseEntry = (line) => {
     return void 0;
   }
 };
-var readTranscript = (text3) => {
+var messageIds = (text3) => {
+  const ids = /* @__PURE__ */ new Set();
+  for (const line of text3.split("\n")) {
+    const id = parseEntry(line)?.message?.id;
+    if (id !== void 0) ids.add(id);
+  }
+  return ids;
+};
+var readTranscript = (text3, inherited = /* @__PURE__ */ new Set()) => {
   const usageByMessageId = /* @__PURE__ */ new Map();
   let model = "";
+  let firstTimestamp = "";
   let startedAt = "";
   for (const line of text3.split("\n")) {
     const entry = parseEntry(line);
     if (entry === void 0) continue;
-    if (startedAt === "" && typeof entry.timestamp === "string") startedAt = entry.timestamp;
+    if (firstTimestamp === "" && typeof entry.timestamp === "string") firstTimestamp = entry.timestamp;
     const message = entry.message;
-    if (message?.usage === void 0) continue;
+    if (message?.usage === void 0 || message.id !== void 0 && inherited.has(message.id)) continue;
+    if (startedAt === "" && typeof entry.timestamp === "string") startedAt = entry.timestamp;
     if (typeof message.model === "string" && !message.model.startsWith("<")) model = message.model;
     usageByMessageId.set(message.id ?? entry.uuid ?? String(usageByMessageId.size), toUsage(message.usage));
   }
   const usage2 = emptyUsage();
   for (const each of usageByMessageId.values()) addUsage(usage2, each);
-  return { model, turns: usageByMessageId.size, startedAt, usage: usage2 };
+  return { model, turns: usageByMessageId.size, startedAt: inherited.size === 0 || startedAt === "" ? firstTimestamp : startedAt, usage: usage2 };
 };
 var roleOf = (description) => ROLE_PATTERNS.find(([, pattern]) => pattern.test(description))?.[0] ?? "other";
 var mrOf = (description) => /(?:!|\bMR\s*#?)(\d+)/i.exec(description)?.[1];
@@ -6104,32 +6114,49 @@ var resolveSessionDir = (given, projectDir, projectsDir) => {
 };
 var readAgents = (sessionDir2, prices) => {
   const subagents = join25(sessionDir2, "subagents");
-  return readdirSync12(subagents).filter((name) => name.endsWith(".jsonl")).map((name) => {
-    const id = name.replace(/^agent-/, "").replace(/\.jsonl$/, "");
+  const sessionTranscript = `${sessionDir2}.jsonl`;
+  const sessionIds = existsSync13(sessionTranscript) ? messageIds(readFileSync24(sessionTranscript, "utf8")) : /* @__PURE__ */ new Set();
+  const read = readdirSync12(subagents).filter((name) => name.endsWith(".jsonl")).map((name) => {
     const metaPath = join25(subagents, name.replace(/\.jsonl$/, ".meta.json"));
     const meta = existsSync13(metaPath) ? JSON.parse(readFileSync24(metaPath, "utf8")) : {};
+    return { id: name.replace(/^agent-/, "").replace(/\.jsonl$/, ""), meta, text: readFileSync24(join25(subagents, name), "utf8") };
+  });
+  const idsByAgent = new Map(read.map((agent) => [agent.id, messageIds(agent.text)]));
+  return read.map(({ id, meta, text: text3 }) => {
     const description = meta.description ?? "";
-    const transcript = readTranscript(readFileSync24(join25(subagents, name), "utf8"));
+    const transcript = readTranscript(text3, (meta.parentAgentId === void 0 ? void 0 : idsByAgent.get(meta.parentAgentId)) ?? sessionIds);
     return {
       id,
       description,
       role: roleOf(description),
       mr: mrOf(description),
+      parent: meta.parentAgentId,
       ...transcript,
       dollars: dollarsOf(transcript.usage, priceOf(transcript.model, prices))
     };
   });
 };
+var runnerAncestor = (agent, byId) => {
+  const seen = /* @__PURE__ */ new Set([agent.id]);
+  for (let parent = byId.get(agent.parent ?? ""); parent !== void 0 && !seen.has(parent.id); parent = byId.get(parent.parent ?? "")) {
+    if (parent.role === "runner") return parent;
+    seen.add(parent.id);
+  }
+  return void 0;
+};
 var groupByLatestRunner = (agents) => {
   const sorted2 = [...agents].sort((left, right) => left.startedAt.localeCompare(right.startedAt));
+  const byId = new Map(agents.map((agent) => [agent.id, agent]));
   const groups = /* @__PURE__ */ new Map();
   const latestRunner = /* @__PURE__ */ new Map();
   for (const agent of sorted2) {
-    if (agent.mr === void 0) continue;
-    if (agent.role === "runner") latestRunner.set(agent.mr, agent.id);
-    const runner = latestRunner.get(agent.mr);
-    const key = `${agent.mr}:${runner ?? ""}`;
-    const group = groups.get(key) ?? { mr: agent.mr, runner, agents: [], dollars: 0, byRole: {}, rerun: void 0, diff: void 0, threads: void 0 };
+    const owner = runnerAncestor(agent, byId);
+    const mr = owner?.mr ?? agent.mr;
+    if (mr === void 0) continue;
+    if (owner === void 0 && agent.role === "runner") latestRunner.set(mr, agent.id);
+    const runner = owner?.id ?? latestRunner.get(mr);
+    const key = `${mr}:${runner ?? ""}`;
+    const group = groups.get(key) ?? { mr, runner, agents: [], dollars: 0, byRole: {}, rerun: void 0, diff: void 0, threads: void 0 };
     group.agents.push(agent);
     group.dollars += agent.dollars;
     group.byRole[agent.role] = (group.byRole[agent.role] ?? 0) + agent.dollars;
@@ -7618,6 +7645,7 @@ var copyFileItem = (main, worktree, file, ignoredDirs, files) => {
   }
   return place(main, worktree, path2);
 };
+var JIG_CONFIG_FILES = [".jig/config.jsonc", ".jig/config.local.jsonc", ".jig/review.jsonc"];
 var seedWorktree = (main, worktree, options = {}) => {
   const isExcluded = excluder(options.seedExclude ?? []);
   const entries = ignoredEntries(main);
@@ -7629,6 +7657,11 @@ var seedWorktree = (main, worktree, options = {}) => {
   for (const file of options.copyFiles ?? []) {
     items.push(copyFileItem(main, worktree, file, ignoredDirs, fileSet));
   }
+  const listed = new Set(items.map((item) => item.path));
+  const jigConfig = JIG_CONFIG_FILES.filter(
+    (file) => !listed.has(file) && !isExcluded(file) && ignoredDirs.some((dir) => file.startsWith(dir)) && exists3(nodePath.join(main, file))
+  );
+  items.push(...jigConfig.map((file) => place(main, worktree, file)));
   return items;
 };
 var formatSeed = (items) => {
