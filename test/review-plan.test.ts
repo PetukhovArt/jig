@@ -30,7 +30,7 @@ describe('layout', () => {
   it('reviews N = 1 inline, without finders, on quick unless a selector is given', () => {
     const plan = planReview({ lines: 120, shape: EVERY_SHAPE })
     expect([plan.path, plan.finders, plan.selection.input, plan.selection.source]).toEqual(['inline', [], 'quick', 'small-diff'])
-    expect(plan.angles).toEqual([1, 2, 3, 4, 5, 8, 10, 12, 13, 14, 15])
+    expect(plan.angles).toEqual([1, 2, 3, 4, 5, 8, 10, 12, 13, 14, 15, 16, 17])
     const full = planReview({ lines: 120, shape: EVERY_SHAPE, selector: 'full' })
     expect([full.path, full.angles.length, full.selection.source]).toEqual(['inline', 17, 'argument'])
   })
@@ -167,7 +167,7 @@ describe('reads', () => {
 describe('selector', () => {
   it('quick runs only the angles whose ceiling is Important, without deepening', () => {
     const plan = planReview({ lines: 400, shape: EVERY_SHAPE, selector: 'quick' })
-    expect(plan.angles).toEqual([1, 2, 3, 4, 5, 8, 10, 12, 13, 14, 15])
+    expect(plan.angles).toEqual([1, 2, 3, 4, 5, 8, 10, 12, 13, 14, 15, 16, 17])
     expect(plan.deepening).toBeUndefined()
     expect(plan.outputTokens).toEqual(['important'])
   })

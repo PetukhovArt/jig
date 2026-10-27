@@ -38,7 +38,7 @@ export type Angle = keyof typeof ANGLE_TOKENS
 const isAngle = (value: number): value is Angle => Object.hasOwn(ANGLE_TOKENS, value)
 export const ANGLES: readonly Angle[] = Object.keys(ANGLE_TOKENS).map(Number).filter(isAngle)
 
-const IMPORTANT_ANGLES: readonly Angle[] = [1, 2, 3, 4, 5, 8, 10, 12, 13, 14, 15]
+const IMPORTANT_ANGLES: readonly Angle[] = [1, 2, 3, 4, 5, 8, 10, 12, 13, 14, 15, 16, 17]
 
 const TOKEN_ANGLES: Readonly<Record<string, readonly Angle[]>> = {
   bugs: [1, 2, 3, 4, 5, 12],

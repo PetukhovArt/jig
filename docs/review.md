@@ -28,7 +28,7 @@ jig review-plan     code: counts the diff, picks the angles and the layout, spli
 
 **A bug needs a proof in three parts**, each quoted: the initiator in a production build (a user action, a system event, a backend response), the path as `file:line` for every step to the defective line, and the effect, observable and wrong by the requirement. Any part missing: `REFUTED: not proven`. "The mechanism is real, the trigger is not proven" is not a third verdict ([bug gates](../skills/jig-review/gates/bugs.md)).
 
-**Severity is a closed list.** `Important` means the merge waits: broken behavior, data loss, a crash, a broken layer or a module in the wrong place, a responsibility spread across modules, a contradicted ADR, a structural smell. Everything else is a `Nit`. A project replaces the list with its own ([severity](../skills/jig-review/gates/severity.md)).
+**Severity is a closed list.** `Important` means the merge waits: broken behavior, data loss, a crash, a broken layer or a module in the wrong place, a responsibility spread across modules, a contradicted ADR, a structural smell, a false guarantee (a test that cannot fail, a comment the code contradicts). Everything else is a `Nit`. A project replaces the list with its own ([severity](../skills/jig-review/gates/severity.md)).
 
 **Architecture is reviewed, not only bugs.** Angle 13 checks layers and boundaries, ADRs in force and glossary terms. When a diff adds modules, a deepener proposes the one module deepening with the most effect: a proposal in the FYI note, never a thread.
 

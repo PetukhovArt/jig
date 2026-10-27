@@ -43,8 +43,10 @@ Example: `important,architecture,adr,tests,comments` runs the angles with ceilin
 
 The ceiling is the highest severity an angle gives at [verify](../gates/severity.md). `important` runs only the angles with ceiling `Important`.
 
-- `Important`: 1, 2, 3, 4, 5, 12, 13, 14, 15; 8 (a leak only); 10 (a structural smell only).
-- `Nit`: 6, 7, 9, 11, 16, 17.
+- `Important`: 1, 2, 3, 4, 5, 12, 13, 14, 15; 8 (a leak only); 10 (a structural smell only); 16 (a wrong test only); 17 (a wrong comment only).
+- `Nit`: 6, 7, 9, 11; the rest of 8, 10, 16, 17.
+
+So `quick` runs 16 and 17 whenever the diff has tests or added comments, and prints only their wrong tests and comments.
 
 `angles.<n>.severityCeiling` in the [config](project-config.md) moves an angle between the lists.
 

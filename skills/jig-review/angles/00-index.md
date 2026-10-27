@@ -32,8 +32,8 @@ Simplifications 7 and 8 never become threads: they go as items into the one FYI 
 - [8](8.efficiency.md) · efficiency: extra work and leaks
 - [9](9.fix-altitude.md) · fix altitude: fixed at the wrong level, a feature branch in a foreign flow, a reshape removes a branch whole
 - [11](11.docs.md) · documents in the diff: will the document go stale; does a changed ADR or glossary agree
-- [16](16.tests.md) · redundant tests, by atom `tests`
-- [17](17.comments.md) · redundant comments, by atom `comments`
+- [16](16.tests.md) · wrong and redundant tests, by atom `tests`
+- [17](17.comments.md) · wrong and redundant comments, by atom `comments`
 
 ## Spec: survives ONLY as `CONFIRMED`, with the rules finder when a spec is found
 

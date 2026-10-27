@@ -15,6 +15,6 @@ A simplification (`status: "optional"`, [shape gate](../gates/shape.md#shape-gat
 
 ## Merge per file
 
-After the filters, findings of angle 16 (tests) and angle 17 (comments) in one file merge into one, separately per angle: `line` of the first instance, id `<file>:<line>:tests` or `<file>:<line>:comments`, one Nit in the tally. A single instance in a file stays a normal finding. Text form: [comment texts](07-comments.md).
+After the filters, findings of angle 16 (tests) and angle 17 (comments) in one file merge into one, separately per angle: `line` of the first instance, id `<file>:<line>:tests` or `<file>:<line>:comments`, one Nit in the tally. Wrong ones (`Important`) merge apart from the redundant ones: one Important per file and angle. A single instance in a file stays a normal finding. Text form: [comment texts](07-comments.md).
 
 The outcome is `fixed` when every listed instance is fixed. Some remain: `skipped`.

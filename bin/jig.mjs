@@ -4981,7 +4981,7 @@ var ANGLE_TOKENS = {
 };
 var isAngle = (value) => Object.hasOwn(ANGLE_TOKENS, value);
 var ANGLES = Object.keys(ANGLE_TOKENS).map(Number).filter(isAngle);
-var IMPORTANT_ANGLES = [1, 2, 3, 4, 5, 8, 10, 12, 13, 14, 15];
+var IMPORTANT_ANGLES = [1, 2, 3, 4, 5, 8, 10, 12, 13, 14, 15, 16, 17];
 var TOKEN_ANGLES = {
   bugs: [1, 2, 3, 4, 5, 12],
   security: [14],
