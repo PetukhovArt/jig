@@ -9,8 +9,10 @@ An issue moves through four states: filed, triaged, fixed on `main`, released. L
 - From the command line or an agent, the body uses the form's headings, so every issue reads the same:
 
   ```sh
-  gh issue create --label bug,needs-triage --title "<area>: <what jig did>" --body-file body.md
+  gh issue create -R PetukhovArt/jig --label bug,needs-triage --title "<area>: <what jig did>" --body-file body.md
   ```
+
+  `-R` names the repository: an agent often files from the project where jig ran, and without it `gh` files into that project.
 
   `body.md` has `### What happened`, `### Expected`, `### How to reproduce`, `### jig version or commit`, `### OS`, `### AI agent`.
 - The title starts with the area, then the defect as observed: `check stop: eslint timeout on a 58-file diff ends in 'clean'`.
@@ -25,7 +27,7 @@ An issue moves through four states: filed, triaged, fixed on `main`, released. L
 | reproduced or accepted | `confirmed`, one `area: *`, `os: *` or `ai: *` when it shows only there | stays open |
 | details missing | `needs-info` | a comment says what is missing |
 | already reported | `duplicate` | `gh issue close <n> --duplicate-of <m>` |
-| out of scope or not jig | `wontfix` or `invalid` | `gh issue close <n> --reason "not planned"` with a one-line reason |
+| out of scope or not jig | `wontfix` or `invalid` | `gh issue comment <n>` with a one-line reason, then `gh issue close <n> --reason "not planned"`: on a closed issue, `close --comment` drops the comment and still exits 0 |
 
 ## Fixing
 
