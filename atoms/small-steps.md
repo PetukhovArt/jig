@@ -6,6 +6,7 @@ metadata:
 ---
 # Small steps
 
+- Start with the step every later step leans on: the data shape, the reproduction, the script that does the repeats.
 - Each unit ends in a state you can check: a test goes green, a replay passes, a command prints the expected value.
 - Check a unit as a before/after bracket: show the state before, make the change, show the state after.
 - Do not start the next unit while the current one is red.
