@@ -36,6 +36,7 @@ const thread = (id: string, ...notes: NoteFixture[]): Record<string, unknown> =>
 
 interface MrFixture {
   sha?: string
+  target?: string
   commits?: string[]
   discussions?: Record<string, unknown>[]
   approvedBy?: number[]
@@ -64,7 +65,7 @@ const glab = (world: World, args: readonly string[]): ExecResult => {
   if (mr === undefined) return { code: 1, stdout: '{"message":"404 Not Found"}', stderr: '' }
   switch (match?.[2]) {
     case undefined:
-      return ok(JSON.stringify({ sha: mr.sha ?? 'head' }))
+      return ok(JSON.stringify({ sha: mr.sha ?? 'head', target_branch: mr.target ?? 'main' }))
     case '/approvals':
       return ok(JSON.stringify({ approved_by: (mr.approvedBy ?? []).map((id) => ({ user: { id } })) }))
     case '/commits': {
@@ -179,6 +180,37 @@ describe('jig review-cycle queue: filter rules', () => {
     )
     const mrs = { 1: { sha: 'abc', discussions: [] }, 2: { sha: 'abc', discussions: [answered] } }
     expect(queueLines({ mrs, adapter: adapterQueue([row(1), row(2)]) }).map(decisionOf)).toEqual(['SKIP unchanged', 'ACTIONABLE'])
+  })
+
+  it('skips a rebased head whose diff hashes to the state diff_hash, and reviews one whose diff moved', () => {
+    const upstream = mkdtempSync(join(tmpdir(), 'jig-review-cycle-upstream-'))
+    try {
+      const sh = (...args: string[]): string => spawnSync('git', args, { cwd: upstream, encoding: 'utf8' }).stdout.trim()
+      const commit = (file: string): string => {
+        writeFileSync(join(upstream, file), `${file}\n`)
+        sh('add', file)
+        sh('-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '-m', file)
+        return sh('rev-parse', 'HEAD')
+      }
+      sh('init', '-q', '-b', 'main')
+      commit('base.txt')
+      sh('checkout', '-q', '-b', 'feature-1')
+      const reviewed = commit('feature.txt')
+      const patch = spawnSync('git', ['diff', '--no-color', '--no-ext-diff', 'main...feature-1'], { cwd: upstream, encoding: 'utf8' }).stdout
+      const hash = spawnSync('git', ['hash-object', '--stdin'], { cwd: upstream, input: patch, encoding: 'utf8' }).stdout.trim()
+      sh('checkout', '-q', 'main')
+      commit('other.txt')
+      sh('checkout', '-q', '-b', 'rebased', 'main')
+      const rebased = commit('feature.txt')
+      const moved = commit('more.txt')
+      spawnSync('git', ['remote', 'set-url', 'origin', upstream], { cwd: root })
+      mkdirSync(join(root, '.jig', 'runs', 'review'), { recursive: true })
+      for (const iid of [1, 2]) writeFileSync(reviewStatePath(root, upstream, String(iid)), JSON.stringify({ last_reviewed_sha: reviewed, diff_hash: hash, findings: [] }))
+      const mrs = { 1: { sha: rebased, target: 'main' }, 2: { sha: moved, target: 'main' } }
+      expect(queueLines({ mrs, adapter: adapterQueue([row(1), row(2)]) }).map(decisionOf)).toEqual(['SKIP unchanged', 'ACTIONABLE'])
+    } finally {
+      rmSync(upstream, { recursive: true, force: true })
+    }
   })
 
   it('reviews a head the state has not seen and reports the standing findings of its state', () => {

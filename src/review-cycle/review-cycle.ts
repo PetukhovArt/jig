@@ -4,6 +4,7 @@ import { parseArgs } from 'node:util'
 import { loadConfig, type ForgeName } from '../core/config'
 import { git } from '../core/git'
 import { toSlash } from '../core/paths'
+import { diffHash } from '../review/scope'
 import { listWorktrees, samePath } from '../worktree/list'
 import { defaultAdapter, resolveAdapterPath, scriptAdapter, type ProcessAdapter, type QueueRow } from './adapter'
 import { BlockedRefError, EnvironmentError, spawnExec, type Exec } from './exec'
@@ -21,7 +22,7 @@ import {
   type SkipReason,
   type ThreadFacts,
 } from './filter'
-import { createForge, detectForge, type Forge } from './forge'
+import { createForge, detectForge, type Forge, type Head } from './forge'
 import { defaultImportDir, importLegacyStates } from './import-state'
 import { blockingFindings, parseReviewState, parseTally, readReviewState, reconcile, reviewStatePath, specHold, standingFindings, withdrawFromState } from './state'
 import { applyVerdicts, foldVerdicts, OUTCOMES, type MrOutcome, type Outcome } from './verdict'
@@ -96,6 +97,20 @@ const adapterFor = (repo: Repo, flag: string | undefined, deps: CycleDeps): Proc
 export const reviewWorktreePath = (repo: Pick<Repo, 'mainRoot' | 'worktreesDir'>, iid: number): string =>
   resolve(repo.mainRoot, repo.worktreesDir, `${basename(repo.mainRoot)}-review-${iid}`)
 
+/** Fetches the target and the head into the main checkout; false when either cannot be fetched or diffed. */
+const hasReviewedDiff = (root: string, head: Head, reviewedHash: string): boolean => {
+  const fetched = (ref: string): string | undefined =>
+    git(['fetch', '-q', '--no-tags', 'origin', ref], root).ok ? git(['rev-parse', 'FETCH_HEAD'], root).stdout.trim() : undefined
+  const target = head.target === '' ? undefined : fetched(head.target)
+  if (target === undefined) return false
+  if (!git(['cat-file', '-e', `${head.sha}^{commit}`], root).ok && fetched(head.sha) === undefined) return false
+  try {
+    return diffHash(root, `${target}...${head.sha}`) === reviewedHash
+  } catch {
+    return false
+  }
+}
+
 const isBusy = (repo: Repo, worktree: string): boolean =>
   existsSync(worktree) || worktreesOf(repo.mainRoot).some((entry) => samePath(entry.path, worktree))
 
@@ -118,8 +133,10 @@ const judgeRow = (row: QueueRow, adapter: ProcessAdapter, repos: (dir: string) =
     const threads = threadFacts(discussions, me)
     const latestCommit = lastCommit(repo.forge.commitDates(row.iid))
     const reviewedSha = state?.lastReviewedSha
-    const headSha = needsHeadSha(threads, reviewedSha) ? repo.forge.headSha(row.iid) : undefined
-    const decision: Decision = reviewDecision({ staleRule, threads, lastCommit: latestCommit, reviewedSha, headSha })
+    const head = needsHeadSha(threads, reviewedSha) ? repo.forge.head(row.iid) : undefined
+    const headSha = head?.sha
+    const reviewedDiff = head !== undefined && head.sha !== reviewedSha && state?.diffHash !== undefined && hasReviewedDiff(repo.mainRoot, head, state.diffHash)
+    const decision: Decision = reviewDecision({ staleRule, threads, lastCommit: latestCommit, reviewedSha, headSha, reviewedDiff })
     if (decision.kind === 'skip') {
       const blocking = state === undefined ? 0 : standingBlocking(blockingFindings(state), discussions)
       return { kind: 'skip', row, reason: decision.reason, outcome: skipOutcome(decision.reason, blocking), threads, lastCommit: latestCommit }

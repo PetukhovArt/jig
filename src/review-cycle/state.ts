@@ -17,6 +17,7 @@ export interface Finding {
 
 export interface ReviewState {
   lastReviewedSha: string | undefined
+  diffHash: string | undefined
   findings: Finding[]
 }
 
@@ -58,7 +59,7 @@ export const parseReviewState = (text: string, label: string): ReviewState => {
       specQuote: typeof entry['spec_quote'] === 'string' ? entry['spec_quote'] : undefined,
     }
   })
-  return { lastReviewedSha: optionalText(raw['last_reviewed_sha']), findings }
+  return { lastReviewedSha: optionalText(raw['last_reviewed_sha']), diffHash: optionalText(raw['diff_hash']), findings }
 }
 
 /** undefined: no state file, the engine runs a first review. */

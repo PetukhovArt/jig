@@ -6672,7 +6672,7 @@ var preDecision = (row) => {
 var needsHeadSha = (threads, reviewedSha) => reviewedSha !== void 0 && threads.unanswered === 0;
 var reviewDecision = (facts2) => {
   const { threads } = facts2;
-  const isUnchanged = threads.unanswered === 0 && facts2.reviewedSha !== void 0 && facts2.headSha !== void 0 && facts2.reviewedSha === facts2.headSha;
+  const isUnchanged = threads.unanswered === 0 && facts2.reviewedSha !== void 0 && facts2.headSha !== void 0 && (facts2.reviewedSha === facts2.headSha || facts2.reviewedDiff);
   if (isUnchanged) return { kind: "skip", reason: "unchanged" };
   const isStale = threads.myUnresolved > 0 && threads.unanswered === 0 && threads.myLastNote !== void 0 && facts2.lastCommit !== void 0 && time(facts2.lastCommit) <= time(threads.myLastNote);
   if (isStale && facts2.staleRule) return { kind: "skip", reason: "stale" };
@@ -6753,10 +6753,11 @@ var gitlabForge = (exec, cwd) => {
       const by = approvals["approved_by"];
       return Array.isArray(by) && by.length > 0;
     },
-    headSha(iid) {
-      const sha = text2(cli.one(["api", mr(iid)], `api ${mr(iid)}`)["sha"]);
+    head(iid) {
+      const raw = cli.one(["api", mr(iid)], `api ${mr(iid)}`);
+      const sha = text2(raw["sha"]);
       if (sha === "") throw new EnvironmentError(`glab api ${mr(iid)}: no head sha`);
-      return sha;
+      return { sha, target: text2(raw["target_branch"]) };
     },
     commitDates(iid) {
       const path2 = `${mr(iid)}/commits?per_page=100`;
@@ -6833,10 +6834,11 @@ var githubForge = (exec, cwd) => {
       const reviews = view(iid, "latestReviews")["latestReviews"];
       return Array.isArray(reviews) && objects(reviews).some((review) => review["state"] === "APPROVED");
     },
-    headSha(iid) {
-      const sha = text2(view(iid, "headRefOid")["headRefOid"]);
+    head(iid) {
+      const raw = view(iid, "headRefOid,baseRefName");
+      const sha = text2(raw["headRefOid"]);
       if (sha === "") throw new EnvironmentError(`gh pr view ${iid}: no head sha`);
-      return sha;
+      return { sha, target: text2(raw["baseRefName"]) };
     },
     commitDates(iid) {
       const commits = view(iid, "commits")["commits"];
@@ -6896,7 +6898,7 @@ var parseReviewState = (text3, label) => {
       specQuote: typeof entry["spec_quote"] === "string" ? entry["spec_quote"] : void 0
     };
   });
-  return { lastReviewedSha: optionalText(raw["last_reviewed_sha"]), findings };
+  return { lastReviewedSha: optionalText(raw["last_reviewed_sha"]), diffHash: optionalText(raw["diff_hash"]), findings };
 };
 var readReviewState = (path2) => {
   if (!existsSync16(path2)) return void 0;
@@ -7202,6 +7204,17 @@ var adapterFor = (repo, flag, deps) => {
   return defaultAdapter(repo.forge, repo.mainRoot);
 };
 var reviewWorktreePath = (repo, iid) => resolve12(repo.mainRoot, repo.worktreesDir, `${basename6(repo.mainRoot)}-review-${iid}`);
+var hasReviewedDiff = (root, head, reviewedHash) => {
+  const fetched = (ref) => git(["fetch", "-q", "--no-tags", "origin", ref], root).ok ? git(["rev-parse", "FETCH_HEAD"], root).stdout.trim() : void 0;
+  const target = head.target === "" ? void 0 : fetched(head.target);
+  if (target === void 0) return false;
+  if (!git(["cat-file", "-e", `${head.sha}^{commit}`], root).ok && fetched(head.sha) === void 0) return false;
+  try {
+    return diffHash(root, `${target}...${head.sha}`) === reviewedHash;
+  } catch {
+    return false;
+  }
+};
 var isBusy = (repo, worktree) => existsSync18(worktree) || worktreesOf(repo.mainRoot).some((entry) => samePath(entry.path, worktree));
 var judgeRow = (row, adapter, repos) => {
   try {
@@ -7217,8 +7230,10 @@ var judgeRow = (row, adapter, repos) => {
     const threads = threadFacts(discussions, me);
     const latestCommit = lastCommit(repo.forge.commitDates(row.iid));
     const reviewedSha = state?.lastReviewedSha;
-    const headSha = needsHeadSha(threads, reviewedSha) ? repo.forge.headSha(row.iid) : void 0;
-    const decision = reviewDecision({ staleRule, threads, lastCommit: latestCommit, reviewedSha, headSha });
+    const head = needsHeadSha(threads, reviewedSha) ? repo.forge.head(row.iid) : void 0;
+    const headSha = head?.sha;
+    const reviewedDiff = head !== void 0 && head.sha !== reviewedSha && state?.diffHash !== void 0 && hasReviewedDiff(repo.mainRoot, head, state.diffHash);
+    const decision = reviewDecision({ staleRule, threads, lastCommit: latestCommit, reviewedSha, headSha, reviewedDiff });
     if (decision.kind === "skip") {
       const blocking = state === void 0 ? 0 : standingBlocking(blockingFindings(state), discussions);
       return { kind: "skip", row, reason: decision.reason, outcome: skipOutcome(decision.reason, blocking), threads, lastCommit: latestCommit };

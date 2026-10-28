@@ -100,6 +100,8 @@ export interface ReviewFacts {
   /** `last_reviewed_sha` of the review state; undefined without a state file. */
   reviewedSha: string | undefined
   headSha: string | undefined
+  /** The head's diff against its target hashes to the state's `diff_hash`: a rebase or a merged target moved no patch. */
+  reviewedDiff: boolean
 }
 
 /** Rules 1, 2 and the busy worktree: decided off the queue row, before any per-merge-request call. */
@@ -115,13 +117,13 @@ export const needsHeadSha = (threads: ThreadFacts, reviewedSha: string | undefin
   reviewedSha !== undefined && threads.unanswered === 0
 
 /**
- * Rule 4 (unchanged) wins over rule 3 (stale). Stale: I hold an unresolved thread, no commit landed
+ * Rule 4 (unchanged: the reviewed head, or a new head with the reviewed diff) wins over rule 3 (stale). Stale: I hold an unresolved thread, no commit landed
  * after my last note and nobody answered me since; it skips only under the adapter's `stale=on`.
  */
 export const reviewDecision = (facts: ReviewFacts): Decision => {
   const { threads } = facts
   const isUnchanged =
-    threads.unanswered === 0 && facts.reviewedSha !== undefined && facts.headSha !== undefined && facts.reviewedSha === facts.headSha
+    threads.unanswered === 0 && facts.reviewedSha !== undefined && facts.headSha !== undefined && (facts.reviewedSha === facts.headSha || facts.reviewedDiff)
   if (isUnchanged) return { kind: 'skip', reason: 'unchanged' }
   const isStale =
     threads.myUnresolved > 0 &&

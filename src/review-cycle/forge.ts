@@ -23,6 +23,11 @@ export interface ReviewRequest {
   webUrl: string
 }
 
+export interface Head {
+  sha: string
+  target: string
+}
+
 /** What the review cycle reads from and deletes on the forge. Everything else goes through the forge CLI by the skill. */
 export interface Forge {
   readonly name: ForgeName
@@ -32,7 +37,8 @@ export interface Forge {
   reviewQueue(): ReviewRequest[]
   /** Anyone approved. */
   approved(iid: number): boolean
-  headSha(iid: number): string
+  /** The head commit and the target branch name. */
+  head(iid: number): Head
   commitDates(iid: number): string[]
   discussions(iid: number): Discussion[]
   /** undefined: no such thread on the merge request. */
@@ -123,10 +129,11 @@ export const gitlabForge = (exec: Exec, cwd: string): Forge => {
       const by = approvals['approved_by']
       return Array.isArray(by) && by.length > 0
     },
-    headSha(iid) {
-      const sha = text(cli.one(['api', mr(iid)], `api ${mr(iid)}`)['sha'])
+    head(iid) {
+      const raw = cli.one(['api', mr(iid)], `api ${mr(iid)}`)
+      const sha = text(raw['sha'])
       if (sha === '') throw new EnvironmentError(`glab api ${mr(iid)}: no head sha`)
-      return sha
+      return { sha, target: text(raw['target_branch']) }
     },
     commitDates(iid) {
       const path = `${mr(iid)}/commits?per_page=100`
@@ -212,10 +219,11 @@ export const githubForge = (exec: Exec, cwd: string): Forge => {
       const reviews = view(iid, 'latestReviews')['latestReviews']
       return Array.isArray(reviews) && objects(reviews).some((review) => review['state'] === 'APPROVED')
     },
-    headSha(iid) {
-      const sha = text(view(iid, 'headRefOid')['headRefOid'])
+    head(iid) {
+      const raw = view(iid, 'headRefOid,baseRefName')
+      const sha = text(raw['headRefOid'])
       if (sha === '') throw new EnvironmentError(`gh pr view ${iid}: no head sha`)
-      return sha
+      return { sha, target: text(raw['baseRefName']) }
     },
     commitDates(iid) {
       const commits = view(iid, 'commits')['commits']
