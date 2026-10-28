@@ -7,6 +7,7 @@ import { createMatcher } from '../core/glob'
 import { parseJsonc } from '../core/jsonc'
 import { jigPaths, resolvePluginRoot, toSlash } from '../core/paths'
 import { realPath } from '../core/proc'
+import { isLockfile } from '../catalog'
 import { fileSource, isTestFile } from '../catalog/languages'
 import { lexComments } from '../catalog/languages'
 import { detectAgent, loadUserConfig, resolveTiers, type TierMap } from '../tiers/tiers'
@@ -49,7 +50,7 @@ export interface FileStat {
   deleted: number
 }
 
-export type Exclusion = 'test' | 'fixture' | 'markdown'
+export type Exclusion = 'test' | 'fixture' | 'markdown' | 'lockfile'
 
 export const PROJECT_CONFIG = 'review.jsonc'
 
@@ -60,6 +61,7 @@ const isChangelog = createMatcher(['**/CHANGELOG.md'])
 
 export const exclusionOf = (path: string, root?: string): Exclusion | undefined => {
   if (isMarkdown(path)) return 'markdown'
+  if (isLockfile(path)) return 'lockfile'
   if (isTestFile(path, root === undefined ? undefined : fileSource(root, path)) || isTestPath(path)) return 'test'
   if (isFixturePath(path)) return 'fixture'
   return undefined
@@ -99,7 +101,7 @@ export const parseNumstat = (output: string): FileStat[] => {
 }
 
 export const countLines = (stats: readonly FileStat[], root?: string): { lines: number; counted: number; excluded: Record<Exclusion, number> } => {
-  const excluded: Record<Exclusion, number> = { test: 0, fixture: 0, markdown: 0 }
+  const excluded: Record<Exclusion, number> = { test: 0, fixture: 0, markdown: 0, lockfile: 0 }
   let lines = 0
   let counted = 0
   for (const stat of stats) {

@@ -324,25 +324,6 @@ import { createHash as createHash2 } from "node:crypto";
 import { mkdirSync as mkdirSync6, readdirSync as readdirSync3, readFileSync as readFileSync11, statSync as statSync5 } from "node:fs";
 import { dirname as dirname7, join as join9 } from "node:path";
 
-// src/catalog/lockfiles.json
-var lockfiles_default = [
-  { file: "package-lock.json", install: "npm ci" },
-  { file: "npm-shrinkwrap.json", install: "npm ci" },
-  { file: "pnpm-lock.yaml", install: "pnpm install --frozen-lockfile" },
-  { file: "yarn.lock", install: "yarn install --frozen-lockfile" },
-  { file: "bun.lock", install: "bun install --frozen-lockfile" },
-  { file: "bun.lockb", install: "bun install --frozen-lockfile" },
-  { file: "deno.lock", install: "deno install --frozen" },
-  { file: "uv.lock", install: "uv sync --frozen" },
-  { file: "poetry.lock", install: "poetry install --no-root" },
-  { file: "Pipfile.lock", install: "pipenv sync" },
-  { file: "Gemfile.lock", install: "bundle install" },
-  { file: "composer.lock", install: "composer install" },
-  { file: "go.sum", install: "go mod download" },
-  { file: "Cargo.lock", install: "cargo fetch --locked" },
-  { file: "packages.lock.json", install: "dotnet restore --locked-mode" }
-];
-
 // src/core/glob.ts
 var REGEX_SPECIAL = /[.*+?^${}()|[\]\\/]/;
 var escapeChar = (char) => REGEX_SPECIAL.test(char) ? `\\${char}` : char;
@@ -433,6 +414,25 @@ var createMatcher = (globs) => {
   return (path2) => pattern.test(path2.replace(/\\/g, "/"));
 };
 var matchGlob = (path2, glob) => createMatcher(typeof glob === "string" ? [glob] : glob)(path2);
+
+// src/catalog/lockfiles.json
+var lockfiles_default = [
+  { file: "package-lock.json", install: "npm ci" },
+  { file: "npm-shrinkwrap.json", install: "npm ci" },
+  { file: "pnpm-lock.yaml", install: "pnpm install --frozen-lockfile" },
+  { file: "yarn.lock", install: "yarn install --frozen-lockfile" },
+  { file: "bun.lock", install: "bun install --frozen-lockfile" },
+  { file: "bun.lockb", install: "bun install --frozen-lockfile" },
+  { file: "deno.lock", install: "deno install --frozen" },
+  { file: "uv.lock", install: "uv sync --frozen" },
+  { file: "poetry.lock", install: "poetry install --no-root" },
+  { file: "Pipfile.lock", install: "pipenv sync" },
+  { file: "Gemfile.lock", install: "bundle install" },
+  { file: "composer.lock", install: "composer install" },
+  { file: "go.sum", install: "go mod download" },
+  { file: "Cargo.lock", install: "cargo fetch --locked" },
+  { file: "packages.lock.json", install: "dotnet restore --locked-mode" }
+];
 
 // src/catalog/languages/index.ts
 import { readFileSync as readFileSync2 } from "node:fs";
@@ -1918,6 +1918,7 @@ var DIRECTIVE_SOURCES = [...TOOLS, ...DIRECTIVE_ONLY_TOOLS];
 
 // src/catalog/index.ts
 var LOCKFILES = lockfiles_default;
+var isLockfile = createMatcher(LOCKFILES.map((lockfile) => `**/${lockfile.file}`));
 var CATALOG = [
   ...TOOLS.map((tool) => ({ kind: "tool", name: tool.name, binaries: tool.binaries, setup: tool.setup ?? [], tool })),
   ...PROOFS2.map((proof2) => ({ kind: "proof", name: proof2.name, binaries: proof2.binaries, setup: proof2.setup ?? [], proof: proof2 }))
@@ -4824,11 +4825,8 @@ var chunkPath = (chunk) => {
   return side("+++ ") ?? side("--- ") ?? header?.[2] ?? chunk[0] ?? "";
 };
 var partName = (audience, index) => `${audience}-${String(index + 1).padStart(2, "0")}.diff`;
-var isUnreviewed = createMatcher([
-  "**/{package-lock.json,npm-shrinkwrap.json,yarn.lock,pnpm-lock.yaml,bun.lockb,Cargo.lock,poetry.lock,Gemfile.lock,composer.lock,go.sum}",
-  "**/*.{min.js,min.css,map,snap}",
-  "**/__snapshots__/**"
-]);
+var isGenerated = createMatcher(["**/*.{min.js,min.css,map,snap}", "**/__snapshots__/**"]);
+var isUnreviewed = (path2) => isLockfile(path2) || isGenerated(path2);
 var compactChunk = (chunk, path2) => {
   if (isUnreviewed(path2)) return void 0;
   const firstHunk = chunk.findIndex((line) => line.startsWith("@@"));
@@ -5218,6 +5216,7 @@ var isMarkdown = createMatcher(["**/*.md"]);
 var isChangelog = createMatcher(["**/CHANGELOG.md"]);
 var exclusionOf = (path2, root) => {
   if (isMarkdown(path2)) return "markdown";
+  if (isLockfile(path2)) return "lockfile";
   if (isTestFile(path2, root === void 0 ? void 0 : fileSource(root, path2)) || isTestPath(path2)) return "test";
   if (isFixturePath(path2)) return "fixture";
   return void 0;
@@ -5252,7 +5251,7 @@ var parseNumstat = (output) => {
   return stats;
 };
 var countLines = (stats, root) => {
-  const excluded = { test: 0, fixture: 0, markdown: 0 };
+  const excluded = { test: 0, fixture: 0, markdown: 0, lockfile: 0 };
   let lines2 = 0;
   let counted = 0;
   for (const stat of stats) {
@@ -6182,6 +6181,7 @@ var diffSize = (projectRoot, base, head) => {
   for (const stat of parseNumstat(result.stdout)) {
     const kind = exclusionOf(stat.path);
     const lines2 = stat.added + stat.deleted;
+    if (kind === "lockfile") continue;
     if (kind === "markdown") size.docs += lines2;
     else if (kind === void 0) size.code += lines2;
     else size.tests += lines2;

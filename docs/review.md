@@ -36,7 +36,7 @@ jig review-plan     code: counts the diff, picks the angles and the layout, spli
 
 ## Size decides the layout
 
-Counted lines leave out tests, fixtures, documents and unedited renames; `N = ceil(lines / 150)`, at most 5.
+Counted lines leave out tests, fixtures, documents, lock files and unedited renames; `N = ceil(lines / 150)`, at most 5.
 
 | diff | layout | who hunts | who judges |
 | --- | --- | --- | --- |

@@ -213,15 +213,17 @@ describe('numstat', () => {
     ])
   })
 
-  it('leaves tests, fixtures and Markdown out of LINES', () => {
+  it('leaves tests, fixtures, Markdown and lock files out of LINES', () => {
     const counted = countLines([
       { path: 'src/a.ts', added: 100, deleted: 60 },
       { path: 'src/a.test.ts', added: 500, deleted: 0 },
       { path: 'test/helpers.ts', added: 50, deleted: 0 },
       { path: 'src/__fixtures__/big.json', added: 900, deleted: 0 },
       { path: 'docs/guide.md', added: 70, deleted: 3 },
+      { path: 'tauri/Cargo.lock', added: 1400, deleted: 1400 },
+      { path: 'apps/api/uv.lock', added: 30, deleted: 0 },
     ])
-    expect(counted).toEqual({ lines: 160, counted: 1, excluded: { test: 2, fixture: 1, markdown: 1 } })
+    expect(counted).toEqual({ lines: 160, counted: 1, excluded: { test: 2, fixture: 1, markdown: 1, lockfile: 2 } })
   })
 
   it('maps added lines from a -U0 patch', () => {

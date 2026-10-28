@@ -378,6 +378,7 @@ export const diffSize = (projectRoot: string, base: string, head: string): DiffS
   for (const stat of parseNumstat(result.stdout)) {
     const kind = exclusionOf(stat.path)
     const lines = stat.added + stat.deleted
+    if (kind === 'lockfile') continue
     if (kind === 'markdown') size.docs += lines
     else if (kind === undefined) size.code += lines
     else size.tests += lines

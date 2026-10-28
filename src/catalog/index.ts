@@ -1,3 +1,4 @@
+import { createMatcher } from '../core/glob'
 import type { OutputParser, ToolBinary } from '../tools/tool'
 import lockfiles from './lockfiles.json'
 import { PROOFS, type ProofDefinition } from './proofs'
@@ -14,6 +15,8 @@ export interface Lockfile {
 }
 
 export const LOCKFILES: readonly Lockfile[] = lockfiles
+
+export const isLockfile = createMatcher(LOCKFILES.map((lockfile) => `**/${lockfile.file}`))
 
 export type CatalogEntry =
   | { kind: 'tool'; name: string; binaries: readonly ToolBinary[]; setup: readonly string[]; tool: RegisteredTool }

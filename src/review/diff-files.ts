@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto'
 import { mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { git } from '../core/git'
+import { isLockfile } from '../catalog'
 import { createMatcher } from '../core/glob'
 import { ensureJigDir, toSlash } from '../core/paths'
 import { listWorktrees } from '../worktree/list'
@@ -46,11 +47,8 @@ const chunkPath = (chunk: readonly string[]): string => {
 
 const partName = (audience: Audience, index: number): string => `${audience}-${String(index + 1).padStart(2, '0')}.diff`
 
-const isUnreviewed = createMatcher([
-  '**/{package-lock.json,npm-shrinkwrap.json,yarn.lock,pnpm-lock.yaml,bun.lockb,Cargo.lock,poetry.lock,Gemfile.lock,composer.lock,go.sum}',
-  '**/*.{min.js,min.css,map,snap}',
-  '**/__snapshots__/**',
-])
+const isGenerated = createMatcher(['**/*.{min.js,min.css,map,snap}', '**/__snapshots__/**'])
+const isUnreviewed = (path: string): boolean => isLockfile(path) || isGenerated(path)
 
 export const compactChunk = (chunk: readonly string[], path: string): string[] | undefined => {
   if (isUnreviewed(path)) return undefined
