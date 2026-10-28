@@ -79,7 +79,18 @@ Angle 13 sections C and D (`adr`, `glossary`) run with `architecture`. The verif
 
 ## Deepening
 
-Not an angle and not a thread: a proposal, not a defect; verify does not judge it ([angle 13](../angles/13.architecture.md), "not a finding"). One agent, role `deepener`, gets the diff and atom `module-depth`, looks at new and heavily changed modules and returns one deepening, the one with the largest effect: the most leverage for callers and locality for maintainers (how many callers stop knowing what the interface would hide). Format: module, what to deepen, effect, blast radius (how many callers change, with paths). The blast radius is reported but does not decide. Printed as its own section after the findings ([output](../steps/08-output.md#output)); in mode `pre-mr` it goes to Consider. With state on it is written to state as `deepening` ([schema](state-schema.md)) and posting puts it in the FYI note as its own section ([posting](posting.md#8-the-fyi-note-one-per-merge-request)): never a thread, never in the tally, never under the outcome check.
+Not an angle and not a thread: a proposal, not a defect, until [promoted](#promotion); verify does not judge it ([angle 13](../angles/13.architecture.md), "not a finding"). One agent, role `deepener`, gets the diff and atom `module-depth`, looks at new and heavily changed modules and returns one deepening, the one with the largest effect: the most leverage for callers and locality for maintainers (how many callers stop knowing what the interface would hide). Format: module, what to deepen, effect, blast radius (how many callers change, with paths). The blast radius is reported but does not decide. Printed as its own section after the findings ([output](../steps/08-output.md#output)); in mode `pre-mr` it goes to Consider. With state on it is written to state as `deepening` ([schema](state-schema.md)) and posting puts it in the FYI note as its own section ([posting](posting.md#8-the-fyi-note-one-per-merge-request)): never a thread, never in the tally, never under the outcome check.
+
+### Promotion
+
+A `CONFIRMED` finding is an instance of the deepening when its line is one of the places the proposal would replace with one interface, and its defect is that place drifting from the others (a check skipped, a rule applied differently). One instance turns the proposal into a defect: the scattering has already broken something, and the next copy will drift too. Then, after ranking, the deepening becomes a finding of its own:
+
+- angle 13, category `architecture`, severity by the taxonomy in force (by default `spread`, `Important`), not judged again: the instance's verdict is its proof;
+- anchored on another of the replaced places that is in the diff, else on the instance's line;
+- its `mrComment` names the instance (`file:line`) as proof, the replaced places with paths, and the interface that would hold them, with the effect and blast radius of the proposal;
+- with state on it is written as a finding and `deepening` is removed: the FYI note does not repeat it.
+
+The deepening checked is this run's, or the state's when this run returned none. No instance: it stays a proposal. One run raised by hand an Important out of a deepening (one capability query instead of about 12 scattered checks) that had already caused the confirmed Important next to it: one of the 12 places skipped its check.
 
 ## Re-review
 
