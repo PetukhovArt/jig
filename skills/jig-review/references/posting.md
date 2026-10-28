@@ -26,7 +26,11 @@ Read the merge request's diff refs ("Diff refs" row): `base_sha`, `start_sha`, `
 
 - the file is in the merge request diff and the line is an added or context line of the new side → a **thread** on `file:new_line`;
 - the file is not in the diff, and `caused_by` holds: its `file` is in the diff, its `diff_line` appears verbatim among that file's added or removed lines, and its `victim_line` appears verbatim in the affected file of the reviewed tree → a **promoted** thread on the cause line; its body ends with one line naming the affected `file:line`;
-- otherwise → an item of the **one FYI note** (step 8). `optional` findings and the `deepening` go there too, wherever their file is.
+- the file is in the diff, the line is not (unchanged code outside every hunk) → a **discussion**: a general thread, resolvable, with the chip on the first line and the `file:line` line after the body;
+- the file is not in the diff, no `caused_by`, and the finding is `Important` → a **discussion** as above: a blocking finding always gets something the author resolves and a review cycle counts by its chip;
+- otherwise (a `Nit` or `Pre-existing` outside the diff) → an item of the **one FYI note** (step 8). `optional` findings and the `deepening` go there too, wherever their file is.
+
+The FYI note never holds an `Important` and never a finding on a file of the diff. One run routed a confirmed Important on an unchanged line of a diff file to the note: the author could miss it, nobody could resolve it, and the review cycle did not count it as open.
 
 Routing is the scope gate: you do not decide it per finding, and nothing is filtered before it. A suggestion block becomes a one-line replacement of the anchored line.
 
@@ -34,23 +38,24 @@ Routing is the scope gate: you do not decide it per finding, and nothing is filt
 
 ## 4. Manifest
 
-Write `manifest.json` before posting anything: one entry per item, threads and promoted first, then at most one FYI entry.
+Write `manifest.json` before posting anything: one entry per item, threads, promoted and discussions first, then at most one FYI entry.
 
 ```json
 [{ "i": 0, "kind": "thread", "file": "src/a.ts", "line": 43, "anchor": null, "positioned": true, "payload": "<abs path>", "preview": "**[🔴 Important]** …" },
  { "i": 1, "kind": "promoted", "file": "src/b.ts", "line": 9, "anchor": "src/a.ts:12", "positioned": true, "payload": "<abs path>", "preview": "…" },
+ { "i": 2, "kind": "discussion", "file": "src/a.ts", "line": 304, "anchor": null, "positioned": false, "payload": "<abs path>", "preview": "**[🔴 Important]** …" },
  { "i": "fyi", "kind": "fyi", "count": 2, "optional": 1, "deepening": true, "payload": "<abs path>", "items": [{ "file": "src/c.ts", "line": 116, "reason": "no caused_by" }] }]
 ```
 
-`count` is the out-of-diff items, `optional` the simplifications, `deepening` whether the note carries the proposal. The manifest is the posting contract: the confirmation (step 6) prints it, posting fires it, the report counts against it. A manifest with only an FYI entry posts no thread: a caller reading it knows the pass returned nothing to the developer.
+`count` is the out-of-diff `Nit` and `Pre-existing` items, `optional` the simplifications, `deepening` whether the note carries the proposal. The manifest is the posting contract: the confirmation (step 6) prints it, posting fires it, the report counts against it. A manifest with only an FYI entry posts no thread: a caller reading it knows the pass returned nothing to the developer.
 
 ## 5. Threads, never flat notes
 
-**Findings post as positioned threads** ("Post a new thread"), never as general notes: a general note has no position, cannot be resolved, and the next outcome check does not see it. A general note is used exactly twice: the one FYI note, and a reply inside an existing thread ("Reply in a thread"). The forge rejects the position (the line left the diff): find the line again in the current head by its quoted code or symbol, re-anchor and post **once**; still rejected, post it as a general thread (a discussion, not a note) with the `file:line` line after the body. Not found at all: do not post a flat note; set `status: "unverified"` and list it in the summary as "not posted: the line moved", so the next run checks again.
+**Findings post as positioned threads** ("Post a new thread"), never as general notes: a general note has no position, cannot be resolved, and the next outcome check does not see it. A general note is used exactly twice: the one FYI note, and a reply inside an existing thread ("Reply in a thread"). A finding with no line to anchor on (a `discussion` of step 3) posts as a general thread (a discussion, not a note), chip first, `file:line` after the body. The forge rejects the position (the line left the diff): find the line again in the current head by its quoted code or symbol, re-anchor and post **once**; still rejected, post it as a general thread (a discussion, not a note) with the `file:line` line after the body. Not found at all: do not post a flat note; set `status: "unverified"` and list it in the summary as "not posted: the line moved", so the next run checks again.
 
 ## 6. Confirm
 
-Print one line per manifest entry: `n · file:line · thread | promoted (anchor) | fyi · preview (≤80)`. Wait for the user's explicit confirmation. No auto-posting.
+Print one line per manifest entry: `n · file:line · thread | promoted (anchor) | discussion | fyi · preview (≤80)`. An FYI item that is `Important`, or whose file is in the diff, is a routing error: print it as `ROUTING: <file:line> Important in fyi` (or `diff file in fyi`), route it again by step 3 and print the manifest again. Wait for the user's explicit confirmation. No auto-posting.
 
 ## 7. Post and read back
 
@@ -62,7 +67,7 @@ Post each entry from its payload file. A 201 proves nothing about the body: read
 
 One unresolvable general note, rebuilt whole on every pass, sections without items left out:
 
-- `**Outside the merge request scope**`: noticed during review, fix when the change is small; no resolve needed. One item per out-of-diff finding: `` `file:line` `` and the first line of its `mrComment` without the chip;
+- `**Outside the merge request scope**`: noticed during review, fix when the change is small; no resolve needed. One item per out-of-diff `Nit` or `Pre-existing` finding: `` `file:line` `` and the first line of its `mrComment` without the chip;
 - `**[🟡 Nit] Improvements: optional, not blocking the merge.**`: one item per `optional` finding, naming the file: `- [x]` when it is `done` in state, `- [ ]` otherwise;
 - `**Deepening: a proposal, not a finding.**`: the state's `deepening` as one item, `module · what to deepen · effect · blast radius`.
 
@@ -79,4 +84,4 @@ After a re-review, also:
 
 ## 10. Report
 
-`postable: <the state's postable line> · positioned: P/M · threads: T/M · verified: V/C · discussion ids written: N/M` (M = thread and promoted entries of the manifest; M plus the FYI items is the state's `open without a thread` minus the hold ids), the unmatched `file:line` when N < M, and each resolve or reply as `OK` or `ERR <first 300 characters of the answer>`. N < M is a torn state: write the ids back again (step 1 finds them) before anything else, since a lost id disables both duplicate protection and thread resolution on every later run.
+`postable: <the state's postable line> · positioned: P/M · threads: T/M · verified: V/C · discussion ids written: N/M` (M = thread, promoted and discussion entries of the manifest; M plus the FYI items is the state's `open without a thread` minus the hold ids), the unmatched `file:line` when N < M, and each resolve or reply as `OK` or `ERR <first 300 characters of the answer>`. N < M is a torn state: write the ids back again (step 1 finds them) before anything else, since a lost id disables both duplicate protection and thread resolution on every later run.
