@@ -16,7 +16,8 @@ Every judge reads this file. Two parts with different owners:
 - **Layers and placement** (`layer`, [angle 13](../angles/13.architecture.md), sections A and B):
   - the direction or visibility of layers from the architecture document is broken: a lower layer imports an upper one (section B);
   - module internals through its boundary, an import bypassing the public index (section A);
-  - a module in the wrong place: new code went into a module or layer that does not own the concept, while an owner is named (section A).
+  - a module in the wrong place: new code went into a module or layer that does not own the concept, while an owner is named (section A);
+  - a dependency nothing uses: a dependency declared or a plugin or module registered, with no import or call in source (section A).
 - **Spread across modules** (`spread`, angle 13):
   - a section A rule with a second participant in another module: duplicated ownership, a second copy of a responsibility, hidden coupling;
   - the code contradicts an ADR in force (section C): the decision is recorded, the code does otherwise, and the next reader will trust the document;
