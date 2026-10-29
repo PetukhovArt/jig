@@ -417,10 +417,10 @@ var matchGlob = (path2, glob) => createMatcher(typeof glob === "string" ? [glob]
 
 // src/catalog/lockfiles.json
 var lockfiles_default = [
-  { file: "package-lock.json", install: "npm ci", deps: "node_modules" },
-  { file: "npm-shrinkwrap.json", install: "npm ci", deps: "node_modules" },
+  { file: "package-lock.json", install: "npm ci", deps: "node_modules", manifest: "package.json", stamp: ["node_modules/.package-lock.json"] },
+  { file: "npm-shrinkwrap.json", install: "npm ci", deps: "node_modules", manifest: "package.json", stamp: ["node_modules/.package-lock.json"] },
   { file: "pnpm-lock.yaml", install: "pnpm install --frozen-lockfile" },
-  { file: "yarn.lock", install: "yarn install --frozen-lockfile", deps: "node_modules" },
+  { file: "yarn.lock", install: "yarn install --frozen-lockfile", deps: "node_modules", manifest: "package.json", stamp: ["node_modules/.yarn-integrity", "node_modules/.yarn-state.yml"] },
   { file: "bun.lock", install: "bun install --frozen-lockfile" },
   { file: "bun.lockb", install: "bun install --frozen-lockfile" },
   { file: "deno.lock", install: "deno install --frozen" },
@@ -2439,9 +2439,9 @@ var sessionFileName = (sessionId) => `${safeName(sessionId)}.json`;
 var shellCallPrefix = (sessionId) => `${safeName(sessionId)}.shell-`;
 var sessionStatePath = (projectRoot, sessionId) => join8(jigPaths(projectRoot).sessions, sessionFileName(sessionId));
 var shellCallPath = (projectRoot, sessionId, callId) => join8(jigPaths(projectRoot).sessions, `${shellCallPrefix(sessionId)}${safeName(callId)}.json`);
-var openShellCall = (projectRoot, sessionId, callId, snapshot2) => {
+var openShellCall = (projectRoot, sessionId, callId, snapshot3) => {
   mkdirSync5(jigPaths(projectRoot).sessions, { recursive: true });
-  writeFileAtomic(shellCallPath(projectRoot, sessionId, callId), JSON.stringify(snapshot2));
+  writeFileAtomic(shellCallPath(projectRoot, sessionId, callId), JSON.stringify(snapshot3));
 };
 var closeShellCall = (projectRoot, sessionId, callId) => {
   const path2 = shellCallPath(projectRoot, sessionId, callId);
@@ -2469,7 +2469,7 @@ var openShellCalls = (projectRoot, sessionId) => {
   }
   return names.filter((name) => name.startsWith(prefix) && name.endsWith(".json")).map((name) => name.slice(prefix.length, -".json".length));
 };
-var createSessionState = (sessionId, snapshot2, now = /* @__PURE__ */ new Date()) => {
+var createSessionState = (sessionId, snapshot3, now = /* @__PURE__ */ new Date()) => {
   const iso = now.toISOString();
   return {
     v: 1,
@@ -2477,13 +2477,13 @@ var createSessionState = (sessionId, snapshot2, now = /* @__PURE__ */ new Date()
     turn: 0,
     createdAt: iso,
     updatedAt: iso,
-    snapshot: snapshot2,
+    snapshot: snapshot3,
     edits: [],
     stop: { consecutiveBlocks: 0 }
   };
 };
-var resetSnapshot = (state, snapshot2) => {
-  state.snapshot = snapshot2;
+var resetSnapshot = (state, snapshot3) => {
+  state.snapshot = snapshot3;
   state.edits = [];
 };
 var isSessionState = (value) => {
@@ -3589,14 +3589,14 @@ var changedFiles = (projectRoot) => {
   return entries.map((entry) => toProjectPath(longFormRoot, join18(top, entry.path))).filter(isInsideProject);
 };
 var takeSnapshot = (projectRoot) => {
-  const snapshot2 = {};
+  const snapshot3 = {};
   for (const path2 of changedFiles(projectRoot)) {
     const stamp = stampOf(join18(projectRoot, path2));
     if (stamp !== void 0) {
-      snapshot2[path2] = stamp;
+      snapshot3[path2] = stamp;
     }
   }
-  return snapshot2;
+  return snapshot3;
 };
 var isSameStamp = (left, right) => left !== void 0 && left.mtimeMs === right.mtimeMs && left.size === right.size;
 var diffFingerprint = (stamps) => {
@@ -3607,7 +3607,7 @@ var changedSince = (projectRoot, before) => {
   const after = takeSnapshot(projectRoot);
   return Object.keys(after).filter((path2) => !isSameStamp(before[path2], after[path2])).sort();
 };
-var turnDiff = (projectRoot, snapshot2, edits, editsHoldShellChanges = false) => {
+var turnDiff = (projectRoot, snapshot3, edits, editsHoldShellChanges = false) => {
   const stamps = {};
   for (const { path: path2 } of edits) {
     const stamp = stampOf(join18(projectRoot, path2));
@@ -3619,7 +3619,7 @@ var turnDiff = (projectRoot, snapshot2, edits, editsHoldShellChanges = false) =>
   for (const path2 of changedFiles(projectRoot)) {
     if (Object.hasOwn(stamps, path2)) continue;
     const stamp = stampOf(join18(projectRoot, path2));
-    if (stamp === void 0 || isSameStamp(snapshot2[path2], stamp)) continue;
+    if (stamp === void 0 || isSameStamp(snapshot3[path2], stamp)) continue;
     if (editsHoldShellChanges) {
       foreign.push(path2);
     } else {
@@ -4334,9 +4334,9 @@ var sessionStart = (event, ctx) => {
   pruneStates(ctx.projectRoot, now);
   pruneGateClaims(ctx.projectRoot, now);
   rotateJournal(ctx.projectRoot, now);
-  const snapshot2 = takeSnapshot(ctx.projectRoot);
-  const state = readState(ctx.projectRoot, ctx.sessionId) ?? createSessionState(ctx.sessionId, snapshot2);
-  resetSnapshot(state, snapshot2);
+  const snapshot3 = takeSnapshot(ctx.projectRoot);
+  const state = readState(ctx.projectRoot, ctx.sessionId) ?? createSessionState(ctx.sessionId, snapshot3);
+  resetSnapshot(state, snapshot3);
   trackTurn(ctx, state);
   const parts = [];
   if (event.source === "compact") {
@@ -7549,6 +7549,8 @@ import {
   realpathSync as realpathSync4,
   renameSync as renameSync2,
   rmSync as rmSync7,
+  statSync as statSync13,
+  utimesSync,
   writeFileSync as writeFileSync10
 } from "node:fs";
 import { dirname as dirname12, join as join31, posix as posix6, resolve as resolve13 } from "node:path";
@@ -7734,22 +7736,32 @@ var poolOf = (main) => {
 };
 var runCommand = (command, dir) => spawnSync6(command, { cwd: dir, shell: true, windowsHide: true, stdio: ["ignore", 2, 2] }).status;
 var isPooled = (lockfile) => lockfile.deps !== void 0;
-var findLockfile = (worktree) => {
-  const present = LOCKFILES.filter((lockfile) => existsSync19(join31(worktree, lockfile.file)));
+var findLockfile = (checkout) => {
+  const present = LOCKFILES.filter((lockfile) => existsSync19(join31(checkout, lockfile.file)));
   const pooled = present.find(isPooled);
   if (pooled !== void 0) return pooled;
   const [first] = present;
   return first === void 0 ? "no lock file at the worktree root" : `${first.file} has no dependency folder that jig pools`;
 };
-var keyOf = (worktree, lockfile, install) => {
+var keyOf = (checkout, lockfile, install) => {
+  const manifest = lockfile.manifest === void 0 ? void 0 : join31(checkout, lockfile.manifest);
+  const manifestBytes = manifest !== void 0 && existsSync19(manifest) ? readFileSync30(manifest) : "";
   const hash = createHash9("sha256");
-  for (const part of [lockfile.file, readFileSync30(join31(worktree, lockfile.file)), install, process.platform, process.arch]) {
+  for (const part of [lockfile.file, readFileSync30(join31(checkout, lockfile.file)), manifestBytes, install, process.platform, process.arch]) {
     hash.update(part).update("\0");
   }
   hash.update(`node${process.versions.node.split(".")[0] ?? ""}`);
   return hash.digest("hex").slice(0, KEY_HEX_CHARS);
 };
+var mtimeOf = (path2) => lstatSync2(path2, { throwIfNoEntry: false })?.mtimeMs;
+var freshnessOf = (checkout, lockfile) => {
+  if (lockfile.stamp === void 0) return "unknown";
+  const locked = mtimeOf(join31(checkout, lockfile.file)) ?? Infinity;
+  return lockfile.stamp.some((stamp) => (mtimeOf(join31(checkout, stamp)) ?? -Infinity) >= locked) ? "fresh" : "stale";
+};
+var hasDepsDir = (checkout, lockfile) => lstatSync2(join31(checkout, lockfile.deps), { throwIfNoEntry: false })?.isDirectory() === true;
 var isStringArray = (value) => Array.isArray(value) && value.every((item) => typeof item === "string");
+var isTransfer = (value) => value === "hardlink" || value === "copy";
 var parseManifest = (text3) => {
   let value;
   try {
@@ -7760,7 +7772,12 @@ var parseManifest = (text3) => {
   if (typeof value !== "object" || value === null || !("lockfile" in value) || !("deps" in value) || !("footprint" in value)) return void 0;
   const { lockfile, deps, footprint } = value;
   if (typeof lockfile !== "string" || !isStringArray(deps) || !isStringArray(footprint)) return void 0;
-  return { lockfile, deps, footprint };
+  const transfer = "transfer" in value && isTransfer(value.transfer) ? value.transfer : void 0;
+  return { lockfile, deps, footprint, transfer };
+};
+var readManifest = (entry) => {
+  const path2 = join31(entry, MANIFEST);
+  return existsSync19(path2) ? parseManifest(readFileSync30(path2, "utf8")) : void 0;
 };
 var removeTree = (path2) => {
   let isLink;
@@ -7813,6 +7830,11 @@ var copyTree = (from, to, copier, isDepsRoot) => {
     }
   }
 };
+var hasLinkedFile = (dir) => readdirSync16(dir, { withFileTypes: true }).some((entry) => {
+  const path2 = join31(dir, entry.name);
+  if (entry.isDirectory()) return hasLinkedFile(path2);
+  return entry.isFile() && statSync13(path2).nlink > 1;
+});
 var depsDirsOf = (entries, deps) => {
   const dirs = entries.filter((entry) => entry.endsWith("/") && posix6.basename(entry) === deps).map((entry) => entry.slice(0, -1));
   return dirs.filter((dir) => !dirs.some((other) => dir.startsWith(`${other}/`)));
@@ -7828,12 +7850,10 @@ var unlinkDepsLinks = (worktree, deps, entries) => {
     }
   }
 };
-var sweepStaging = (pool) => {
-  for (const name of readdirSync16(pool)) {
-    const pid = STAGING.exec(name)?.[1];
-    if (pid !== void 0 && !isAlive(Number(pid))) removeTree(join31(pool, name));
-  }
-};
+var deadStaging = (pool) => readdirSync16(pool).filter((name) => {
+  const pid = STAGING.exec(name)?.[1];
+  return pid !== void 0 && !isAlive(Number(pid));
+});
 var publish = (staging, entry) => {
   try {
     renameSync2(staging, entry);
@@ -7842,7 +7862,38 @@ var publish = (staging, entry) => {
     removeTree(staging);
   }
 };
-var reuse = (worktree, entry, manifest, key, after) => {
+var snapshot2 = (source, pool, key, contents) => {
+  mkdirSync15(pool, { recursive: true });
+  for (const name of deadStaging(pool)) {
+    removeTree(join31(pool, name));
+  }
+  const entry = join31(realpathSync4.native(pool), key);
+  const staging = join31(pool, `${key}.${process.pid}-${randomBytes(4).toString("hex")}.tmp`);
+  const copier = { retarget: (raw, linkDir) => linkTarget(raw, linkDir, source, entry), transfer: "hardlink", files: 0 };
+  try {
+    for (const dir of contents.deps) {
+      copyTree(join31(source, dir), join31(staging, dir), copier, true);
+    }
+    const manifest = { ...contents, transfer: copier.transfer };
+    writeFileSync10(join31(staging, MANIFEST), `${JSON.stringify(manifest, null, 2)}
+`);
+    publish(staging, entry);
+  } catch (error) {
+    removeTree(staging);
+    throw error;
+  }
+  return copier;
+};
+var touchStamps = (worktree, stamps) => {
+  const now = /* @__PURE__ */ new Date();
+  for (const stamp of stamps.map((name) => join31(worktree, name)).filter((path2) => existsSync19(path2))) {
+    utimesSync(stamp, now, now);
+  }
+};
+var reuse = (worktree, pooledEntry, lockfile, key, after, from) => {
+  const manifest = readManifest(pooledEntry);
+  if (manifest === void 0) return { kind: "failed", detail: `pool entry ${pooledEntry} has no valid ${MANIFEST}: delete the entry` };
+  const entry = realpathSync4.native(pooledEntry);
   const copier = { retarget: (raw, linkDir) => linkTarget(raw, linkDir, entry, worktree), transfer: "hardlink", files: 0 };
   for (const dir of manifest.deps) {
     const destination = join31(worktree, dir);
@@ -7850,12 +7901,34 @@ var reuse = (worktree, entry, manifest, key, after) => {
     removeTree(destination);
     copyTree(join31(entry, dir), destination, copier, true);
   }
+  touchStamps(worktree, lockfile.stamp ?? []);
   if (after !== void 0) {
     const status = runCommand(after, worktree);
     if (status !== 0) return { kind: "failed", detail: `after command ${after} failed (exit ${status})` };
   }
   const { files, transfer } = copier;
-  return { kind: "reused", lockfile: manifest.lockfile, key, files, transfer, after, footprint: manifest.footprint };
+  return { kind: "reused", from, lockfile: manifest.lockfile, key, files, transfer, after, footprint: manifest.footprint };
+};
+var installedCheckout = (target, main, key, install) => {
+  for (const checkout of listWorktrees(main)) {
+    if (checkout.isPrunable || samePath(checkout.path, target)) continue;
+    const lockfile = findLockfile(checkout.path);
+    if (typeof lockfile === "string" || keyOf(checkout.path, lockfile, install) !== key) continue;
+    if (freshnessOf(checkout.path, lockfile) !== "fresh" || !hasDepsDir(checkout.path, lockfile)) continue;
+    const deps = depsDirsOf(ignoredEntries(checkout.path), lockfile.deps);
+    if (deps.length > 0) return { path: checkout.path, deps };
+  }
+  return void 0;
+};
+var poolFromCheckout = (source, pool, key, lockfile) => {
+  try {
+    snapshot2(source.path, pool, key, { lockfile: lockfile.file, deps: source.deps, footprint: [] });
+    return true;
+  } catch (error) {
+    process.stderr.write(`deps: could not pool the dependencies of ${toSlash(source.path)}, installing instead: ${messageOf(error)}
+`);
+    return false;
+  }
 };
 var installAndPool = (worktree, pool, key, lockfile, install, after) => {
   const before = ignoredEntries(worktree);
@@ -7867,40 +7940,69 @@ var installAndPool = (worktree, pool, key, lockfile, install, after) => {
   const notPooled = (reason) => ({ kind: "installed", pooled: false, lockfile: lockfile.file, key, reason });
   if (deps.length === 0) return notPooled(`install left no ${lockfile.deps} folder`);
   const known = new Set(before);
-  const footprint = entries.filter((entry2) => !known.has(entry2) && !deps.some((dir) => entry2 === `${dir}/` || entry2.startsWith(`${dir}/`)));
-  mkdirSync15(pool, { recursive: true });
-  sweepStaging(pool);
-  const entry = join31(realpathSync4.native(pool), key);
-  const staging = join31(pool, `${key}.${process.pid}-${randomBytes(4).toString("hex")}.tmp`);
-  const copier = { retarget: (raw, linkDir) => linkTarget(raw, linkDir, worktree, entry), transfer: "hardlink", files: 0 };
+  const footprint = entries.filter((entry) => !known.has(entry) && !deps.some((dir) => entry === `${dir}/` || entry.startsWith(`${dir}/`)));
+  let copier;
   try {
-    for (const dir of deps) {
-      copyTree(join31(worktree, dir), join31(staging, dir), copier, true);
-    }
-    const manifest = { lockfile: lockfile.file, deps, footprint };
-    writeFileSync10(join31(staging, MANIFEST), `${JSON.stringify(manifest, null, 2)}
-`);
-    publish(staging, entry);
+    copier = snapshot2(worktree, pool, key, { lockfile: lockfile.file, deps, footprint });
   } catch (error) {
-    removeTree(staging);
     return notPooled(`could not pool: ${messageOf(error)}`);
   }
   const { files, transfer } = copier;
   return { kind: "installed", pooled: true, lockfile: lockfile.file, key, files, transfer, after, footprint };
 };
-var provideDeps = (worktree, options) => {
-  const lockfile = findLockfile(worktree);
+var provideDeps = (checkout, options) => {
+  const lockfile = findLockfile(checkout);
   if (typeof lockfile === "string") return { kind: "skipped", reason: lockfile };
   const install = options.install ?? lockfile.install;
   try {
-    const key = keyOf(worktree, lockfile, install);
+    const key = keyOf(checkout, lockfile, install);
     const pool = poolOf(options.main);
     const entry = join31(pool, key);
-    if (!existsSync19(entry)) return installAndPool(worktree, pool, key, lockfile, install, options.after);
-    const manifestPath = join31(entry, MANIFEST);
-    const manifest = existsSync19(manifestPath) ? parseManifest(readFileSync30(manifestPath, "utf8")) : void 0;
-    if (manifest === void 0) return { kind: "failed", detail: `pool entry ${entry} has no valid ${MANIFEST}: delete the entry` };
-    return reuse(worktree, realpathSync4.native(entry), manifest, key, options.after);
+    if (existsSync19(entry)) return reuse(checkout, entry, lockfile, key, options.after, void 0);
+    const source = installedCheckout(checkout, options.main, key, install);
+    if (source !== void 0 && poolFromCheckout(source, pool, key, lockfile)) {
+      return reuse(checkout, entry, lockfile, key, options.after, toSlash(source.path));
+    }
+    return installAndPool(checkout, pool, key, lockfile, install, options.after);
+  } catch (error) {
+    return { kind: "failed", detail: messageOf(error) };
+  }
+};
+var saveDeps = (checkout, options) => {
+  const lockfile = findLockfile(checkout);
+  if (typeof lockfile === "string") return { kind: "skipped", reason: lockfile };
+  const install = options.install ?? lockfile.install;
+  try {
+    const key = keyOf(checkout, lockfile, install);
+    const pool = poolOf(options.main);
+    if (existsSync19(join31(pool, key))) return { kind: "kept", lockfile: lockfile.file, key };
+    if (!hasDepsDir(checkout, lockfile)) return { kind: "failed", detail: `${toSlash(checkout)} has no ${lockfile.deps} folder of its own` };
+    const freshness = freshnessOf(checkout, lockfile);
+    if (freshness !== "fresh" && options.force !== true) {
+      const why = freshness === "stale" ? `${lockfile.deps} looks older than ${lockfile.file} (${(lockfile.stamp ?? []).join(" or ")} is older): install first` : `jig knows no install stamp for ${lockfile.file}, so it cannot tell whether ${lockfile.deps} matches it`;
+      return { kind: "failed", detail: `${why}, or pass --force` };
+    }
+    const deps = depsDirsOf(ignoredEntries(checkout), lockfile.deps);
+    const { files, transfer } = snapshot2(checkout, pool, key, { lockfile: lockfile.file, deps, footprint: [] });
+    return { kind: "saved", lockfile: lockfile.file, key, files, transfer, after: void 0, footprint: [] };
+  } catch (error) {
+    return { kind: "failed", detail: messageOf(error) };
+  }
+};
+var prunePool = (main, dryRun) => {
+  try {
+    const pool = poolOf(main);
+    if (!existsSync19(pool)) return { kind: "pruned", dryRun, entries: [], staging: [], copied: [] };
+    const staging = deadStaging(pool);
+    const keys = readdirSync16(pool, { withFileTypes: true }).filter((entry) => entry.isDirectory() && !STAGING.test(entry.name));
+    const copied = keys.filter((entry) => readManifest(join31(pool, entry.name))?.transfer === "copy").map((entry) => entry.name);
+    const entries = keys.filter((entry) => !copied.includes(entry.name) && !hasLinkedFile(join31(pool, entry.name))).map((entry) => entry.name);
+    if (!dryRun) {
+      for (const name of [...entries, ...staging]) {
+        removeTree(join31(pool, name));
+      }
+    }
+    return { kind: "pruned", dryRun, entries, staging, copied };
   } catch (error) {
     return { kind: "failed", detail: messageOf(error) };
   }
@@ -7915,16 +8017,24 @@ var pooledLines = (outcome) => {
   }
   return lines2;
 };
+var ranAfter = (after) => after === void 0 ? "" : `, ran ${after}`;
 var formatDeps = (outcome) => {
   switch (outcome.kind) {
     case "reused":
-      return [
-        `deps: reused pool entry ${outcome.key} for ${outcome.lockfile} (${outcome.files} files)${outcome.after === void 0 ? "" : `, ran ${outcome.after}`}`,
-        ...pooledLines(outcome)
-      ];
+      if (outcome.from !== void 0) {
+        return [
+          `deps: pooled the installed ${outcome.lockfile} dependencies of ${outcome.from} as ${outcome.key}, reused them (${outcome.files} files)${ranAfter(outcome.after)}`,
+          ...pooledLines(outcome)
+        ];
+      }
+      return [`deps: reused pool entry ${outcome.key} for ${outcome.lockfile} (${outcome.files} files)${ranAfter(outcome.after)}`, ...pooledLines(outcome)];
     case "installed":
       if (!outcome.pooled) return [`deps: installed for ${outcome.lockfile}, not pooled: ${outcome.reason}`];
       return [`deps: installed for ${outcome.lockfile}, pooled as ${outcome.key} (${outcome.files} files)`, ...pooledLines(outcome)];
+    case "saved":
+      return [`deps: saved the dependencies for ${outcome.lockfile} as pool entry ${outcome.key} (${outcome.files} files)`, ...pooledLines(outcome)];
+    case "kept":
+      return [`deps: pool entry ${outcome.key} for ${outcome.lockfile} already exists, kept as is`];
     case "skipped":
       return [`deps: not pooled, ${outcome.reason}`];
     case "failed":
@@ -7934,6 +8044,16 @@ var formatDeps = (outcome) => {
       return unhandled;
     }
   }
+};
+var formatPrune = (outcome) => {
+  if (outcome.kind === "failed") return [`deps: failed, ${outcome.detail}`];
+  const verb = outcome.dryRun ? "would remove" : "removed";
+  return [
+    ...outcome.entries.map((key) => `deps: ${verb} pool entry ${key}`),
+    ...outcome.staging.map((name) => `deps: ${verb} staging folder ${name}`),
+    ...outcome.copied.map((key) => `deps: kept pool entry ${key}: its files were copied, not hardlinked, so jig cannot tell whether a checkout uses it`),
+    `deps: ${verb} ${outcome.entries.length} pool entries`
+  ];
 };
 
 // src/slot/slot.ts
@@ -8345,37 +8465,51 @@ var mainCheckout = (cwd) => {
   if (main === void 0) throw new Error(`no git worktrees found from ${toSlash(cwd)}`);
   return main;
 };
-var linkedTarget = (args, subcommand, purpose) => {
-  const { positionals } = parseArgs7({ args, options: {}, allowPositionals: true, strict: true });
+var checkoutTarget = (positionals, usage2) => {
   const [target] = positionals;
-  if (positionals.length !== 1 || target === void 0) return fail4(`usage: worktree ${subcommand} <dir>`, 2);
+  if (positionals.length !== 1 || target === void 0) return fail4(`usage: ${usage2}`, 2);
   const dir = resolve16(target);
   if (!existsSync21(dir)) return fail4(`no such dir ${toSlash(dir)}`, 1);
   const toplevel = gitToplevel(dir);
   if (toplevel === void 0 || !samePath(toplevel, dir)) return fail4(`${toSlash(dir)} is not the root of a git worktree`, 1);
   const main = mainCheckout(dir);
-  if (samePath(main, dir)) return fail4(`${toSlash(dir)} is the main checkout, ${subcommand} ${purpose}`, 1);
   const config = loadConfig(main);
   if (config.error !== void 0) return fail4(`.jig/config.jsonc: ${config.error}`, 1);
   return { dir, main, config };
 };
 var worktreeSeed = (args) => {
-  const target = linkedTarget(args, "seed", "fills another worktree from it");
+  const { positionals } = parseArgs7({ args, options: {}, allowPositionals: true, strict: true });
+  const target = checkoutTarget(positionals, "worktree seed <dir>");
   if (typeof target === "number") return target;
+  if (samePath(target.main, target.dir)) return fail4(`${toSlash(target.dir)} is the main checkout, seed fills another worktree from it`, 1);
   const items = seedWorktree(target.main, target.dir, target.config.worktree);
   for (const line of formatSeed(items)) {
     print2(line);
   }
   return items.some((item) => item.action === "failed") ? 1 : 0;
 };
+var DEPS_USAGE = "worktree deps <dir> [--save [--force]] | worktree deps --prune [--dry-run]";
 var worktreeDeps = (args) => {
-  const target = linkedTarget(args, "deps", "takes a linked worktree");
+  const { values, positionals } = parseArgs7({
+    args,
+    options: { save: { type: "boolean" }, force: { type: "boolean" }, prune: { type: "boolean" }, "dry-run": { type: "boolean" } },
+    allowPositionals: true,
+    strict: true
+  });
+  const isSave = values.save === true;
+  if (values.prune === true) {
+    if (positionals.length > 0 || isSave || values.force === true) return fail4(`usage: ${DEPS_USAGE}`, 2);
+    const pruned = prunePool(mainCheckout(process.cwd()), values["dry-run"] === true);
+    formatPrune(pruned).forEach((line) => print2(line));
+    return pruned.kind === "failed" ? 1 : 0;
+  }
+  if (values["dry-run"] === true || values.force === true && !isSave) return fail4(`usage: ${DEPS_USAGE}`, 2);
+  const target = checkoutTarget(positionals, DEPS_USAGE);
   if (typeof target === "number") return target;
   const { dir, main, config } = target;
-  const outcome = provideDeps(dir, { main, install: config.slots?.install, after: config.worktree?.depsPool?.after });
-  for (const line of formatDeps(outcome)) {
-    print2(line);
-  }
+  const install = config.slots?.install;
+  const outcome = isSave ? saveDeps(dir, { main, install, force: values.force }) : provideDeps(dir, { main, install, after: config.worktree?.depsPool?.after });
+  formatDeps(outcome).forEach((line) => print2(line));
   return outcome.kind === "failed" ? 1 : 0;
 };
 var worktreeRemove = (args) => {

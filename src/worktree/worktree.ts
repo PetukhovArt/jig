@@ -5,7 +5,7 @@ import { parseArgs } from 'node:util'
 import { loadConfig, type LoadedConfig } from '../core/config'
 import { gitToplevel } from '../core/git'
 import { resolveProjectRoot, toSlash } from '../core/paths'
-import { formatDeps, provideDeps } from './deps-pool'
+import { formatDeps, formatPrune, provideDeps, prunePool, saveDeps } from './deps-pool'
 import { listWorktrees, samePath } from './list'
 import { removeLinkedWorktree } from './remove'
 import { formatSeed, seedWorktree } from './seed'
@@ -39,30 +39,30 @@ const mainCheckout = (cwd: string): string => {
   return main
 }
 
-interface LinkedTarget {
+interface Target {
   dir: string
   main: string
   config: LoadedConfig
 }
 
-const linkedTarget = (args: string[], subcommand: string, purpose: string): LinkedTarget | number => {
-  const { positionals } = parseArgs({ args, options: {}, allowPositionals: true, strict: true })
+const checkoutTarget = (positionals: readonly string[], usage: string): Target | number => {
   const [target] = positionals
-  if (positionals.length !== 1 || target === undefined) return fail(`usage: worktree ${subcommand} <dir>`, 2)
+  if (positionals.length !== 1 || target === undefined) return fail(`usage: ${usage}`, 2)
   const dir = resolve(target)
   if (!existsSync(dir)) return fail(`no such dir ${toSlash(dir)}`, 1)
   const toplevel = gitToplevel(dir)
   if (toplevel === undefined || !samePath(toplevel, dir)) return fail(`${toSlash(dir)} is not the root of a git worktree`, 1)
   const main = mainCheckout(dir)
-  if (samePath(main, dir)) return fail(`${toSlash(dir)} is the main checkout, ${subcommand} ${purpose}`, 1)
   const config = loadConfig(main)
   if (config.error !== undefined) return fail(`.jig/config.jsonc: ${config.error}`, 1)
   return { dir, main, config }
 }
 
 const worktreeSeed = (args: string[]): number => {
-  const target = linkedTarget(args, 'seed', 'fills another worktree from it')
+  const { positionals } = parseArgs({ args, options: {}, allowPositionals: true, strict: true })
+  const target = checkoutTarget(positionals, 'worktree seed <dir>')
   if (typeof target === 'number') return target
+  if (samePath(target.main, target.dir)) return fail(`${toSlash(target.dir)} is the main checkout, seed fills another worktree from it`, 1)
   const items = seedWorktree(target.main, target.dir, target.config.worktree)
   for (const line of formatSeed(items)) {
     print(line)
@@ -70,14 +70,31 @@ const worktreeSeed = (args: string[]): number => {
   return items.some((item) => item.action === 'failed') ? 1 : 0
 }
 
+const DEPS_USAGE = 'worktree deps <dir> [--save [--force]] | worktree deps --prune [--dry-run]'
+
 const worktreeDeps = (args: string[]): number => {
-  const target = linkedTarget(args, 'deps', 'takes a linked worktree')
+  const { values, positionals } = parseArgs({
+    args,
+    options: { save: { type: 'boolean' }, force: { type: 'boolean' }, prune: { type: 'boolean' }, 'dry-run': { type: 'boolean' } },
+    allowPositionals: true,
+    strict: true,
+  })
+  const isSave = values.save === true
+  if (values.prune === true) {
+    if (positionals.length > 0 || isSave || values.force === true) return fail(`usage: ${DEPS_USAGE}`, 2)
+    const pruned = prunePool(mainCheckout(process.cwd()), values['dry-run'] === true)
+    formatPrune(pruned).forEach((line) => print(line))
+    return pruned.kind === 'failed' ? 1 : 0
+  }
+  if (values['dry-run'] === true || (values.force === true && !isSave)) return fail(`usage: ${DEPS_USAGE}`, 2)
+  const target = checkoutTarget(positionals, DEPS_USAGE)
   if (typeof target === 'number') return target
   const { dir, main, config } = target
-  const outcome = provideDeps(dir, { main, install: config.slots?.install, after: config.worktree?.depsPool?.after })
-  for (const line of formatDeps(outcome)) {
-    print(line)
-  }
+  const install = config.slots?.install
+  const outcome = isSave
+    ? saveDeps(dir, { main, install, force: values.force })
+    : provideDeps(dir, { main, install, after: config.worktree?.depsPool?.after })
+  formatDeps(outcome).forEach((line) => print(line))
   return outcome.kind === 'failed' ? 1 : 0
 }
 

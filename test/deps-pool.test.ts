@@ -1,11 +1,28 @@
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, realpathSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  readlinkSync,
+  realpathSync,
+  renameSync,
+  rmSync,
+  statSync,
+  symlinkSync,
+  utimesSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { git } from '../src/core/git'
-import { formatDeps, provideDeps, type DepsOutcome } from '../src/worktree/deps-pool'
+import { formatDeps, prunePool, provideDeps, saveDeps, type DepsOutcome, type SaveOutcome } from '../src/worktree/deps-pool'
 import { samePath } from '../src/worktree/list'
 import { removeLinkedWorktree } from '../src/worktree/remove'
+import { runWorktree } from '../src/worktree/worktree'
 
 const canSymlink = ((): boolean => {
   const dir = mkdtempSync(join(tmpdir(), 'jig-link-probe-'))
@@ -54,9 +71,24 @@ const AFTER = [
 
 const options = (main: string, install = 'node install.cjs') => ({ main, install, after: 'node after.cjs' })
 
-const keyOf = (outcome: DepsOutcome): string | undefined => ('key' in outcome ? outcome.key : undefined)
+const keyOf = (outcome: DepsOutcome | SaveOutcome): string | undefined => ('key' in outcome ? outcome.key : undefined)
 
 const inode = (path: string): bigint => statSync(path, { bigint: true }).ino
+
+const PKG_FILE = join('node_modules', 'pkg', 'lib', 'index.js')
+
+const installByHand = (dir: string): void => {
+  execFileSync(process.execPath, ['install.cjs'], { cwd: dir })
+}
+
+const makeStale = (dir: string): void => {
+  const later = new Date(Date.now() + 60_000)
+  utimesSync(join(dir, 'package-lock.json'), later, later)
+}
+
+const setManifest = (dir: string, name: string): void => {
+  writeFileSync(join(dir, 'package.json'), JSON.stringify({ name }))
+}
 
 describe('dependency pool', () => {
   let root: string
@@ -86,6 +118,7 @@ describe('dependency pool', () => {
     sh(main, 'config', 'user.name', 'test')
     writeFileSync(join(main, '.gitignore'), ['node_modules/', 'dist/', '*.marker', '.jig/', 'race.json', ''].join('\n'))
     writeFileSync(join(main, 'package-lock.json'), '{"lockfileVersion":3}')
+    setManifest(main, 'app')
     writeFileSync(join(main, 'install.cjs'), INSTALL)
     writeFileSync(join(main, 'after.cjs'), AFTER)
     writeFileSync(join(main, 'fail.cjs'), 'process.exit(3)')
@@ -139,9 +172,12 @@ describe('dependency pool', () => {
     expect(samePath(readlinkSync(join(second, 'node_modules', '.bin', 'tool')), join(second, 'node_modules', 'pkg', 'lib', 'index.js'))).toBe(true)
   })
 
-  it('makes a new entry when the lock file changes and asks for after when it is not set', () => {
-    const third = worktree('c')
-    writeFileSync(join(third, 'package-lock.json'), '{"lockfileVersion":3,"changed":true}')
+  it.each([
+    ['lock file', 'c', 'package-lock.json'],
+    ['manifest', 'g', 'package.json'],
+  ])('makes a new entry when the %s changes and asks for after when it is not set', (_, name, file) => {
+    const third = worktree(name)
+    writeFileSync(join(third, file), '{"lockfileVersion":3,"changed":true}')
     const outcome = provideDeps(third, { main, install: 'node install.cjs' })
 
     expect(outcome).toMatchObject({ kind: 'installed', pooled: true })
@@ -159,6 +195,7 @@ describe('dependency pool', () => {
 
   it('fails on a failed install and pools nothing', () => {
     const fifth = worktree('e')
+    setManifest(fifth, 'e')
     const before = entries()
     const outcome = provideDeps(fifth, options(main, 'node fail.cjs'))
 
@@ -168,6 +205,8 @@ describe('dependency pool', () => {
 
   it('keeps the entry another run published first and removes its own staging copy', () => {
     const sixth = worktree('f')
+    makeStale(join(root, 'a'))
+    makeStale(join(root, 'b'))
     const key = firstKey ?? ''
     const rival = join(pool, 'rival')
     renameSync(join(pool, key), rival)
@@ -178,6 +217,101 @@ describe('dependency pool', () => {
     expect(outcome).toMatchObject({ kind: 'installed', pooled: true, key })
     expect(readFileSync(join(pool, key, 'node_modules', 'rival.txt'), 'utf8')).toBe('theirs')
     expect(entries().filter((name) => name.endsWith('.tmp'))).toEqual([])
+  })
+
+  it('saves an installed checkout as an entry that shares its files, and keeps an existing entry', () => {
+    const dir = worktree('h')
+    setManifest(dir, 'h')
+    installByHand(dir)
+    const saved = saveDeps(dir, { main, install: 'node install.cjs' })
+
+    expect(saved).toMatchObject({ kind: 'saved', transfer: 'hardlink' })
+    expect(inode(join(dir, PKG_FILE))).toBe(inode(join(pool, keyOf(saved) ?? '', PKG_FILE)))
+    expect(saveDeps(dir, { main, install: 'node install.cjs' })).toEqual({ kind: 'kept', lockfile: 'package-lock.json', key: keyOf(saved) })
+  })
+
+  it.each([
+    ['an install older than the lock file', 'i', true, 'node_modules looks older than package-lock.json'],
+    ['no dependency folder', 'j', false, 'has no node_modules folder'],
+  ])('refuses to save %s', (_, name, isInstalled, detail) => {
+    const dir = worktree(name)
+    setManifest(dir, name)
+    if (isInstalled) {
+      installByHand(dir)
+      makeStale(dir)
+    }
+    const before = entries()
+    const outcome = saveDeps(dir, { main, install: 'node install.cjs' })
+
+    expect(outcome).toMatchObject({ kind: 'failed' })
+    expect(outcome.kind === 'failed' ? outcome.detail : '').toContain(detail)
+    expect(entries()).toEqual(before)
+  })
+
+  it('serves the main checkout from the pool through worktree deps', () => {
+    mkdirSync(join(main, '.jig'), { recursive: true })
+    writeFileSync(join(main, '.jig', 'config.jsonc'), JSON.stringify({ slots: { worktreesDir: '..', install: 'node install.cjs' } }))
+    const printed: string[] = []
+    const write = vi.spyOn(process.stdout, 'write').mockImplementation((text) => printed.push(String(text)) > 0)
+    let code: number | Promise<number>
+    try {
+      code = runWorktree(['deps', main])
+    } finally {
+      write.mockRestore()
+    }
+
+    expect(code).toBe(0)
+    expect(printed.join('')).toContain(`reused pool entry ${firstKey ?? ''}`)
+    expect(inode(join(main, PKG_FILE))).toBe(inode(join(pool, firstKey ?? '', PKG_FILE)))
+  })
+
+  it('pools the fresh install of another checkout with the same key instead of installing', () => {
+    const installed = worktree('k')
+    setManifest(installed, 'k')
+    installByHand(installed)
+    const dir = worktree('l')
+    setManifest(dir, 'k')
+    const outcome = provideDeps(dir, options(main))
+
+    expect(outcome).toMatchObject({ kind: 'reused', transfer: 'hardlink' })
+    expect(samePath(outcome.kind === 'reused' ? (outcome.from ?? '') : '', installed)).toBe(true)
+    expect(existsSync(join(dir, 'install.marker'))).toBe(false)
+    expect(inode(join(dir, PKG_FILE))).toBe(inode(join(installed, PKG_FILE)))
+  })
+
+  let unusedKey: string | undefined
+
+  it('installs when the other checkout with the same key has a stale install', () => {
+    const installed = worktree('m')
+    setManifest(installed, 'm')
+    installByHand(installed)
+    makeStale(installed)
+    const dir = worktree('n')
+    setManifest(dir, 'm')
+    const outcome = provideDeps(dir, options(main))
+    unusedKey = keyOf(outcome)
+
+    expect(outcome).toMatchObject({ kind: 'installed', pooled: true })
+    expect(existsSync(join(dir, 'install.marker'))).toBe(true)
+  })
+
+  it('prunes the entries and dead staging folders no checkout uses, and only lists them on a dry run', () => {
+    expect(removeLinkedWorktree(join(root, 'n'), main).error).toBeUndefined()
+    const deadStaging = `${firstKey ?? ''}.99999999-abcd1234.tmp`
+    mkdirSync(join(pool, deadStaging))
+    const before = entries()
+    const dryRun = prunePool(main, true)
+
+    expect(dryRun).toMatchObject({ kind: 'pruned', dryRun: true, staging: [deadStaging] })
+    expect(dryRun.kind === 'pruned' ? dryRun.entries : []).toContain(unusedKey)
+    expect(dryRun.kind === 'pruned' ? dryRun.entries : []).not.toContain(firstKey)
+    expect(entries()).toEqual(before)
+
+    prunePool(main, false)
+
+    expect(entries()).not.toContain(unusedKey)
+    expect(entries()).not.toContain(deadStaging)
+    expect(entries()).toContain(firstKey)
   })
 
   it('keeps the pool intact when a reusing worktree is removed', () => {

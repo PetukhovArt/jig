@@ -13,6 +13,8 @@ export interface Lockfile {
   file: string
   install: string
   deps?: string
+  manifest?: string
+  stamp?: readonly string[]
 }
 
 export const LOCKFILES: readonly Lockfile[] = lockfiles
