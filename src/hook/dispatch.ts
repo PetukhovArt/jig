@@ -4,7 +4,7 @@ import { resolveAdapter, type AgentAdapter } from '../adapters'
 import { loadConfig } from '../core/config'
 import { activeRunContext } from '../task-status/task-status'
 import { appendJournal, rotateJournal, type JournalEntry } from '../core/journal'
-import { ensureJigDir, jigPaths, resolvePluginRoot } from '../core/paths'
+import { ensureJigDir, jigPaths, resolvePluginRoot, toSlash } from '../core/paths'
 import { configDriftLine, loadPlan } from '../core/plan'
 import { changedSince, takeSnapshot, type Snapshot } from '../core/snapshot'
 import {
@@ -24,6 +24,8 @@ import type { Edit } from '../rules/rule'
 import { checkEdit } from '../gates/edit'
 import { stopGate } from '../gates/stop'
 import { collapseFindings, limitLines, POST_EDIT_LINE_LIMIT, type Finding } from '../tools/finding'
+import { missingDepsOf, unprovisionedWorktrees, type Unprovisioned } from '../worktree/deps-pool'
+import { linkedWorktreeRoot, listWorktrees, samePath } from '../worktree/list'
 import type { EventBase, JigEvent, Outcome } from './types'
 
 type Command = (args: string[]) => number | Promise<number>
@@ -76,6 +78,59 @@ const compactRunLine = (ctx: HookContext, now: number): string | undefined => {
   }
 }
 
+const hasProjectConfig = (projectRoot: string): boolean => {
+  const paths = jigPaths(projectRoot)
+  return existsSync(paths.config) || existsSync(paths.localConfig)
+}
+
+const isDepsPooled = (projectRoot: string): boolean => hasProjectConfig(projectRoot) && loadConfig(projectRoot).worktree?.depsPool !== undefined
+
+const toldWorktrees = (ctx: HookContext, state: SessionState): string[] => state.toldWorktrees?.[ctx.agent] ?? []
+
+const tell = (ctx: HookContext, state: SessionState, checked: readonly string[], missing: readonly Unprovisioned[]): string | undefined => {
+  state.toldWorktrees = { ...state.toldWorktrees, [ctx.agent]: [...toldWorktrees(ctx, state), ...checked.map(toSlash)] }
+  if (missing.length === 0) return undefined
+  const jig = `node "${toSlash(join(ctx.pluginRoot, 'bin', 'jig.mjs'))}"`
+  return missing
+    .map(({ path, deps }) => {
+      const dir = toSlash(path)
+      return `jig: worktree ${dir} has no ${deps} of its own. Before tests, a build or a dev server there, run \`${jig} worktree seed "${dir}"\` then \`${jig} worktree deps "${dir}"\` in the foreground: a pool miss installs, which takes minutes.`
+    })
+    .join('\n')
+}
+
+const cwdWorktreeNote = (ctx: HookContext, state: SessionState): string | undefined => {
+  const root = linkedWorktreeRoot(ctx.cwd)
+  if (root === undefined || toldWorktrees(ctx, state).some((told) => samePath(told, root)) || !isDepsPooled(ctx.projectRoot)) return undefined
+  const deps = missingDepsOf(root)
+  return tell(ctx, state, [root], deps === undefined ? [] : [{ path: root, deps }])
+}
+
+const worktreePathsOf = (ctx: HookContext): string[] | undefined => {
+  try {
+    return listWorktrees(ctx.projectRoot).map((worktree) => worktree.path)
+  } catch (error) {
+    journalFailure(ctx, error)
+    return undefined
+  }
+}
+
+const newWorktreesNote = (ctx: HookContext, state: SessionState, before: readonly string[]): string | undefined => {
+  const known = [...before, ...toldWorktrees(ctx, state)]
+  const missing = unprovisionedWorktrees(ctx.projectRoot).filter((worktree) => !known.some((path) => samePath(path, worktree.path)))
+  return tell(ctx, state, missing.map((worktree) => worktree.path), missing)
+}
+
+const noteOf = (ctx: HookContext, note: () => string | undefined): string[] => {
+  try {
+    const text = note()
+    return text === undefined ? [] : [text]
+  } catch (error) {
+    journalFailure(ctx, error)
+    return []
+  }
+}
+
 const sessionStart = (event: EventOf<'session-start'>, ctx: HookContext): Outcome => {
   const now = Date.now()
   ensureJigDir(ctx.projectRoot)
@@ -95,6 +150,7 @@ const sessionStart = (event: EventOf<'session-start'>, ctx: HookContext): Outcom
       parts.push(runLine)
     }
   }
+  parts.push(...noteOf(ctx, () => cwdWorktreeNote(ctx, state)))
   writeState(ctx.projectRoot, state)
   const driftLine = configDriftLine(plan)
   if (driftLine !== undefined) {
@@ -172,18 +228,16 @@ const postEdit = async (event: EventOf<'post-edit'>, ctx: HookContext): Promise<
   state.edits.push({ path: event.file, at: now, agent: ctx.agent })
   const toolFindings = await editToolFindings(ctx, event.file)
   const findingLines = collapseFindings(toolFindings)
+  const worktreeNote = noteOf(ctx, () => cwdWorktreeNote(ctx, state))
   writeState(ctx.projectRoot, state)
-  return contextOf(limitLines(findingLines, POST_EDIT_LINE_LIMIT, ctx.pluginRoot))
-}
-
-const hasProjectConfig = (projectRoot: string): boolean => {
-  const paths = jigPaths(projectRoot)
-  return existsSync(paths.config) || existsSync(paths.localConfig)
+  return contextOf([...limitLines(findingLines, POST_EDIT_LINE_LIMIT, ctx.pluginRoot), ...worktreeNote])
 }
 
 const preShell = (event: EventOf<'pre-shell'>, ctx: HookContext): Outcome => {
   if (!hasProjectConfig(ctx.projectRoot)) return NONE
-  openShellCall(ctx.projectRoot, ctx.sessionId, event.callId, takeSnapshot(ctx.projectRoot))
+  const snapshot = takeSnapshot(ctx.projectRoot)
+  const worktrees = isDepsPooled(ctx.projectRoot) ? worktreePathsOf(ctx) : undefined
+  openShellCall(ctx.projectRoot, ctx.sessionId, event.callId, worktrees === undefined ? { snapshot } : { snapshot, worktrees })
   return NONE
 }
 
@@ -196,12 +250,14 @@ const attributeShellChanges = (ctx: HookContext, state: SessionState, before: Sn
 
 const postShell = (event: EventOf<'post-shell'>, ctx: HookContext): Outcome => {
   if (event.isBackground) return NONE
-  const before = closeShellCall(ctx.projectRoot, ctx.sessionId, event.callId)
-  if (before === undefined) return NONE
+  const call = closeShellCall(ctx.projectRoot, ctx.sessionId, event.callId)
+  if (call === undefined) return NONE
   const state = openSession(ctx)
-  attributeShellChanges(ctx, state, before)
+  attributeShellChanges(ctx, state, call.snapshot)
+  const before = call.worktrees
+  const worktreeNote = before === undefined ? [] : noteOf(ctx, () => newWorktreesNote(ctx, state, before))
   writeState(ctx.projectRoot, state)
-  return NONE
+  return contextOf(worktreeNote)
 }
 
 const ROLE_PATH = /\S*[\\/]roles[\\/]([\w-]+)\.md\b/g
@@ -217,8 +273,8 @@ const stop = async (event: EventOf<'stop'>, ctx: HookContext): Promise<Outcome> 
   const attributesShell = ctx.attributesShell === true
   if (attributesShell) {
     for (const callId of openShellCalls(ctx.projectRoot, ctx.sessionId)) {
-      const before = closeShellCall(ctx.projectRoot, ctx.sessionId, callId)
-      if (before !== undefined) attributeShellChanges(ctx, state, before)
+      const call = closeShellCall(ctx.projectRoot, ctx.sessionId, callId)
+      if (call !== undefined) attributeShellChanges(ctx, state, call.snapshot)
     }
   }
   const verdict = await stopGate({ projectRoot: ctx.projectRoot, pluginRoot: ctx.pluginRoot, state, stopHookActive: event.stopHookActive, attributesShell })

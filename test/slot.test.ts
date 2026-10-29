@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -271,5 +272,83 @@ describe('slot commands in a temporary repository', () => {
     sh(main, 'worktree', 'add', '-q', join(root, 'worktrees', `${REPO}-s7-b`), '-b', 'dup-b')
 
     expect((await runIn(['new'])).code).toBe(1)
+  })
+})
+
+const RESOLVE = [
+  "const fs = require('fs')",
+  "const path = require('path')",
+  "const names = ['package.json', path.join('packages', 'ws', 'package.json')].map((file) => JSON.parse(fs.readFileSync(file, 'utf8')).name)",
+  "fs.writeFileSync('install.marker', '')",
+  "fs.writeFileSync('package-lock.json', JSON.stringify(names))",
+  "fs.mkdirSync(path.join('node_modules', 'pkg'), { recursive: true })",
+  "fs.writeFileSync(path.join('node_modules', 'pkg', 'index.js'), names.join())",
+  "fs.writeFileSync(path.join('node_modules', '.package-lock.json'), '{}')",
+].join('\n')
+
+describe('slot show with a gitignored lock file and the dependency pool', () => {
+  let root: string
+  let main: string
+  const previousProjectDir = process.env['CLAUDE_PROJECT_DIR']
+
+  const sh = (cwd: string, ...args: string[]): void => {
+    const result = git(args, cwd)
+    if (!result.ok) throw new Error(result.stderr)
+  }
+
+  const commitOn = (branch: string, file: string, text: string): void => {
+    sh(main, 'checkout', '-q', '-b', branch)
+    writeFileSync(join(main, file), text)
+    sh(main, 'commit', '-q', '-am', branch)
+  }
+
+  beforeAll(() => {
+    root = realpathSync.native(mkdtempSync(join(tmpdir(), 'jig-slot-pool-')))
+    main = join(root, REPO)
+    sh(root, 'init', '-q', '-b', 'main', main)
+    sh(main, 'config', 'user.email', 'test@example.com')
+    sh(main, 'config', 'user.name', 'test')
+    mkdirSync(join(main, '.jig'), { recursive: true })
+    mkdirSync(join(main, 'packages', 'ws'), { recursive: true })
+    writeFileSync(join(main, '.gitignore'), ['node_modules/', 'package-lock.json', '*.marker', '.jig/cache/', ''].join('\n'))
+    writeFileSync(join(main, '.jig', 'config.jsonc'), JSON.stringify({ slots: { worktreesDir: '../worktrees', install: 'node resolve.cjs' }, worktree: { depsPool: {} } }))
+    writeFileSync(join(main, 'package.json'), '{"name":"app"}')
+    writeFileSync(join(main, 'packages', 'ws', 'package.json'), '{"name":"ws"}')
+    writeFileSync(join(main, 'README.md'), 'readme\n')
+    writeFileSync(join(main, 'resolve.cjs'), RESOLVE)
+    sh(main, 'add', '.')
+    sh(main, 'commit', '-q', '-m', 'init')
+    execFileSync(process.execPath, ['resolve.cjs'], { cwd: main })
+    commitOn('ws-change', join('packages', 'ws', 'package.json'), '{"name":"ws-2"}')
+    commitOn('docs', 'README.md', 'docs\n')
+    sh(main, 'checkout', '-q', 'main')
+    process.env['CLAUDE_PROJECT_DIR'] = main
+    vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
+    vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+  })
+
+  afterAll(() => {
+    vi.restoreAllMocks()
+    if (previousProjectDir === undefined) {
+      delete process.env['CLAUDE_PROJECT_DIR']
+    } else {
+      process.env['CLAUDE_PROJECT_DIR'] = previousProjectDir
+    }
+    rmSync(root, { recursive: true, force: true })
+  })
+
+  it('fills the slot from the pool when a workspace package.json changed, and not when only other files did', async () => {
+    expect(await runSlot(['new'])).toBe(0)
+    const dir = join(root, 'worktrees', `${REPO}-s1`)
+    const marker = join(dir, 'install.marker')
+    rmSync(marker, { force: true })
+
+    expect(await runSlot(['show', '1', 'ws-change'])).toBe(0)
+    expect(existsSync(marker)).toBe(true)
+    expect(JSON.parse(readFileSync(join(dir, 'package-lock.json'), 'utf8'))).toEqual(['app', 'ws-2'])
+
+    rmSync(marker)
+    expect(await runSlot(['show', '1', 'docs'])).toBe(0)
+    expect(existsSync(marker)).toBe(false)
   })
 })

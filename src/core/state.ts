@@ -26,6 +26,7 @@ export interface SessionState {
   snapshot: Snapshot
   edits: EditRecord[]
   stop: StopState
+  toldWorktrees?: Record<string, string[]>
 }
 
 export const MAIN_AGENT = 'main'
@@ -48,12 +49,19 @@ export const sessionStatePath = (projectRoot: string, sessionId: string): string
 const shellCallPath = (projectRoot: string, sessionId: string, callId: string): string =>
   join(jigPaths(projectRoot).sessions, `${shellCallPrefix(sessionId)}${safeName(callId)}.json`)
 
-export const openShellCall = (projectRoot: string, sessionId: string, callId: string, snapshot: Snapshot): void => {
-  mkdirSync(jigPaths(projectRoot).sessions, { recursive: true })
-  writeFileAtomic(shellCallPath(projectRoot, sessionId, callId), JSON.stringify(snapshot))
+export interface ShellCall {
+  snapshot: Snapshot
+  worktrees?: string[]
 }
 
-export const closeShellCall = (projectRoot: string, sessionId: string, callId: string): Snapshot | undefined => {
+const isStrings = (value: unknown): value is string[] => Array.isArray(value) && value.every((item) => typeof item === 'string')
+
+export const openShellCall = (projectRoot: string, sessionId: string, callId: string, call: ShellCall): void => {
+  mkdirSync(jigPaths(projectRoot).sessions, { recursive: true })
+  writeFileAtomic(shellCallPath(projectRoot, sessionId, callId), JSON.stringify(call))
+}
+
+export const closeShellCall = (projectRoot: string, sessionId: string, callId: string): ShellCall | undefined => {
   const path = shellCallPath(projectRoot, sessionId, callId)
   let text: string
   try {
@@ -64,7 +72,11 @@ export const closeShellCall = (projectRoot: string, sessionId: string, callId: s
   rmSync(path, { force: true })
   try {
     const value: unknown = JSON.parse(text)
-    return typeof value === 'object' && value !== null ? (value as Snapshot) : undefined
+    if (typeof value !== 'object' || value === null || !('snapshot' in value)) return undefined
+    const { snapshot } = value
+    if (typeof snapshot !== 'object' || snapshot === null) return undefined
+    const worktrees = 'worktrees' in value && isStrings(value.worktrees) ? value.worktrees : undefined
+    return worktrees === undefined ? { snapshot: snapshot as Snapshot } : { snapshot: snapshot as Snapshot, worktrees }
   } catch {
     return undefined
   }

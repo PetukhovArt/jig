@@ -1,5 +1,5 @@
-import { realpathSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { lstatSync, readFileSync, realpathSync } from 'node:fs'
+import { dirname, join, resolve } from 'node:path'
 import { git } from '../core/git'
 
 export interface Worktree {
@@ -34,6 +34,21 @@ export const listWorktrees = (cwd: string): Worktree[] => {
   const result = git(['worktree', 'list', '--porcelain'], cwd)
   if (!result.ok) throw new Error(`git worktree list failed: ${result.stderr.trim()}`)
   return parseWorktreeList(result.stdout)
+}
+
+const LINKED_GITDIR = /^gitdir:\s*(.+)$/m
+
+/** The root of the linked worktree that holds `dir`, found by stat calls up the tree: undefined in a main checkout, a submodule or outside git. */
+export const linkedWorktreeRoot = (dir: string): string | undefined => {
+  for (let current = resolve(dir); ; current = dirname(current)) {
+    const dotGit = join(current, '.git')
+    const stats = lstatSync(dotGit, { throwIfNoEntry: false })
+    if (stats?.isFile() === true) {
+      const gitdir = LINKED_GITDIR.exec(readFileSync(dotGit, 'utf8'))?.[1] ?? ''
+      return /[\\/]worktrees[\\/][^\\/]+[\\/]?$/.test(gitdir.trim()) ? current : undefined
+    }
+    if (stats !== undefined || dirname(current) === current) return undefined
+  }
 }
 
 const canonical = (path: string): string => {

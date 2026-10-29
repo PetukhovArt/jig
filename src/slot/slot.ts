@@ -9,7 +9,7 @@ import { ensureJigDir, resolveProjectRoot, toSlash } from '../core/paths'
 import { acquireLock } from '../core/proc'
 import { listWorktrees, type Worktree } from '../worktree/list'
 import { installSteps } from '../worktree/lockfiles'
-import { formatDeps, provideDeps, type DepsOutcome } from '../worktree/deps-pool'
+import { formatDeps, hasIgnoredLockKeyChange, provideDeps, type DepsOutcome } from '../worktree/deps-pool'
 import { removeLinkedWorktree } from '../worktree/remove'
 import { formatSeed, seedWorktree } from '../worktree/seed'
 
@@ -392,7 +392,8 @@ const slotShow = (args: string[]): number => {
   const after = headOf(worktree.path)
   const changed = before === undefined || after === undefined ? [] : changedFiles(worktree.path, before, after)
   const steps = installSteps(changed, context.slots?.install)
-  const deps = steps.some((step) => step.dir === '.') ? poolDeps(context, worktree.path) : undefined
+  const isRootDepsChange = steps.some((step) => step.dir === '.') || hasIgnoredLockKeyChange(worktree.path, changed)
+  const deps = isRootDepsChange ? poolDeps(context, worktree.path) : undefined
   if (deps?.kind === 'failed') return fail(`install failed in slot ${slot} ${toSlash(worktree.path)}: ${deps.detail}`, 1)
   for (const step of steps.filter((candidate) => candidate.dir !== '.' || !isPoolServed(deps))) {
     process.stderr.write(`jig: lock file changed, running ${step.command} in ${step.dir}\n`)

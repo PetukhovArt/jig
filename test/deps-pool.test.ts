@@ -322,3 +322,125 @@ describe('dependency pool', () => {
     expect(readFileSync(join(pool, firstKey ?? '', 'node_modules', 'pkg', 'lib', 'index.js'), 'utf8')).toBe('installed')
   })
 })
+
+const RESOLVE = [
+  "const fs = require('fs')",
+  "const path = require('path')",
+  "const name = JSON.parse(fs.readFileSync('package.json', 'utf8')).name",
+  "fs.writeFileSync('install.marker', '')",
+  "fs.writeFileSync('package-lock.json', JSON.stringify({ name, extra: process.argv[2] ?? null }))",
+  "fs.mkdirSync(path.join('node_modules', 'pkg'), { recursive: true })",
+  "fs.writeFileSync(path.join('node_modules', 'pkg', 'index.js'), name)",
+  "fs.writeFileSync(path.join('node_modules', '.package-lock.json'), '{}')",
+].join('\n')
+
+describe('dependency pool with a gitignored lock file', () => {
+  let root: string
+  let main: string
+  let pool: string
+  let releaseKey: string | undefined
+  let releaseLock: string
+  let newestVersion: string | undefined
+
+  const resolveOptions = (dir: string) => ({ main: dir, install: 'node resolve.cjs' })
+
+  const sh = (cwd: string, ...args: string[]): void => {
+    const result = git(args, cwd)
+    if (!result.ok) throw new Error(result.stderr)
+  }
+
+  const lockIn = (dir: string): string => readFileSync(join(dir, 'package-lock.json'), 'utf8')
+
+  const versionOf = (outcome: DepsOutcome | SaveOutcome): string | undefined => ('version' in outcome ? outcome.version : undefined)
+
+  const seededWorktree = (name: string, manifest: string): string => {
+    const dir = join(root, name)
+    sh(main, 'worktree', 'add', '-q', '--detach', dir, 'main')
+    writeFileSync(join(dir, 'package-lock.json'), lockIn(main))
+    setManifest(dir, manifest)
+    return dir
+  }
+
+  beforeAll(() => {
+    root = realpathSync.native(mkdtempSync(join(tmpdir(), 'jig-deps-ignored-')))
+    main = join(root, 'main')
+    pool = join(main, '.git', 'jig', 'deps')
+    sh(root, 'init', '-q', '-b', 'main', main)
+    sh(main, 'config', 'user.email', 'test@example.com')
+    sh(main, 'config', 'user.name', 'test')
+    writeFileSync(join(main, '.gitignore'), ['node_modules/', 'package-lock.json', '*.marker', ''].join('\n'))
+    setManifest(main, 'app')
+    writeFileSync(join(main, 'resolve.cjs'), RESOLVE)
+    mkdirSync(join(main, 'packages', 'ws'), { recursive: true })
+    writeFileSync(join(main, 'packages', 'ws', 'package.json'), '{"name":"ws"}')
+    sh(main, 'add', '.')
+    sh(main, 'commit', '-q', '-m', 'init')
+    execFileSync(process.execPath, ['resolve.cjs', 'main'], { cwd: main })
+  })
+
+  afterAll(() => {
+    rmSync(root, { recursive: true, force: true })
+  })
+
+  it('installs a release manifest with the resolving command and pools its lock file with the dependencies', () => {
+    const release = seededWorktree('release', 'release')
+    const outcome = provideDeps(release, resolveOptions(main))
+    releaseKey = keyOf(outcome)
+    releaseLock = lockIn(release)
+
+    expect(outcome).toMatchObject({ kind: 'installed', pooled: true, install: 'node resolve.cjs' })
+    expect(JSON.parse(releaseLock)).toEqual({ name: 'release', extra: null })
+    expect(readFileSync(join(pool, `${releaseKey ?? ''}-${versionOf(outcome) ?? ''}`, 'package-lock.json'), 'utf8')).toBe(releaseLock)
+  })
+
+  it("gives a release worktree seeded with the main checkout's lock file the release entry and restores the release lock file", () => {
+    const dir = seededWorktree('release-2', 'release')
+    const outcome = provideDeps(dir, resolveOptions(main))
+
+    expect(outcome).toMatchObject({ kind: 'reused', key: releaseKey, from: undefined })
+    expect(lockIn(dir)).toBe(releaseLock)
+    expect(existsSync(join(dir, 'install.marker'))).toBe(false)
+    expect(formatDeps(outcome).join('\n')).toContain('restored its package-lock.json')
+  })
+
+  it.each([
+    ['root manifest', 'feature', 'package.json'],
+    ['workspace manifest', 'feature-ws', join('packages', 'ws', 'package.json')],
+  ])('misses on a changed %s, runs the resolving command and pools the result', (_, name, file) => {
+    const dir = seededWorktree(name, 'release')
+    writeFileSync(join(dir, file), JSON.stringify({ name }))
+    const outcome = provideDeps(dir, resolveOptions(main))
+
+    expect(outcome).toMatchObject({ kind: 'installed', pooled: true })
+    expect(keyOf(outcome)).not.toBe(releaseKey)
+    expect(existsSync(join(dir, 'install.marker'))).toBe(true)
+  })
+
+  it('makes the newer lock file of an installed sibling a new version first, and later worktrees take the newest version', () => {
+    const release = join(root, 'release')
+    execFileSync(process.execPath, ['resolve.cjs', 'updated'], { cwd: release })
+    const updated = lockIn(release)
+    const dir = seededWorktree('release-3', 'release')
+    const outcome = provideDeps(dir, resolveOptions(main))
+    newestVersion = versionOf(outcome)
+    const later = seededWorktree('release-4', 'release')
+    const laterOutcome = provideDeps(later, resolveOptions(main))
+
+    expect(outcome).toMatchObject({ kind: 'reused', key: releaseKey })
+    expect(samePath(outcome.kind === 'reused' ? (outcome.from ?? '') : '', release)).toBe(true)
+    expect(lockIn(dir)).toBe(updated)
+    expect(readdirSync(pool).filter((name) => name.startsWith(`${releaseKey ?? ''}-`))).toHaveLength(2)
+    expect(laterOutcome).toMatchObject({ kind: 'reused', key: releaseKey, version: newestVersion, from: undefined })
+    expect(lockIn(later)).toBe(updated)
+  })
+
+  it('saves a checkout whose lock file no version holds as a new version, then reports it kept', () => {
+    const dir = seededWorktree('release-5', 'release')
+    execFileSync(process.execPath, ['resolve.cjs', 'saved'], { cwd: dir })
+    const saved = saveDeps(dir, resolveOptions(main))
+
+    expect(saved).toMatchObject({ kind: 'saved', key: releaseKey })
+    expect(versionOf(saved)).not.toBe(newestVersion)
+    expect(saveDeps(dir, resolveOptions(main))).toEqual({ kind: 'kept', lockfile: 'package-lock.json', key: releaseKey, version: versionOf(saved) })
+  })
+})
