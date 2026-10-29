@@ -73,19 +73,24 @@ export const excluder = (globs: readonly string[]): ((path: string) => boolean) 
   }
 }
 
-const symlinkType = (source: string): 'dir' | 'file' => {
+const typeOf = (path: string): 'dir' | 'file' | undefined => {
   try {
-    return statSync(source).isDirectory() ? 'dir' : 'file'
+    return statSync(path).isDirectory() ? 'dir' : 'file'
   } catch {
-    return 'file'
+    return undefined
   }
 }
 
 const isPermissionError = (error: unknown): boolean =>
   error instanceof Error && 'code' in error && error.code === 'EPERM'
 
-const createLink = (source: string, target: string, destination: string): void => {
-  const type = symlinkType(source)
+/**
+ * Creates `destination` as a symlink to `target`, a directory or a file link as `target` is, or as
+ * the copied link `source` resolves while `target` does not exist yet. On Windows without the
+ * symlink privilege a directory link becomes a junction.
+ */
+export const createLink = (source: string, target: string, destination: string): void => {
+  const type = typeOf(target) ?? typeOf(source) ?? 'file'
   try {
     symlinkSync(target, destination, type)
   } catch (error) {

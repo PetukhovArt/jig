@@ -33,7 +33,11 @@ describe('parseConfig', () => {
       cdp: { base: 9900, step: 1 },
       clearCache: [],
     })
-    expect(config.worktree).toEqual({ seedExclude: ['*.log'], copyFiles: ['node_modules/.cache/keep.json'] })
+    expect(config.worktree).toEqual({
+      seedExclude: ['*.log'],
+      copyFiles: ['node_modules/.cache/keep.json'],
+      depsPool: { after: 'npm run build -w packages/diagnostic' },
+    })
   })
 
   it('fills missing rules with the default level and keeps given ones', () => {
@@ -104,6 +108,9 @@ describe('validateConfig', () => {
     ['port unknown key', { slots: { worktreesDir: '..', ports: { P: { base: 3000, step: 1, x: 1 } } } }, ['$.slots.ports.P.x: unknown key']],
     ['cdp fractional base', { slots: { worktreesDir: '..', cdp: { base: 9900.5, step: 1 } } }, ['$.slots.cdp.base: expected an integer 1..65535']],
     ['copyFiles item not a string', { worktree: { copyFiles: ['a', 2] } }, ['$.worktree.copyFiles[1]: expected a string']],
+    ['depsPool not an object', { worktree: { depsPool: true } }, ['$.worktree.depsPool: expected an object']],
+    ['depsPool unknown key', { worktree: { depsPool: { install: 'npm ci' } } }, ['$.worktree.depsPool.install: unknown key']],
+    ['depsPool empty after', { worktree: { depsPool: { after: ' ' } } }, ['$.worktree.depsPool.after: is empty']],
     ['copyFiles moved out of slots', { slots: { worktreesDir: '..', copyFiles: [] } }, ['$.slots.copyFiles: unknown key']],
     ['instance not an object', { slots: { worktreesDir: '..', instance: 1 } }, ['$.slots.instance: expected an object']],
     ['slotEnv key not a variable name', { slots: { worktreesDir: '..', slotEnv: { key: 'SLOT-N' } } }, ['$.slots.slotEnv.key: expected an env variable name']],

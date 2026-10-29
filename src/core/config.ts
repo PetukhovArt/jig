@@ -73,9 +73,14 @@ export interface SlotsConfig {
   clearCache?: string[]
 }
 
+export interface DepsPoolConfig {
+  after?: string
+}
+
 export interface WorktreeConfig {
   seedExclude?: string[]
   copyFiles?: string[]
+  depsPool?: DepsPoolConfig
 }
 
 export const FORGES = ['gitlab', 'github'] as const
@@ -341,14 +346,28 @@ const readSlots = (validator: Validator, value: unknown): SlotsConfig | undefine
   return slots
 }
 
-const WORKTREE_KEYS = ['seedExclude', 'copyFiles'] as const
+const WORKTREE_LIST_KEYS = ['seedExclude', 'copyFiles'] as const
+
+const readDepsPool = (validator: Validator, value: unknown, path: string): DepsPoolConfig | undefined => {
+  const object = validator.object(value, path, ['after'])
+  if (object === undefined) return undefined
+  if (object['after'] === undefined) return {}
+  const after = validator.string(object['after'], childPath(path, 'after'))
+  if (after === undefined) return undefined
+  if (after.trim() === '') return validator.report(childPath(path, 'after'), 'is empty')
+  return { after }
+}
 
 const readWorktree = (validator: Validator, value: unknown): WorktreeConfig | undefined => {
   const path = '$.worktree'
-  const object = validator.object(value, path, WORKTREE_KEYS)
+  const object = validator.object(value, path, [...WORKTREE_LIST_KEYS, 'depsPool'])
   if (object === undefined) return undefined
   const worktree: WorktreeConfig = {}
-  for (const key of WORKTREE_KEYS) {
+  if (object['depsPool'] !== undefined) {
+    const depsPool = readDepsPool(validator, object['depsPool'], childPath(path, 'depsPool'))
+    if (depsPool !== undefined) worktree.depsPool = depsPool
+  }
+  for (const key of WORKTREE_LIST_KEYS) {
     if (object[key] === undefined) continue
     const parsed = validator.strings(object[key], childPath(path, key))
     if (parsed !== undefined) {

@@ -52,9 +52,11 @@ Slots need a `slots` section; `worktreesDir` is required. The `worktree` section
     "cdp": { "base": 9222, "step": 1 },
     "slotEnv": { "key": "SLOT", "target": ".env" }
   },
-  "worktree": { "seedExclude": ["coverage"] }
+  "worktree": { "seedExclude": ["coverage"], "depsPool": { "after": "npm run build -w packages/shared" } }
 }
 ```
+
+`worktree.depsPool`, when present, makes `jig slot new` and `jig slot show` take `node_modules` from the dependency pool instead of installing (`jig worktree deps`): the first worktree with a root `package-lock.json`, `npm-shrinkwrap.json` or `yarn.lock` installs, later ones with the same lock file, install command, OS, CPU architecture and Node major version get a hardlink copy. Hardlinked files are shared: a tool that edits a file under `node_modules` in place (patch-package, a native rebuild) changes it in every worktree on that entry, while a reinstall replaces files. `du` counts a hardlinked file in each tree. A pool entry under `.git/jig/deps/` (the git common dir, which IDE indexers, watchers and globs skip) can be deleted at any time. Hardlinks need the pool and the worktree on one volume, else files are copied. `after` runs in the worktree after a reuse, for what the install also makes outside `node_modules`, which the first install reports.
 
 `slots.slotEnv` writes the slot number itself into an env file, for a dev script that derives its ports from it. A slot's `agent-view.config.json` takes the main checkout's `url` with a `ports` base moved to the slot's port ([slots](../skills/jig-slots/references/app-slots.md)).
 

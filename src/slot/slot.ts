@@ -9,6 +9,7 @@ import { ensureJigDir, resolveProjectRoot, toSlash } from '../core/paths'
 import { acquireLock } from '../core/proc'
 import { listWorktrees, type Worktree } from '../worktree/list'
 import { installSteps } from '../worktree/lockfiles'
+import { formatDeps, provideDeps, type DepsOutcome } from '../worktree/deps-pool'
 import { removeLinkedWorktree } from '../worktree/remove'
 import { formatSeed, seedWorktree } from '../worktree/seed'
 
@@ -248,6 +249,18 @@ const reserveSlot = async (
 const runInstall = (install: string, dir: string): number | null =>
   spawnSync(install, { cwd: dir, shell: true, windowsHide: true, stdio: ['ignore', 2, 2] }).status
 
+const poolDeps = (context: SlotContext, dir: string): DepsOutcome | undefined => {
+  const depsPool = context.worktree?.depsPool
+  if (depsPool === undefined) return undefined
+  const outcome = provideDeps(dir, { main: context.mainRoot, install: context.slots?.install, after: depsPool.after })
+  for (const line of formatDeps(outcome)) {
+    process.stderr.write(`jig: ${line}\n`)
+  }
+  return outcome
+}
+
+const isPoolServed = (outcome: DepsOutcome | undefined): boolean => outcome !== undefined && outcome.kind !== 'skipped'
+
 const slotNew = async (args: string[]): Promise<number> => {
   const { values } = parseArgs({ args, options: { slug: { type: 'string' }, branch: { type: 'string' } }, strict: true })
   const slug = values.slug
@@ -272,7 +285,9 @@ const slotNew = async (args: string[]): Promise<number> => {
   for (const cache of slots.clearCache ?? []) {
     rmSync(insideDir(dir, cache), { recursive: true, force: true })
   }
-  if (slots.install !== undefined) {
+  const deps = poolDeps(context, dir)
+  if (deps?.kind === 'failed') return fail(`install failed in slot ${slot} ${toSlash(dir)}: ${deps.detail}`, 1)
+  if (!isPoolServed(deps) && slots.install !== undefined) {
     const status = runInstall(slots.install, dir)
     if (status !== 0) return fail(`install failed (exit ${status}) in slot ${slot} ${toSlash(dir)}`, 1)
   }
@@ -376,7 +391,10 @@ const slotShow = (args: string[]): number => {
   if (!checkout.ok) return fail(`git checkout --detach ${ref} failed in slot ${slot}: ${checkout.stderr.trim()}`, 1)
   const after = headOf(worktree.path)
   const changed = before === undefined || after === undefined ? [] : changedFiles(worktree.path, before, after)
-  for (const step of installSteps(changed, context.slots?.install)) {
+  const steps = installSteps(changed, context.slots?.install)
+  const deps = steps.some((step) => step.dir === '.') ? poolDeps(context, worktree.path) : undefined
+  if (deps?.kind === 'failed') return fail(`install failed in slot ${slot} ${toSlash(worktree.path)}: ${deps.detail}`, 1)
+  for (const step of steps.filter((candidate) => candidate.dir !== '.' || !isPoolServed(deps))) {
     process.stderr.write(`jig: lock file changed, running ${step.command} in ${step.dir}\n`)
     const status = runInstall(step.command, resolve(worktree.path, step.dir))
     if (status !== 0) return fail(`install failed (exit ${status}) in slot ${slot} ${toSlash(worktree.path)}`, 1)

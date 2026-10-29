@@ -10,7 +10,7 @@ const entriesOf = (dir: string): Dirent[] => {
   }
 }
 
-const unlinkOne = (path: string): void => {
+export const unlinkOne = (path: string): void => {
   try {
     unlinkSync(path)
   } catch (error) {

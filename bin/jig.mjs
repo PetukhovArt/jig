@@ -417,10 +417,10 @@ var matchGlob = (path2, glob) => createMatcher(typeof glob === "string" ? [glob]
 
 // src/catalog/lockfiles.json
 var lockfiles_default = [
-  { file: "package-lock.json", install: "npm ci" },
-  { file: "npm-shrinkwrap.json", install: "npm ci" },
+  { file: "package-lock.json", install: "npm ci", deps: "node_modules" },
+  { file: "npm-shrinkwrap.json", install: "npm ci", deps: "node_modules" },
   { file: "pnpm-lock.yaml", install: "pnpm install --frozen-lockfile" },
-  { file: "yarn.lock", install: "yarn install --frozen-lockfile" },
+  { file: "yarn.lock", install: "yarn install --frozen-lockfile", deps: "node_modules" },
   { file: "bun.lock", install: "bun install --frozen-lockfile" },
   { file: "bun.lockb", install: "bun install --frozen-lockfile" },
   { file: "deno.lock", install: "deno install --frozen" },
@@ -2289,13 +2289,26 @@ var readSlots = (validator, value) => {
   }
   return slots;
 };
-var WORKTREE_KEYS = ["seedExclude", "copyFiles"];
+var WORKTREE_LIST_KEYS = ["seedExclude", "copyFiles"];
+var readDepsPool = (validator, value, path2) => {
+  const object = validator.object(value, path2, ["after"]);
+  if (object === void 0) return void 0;
+  if (object["after"] === void 0) return {};
+  const after = validator.string(object["after"], childPath(path2, "after"));
+  if (after === void 0) return void 0;
+  if (after.trim() === "") return validator.report(childPath(path2, "after"), "is empty");
+  return { after };
+};
 var readWorktree = (validator, value) => {
   const path2 = "$.worktree";
-  const object = validator.object(value, path2, WORKTREE_KEYS);
+  const object = validator.object(value, path2, [...WORKTREE_LIST_KEYS, "depsPool"]);
   if (object === void 0) return void 0;
   const worktree = {};
-  for (const key of WORKTREE_KEYS) {
+  if (object["depsPool"] !== void 0) {
+    const depsPool = readDepsPool(validator, object["depsPool"], childPath(path2, "depsPool"));
+    if (depsPool !== void 0) worktree.depsPool = depsPool;
+  }
+  for (const key of WORKTREE_LIST_KEYS) {
     if (object[key] === void 0) continue;
     const parsed = validator.strings(object[key], childPath(path2, key));
     if (parsed !== void 0) {
@@ -7502,9 +7515,9 @@ var runReviewCycle = (args) => runReviewCycleWith(args, { exec: spawnExec, cwd: 
 `) });
 
 // src/slot/slot.ts
-import { spawnSync as spawnSync6 } from "node:child_process";
-import { existsSync as existsSync19, mkdirSync as mkdirSync15, readFileSync as readFileSync30, rmSync as rmSync7, writeFileSync as writeFileSync10 } from "node:fs";
-import { basename as basename7, dirname as dirname12, isAbsolute as isAbsolute6, join as join31, relative as relative7, resolve as resolve13 } from "node:path";
+import { spawnSync as spawnSync7 } from "node:child_process";
+import { existsSync as existsSync20, mkdirSync as mkdirSync16, readFileSync as readFileSync31, rmSync as rmSync8, writeFileSync as writeFileSync11 } from "node:fs";
+import { basename as basename7, dirname as dirname13, isAbsolute as isAbsolute6, join as join32, relative as relative7, resolve as resolve14 } from "node:path";
 import { parseArgs as parseArgs6 } from "node:util";
 
 // src/worktree/lockfiles.ts
@@ -7520,6 +7533,25 @@ var installSteps = (changed, install, lockfiles = LOCKFILES) => {
   if (install !== void 0) return [{ dir: ".", command: install }];
   return [...new Map(detected.map((step) => [`${step.dir}\0${step.command}`, step])).values()];
 };
+
+// src/worktree/deps-pool.ts
+import { spawnSync as spawnSync6 } from "node:child_process";
+import { createHash as createHash9, randomBytes } from "node:crypto";
+import {
+  copyFileSync as copyFileSync5,
+  existsSync as existsSync19,
+  linkSync,
+  lstatSync as lstatSync2,
+  mkdirSync as mkdirSync15,
+  readdirSync as readdirSync16,
+  readFileSync as readFileSync30,
+  readlinkSync as readlinkSync2,
+  realpathSync as realpathSync4,
+  renameSync as renameSync2,
+  rmSync as rmSync7,
+  writeFileSync as writeFileSync10
+} from "node:fs";
+import { dirname as dirname12, join as join31, posix as posix6, resolve as resolve13 } from "node:path";
 
 // src/worktree/remove.ts
 import { readdirSync as readdirSync14, rmdirSync, unlinkSync } from "node:fs";
@@ -7604,16 +7636,16 @@ var excluder = (globs) => {
     return parts.some((_part, index) => matches(parts.slice(0, index + 1).join("/")));
   };
 };
-var symlinkType = (source) => {
+var typeOf = (path2) => {
   try {
-    return statSync12(source).isDirectory() ? "dir" : "file";
+    return statSync12(path2).isDirectory() ? "dir" : "file";
   } catch {
-    return "file";
+    return void 0;
   }
 };
 var isPermissionError = (error) => error instanceof Error && "code" in error && error.code === "EPERM";
 var createLink = (source, target, destination) => {
-  const type = symlinkType(source);
+  const type = typeOf(target) ?? typeOf(source) ?? "file";
   try {
     symlinkSync(target, destination, type);
   } catch (error) {
@@ -7686,6 +7718,222 @@ var formatSeed = (items) => {
     `seed: ${count("copied")} copied, ${count("linked")} linked, ${count("kept")} kept, ${count("excluded")} excluded, ${count("failed")} failed`
   );
   return lines2;
+};
+
+// src/worktree/deps-pool.ts
+var POOL_DIR = "deps";
+var MANIFEST = "jig-deps.json";
+var KEY_HEX_CHARS = 16;
+var STAGING = /^[0-9a-f]+\.(\d+)-[0-9a-f]+\.tmp$/;
+var messageOf = (error) => error instanceof Error ? error.message : String(error);
+var codeOf = (error) => error instanceof Error && "code" in error ? error.code : void 0;
+var poolOf = (main) => {
+  const common = git(["rev-parse", "--git-common-dir"], main);
+  if (!common.ok) throw new Error(`git rev-parse --git-common-dir in ${main} failed: ${common.stderr.trim()}`);
+  return join31(resolve13(main, common.stdout.trim()), "jig", POOL_DIR);
+};
+var runCommand = (command, dir) => spawnSync6(command, { cwd: dir, shell: true, windowsHide: true, stdio: ["ignore", 2, 2] }).status;
+var isPooled = (lockfile) => lockfile.deps !== void 0;
+var findLockfile = (worktree) => {
+  const present = LOCKFILES.filter((lockfile) => existsSync19(join31(worktree, lockfile.file)));
+  const pooled = present.find(isPooled);
+  if (pooled !== void 0) return pooled;
+  const [first] = present;
+  return first === void 0 ? "no lock file at the worktree root" : `${first.file} has no dependency folder that jig pools`;
+};
+var keyOf = (worktree, lockfile, install) => {
+  const hash = createHash9("sha256");
+  for (const part of [lockfile.file, readFileSync30(join31(worktree, lockfile.file)), install, process.platform, process.arch]) {
+    hash.update(part).update("\0");
+  }
+  hash.update(`node${process.versions.node.split(".")[0] ?? ""}`);
+  return hash.digest("hex").slice(0, KEY_HEX_CHARS);
+};
+var isStringArray = (value) => Array.isArray(value) && value.every((item) => typeof item === "string");
+var parseManifest = (text3) => {
+  let value;
+  try {
+    value = JSON.parse(text3);
+  } catch {
+    return void 0;
+  }
+  if (typeof value !== "object" || value === null || !("lockfile" in value) || !("deps" in value) || !("footprint" in value)) return void 0;
+  const { lockfile, deps, footprint } = value;
+  if (typeof lockfile !== "string" || !isStringArray(deps) || !isStringArray(footprint)) return void 0;
+  return { lockfile, deps, footprint };
+};
+var removeTree = (path2) => {
+  let isLink;
+  try {
+    isLink = lstatSync2(path2).isSymbolicLink();
+  } catch {
+    return;
+  }
+  if (isLink) {
+    unlinkOne(path2);
+    return;
+  }
+  unlinkLinks(path2);
+  rmSync7(path2, { recursive: true, force: true });
+};
+var placeFile = (source, destination, copier) => {
+  copier.files++;
+  if (copier.transfer === "hardlink") {
+    try {
+      linkSync(source, destination);
+      return;
+    } catch (error) {
+      const code = codeOf(error);
+      if (code !== "EXDEV" && code !== "EPERM") throw error;
+      copier.transfer = "copy";
+    }
+  }
+  copyFileSync5(source, destination);
+};
+var copyTree = (from, to, copier, isDepsRoot) => {
+  mkdirSync15(to, { recursive: true });
+  const entries = readdirSync16(from, { withFileTypes: true });
+  for (const entry of entries.filter((candidate) => !candidate.isFile())) {
+    const source = join31(from, entry.name);
+    const destination = join31(to, entry.name);
+    if (entry.isSymbolicLink()) {
+      createLink(source, copier.retarget(readlinkSync2(source), from), destination);
+    } else if (entry.isDirectory()) {
+      copyTree(source, destination, copier, false);
+    }
+  }
+  for (const entry of entries.filter((candidate) => candidate.isFile())) {
+    const source = join31(from, entry.name);
+    const destination = join31(to, entry.name);
+    if (isDepsRoot) {
+      copyFileSync5(source, destination);
+      copier.files++;
+    } else {
+      placeFile(source, destination, copier);
+    }
+  }
+};
+var depsDirsOf = (entries, deps) => {
+  const dirs = entries.filter((entry) => entry.endsWith("/") && posix6.basename(entry) === deps).map((entry) => entry.slice(0, -1));
+  return dirs.filter((dir) => !dirs.some((other) => dir.startsWith(`${other}/`)));
+};
+var unlinkDepsLinks = (worktree, deps, entries) => {
+  const candidates = /* @__PURE__ */ new Set([deps, ...entries.filter((entry) => posix6.basename(entry) === deps).map((entry) => entry.replace(/\/$/, ""))]);
+  for (const candidate of candidates) {
+    const path2 = join31(worktree, candidate);
+    try {
+      if (lstatSync2(path2).isSymbolicLink()) unlinkOne(path2);
+    } catch (error) {
+      if (codeOf(error) !== "ENOENT") throw error;
+    }
+  }
+};
+var sweepStaging = (pool) => {
+  for (const name of readdirSync16(pool)) {
+    const pid = STAGING.exec(name)?.[1];
+    if (pid !== void 0 && !isAlive(Number(pid))) removeTree(join31(pool, name));
+  }
+};
+var publish = (staging, entry) => {
+  try {
+    renameSync2(staging, entry);
+  } catch (error) {
+    if (!existsSync19(join31(entry, MANIFEST))) throw error;
+    removeTree(staging);
+  }
+};
+var reuse = (worktree, entry, manifest, key, after) => {
+  const copier = { retarget: (raw, linkDir) => linkTarget(raw, linkDir, entry, worktree), transfer: "hardlink", files: 0 };
+  for (const dir of manifest.deps) {
+    const destination = join31(worktree, dir);
+    if (!existsSync19(dirname12(destination))) continue;
+    removeTree(destination);
+    copyTree(join31(entry, dir), destination, copier, true);
+  }
+  if (after !== void 0) {
+    const status = runCommand(after, worktree);
+    if (status !== 0) return { kind: "failed", detail: `after command ${after} failed (exit ${status})` };
+  }
+  const { files, transfer } = copier;
+  return { kind: "reused", lockfile: manifest.lockfile, key, files, transfer, after, footprint: manifest.footprint };
+};
+var installAndPool = (worktree, pool, key, lockfile, install, after) => {
+  const before = ignoredEntries(worktree);
+  unlinkDepsLinks(worktree, lockfile.deps, before);
+  const status = runCommand(install, worktree);
+  if (status !== 0) return { kind: "failed", detail: `install ${install} failed (exit ${status})` };
+  const entries = ignoredEntries(worktree);
+  const deps = depsDirsOf(entries, lockfile.deps);
+  const notPooled = (reason) => ({ kind: "installed", pooled: false, lockfile: lockfile.file, key, reason });
+  if (deps.length === 0) return notPooled(`install left no ${lockfile.deps} folder`);
+  const known = new Set(before);
+  const footprint = entries.filter((entry2) => !known.has(entry2) && !deps.some((dir) => entry2 === `${dir}/` || entry2.startsWith(`${dir}/`)));
+  mkdirSync15(pool, { recursive: true });
+  sweepStaging(pool);
+  const entry = join31(realpathSync4.native(pool), key);
+  const staging = join31(pool, `${key}.${process.pid}-${randomBytes(4).toString("hex")}.tmp`);
+  const copier = { retarget: (raw, linkDir) => linkTarget(raw, linkDir, worktree, entry), transfer: "hardlink", files: 0 };
+  try {
+    for (const dir of deps) {
+      copyTree(join31(worktree, dir), join31(staging, dir), copier, true);
+    }
+    const manifest = { lockfile: lockfile.file, deps, footprint };
+    writeFileSync10(join31(staging, MANIFEST), `${JSON.stringify(manifest, null, 2)}
+`);
+    publish(staging, entry);
+  } catch (error) {
+    removeTree(staging);
+    return notPooled(`could not pool: ${messageOf(error)}`);
+  }
+  const { files, transfer } = copier;
+  return { kind: "installed", pooled: true, lockfile: lockfile.file, key, files, transfer, after, footprint };
+};
+var provideDeps = (worktree, options) => {
+  const lockfile = findLockfile(worktree);
+  if (typeof lockfile === "string") return { kind: "skipped", reason: lockfile };
+  const install = options.install ?? lockfile.install;
+  try {
+    const key = keyOf(worktree, lockfile, install);
+    const pool = poolOf(options.main);
+    const entry = join31(pool, key);
+    if (!existsSync19(entry)) return installAndPool(worktree, pool, key, lockfile, install, options.after);
+    const manifestPath = join31(entry, MANIFEST);
+    const manifest = existsSync19(manifestPath) ? parseManifest(readFileSync30(manifestPath, "utf8")) : void 0;
+    if (manifest === void 0) return { kind: "failed", detail: `pool entry ${entry} has no valid ${MANIFEST}: delete the entry` };
+    return reuse(worktree, realpathSync4.native(entry), manifest, key, options.after);
+  } catch (error) {
+    return { kind: "failed", detail: messageOf(error) };
+  }
+};
+var pooledLines = (outcome) => {
+  const lines2 = [];
+  if (outcome.transfer === "copy") {
+    lines2.push("deps: hardlinks failed, files were copied: keep the worktree on the volume of the main checkout");
+  }
+  if (outcome.footprint.length > 0 && outcome.after === void 0) {
+    lines2.push(`deps: install also made ${outcome.footprint.join(", ")}, which a reuse does not: set worktree.depsPool.after to the command that makes them`);
+  }
+  return lines2;
+};
+var formatDeps = (outcome) => {
+  switch (outcome.kind) {
+    case "reused":
+      return [
+        `deps: reused pool entry ${outcome.key} for ${outcome.lockfile} (${outcome.files} files)${outcome.after === void 0 ? "" : `, ran ${outcome.after}`}`,
+        ...pooledLines(outcome)
+      ];
+    case "installed":
+      if (!outcome.pooled) return [`deps: installed for ${outcome.lockfile}, not pooled: ${outcome.reason}`];
+      return [`deps: installed for ${outcome.lockfile}, pooled as ${outcome.key} (${outcome.files} files)`, ...pooledLines(outcome)];
+    case "skipped":
+      return [`deps: not pooled, ${outcome.reason}`];
+    case "failed":
+      return [`deps: failed, ${outcome.detail}`];
+    default: {
+      const unhandled = outcome;
+      return unhandled;
+    }
+  }
 };
 
 // src/slot/slot.ts
@@ -7794,22 +8042,22 @@ var loadContext = () => {
 var formatDuplicates = (duplicates) => [...duplicates].map(([slot, group]) => `s${slot}: ${group.map((worktree) => toSlash(worktree.path)).join(", ")}`).join("; ");
 var isTracked = (dir, file) => git(["ls-files", "--error-unmatch", "--", file], dir).ok;
 var writeLocalFile = (dir, file, content) => {
-  const path2 = join31(dir, file);
-  mkdirSync15(dirname12(path2), { recursive: true });
-  writeFileSync10(path2, content);
+  const path2 = join32(dir, file);
+  mkdirSync16(dirname13(path2), { recursive: true });
+  writeFileSync11(path2, content);
   if (isTracked(dir, file)) {
     git(["update-index", "--skip-worktree", "--", file], dir);
   }
 };
 var insideDir = (dir, file) => {
-  const path2 = resolve13(dir, file);
+  const path2 = resolve14(dir, file);
   const rel = relative7(dir, path2);
   if (rel === "" || rel.startsWith("..") || isAbsolute6(rel)) throw new Error(`path ${file} leaves the slot dir`);
   return path2;
 };
 var writeEnv = (dir, target, key, value) => {
   const path2 = insideDir(dir, target);
-  const text3 = existsSync19(path2) ? readFileSync30(path2, "utf8") : "";
+  const text3 = existsSync20(path2) ? readFileSync31(path2, "utf8") : "";
   writeLocalFile(dir, target, setEnvValue(text3, key, String(value)));
 };
 var writePorts = (dir, slots, slot) => {
@@ -7821,14 +8069,14 @@ var writePorts = (dir, slots, slot) => {
   }
 };
 var readJsonObject = (path2) => {
-  if (!existsSync19(path2)) return {};
-  const value = parseJsonc(readFileSync30(path2, "utf8"));
+  if (!existsSync20(path2)) return {};
+  const value = parseJsonc(readFileSync31(path2, "utf8"));
   const isObject7 = typeof value === "object" && value !== null && !Array.isArray(value);
   return isObject7 ? value : {};
 };
 var writeAgentView = (mainRoot, dir, slots, slot, cdpPort) => {
-  const own = join31(dir, AGENT_VIEW_CONFIG2);
-  const base = readJsonObject(existsSync19(own) ? own : join31(mainRoot, AGENT_VIEW_CONFIG2));
+  const own = join32(dir, AGENT_VIEW_CONFIG2);
+  const base = readJsonObject(existsSync20(own) ? own : join32(mainRoot, AGENT_VIEW_CONFIG2));
   writeLocalFile(dir, AGENT_VIEW_CONFIG2, `${JSON.stringify(agentViewConfig(base, slots, slot, cdpPort), null, 2)}
 `);
 };
@@ -7838,7 +8086,7 @@ var worktreeAddArgs = (cwd, dir, branch) => {
   return branchExists(cwd, branch) ? ["worktree", "add", dir, branch] : ["worktree", "add", dir, "-b", branch];
 };
 var reserveSlot = async (context, slots, options) => {
-  const lock = await acquireLock(join31(ensureJigDir(context.mainRoot).cache, SLOT_LOCK));
+  const lock = await acquireLock(join32(ensureJigDir(context.mainRoot).cache, SLOT_LOCK));
   if (lock === void 0) return fail3("slot new is running elsewhere, retry", 1);
   try {
     git(["worktree", "prune"], context.projectRoot);
@@ -7851,7 +8099,7 @@ var reserveSlot = async (context, slots, options) => {
 `);
     }
     const slot = lowestFreeSlot(taken);
-    const dir = resolve13(context.mainRoot, slots.worktreesDir, slotDirName(context.repo, slot, options.slug));
+    const dir = resolve14(context.mainRoot, slots.worktreesDir, slotDirName(context.repo, slot, options.slug));
     const added = git(worktreeAddArgs(context.projectRoot, dir, options.branch), context.projectRoot);
     if (!added.ok) return fail3(`git worktree add failed: ${added.stderr.trim()}`, 2);
     return { slot, dir };
@@ -7859,7 +8107,18 @@ var reserveSlot = async (context, slots, options) => {
     lock.release();
   }
 };
-var runInstall = (install, dir) => spawnSync6(install, { cwd: dir, shell: true, windowsHide: true, stdio: ["ignore", 2, 2] }).status;
+var runInstall = (install, dir) => spawnSync7(install, { cwd: dir, shell: true, windowsHide: true, stdio: ["ignore", 2, 2] }).status;
+var poolDeps = (context, dir) => {
+  const depsPool = context.worktree?.depsPool;
+  if (depsPool === void 0) return void 0;
+  const outcome = provideDeps(dir, { main: context.mainRoot, install: context.slots?.install, after: depsPool.after });
+  for (const line of formatDeps(outcome)) {
+    process.stderr.write(`jig: ${line}
+`);
+  }
+  return outcome;
+};
+var isPoolServed = (outcome) => outcome !== void 0 && outcome.kind !== "skipped";
 var slotNew = async (args) => {
   const { values } = parseArgs6({ args, options: { slug: { type: "string" }, branch: { type: "string" } }, strict: true });
   const slug = values.slug;
@@ -7883,9 +8142,11 @@ var slotNew = async (args) => {
     writeAgentView(context.mainRoot, dir, slots, slot, cdpPort);
   }
   for (const cache of slots.clearCache ?? []) {
-    rmSync7(insideDir(dir, cache), { recursive: true, force: true });
+    rmSync8(insideDir(dir, cache), { recursive: true, force: true });
   }
-  if (slots.install !== void 0) {
+  const deps = poolDeps(context, dir);
+  if (deps?.kind === "failed") return fail3(`install failed in slot ${slot} ${toSlash(dir)}: ${deps.detail}`, 1);
+  if (!isPoolServed(deps) && slots.install !== void 0) {
     const status = runInstall(slots.install, dir);
     if (status !== 0) return fail3(`install failed (exit ${status}) in slot ${slot} ${toSlash(dir)}`, 1);
   }
@@ -7966,10 +8227,13 @@ var slotShow = (args) => {
   if (!checkout.ok) return fail3(`git checkout --detach ${ref} failed in slot ${slot}: ${checkout.stderr.trim()}`, 1);
   const after = headOf(worktree.path);
   const changed = before === void 0 || after === void 0 ? [] : changedFiles2(worktree.path, before, after);
-  for (const step of installSteps(changed, context.slots?.install)) {
+  const steps = installSteps(changed, context.slots?.install);
+  const deps = steps.some((step) => step.dir === ".") ? poolDeps(context, worktree.path) : void 0;
+  if (deps?.kind === "failed") return fail3(`install failed in slot ${slot} ${toSlash(worktree.path)}: ${deps.detail}`, 1);
+  for (const step of steps.filter((candidate) => candidate.dir !== "." || !isPoolServed(deps))) {
     process.stderr.write(`jig: lock file changed, running ${step.command} in ${step.dir}
 `);
-    const status = runInstall(step.command, resolve13(worktree.path, step.dir));
+    const status = runInstall(step.command, resolve14(worktree.path, step.dir));
     if (status !== 0) return fail3(`install failed (exit ${status}) in slot ${slot} ${toSlash(worktree.path)}`, 1);
   }
   print(`slot ${slot} ${toSlash(worktree.path)} at ${(after ?? "").slice(0, 12)} ${ref}`);
@@ -7989,20 +8253,20 @@ var runSlot = (args) => {
 };
 
 // src/worktree/worktree.ts
-import { existsSync as existsSync20 } from "node:fs";
-import { basename as basename9, resolve as resolve15 } from "node:path";
+import { existsSync as existsSync21 } from "node:fs";
+import { basename as basename9, resolve as resolve16 } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { parseArgs as parseArgs7 } from "node:util";
 
 // src/worktree/sweep.ts
-import { spawnSync as spawnSync7 } from "node:child_process";
-import { basename as basename8, resolve as resolve14 } from "node:path";
+import { spawnSync as spawnSync8 } from "node:child_process";
+import { basename as basename8, resolve as resolve15 } from "node:path";
 var KEPT_BUCKETS = /* @__PURE__ */ new Set(["hold-current", "hold-locked", "hold-wip"]);
 var RECENT_MS = 24 * 60 * 60 * 1e3;
 var MS_PER_SECOND = 1e3;
 var SLOT_ITEM = /^s?(\d+)$/;
 var runJson = (bin, args, cwd) => {
-  const result = spawnSync7(bin, args, { cwd, encoding: "utf8", windowsHide: true });
+  const result = spawnSync8(bin, args, { cwd, encoding: "utf8", windowsHide: true });
   if (result.status !== 0) return void 0;
   try {
     return JSON.parse(result.stdout);
@@ -8049,7 +8313,7 @@ var matchItems = (rows, items, cwd) => {
   for (const item of items) {
     const slot = SLOT_ITEM.exec(item)?.[1];
     const row = rows.find(
-      (candidate) => slot === void 0 ? samePath(candidate.path, resolve14(cwd, item)) : candidate.slot === Number(slot)
+      (candidate) => slot === void 0 ? samePath(candidate.path, resolve15(cwd, item)) : candidate.slot === Number(slot)
     );
     if (row === void 0) {
       unknown.push(item);
@@ -8081,30 +8345,45 @@ var mainCheckout = (cwd) => {
   if (main === void 0) throw new Error(`no git worktrees found from ${toSlash(cwd)}`);
   return main;
 };
-var worktreeSeed = (args) => {
+var linkedTarget = (args, subcommand, purpose) => {
   const { positionals } = parseArgs7({ args, options: {}, allowPositionals: true, strict: true });
   const [target] = positionals;
-  if (positionals.length !== 1 || target === void 0) return fail4("usage: worktree seed <dir>", 2);
-  const dir = resolve15(target);
-  if (!existsSync20(dir)) return fail4(`no such dir ${toSlash(dir)}`, 1);
+  if (positionals.length !== 1 || target === void 0) return fail4(`usage: worktree ${subcommand} <dir>`, 2);
+  const dir = resolve16(target);
+  if (!existsSync21(dir)) return fail4(`no such dir ${toSlash(dir)}`, 1);
   const toplevel = gitToplevel(dir);
   if (toplevel === void 0 || !samePath(toplevel, dir)) return fail4(`${toSlash(dir)} is not the root of a git worktree`, 1);
   const main = mainCheckout(dir);
-  if (samePath(main, dir)) return fail4(`${toSlash(dir)} is the main checkout, seed fills another worktree from it`, 1);
+  if (samePath(main, dir)) return fail4(`${toSlash(dir)} is the main checkout, ${subcommand} ${purpose}`, 1);
   const config = loadConfig(main);
   if (config.error !== void 0) return fail4(`.jig/config.jsonc: ${config.error}`, 1);
-  const items = seedWorktree(main, dir, config.worktree);
+  return { dir, main, config };
+};
+var worktreeSeed = (args) => {
+  const target = linkedTarget(args, "seed", "fills another worktree from it");
+  if (typeof target === "number") return target;
+  const items = seedWorktree(target.main, target.dir, target.config.worktree);
   for (const line of formatSeed(items)) {
     print2(line);
   }
   return items.some((item) => item.action === "failed") ? 1 : 0;
 };
+var worktreeDeps = (args) => {
+  const target = linkedTarget(args, "deps", "takes a linked worktree");
+  if (typeof target === "number") return target;
+  const { dir, main, config } = target;
+  const outcome = provideDeps(dir, { main, install: config.slots?.install, after: config.worktree?.depsPool?.after });
+  for (const line of formatDeps(outcome)) {
+    print2(line);
+  }
+  return outcome.kind === "failed" ? 1 : 0;
+};
 var worktreeRemove = (args) => {
   const { positionals } = parseArgs7({ args, options: {}, allowPositionals: true, strict: true });
   const [target] = positionals;
   if (positionals.length !== 1 || target === void 0) return fail4("usage: worktree remove <dir>", 2);
-  const dir = resolve15(target);
-  const worktrees = listWorktrees(existsSync20(dir) ? dir : process.cwd());
+  const dir = resolve16(target);
+  const worktrees = listWorktrees(existsSync21(dir) ? dir : process.cwd());
   const main = worktrees[0]?.path;
   if (main === void 0) return fail4(`no git worktrees found from ${toSlash(dir)}`, 1);
   if (samePath(main, dir)) return fail4(`${toSlash(dir)} is the main checkout, remove takes a linked worktree`, 1);
@@ -8176,6 +8455,7 @@ var worktreeSweep = async (args, confirm = terminalConfirm()) => {
 };
 var subcommands3 = /* @__PURE__ */ new Map([
   ["seed", worktreeSeed],
+  ["deps", worktreeDeps],
   ["remove", worktreeRemove],
   ["sweep", (args) => worktreeSweep(args)]
 ]);

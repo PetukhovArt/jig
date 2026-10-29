@@ -2,9 +2,10 @@ import { existsSync } from 'node:fs'
 import { basename, resolve } from 'node:path'
 import { createInterface } from 'node:readline/promises'
 import { parseArgs } from 'node:util'
-import { loadConfig } from '../core/config'
+import { loadConfig, type LoadedConfig } from '../core/config'
 import { gitToplevel } from '../core/git'
 import { resolveProjectRoot, toSlash } from '../core/paths'
+import { formatDeps, provideDeps } from './deps-pool'
 import { listWorktrees, samePath } from './list'
 import { removeLinkedWorktree } from './remove'
 import { formatSeed, seedWorktree } from './seed'
@@ -38,23 +39,46 @@ const mainCheckout = (cwd: string): string => {
   return main
 }
 
-const worktreeSeed = (args: string[]): number => {
+interface LinkedTarget {
+  dir: string
+  main: string
+  config: LoadedConfig
+}
+
+const linkedTarget = (args: string[], subcommand: string, purpose: string): LinkedTarget | number => {
   const { positionals } = parseArgs({ args, options: {}, allowPositionals: true, strict: true })
   const [target] = positionals
-  if (positionals.length !== 1 || target === undefined) return fail('usage: worktree seed <dir>', 2)
+  if (positionals.length !== 1 || target === undefined) return fail(`usage: worktree ${subcommand} <dir>`, 2)
   const dir = resolve(target)
   if (!existsSync(dir)) return fail(`no such dir ${toSlash(dir)}`, 1)
   const toplevel = gitToplevel(dir)
   if (toplevel === undefined || !samePath(toplevel, dir)) return fail(`${toSlash(dir)} is not the root of a git worktree`, 1)
   const main = mainCheckout(dir)
-  if (samePath(main, dir)) return fail(`${toSlash(dir)} is the main checkout, seed fills another worktree from it`, 1)
+  if (samePath(main, dir)) return fail(`${toSlash(dir)} is the main checkout, ${subcommand} ${purpose}`, 1)
   const config = loadConfig(main)
   if (config.error !== undefined) return fail(`.jig/config.jsonc: ${config.error}`, 1)
-  const items = seedWorktree(main, dir, config.worktree)
+  return { dir, main, config }
+}
+
+const worktreeSeed = (args: string[]): number => {
+  const target = linkedTarget(args, 'seed', 'fills another worktree from it')
+  if (typeof target === 'number') return target
+  const items = seedWorktree(target.main, target.dir, target.config.worktree)
   for (const line of formatSeed(items)) {
     print(line)
   }
   return items.some((item) => item.action === 'failed') ? 1 : 0
+}
+
+const worktreeDeps = (args: string[]): number => {
+  const target = linkedTarget(args, 'deps', 'takes a linked worktree')
+  if (typeof target === 'number') return target
+  const { dir, main, config } = target
+  const outcome = provideDeps(dir, { main, install: config.slots?.install, after: config.worktree?.depsPool?.after })
+  for (const line of formatDeps(outcome)) {
+    print(line)
+  }
+  return outcome.kind === 'failed' ? 1 : 0
 }
 
 const worktreeRemove = (args: string[]): number => {
@@ -142,6 +166,7 @@ export const worktreeSweep = async (args: string[], confirm: Confirm | undefined
 
 const subcommands = new Map<string, Command>([
   ['seed', worktreeSeed],
+  ['deps', worktreeDeps],
   ['remove', worktreeRemove],
   ['sweep', (args) => worktreeSweep(args)],
 ])

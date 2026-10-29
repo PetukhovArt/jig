@@ -26,6 +26,7 @@
   },
   "worktree": {
     "seedExclude": ["*.log"],
-    "copyFiles": ["node_modules/.cache/keep.json"]
+    "copyFiles": ["node_modules/.cache/keep.json"],
+    "depsPool": { "after": "npm run build -w packages/diagnostic" }
   }
 }

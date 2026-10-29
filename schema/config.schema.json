@@ -98,7 +98,15 @@
       "additionalProperties": false,
       "properties": {
         "seedExclude": { "type": "array", "items": { "type": "string" }, "description": "Globs (repo-relative, forward slashes) that jig worktree seed skips" },
-        "copyFiles": { "type": "array", "items": { "type": "string" }, "description": "Files inside fully ignored folders that jig worktree seed copies as well" }
+        "copyFiles": { "type": "array", "items": { "type": "string" }, "description": "Files inside fully ignored folders that jig worktree seed copies as well" },
+        "depsPool": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Present: jig slot new and jig slot show fill node_modules (npm, yarn) as a hardlink copy of a pool entry keyed by the lock file instead of installing; the first worktree with a lock file installs and fills the entry",
+          "properties": {
+            "after": { "type": "string", "minLength": 1, "description": "Command run in the worktree after a reuse, for what the install also makes outside node_modules (a postinstall build)" }
+          }
+        }
       }
     },
     "reviewCycle": {

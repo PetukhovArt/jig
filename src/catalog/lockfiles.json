@@ -1,8 +1,8 @@
 [
-  { "file": "package-lock.json", "install": "npm ci" },
-  { "file": "npm-shrinkwrap.json", "install": "npm ci" },
+  { "file": "package-lock.json", "install": "npm ci", "deps": "node_modules" },
+  { "file": "npm-shrinkwrap.json", "install": "npm ci", "deps": "node_modules" },
   { "file": "pnpm-lock.yaml", "install": "pnpm install --frozen-lockfile" },
-  { "file": "yarn.lock", "install": "yarn install --frozen-lockfile" },
+  { "file": "yarn.lock", "install": "yarn install --frozen-lockfile", "deps": "node_modules" },
   { "file": "bun.lock", "install": "bun install --frozen-lockfile" },
   { "file": "bun.lockb", "install": "bun install --frozen-lockfile" },
   { "file": "deno.lock", "install": "deno install --frozen" },

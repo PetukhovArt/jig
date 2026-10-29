@@ -24,7 +24,8 @@ All project-specific knobs live there; a human edits it. Missing section: `jig s
 },
 "worktree": {                      // read by `jig worktree seed`, so by every slot and feature worktree
   "seedExclude": [],                // globs of ignored paths not to seed (forward slashes, from the repo root)
-  "copyFiles": []                   // files inside a folder ignored in full that seed must copy too
+  "copyFiles": [],                  // files inside a folder ignored in full that seed must copy too
+  "depsPool": {}                    // optional, npm and yarn: node_modules from the dependency pool; `after` reruns a postinstall build (Install and build cache)
 }
 ```
 
@@ -40,6 +41,7 @@ What to detect:
 | `linkedPackages` | Local deps resolved via `npm link` / `file:` / `workspace:`, or symlinks under `node_modules/<scope>` pointing **outside** the repo. `[]` if none. |
 | `worktree.copyFiles` | Seed already copies every ignored file outside a folder ignored in full, nested env files included. List only a file the build needs **inside** such a folder (`git ls-files --others --ignored --exclude-standard --directory` prints the folder as one `dir/` line). Paths relative to repo root. `[]` if none. |
 | `worktree.seedExclude` | Ignored files that must not reach another checkout: large local dumps, per-machine state. `[]` if none. |
+| `worktree.depsPool` | `{}` for an npm or yarn project (`package-lock.json`, `npm-shrinkwrap.json`, `yarn.lock` at the root) whose `node_modules` costs minutes to install; omit for pnpm, bun and non-JS projects, which the pool skips. `after`: the command that rebuilds what the install makes outside `node_modules` (a postinstall build of a workspace package): the `install also made ...` line of the first pooled install names those paths. |
 | `clearCache` | Build-cache dirs to wipe per slot **when env is baked at build time** (webpack `DefinePlugin`, Vite `define`). Usually `["node_modules/.cache"]`. `[]` when env is read at runtime, **or** when the project derives its cache key from the baked env (Install and build cache). |
 | `cdp` | Default `{ "base": 9876, "step": 1 }`. Avoid 9222 (Chrome's own default). |
 | `slotEnv` | Only when the dev script already derives its ports from a slot number in the env (`SLOT`, `INSTANCE`): `{ "key": "<that variable>", "target": "<the env file the script loads>" }` (`target` defaults to `.env`). The slot's file then carries `<key>=N`, so the base `dev` and `launch` start slot N's instance unchanged. Omit otherwise. |
@@ -63,7 +65,7 @@ Leave a gap of at least `10 × step` between CDP bands. Avoid `9222` and anythin
 
 ## Provision
 
-`jig slot new [--slug <s>] [--branch <b>]` does, in order: `git worktree prune`; the lowest free N; `git worktree add`; `jig worktree seed` (every gitignored file and symlink of the main checkout, see Seed); writes each port key `base + N*step` into its `target`, and `slotEnv.key=N` into its `target`; writes the slot's `agent-view.config.json` with `cdp.base + N*cdp.step` and the main checkout's `url` moved to the slot (a local port that a `ports` entry starts at becomes that entry's slot port; another local port is left out with a warning, since it would reach slot 0; a remote URL stays); wipes `clearCache`; runs `install` in the slot. It prints `slot <N> <path> ports <k=v ...> cdp <port>`.
+`jig slot new [--slug <s>] [--branch <b>]` does, in order: `git worktree prune`; the lowest free N; `git worktree add`; `jig worktree seed` (every gitignored file and symlink of the main checkout, see Seed); writes each port key `base + N*step` into its `target`, and `slotEnv.key=N` into its `target`; writes the slot's `agent-view.config.json` with `cdp.base + N*cdp.step` and the main checkout's `url` moved to the slot (a local port that a `ports` entry starts at becomes that entry's slot port; another local port is left out with a warning, since it would reach slot 0; a remote URL stays); wipes `clearCache`; runs `install` in the slot, or with `worktree.depsPool` fills it from the dependency pool (Install and build cache). It prints `slot <N> <path> ports <k=v ...> cdp <port>`.
 
 Then, inside the printed path:
 1. **Relink**: re-link every `linkedPackages` entry: a plain `npm ci`/`install` reverts local `npm link` deps to the registry copy.
@@ -77,11 +79,19 @@ Then, inside the printed path:
 
 ## Show a branch
 
-`jig slot show <N> <branch|commit>` runs `git checkout --detach <branch>` in slot N: the running dev server reloads once. When a lock file differs between the old and the new commit, jig installs: the `install` command of the `slots` section if set, otherwise the package manager named by the lock file (`package-lock.json` → `npm ci`, `pnpm-lock.yaml` → `pnpm install --frozen-lockfile`, and so on), run in the lock file's folder. It prints `slot <N> <path> at <sha> <branch>`. It refuses while the slot has tracked changes: a slot shows branches, edits belong in a feature worktree. Only commits travel: commit in the feature worktree, then `show` again. A dependency change can need a dev server restart that the hot reload does not do.
+`jig slot show <N> <branch|commit>` runs `git checkout --detach <branch>` in slot N: the running dev server reloads once. When a lock file differs between the old and the new commit, jig installs: the `install` command of the `slots` section if set, otherwise the package manager named by the lock file (`package-lock.json` → `npm ci`, `pnpm-lock.yaml` → `pnpm install --frozen-lockfile`, and so on), run in the lock file's folder. With `worktree.depsPool`, a changed root lock file fills the slot from the dependency pool instead. It prints `slot <N> <path> at <sha> <branch>`. It refuses while the slot has tracked changes: a slot shows branches, edits belong in a feature worktree. Only commits travel: commit in the feature worktree, then `show` again. A dependency change can need a dev server restart that the hot reload does not do.
 
 ## Install and build cache
 
 **Own `node_modules` per slot, shared global package cache.** A fresh slot needn't re-download anything; only unpacking costs time. Prefer `npm ci --prefer-offline --no-audit --no-fund` as `install`: `--prefer-offline` pulls tarballs from the warm global cache (`~/.npm`, `%LocalAppData%\npm-cache` on Windows), `--no-audit --no-fund` cut the slowest non-essential round-trips. Each slot's tree stays independent, so different branches can pin different deps.
+
+**Dependency pool** (`worktree.depsPool`, or `jig worktree deps <dir>` by hand). The first worktree with a given root lock file installs as usual, and its `node_modules` folders (the root one and each workspace's) become a pool entry under the git common dir, `.git/jig/deps/<key>/`, which IDE indexers, watchers and globs skip. The key covers the lock file's bytes, the install command, the OS, the CPU architecture and the Node major version. Every later worktree with the same key gets the folders as a hardlink copy of the entry instead of an install: directories are created, files hardlinked, symlinks recreated with a link into the installing worktree re-pointed at this one; the files sitting directly in a `node_modules` (`.package-lock.json`, `.yarn-integrity`) are copied, since the package manager rewrites them in place. Then `worktree.depsPool.after` runs in the worktree. The files live inside each worktree, so vite strict `/@fs` and realpath-based resolution work as after an install. What to know:
+- A hardlinked file is one file in every worktree on that entry: a tool that edits a file under `node_modules` in place (patch-package, a native rebuild) changes it everywhere. A reinstall replaces files, so it touches only its own worktree.
+- A reuse does not recreate what the install made outside `node_modules` (a postinstall build): the first install reports those paths; put the command that makes them into `after`.
+- Hardlinks need the pool and the worktree on one volume; across volumes the files are copied, and jig says so.
+- `du` and Explorer count a hardlinked file in each tree, so the disk looks fuller than it is.
+- An entry can be deleted at any time: worktrees keep their files, and the next worktree with that key installs again.
+- pnpm and bun already link from their own store, a Yarn PnP install leaves no `node_modules`: the pool skips them and the usual install runs.
 
 If the lockfile pins stale integrity for republished internal/private packages (`npm ci` → `EINTEGRITY` / `EUSAGE`), install **without** the lockfile (`npm install --no-package-lock`) so it resolves current registry integrity.
 

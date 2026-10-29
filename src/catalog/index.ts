@@ -12,6 +12,7 @@ export { DIRECTIVE_SOURCES, TOOLS, type GateRuleId, type RegisteredTool, type To
 export interface Lockfile {
   file: string
   install: string
+  deps?: string
 }
 
 export const LOCKFILES: readonly Lockfile[] = lockfiles

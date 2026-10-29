@@ -279,7 +279,7 @@ export interface Lock {
   release: () => void
 }
 
-const isAlive = (pid: number): boolean => {
+export const isAlive = (pid: number): boolean => {
   try {
     process.kill(pid, 0)
     return true
