@@ -8,9 +8,14 @@ export interface ReviewedState {
   diff_hash?: string
 }
 
+export interface Rename {
+  from: string
+  to: string
+}
+
 export type RereviewScope =
   | { kind: 'unchanged'; hash: string; files: FileStat[]; total: number }
-  | { kind: 'patches'; files: FileStat[]; total: number }
+  | { kind: 'patches'; files: FileStat[]; total: number; renamed: Rename[] }
   | { kind: 'full'; reason: string; files: FileStat[]; total: number }
 
 const PATCH = ['-c', 'core.quotePath=false', 'diff', '--no-color', '--no-ext-diff']
@@ -49,10 +54,19 @@ const ownChanges = (path: string, before: string, after: string): FileStat => {
   return { path, added, deleted }
 }
 
-const patchOf = (root: string, range: string, path: string): string => gitOut(root, [...PATCH, range, '--', path])
+const patchOf = (root: string, range: string, ...paths: string[]): string => gitOut(root, [...PATCH, '-M', range, '--', ...paths])
 
 const mergeRequestFiles = (root: string, base: string): string[] =>
-  gitOut(root, ['-c', 'core.quotePath=false', 'diff', '--name-only', '-z', `${base}...HEAD`]).split('\0').filter(Boolean)
+  gitOut(root, ['-c', 'core.quotePath=false', 'diff', '--name-only', '-M', '-z', `${base}...HEAD`]).split('\0').filter(Boolean)
+
+const renamesBetween = (root: string, from: string, to: string): Rename[] => {
+  const tokens = gitOut(root, ['-c', 'core.quotePath=false', 'diff', '--name-status', '-M', '--diff-filter=R', '-z', from, to]).split('\0')
+  const renames: Rename[] = []
+  for (let index = 0; index + 2 < tokens.length; index += 3) {
+    renames.push({ from: tokens[index + 1] ?? '', to: tokens[index + 2] ?? '' })
+  }
+  return renames
+}
 
 /**
  * The re-review's scope against the merge request base `base`: `unchanged` when the diff is the reviewed one and the
@@ -69,8 +83,18 @@ export const rereviewScope = (root: string, state: ReviewedState, base: string):
   if (!exists(root, state.base_sha) || !exists(root, state.last_reviewed_sha)) return full('base_sha or last_reviewed_sha is missing locally')
   const reviewed = `${state.base_sha}...${state.last_reviewed_sha}`
   if (diffHash(root, reviewed) !== state.diff_hash) return full('diff_hash does not match base_sha...last_reviewed_sha')
-  const changed = files.map((path) => ownChanges(path, patchOf(root, reviewed, path), patchOf(root, current, path))).filter((stat) => stat.added + stat.deleted > 0)
-  return { kind: 'patches', files: changed, total }
+  const fileSet = new Set(files)
+  const renamed = renamesBetween(root, state.last_reviewed_sha, 'HEAD').filter((rename) => fileSet.has(rename.to))
+  const reviewedPathOf = new Map(renamed.map((rename) => [rename.to, rename.from]))
+  const changed = files
+    .map((path) => {
+      const from = reviewedPathOf.get(path)
+      return from === undefined
+        ? ownChanges(path, patchOf(root, reviewed, path), patchOf(root, current, path))
+        : ownChanges(path, patchOf(root, reviewed, from), patchOf(root, current, from, path))
+    })
+    .filter((stat) => stat.added + stat.deleted > 0)
+  return { kind: 'patches', files: changed, total, renamed }
 }
 
 export const readReviewedState = (path: string): ReviewedState => {

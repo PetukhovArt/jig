@@ -68,6 +68,24 @@ describe('re-review scope', { timeout: 30_000 }, () => {
     expect(rereviewScope(root, state, 'main')).toMatchObject({ kind: 'patches', files: [{ path: 'b.ts', added: 1, deleted: 0 }], total: 2 })
   })
 
+  it('follows renamed files to their reviewed patch and counts only the lines that differ', () => {
+    commit({ 'Center.ts': lines(50, 'center') }, 'new module')
+    const state = reviewedState()
+    sh('mv', 'Center.ts', 'Dve.ts')
+    sh('mv', 'a.ts', 'moved.ts')
+    commit({ 'Dve.ts': `${lines(49, 'center')}\ndve` }, 'rename')
+    const scope = rereviewScope(root, state, 'main')
+    expect(scope).toMatchObject({ kind: 'patches', files: [{ path: 'Dve.ts', added: 1, deleted: 1 }], total: 3 })
+    expect(scope.kind === 'patches' && scope.renamed).toEqual([
+      { from: 'Center.ts', to: 'Dve.ts' },
+      { from: 'a.ts', to: 'moved.ts' },
+    ])
+    const statePath = join(root, '.git', 'review-state.json')
+    writeFileSync(statePath, JSON.stringify(state))
+    const report = buildReport(root, { base: 'main', spec: false, agent: 'claude', statePath })
+    expect([report.plan.lines, report.scope, report.diff]).toEqual([2, ['Dve.ts'], `git diff ${state.last_reviewed_sha} -- Dve.ts Center.ts`])
+  })
+
   it('takes the short path when the merge request diff did not change', () => {
     expect(rereviewScope(root, reviewedState(), 'main')).toMatchObject({ kind: 'unchanged' })
   })

@@ -484,27 +484,32 @@ interface Scoped {
   stats: FileStat[]
   diffBase: string
   paths: string[]
+  diffPaths: string[]
   rereview: RereviewScope | null
 }
 
 const scopeOf = (root: string, base: Base, paths: readonly string[], statePath: string | undefined): Scoped => {
-  if (statePath === undefined) return { stats: base.stats, diffBase: base.mergeBase, paths: [...paths], rereview: null }
+  if (statePath === undefined) return { stats: base.stats, diffBase: base.mergeBase, paths: [...paths], diffPaths: [...paths], rereview: null }
   const state = readReviewedState(statePath)
   const rereview = rereviewScope(root, state, base.mergeBase)
   const diffBase = rereview.kind === 'patches' && state.last_reviewed_sha !== undefined ? state.last_reviewed_sha : base.mergeBase
-  return { stats: rereview.files, diffBase, paths: rereview.files.map((file) => file.path), rereview }
+  const scoped = rereview.files.map((file) => file.path)
+  const renamedFrom = rereview.kind === 'patches' ? rereview.renamed.filter((rename) => scoped.includes(rename.to)).map((rename) => rename.from) : []
+  return { stats: rereview.files, diffBase, paths: scoped, diffPaths: [...scoped, ...renamedFrom], rereview }
 }
 
 const rereviewText = (scope: RereviewScope): string => {
   if (scope.kind === 'unchanged') return `unchanged: the merge request diff is the reviewed one (${scope.hash.slice(0, 12)}); only the developer's replies can have moved`
   const files = scope.files.map((file) => `${file.path} +${file.added} -${file.deleted}`).join(', ')
   const counted = `${scope.files.length} of ${scope.total} files${files === '' ? '' : `: ${files}`}`
-  return scope.kind === 'patches' ? `patches: ${counted}, the branch's own changes since the last review` : `full (${scope.reason}): ${counted}`
+  if (scope.kind === 'full') return `full (${scope.reason}): ${counted}`
+  const renamed = scope.renamed.map((rename) => `${rename.from} → ${rename.to}`).join(', ')
+  return `patches: ${counted}, the branch's own changes since the last review${renamed === '' ? '' : `; renamed since the last review: ${renamed}`}`
 }
 
 export const buildReport = (root: string, options: ReportOptions): ReviewPlanReport => {
   const base = resolveBase(root, options.base, 'review-plan', options.paths ?? [])
-  const { stats, diffBase, paths, rereview } = scopeOf(root, base, options.paths ?? [], options.statePath)
+  const { stats, diffBase, paths, diffPaths, rereview } = scopeOf(root, base, options.paths ?? [], options.statePath)
   const isEmpty = rereview !== null && stats.length === 0
   const untracked = isEmpty ? 0 : untrackedCount(root, paths)
   if (rereview === null) requireScopedChanges(paths, stats.length + untracked, base.ref)
@@ -514,7 +519,7 @@ export const buildReport = (root: string, options: ReportOptions): ReviewPlanRep
     tests: changed.some((stat) => exclusionOf(stat.path, root) === 'test'),
     comments: anyAddedComment(root, diffBase, stats),
     docs: changed.some((stat) => exclusionOf(stat.path) === 'markdown' && !isChangelog(stat.path)),
-    newSourceFiles: isEmpty ? 0 : addedNewSourceFiles(root, diffBase, paths),
+    newSourceFiles: isEmpty ? 0 : addedNewSourceFiles(root, diffBase, diffPaths),
     spec: options.spec,
   }
   const project = loadProjectConfig(root)
@@ -540,7 +545,7 @@ export const buildReport = (root: string, options: ReportOptions): ReviewPlanRep
   const pluginRoot = options.pluginRoot ?? resolvePluginRoot()
   const readers: [string, readonly Angle[]][] = plan.path === 'inline' ? [[INLINE_READER, plan.angles]] : plan.finders.map((finder) => [finder.name, finder.angles])
   const testPaths = project?.config.testPaths ?? []
-  const diffFiles = plan.path === 'subagents' ? writeDiffFiles(root, [diffBase, ...pathspec(paths)], (path) => audienceOf(path, root, testPaths)) : null
+  const diffFiles = plan.path === 'subagents' ? writeDiffFiles(root, [diffBase, ...pathspec(diffPaths)], (path) => audienceOf(path, root, testPaths)) : null
   const readsOf = (angles: readonly Angle[]): Reads => ({
     ...readsFor(pluginRoot, angles),
     diff: diffFiles === null ? [] : audiencesFor(angles).flatMap((audience) => diffFiles.audiences[audience]),
@@ -549,7 +554,7 @@ export const buildReport = (root: string, options: ReportOptions): ReviewPlanRep
     base: { ref: base.ref, mergeBase: base.mergeBase, source: base.source },
     files: { counted, excluded, untracked },
     scope: [...paths],
-    diff: diffCommand(diffBase, paths),
+    diff: diffCommand(diffBase, diffPaths),
     diffFiles,
     formula: `ceil(${lines}/${LINES_PER_FINDER}) = ${Math.ceil(lines / LINES_PER_FINDER)}, max ${MAX_FINDERS} → N = ${plan.n}`,
     layout,

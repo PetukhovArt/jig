@@ -5641,8 +5641,16 @@ var ownChanges = (path2, before, after) => {
   const deleted = [...unmatched.values()].reduce((sum, count) => sum + count, 0);
   return { path: path2, added, deleted };
 };
-var patchOf = (root, range, path2) => gitOut(root, [...PATCH, range, "--", path2]);
-var mergeRequestFiles = (root, base) => gitOut(root, ["-c", "core.quotePath=false", "diff", "--name-only", "-z", `${base}...HEAD`]).split("\0").filter(Boolean);
+var patchOf = (root, range, ...paths) => gitOut(root, [...PATCH, "-M", range, "--", ...paths]);
+var mergeRequestFiles = (root, base) => gitOut(root, ["-c", "core.quotePath=false", "diff", "--name-only", "-M", "-z", `${base}...HEAD`]).split("\0").filter(Boolean);
+var renamesBetween = (root, from, to) => {
+  const tokens = gitOut(root, ["-c", "core.quotePath=false", "diff", "--name-status", "-M", "--diff-filter=R", "-z", from, to]).split("\0");
+  const renames = [];
+  for (let index = 0; index + 2 < tokens.length; index += 3) {
+    renames.push({ from: tokens[index + 1] ?? "", to: tokens[index + 2] ?? "" });
+  }
+  return renames;
+};
 var rereviewScope = (root, state, base) => {
   const files = mergeRequestFiles(root, base);
   const total = files.length;
@@ -5653,8 +5661,14 @@ var rereviewScope = (root, state, base) => {
   if (!exists3(root, state.base_sha) || !exists3(root, state.last_reviewed_sha)) return full("base_sha or last_reviewed_sha is missing locally");
   const reviewed = `${state.base_sha}...${state.last_reviewed_sha}`;
   if (diffHash(root, reviewed) !== state.diff_hash) return full("diff_hash does not match base_sha...last_reviewed_sha");
-  const changed = files.map((path2) => ownChanges(path2, patchOf(root, reviewed, path2), patchOf(root, current, path2))).filter((stat) => stat.added + stat.deleted > 0);
-  return { kind: "patches", files: changed, total };
+  const fileSet = new Set(files);
+  const renamed = renamesBetween(root, state.last_reviewed_sha, "HEAD").filter((rename) => fileSet.has(rename.to));
+  const reviewedPathOf = new Map(renamed.map((rename) => [rename.to, rename.from]));
+  const changed = files.map((path2) => {
+    const from = reviewedPathOf.get(path2);
+    return from === void 0 ? ownChanges(path2, patchOf(root, reviewed, path2), patchOf(root, current, path2)) : ownChanges(path2, patchOf(root, reviewed, from), patchOf(root, current, from, path2));
+  }).filter((stat) => stat.added + stat.deleted > 0);
+  return { kind: "patches", files: changed, total, renamed };
 };
 var readReviewedState = (path2) => {
   if (!existsSync11(path2)) throw new Error(`no state at ${path2}`);
@@ -6231,21 +6245,25 @@ var formatReport = (report) => {
   return lines2.join("\n");
 };
 var scopeOf = (root, base, paths, statePath2) => {
-  if (statePath2 === void 0) return { stats: base.stats, diffBase: base.mergeBase, paths: [...paths], rereview: null };
+  if (statePath2 === void 0) return { stats: base.stats, diffBase: base.mergeBase, paths: [...paths], diffPaths: [...paths], rereview: null };
   const state = readReviewedState(statePath2);
   const rereview = rereviewScope(root, state, base.mergeBase);
   const diffBase = rereview.kind === "patches" && state.last_reviewed_sha !== void 0 ? state.last_reviewed_sha : base.mergeBase;
-  return { stats: rereview.files, diffBase, paths: rereview.files.map((file) => file.path), rereview };
+  const scoped = rereview.files.map((file) => file.path);
+  const renamedFrom = rereview.kind === "patches" ? rereview.renamed.filter((rename) => scoped.includes(rename.to)).map((rename) => rename.from) : [];
+  return { stats: rereview.files, diffBase, paths: scoped, diffPaths: [...scoped, ...renamedFrom], rereview };
 };
 var rereviewText = (scope) => {
   if (scope.kind === "unchanged") return `unchanged: the merge request diff is the reviewed one (${scope.hash.slice(0, 12)}); only the developer's replies can have moved`;
   const files = scope.files.map((file) => `${file.path} +${file.added} -${file.deleted}`).join(", ");
   const counted = `${scope.files.length} of ${scope.total} files${files === "" ? "" : `: ${files}`}`;
-  return scope.kind === "patches" ? `patches: ${counted}, the branch's own changes since the last review` : `full (${scope.reason}): ${counted}`;
+  if (scope.kind === "full") return `full (${scope.reason}): ${counted}`;
+  const renamed = scope.renamed.map((rename) => `${rename.from} \u2192 ${rename.to}`).join(", ");
+  return `patches: ${counted}, the branch's own changes since the last review${renamed === "" ? "" : `; renamed since the last review: ${renamed}`}`;
 };
 var buildReport = (root, options) => {
   const base = resolveBase(root, options.base, "review-plan", options.paths ?? []);
-  const { stats, diffBase, paths, rereview } = scopeOf(root, base, options.paths ?? [], options.statePath);
+  const { stats, diffBase, paths, diffPaths, rereview } = scopeOf(root, base, options.paths ?? [], options.statePath);
   const isEmpty = rereview !== null && stats.length === 0;
   const untracked = isEmpty ? 0 : untrackedCount(root, paths);
   if (rereview === null) requireScopedChanges(paths, stats.length + untracked, base.ref);
@@ -6255,7 +6273,7 @@ var buildReport = (root, options) => {
     tests: changed.some((stat) => exclusionOf(stat.path, root) === "test"),
     comments: anyAddedComment(root, diffBase, stats),
     docs: changed.some((stat) => exclusionOf(stat.path) === "markdown" && !isChangelog(stat.path)),
-    newSourceFiles: isEmpty ? 0 : addedNewSourceFiles(root, diffBase, paths),
+    newSourceFiles: isEmpty ? 0 : addedNewSourceFiles(root, diffBase, diffPaths),
     spec: options.spec
   };
   const project = loadProjectConfig(root);
@@ -6281,7 +6299,7 @@ var buildReport = (root, options) => {
   const pluginRoot = options.pluginRoot ?? resolvePluginRoot();
   const readers = plan.path === "inline" ? [[INLINE_READER, plan.angles]] : plan.finders.map((finder) => [finder.name, finder.angles]);
   const testPaths = project?.config.testPaths ?? [];
-  const diffFiles = plan.path === "subagents" ? writeDiffFiles(root, [diffBase, ...pathspec(paths)], (path2) => audienceOf(path2, root, testPaths)) : null;
+  const diffFiles = plan.path === "subagents" ? writeDiffFiles(root, [diffBase, ...pathspec(diffPaths)], (path2) => audienceOf(path2, root, testPaths)) : null;
   const readsOf = (angles) => ({
     ...readsFor(pluginRoot, angles),
     diff: diffFiles === null ? [] : audiencesFor(angles).flatMap((audience) => diffFiles.audiences[audience])
@@ -6290,7 +6308,7 @@ var buildReport = (root, options) => {
     base: { ref: base.ref, mergeBase: base.mergeBase, source: base.source },
     files: { counted, excluded, untracked },
     scope: [...paths],
-    diff: diffCommand(diffBase, paths),
+    diff: diffCommand(diffBase, diffPaths),
     diffFiles,
     formula: `ceil(${lines2}/${LINES_PER_FINDER}) = ${Math.ceil(lines2 / LINES_PER_FINDER)}, max ${MAX_FINDERS} \u2192 N = ${plan.n}`,
     layout,
