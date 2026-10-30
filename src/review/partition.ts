@@ -18,6 +18,7 @@ export interface Partition {
 
 export const IMPORT_WEIGHT = 4
 export const BALANCE = 1.5
+export const MIN_SHARE = 0.25
 
 const IMPORT_PATTERN = /(?:\bfrom\s*|\bimport\s*\(\s*|\brequire\s*\(\s*|\bimport\s+)['"]([^'"\n]+)['"]/g
 
@@ -109,31 +110,66 @@ const isBetterMerge = (next: Candidate, best: Candidate | undefined): boolean =>
   return next.weight < best.weight || (next.weight === best.weight && next.score > best.score)
 }
 
-const clusterCode = (code: readonly PartitionFile[], counts: ReadonlyMap<string, number>, count: number): Cluster[] => {
-  const clusters: Cluster[] = [...code]
-    .sort((left, right) => left.path.localeCompare(right.path))
-    .map((file) => ({ files: [file.path], weight: file.countedLines, dir: dirOf(file.path) }))
-  const total = clusters.reduce((sum, cluster) => sum + cluster.weight, 0)
-  const cap = Math.max(Math.ceil((total / count) * BALANCE), ...clusters.map((cluster) => cluster.weight))
+const singletons = (code: readonly PartitionFile[]): Cluster[] =>
+  [...code].sort((left, right) => left.path.localeCompare(right.path)).map((file) => ({ files: [file.path], weight: file.countedLines, dir: dirOf(file.path) }))
+
+const totalWeight = (clusters: readonly Cluster[]): number => clusters.reduce((sum, cluster) => sum + cluster.weight, 0)
+
+const merged = (left: Cluster, right: Cluster): Cluster => ({ files: [...left.files, ...right.files], weight: left.weight + right.weight, dir: commonPrefix(left.dir, right.dir) })
+
+const affinity = (left: Cluster, right: Cluster, counts: ReadonlyMap<string, number>): number =>
+  importsBetween(left.files, right.files, counts) * IMPORT_WEIGHT + commonPrefix(left.dir, right.dir).length
+
+const agglomerate = (start: readonly Cluster[], counts: ReadonlyMap<string, number>, count: number): Cluster[] => {
+  const clusters = [...start]
+  const cap = Math.max(Math.ceil((totalWeight(clusters) / count) * BALANCE), ...clusters.map((cluster) => cluster.weight))
   while (clusters.length > count) {
     let best: Candidate | undefined
     clusters.forEach((left, i) => {
       clusters.slice(i + 1).forEach((right, offset) => {
         const weight = left.weight + right.weight
-        const score = importsBetween(left.files, right.files, counts) * IMPORT_WEIGHT + commonPrefix(left.dir, right.dir).length
-        const next = { i, j: i + 1 + offset, score, weight, fits: weight <= cap }
+        const next = { i, j: i + 1 + offset, score: affinity(left, right, counts), weight, fits: weight <= cap }
         if (isBetterMerge(next, best)) best = next
       })
     })
     if (best === undefined) break
-    const { i, j, weight } = best
-    const left = clusters[i] as Cluster
-    const right = clusters[j] as Cluster
+    const { i, j } = best
+    const joined = merged(clusters[i] as Cluster, clusters[j] as Cluster)
     clusters.splice(j, 1)
-    clusters[i] = { files: [...left.files, ...right.files], weight, dir: commonPrefix(left.dir, right.dir) }
+    clusters[i] = joined
   }
   return clusters
 }
+
+const indexOfMax = <T>(items: readonly T[], key: (item: T) => number): number =>
+  items.reduce((best, item, index) => (best === -1 || key(item) > key(items[best] as T) ? index : best), -1)
+
+const absorbStragglers = (start: readonly Cluster[], code: readonly PartitionFile[], counts: ReadonlyMap<string, number>): Cluster[] => {
+  let clusters = [...start]
+  const floor = (totalWeight(clusters) / clusters.length) * MIN_SHARE
+  const sizes = new Map(code.map((file) => [file.path, file.countedLines]))
+  for (let round = 0; round < start.length; round++) {
+    const lightest = indexOfMax(clusters, (cluster) => -cluster.weight)
+    const straggler = clusters[lightest] as Cluster
+    const heaviest = indexOfMax(clusters, (cluster) => (cluster.files.length > 1 && cluster !== straggler ? cluster.weight : -1))
+    const host = clusters[heaviest]
+    if (straggler.weight >= floor || host === undefined || host.files.length < 2) break
+    const others = clusters.filter((cluster) => cluster !== straggler && cluster !== host)
+    const partner = others[indexOfMax(others, (cluster) => affinity(straggler, cluster, counts) * 1e9 - cluster.weight)]
+    const halves = agglomerate(
+      singletons(host.files.map((path) => ({ path, countedLines: sizes.get(path) ?? 0, kind: 'code' }))),
+      counts,
+      2,
+    )
+    const absorbed = partner === undefined ? [] : [merged(partner, straggler)]
+    if (absorbed.length === 0) break
+    clusters = [...others.filter((cluster) => cluster !== partner), ...absorbed, ...halves]
+  }
+  return clusters
+}
+
+const clusterCode = (code: readonly PartitionFile[], counts: ReadonlyMap<string, number>, count: number): Cluster[] =>
+  absorbStragglers(agglomerate(singletons(code), counts, count), code, counts)
 
 const testStem = (path: string): string =>
   (path.split('/').pop() ?? path)

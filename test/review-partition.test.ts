@@ -41,6 +41,13 @@ describe('partitions', () => {
     expect(partitions).toEqual([['src/a/store.ts', 'src/b/__tests__/store.spec.ts'], ['src/b/other.ts', 'test/flow.test.ts']])
   })
 
+  it('a few lines in an unrelated directory join another partition instead of taking a finder of their own', () => {
+    const files = [code('tools/auth.ts', 5), code('src/catalog/big.ts', 1000), ...Array.from({ length: 8 }, (_, index) => code(`src/journal/f${index}.ts`, 100))]
+    const partitions = partitionFiles(files, [], 3)
+    expect(partitions).toHaveLength(3)
+    expect(Math.min(...partitions.map((partition) => partition.lines))).toBeGreaterThanOrEqual(200)
+  })
+
   it('balances weight: a hub imported by every file does not pull the whole diff into one partition', () => {
     const files = [code('src/store.ts'), ...Array.from({ length: 8 }, (_, index) => code(`src/views/v${index}.vue`))]
     const edges = Array.from({ length: 8 }, (_, index) => [`src/views/v${index}.vue`, 'src/store.ts'] as const)
