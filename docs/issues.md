@@ -34,9 +34,10 @@ An issue moves through four states: filed, triaged, fixed on `main`, released. L
 - A bug fix starts with a test that fails on the reported case.
 - The commit subject stays conventional (`fix(stop): ...`); the body ends with `Fixes #<n>`, or `Refs #<n>` when the commit fixes only part of it. One issue may take several commits: only the last one says `Fixes`.
 - The commit carries its changeset and its `docs/` update; the changeset text ends with `(#<n>)`, so the changelog links the issue.
-- After the commit, the issue gets `fixed-on-main` and a comment naming the commits. `main` is pushed only for a release, so the issue stays open until then.
+- After the commit, the issue gets `fixed-on-main` and a comment naming the commits. Pushing `main` closes the issue; it is released with the next weekly release.
 
 ## Release
 
-- The push to `main` closes every issue named by `Fixes #<n>`. The changesets action opens the version pull request.
+- The push to `main` closes every issue named by `Fixes #<n>`. The changesets action opens or updates the version pull request; a push releases nothing.
+- Every Monday at 06:00 UTC the `Weekly release` workflow merges the version pull request when one is open and CI on `main` passed; no pull request means no changes and no release. A red `main` skips the week with a failed run. `gh workflow run release-weekly.yml` releases now.
 - When the version pull request is merged, the `Release` workflow tags the version, comments `Released in jig <version>` on every closed `fixed-on-main` issue and removes the label.
