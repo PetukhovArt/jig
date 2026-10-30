@@ -18,7 +18,7 @@ Before the finders, read the file once and check: every section of the role's fo
 
 ## Who gets it
 
-- Every finder and every judge: the path, in the shared prefix of the brief ([finders](04-finders.md#spawn), [verify](05-verify.md#brief), [inline judge](04-inline.md#second-model-only-for-important)). A fork already holds it: you read it in the check above.
+- Every finder and every judge: the path, in the shared prefix of the brief ([finders](04-finders.md#spawn), [verify](05-verify.md#brief), [inline judge](04-inline.md#second-model-only-for-important)); each reads it itself.
 - The deepener: the path.
 - The output: the `model:` line ([output](08-output.md#output)), so a caller can hand the model to a UI verification or a bug bash.
 

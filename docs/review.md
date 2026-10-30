@@ -46,7 +46,7 @@ Counted lines leave out tests, fixtures, documents, lock files and unedited rena
 | diff | layout | who hunts | who judges |
 | --- | --- | --- | --- |
 | `N ≤ 2`, up to 300 counted lines | inline | the session itself | the session; a judge on another model only for an `Important` |
-| `N > 2` | lean | finders forked from the review runner, one per partition | the session; one judge on another model for the `Important` ones |
+| `N > 2` | lean | fresh finders spawned by the review runner, one per partition | the session; one judge on another model for the `Important` ones |
 | any, by `--layout` | `fanout`, `solo` | per partition, finders split by tier, or finders that prove their own candidates | a judge per cluster, or none |
 
 Every layout starts with the flow model. `jig review-plan` prints a one-line cost estimate: the flow model and each finder, by the context its share of the diff grows and the turns it takes, at the list prices of the tier's model (`prices` in the [user config](configuration.md#user-config) override them); the runner and the judges are not in it.
@@ -84,5 +84,5 @@ In the review cycle a posted `Important` that still stands sends the merge reque
 
 ## Measured
 
-- **Cost**: `jig review cost` estimates a run's spend per role and per merge request, the session that ran the review included, with $ per 1000 diff lines and $ per thread; `--record` and `--report` compare runs across projects and weeks ([commands](commands.md)). A review with finders runs in one review-runner subagent, so its finders fork from the review's context, not from the conversation that asked for it.
+- **Cost**: `jig review cost` estimates a run's spend per role and per merge request, the session that ran the review included, with $ per 1000 diff lines and $ per thread; `--record` and `--report` compare runs across projects and weeks ([commands](commands.md)). A review with finders runs in one review-runner subagent; its finders are spawned fresh on the tier and effort the plan prints, never forked.
 - **Quality**: an edit of the review's steps, angles, gates, tiers or briefs runs on reference merge requests, old and new versions blind to a judge. It does not merge when it misses a defect the old version found or posts a false finding the old one did not. Every missed defect and every false thread found later joins the corpus ([eval](../skills/jig-review/references/eval.md)).

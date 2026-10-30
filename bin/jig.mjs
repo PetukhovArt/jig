@@ -6557,7 +6557,7 @@ var LAYOUT_SOURCE_TEXT = { argument: "--layout", env: LAYOUT_ENV, config: `.jig/
 var LAYOUT_TEXT = {
   inline: "the session hunts and judges; a judge subagent only for Important",
   fanout: "a finder per partition and angle tier, a judge per cluster on the other model",
-  lean: "a finder per partition on the deep tier, the model of the runner; you judge, a deep judge only for Important",
+  lean: "a fresh finder per partition on the deep tier; you judge, a deep judge only for Important",
   solo: "a finder per partition on the deep tier proves its own candidates; no judge subagents"
 };
 var layoutLine = (report) => {
@@ -6600,7 +6600,7 @@ var finderLines = (report) => {
   const lines2 = [];
   if (plan.finders.length > 0) lines2.push(`partitions: ${plan.partitions.length}, by imports between files and shared directories; a link that crosses partitions is in the flow model`);
   for (const finder of plan.finders) {
-    lines2.push(`finder ${finder.name}: partition ${finder.partition} (${partitionText(byName.get(finder.partition))}) \xB7 angles ${angleList(finder.angles)} \xB7 ${gradeText(finder, report.models)}`);
+    lines2.push(`finder ${finder.name}: partition ${finder.partition} (${partitionText(byName.get(finder.partition))}) \xB7 angles ${angleList(finder.angles)} \xB7 ${gradeText(finder, report.models)} \xB7 fresh, never a fork`);
     lines2.push(...shared ? [...diffLine(report.reads[finder.name]), ...rulesLine(report.reads[finder.name])] : readLines(report.reads[finder.name]));
   }
   const first = plan.finders[0];

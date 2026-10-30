@@ -400,7 +400,7 @@ describe('buildReport on a repository', () => {
     expect(report.plan.partitions.map((partition) => partition.files)).toEqual([['src/a/x.ts', 'src/b/y.ts'], ['src/c/one.ts', 'src/c/two.ts'], ['src/d/three.ts'], ['src/e/four.ts']])
     const finders = printed.filter((line) => line.startsWith('finder '))
     expect(finders).toHaveLength(4)
-    expect(finders.every((line) => line.includes(`angles ${report.plan.angles.join('+')}`))).toBe(true)
+    expect(finders.every((line) => line.includes(`angles ${report.plan.angles.join('+')}`) && line.endsWith('· fresh, never a fork'))).toBe(true)
     expect(finders[0]).toMatch(/^finder p1: partition p1 \(2 files, 200 lines, under src\/a, src\/b\)/)
     expect(printed.findIndex((line) => line.startsWith('flow model: first'))).toBeLessThan(printed.findIndex((line) => line.startsWith('finder ')))
     expect(printed.find((line) => line.startsWith('cost estimate: '))).toMatch(/^cost estimate: ~\$\d+(\.\d)? \(flow model .* finders 4 × up to \d+k × \d+ turns · list prices of opus/)

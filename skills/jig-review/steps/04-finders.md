@@ -19,14 +19,14 @@
 What every finder needs is read **once**, by you, before the first spawn. Tool output is paid in full by each agent that fetches it, on every later turn.
 
 1. **The flow model.** Read the model file once ([check](04-flow-model.md#check)). It is the shared read set: what a finder needs outside its partition is in it, with `file:line`.
-2. **The diff index, not the parts.** Each finder reads its own partition's parts. A part you hold, every fork inherits and pays on each turn.
-3. **Fork or fresh.** Where the agent can start a subagent that inherits your conversation (Claude Code: subagent type `fork`), every finder whose model is your own model is forked after items 1–2: it starts from the model in the prompt cache. A fork also inherits your effort. In a review cycle you run on the deep tier at medium effort (role `review-runner`), the tier of the lean and re-review finders: they fork at your effort; deep roles (judge, deepener, outcome check) are spawned fresh on their own model. Never change a subagent's model to fork it: the tier the plan printed wins. Everything else is spawned fresh with the brief below. A fork copies everything you hold, so hold nothing else at that moment: the plan, the rules block, the model, the index. Read the state, `posting.md` and the step files from 05 on after the forks, never before: on one run every fork started at 158k tokens because it inherited them.
+2. **The diff index, not the parts.** Each finder reads its own partition's parts; you read none of them before the spawn.
+3. **Fresh, never a fork.** Every finder is spawned fresh with the brief below, on the model and effort the plan printed for it. A finder of a partition needs nothing of your conversation: the brief and the model file are its whole context. A fork inherits your effort: on !1935 the runner (deep/medium) forked the finders, they ran below the plan's deep/high and missed what the old run found.
 
 ## Spawn
 
 Spawn every finder of the plan **in one batch**, in parallel, within the [subagent cap](../SKILL.md#rules-for-the-whole-run). Brief each with role `finder`: pass the path of its template, `<root>/skills/jig/references/roles/finder.md`, and let the subagent read it.
 
-**Every call carries the model and effort of its tier explicitly**, not the session's model. Before spawning print the plan; it goes into the [cost line](08-output.md#output): `finders: p1 deep/high <deep model> · p2 deep/high <deep model> · …`, each marked `fork` or `fresh`.
+**Every call carries the model and effort of its tier explicitly**, not the session's model. Before spawning print the plan; it goes into the [cost line](08-output.md#output): `finders: p1 deep/high <deep model> · p2 deep/high <deep model> · …`.
 
 **The brief order is fixed**: the shared prefix first, the personal tail last, so the shared part hits the prompt cache of the whole batch:
 1. the diff index `jig review-plan` printed under `diff files:`;
@@ -39,7 +39,7 @@ Spawn every finder of the plan **in one batch**, in parallel, within the [subage
 8. the angle files and atoms: the absolute paths under `every finder reads:` (`read:`, `atoms:`), so the finder reads them without searching; under `fanout` they are printed per finder and move to its tail;
 9. the spec file, when one was found ([prepare](01-prepare.md#spec));
 10. the role template path;
-11. **personal**: this finder's partition, its name and the part paths under its `diff:` (a fork has none of them yet). The parts are split by audience: `pN-code-*` always, `pN-tests-*` when angle 16 runs, `pN-docs-*` when angle 11 or 15 runs. A finder reads no part outside its `diff:` list; it may open another file by path to confirm a candidate;
+11. **personal**: this finder's partition, its name and the part paths under its `diff:`. The parts are split by audience: `pN-code-*` always, `pN-tests-*` when angle 16 runs, `pN-docs-*` when angle 11 or 15 runs. A finder reads no part outside its `diff:` list; it may open another file by path to confirm a candidate;
 12. **personal**: the documents under its `rules:` line ([routing](02-rules.md#4-routing)), narrowed by `route` to its angles, each with its scope ("this rule applies only under that directory").
 
 Items 1–10 are byte-identical across the batch. Every document goes as a path, never pasted, except the severity sections and the skip rules of item 2.

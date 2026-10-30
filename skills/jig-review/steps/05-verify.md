@@ -36,7 +36,7 @@ One judge subagent per cluster, role `verifier`, tier and effort from its templa
 
 **The judge runs on a different model of its tier than the finder whose candidates it judges.** `jig review-plan` prints the pairs (`candidates from <model A> → judge <model B>`). A defect that survives a second model is the "two models found it" signal; a judge on the finder's own model shares its blind spots. The tier has one model only: use it, and the summary says `judge: same model as the finder`.
 
-**Fork or fresh, in the foreground.** A judge whose model is your own is forked after dedup, as [finders](04-finders.md#shared-context) are: it inherits the flow model and the candidates. Others are spawned fresh with the brief below. Run them in the foreground; never `sleep`, never read their output files in a loop: each such turn re-sends the whole context.
+**Fork or fresh, in the foreground.** A judge whose model is your own is forked after dedup: it inherits the flow model and the candidates (finders, unlike judges, are [always fresh](04-finders.md#shared-context)). Others are spawned fresh with the brief below. Run them in the foreground; never `sleep`, never read their output files in a loop: each such turn re-sends the whole context.
 
 ### Gate files
 

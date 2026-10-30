@@ -383,7 +383,7 @@ const LAYOUT_SOURCE_TEXT: Readonly<Record<LayoutSource, string>> = { argument: '
 const LAYOUT_TEXT: Readonly<Record<ConcreteLayout, string>> = {
   inline: 'the session hunts and judges; a judge subagent only for Important',
   fanout: 'a finder per partition and angle tier, a judge per cluster on the other model',
-  lean: 'a finder per partition on the deep tier, the model of the runner; you judge, a deep judge only for Important',
+  lean: 'a fresh finder per partition on the deep tier; you judge, a deep judge only for Important',
   solo: 'a finder per partition on the deep tier proves its own candidates; no judge subagents',
 }
 
@@ -439,7 +439,7 @@ const finderLines = (report: ReviewPlanReport): string[] => {
   const lines: string[] = []
   if (plan.finders.length > 0) lines.push(`partitions: ${plan.partitions.length}, by imports between files and shared directories; a link that crosses partitions is in the flow model`)
   for (const finder of plan.finders) {
-    lines.push(`finder ${finder.name}: partition ${finder.partition} (${partitionText(byName.get(finder.partition))}) · angles ${angleList(finder.angles)} · ${gradeText(finder, report.models)}`)
+    lines.push(`finder ${finder.name}: partition ${finder.partition} (${partitionText(byName.get(finder.partition))}) · angles ${angleList(finder.angles)} · ${gradeText(finder, report.models)} · fresh, never a fork`)
     lines.push(...(shared ? [...diffLine(report.reads[finder.name]), ...rulesLine(report.reads[finder.name])] : readLines(report.reads[finder.name])))
   }
   const first = plan.finders[0]
