@@ -74,6 +74,11 @@ describe('roles and merge requests from descriptions', () => {
     ['Outcome check MR452 threads', 'outcome', '452'],
     ['Post MR !13 results', 'poster', '13'],
     ['AFK: implement jig issue #5', 'other', undefined],
+    ['Verify and bug bash !1935', 'other', '1935'],
+    ['Bash the Judge pipeline !9', 'other', '9'],
+    ['Fix outcome report !5', 'other', '5'],
+    ['Verifier !4', 'judge', '4'],
+    ['Finder: judge angle !4', 'finder', '4'],
   ])('%s', (description, role, mr) => {
     expect(roleOf(description)).toBe(role)
     expect(mrOf(description)).toBe(mr)

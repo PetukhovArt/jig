@@ -17,12 +17,12 @@ export const ROLES = ['runner', 'modeler', 'finder', 'judge', 'deepener', 'outco
 export type Role = (typeof ROLES)[number]
 
 const ROLE_PATTERNS: readonly [Role, RegExp][] = [
-  ['runner', /^review\b|review runner/i],
-  ['modeler', /^flow model\b|flow-model/i],
+  ['runner', /^review\b/i],
+  ['modeler', /^flow[ -]model\b/i],
   ['finder', /^finder\b/i],
-  ['deepener', /deepen/i],
-  ['outcome', /outcome/i],
-  ['judge', /judge|verif/i],
+  ['deepener', /^deepen/i],
+  ['outcome', /^outcome\b/i],
+  ['judge', /^(?:judge|verifier)\b/i],
   ['poster', /^post\b/i],
 ]
 
