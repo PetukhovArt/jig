@@ -309,7 +309,8 @@ describe('buildReport on a repository', () => {
     expect(() => buildReport(root, { base: 'main', spec: false, agent: 'claude', paths: ['lib/a.ts'] })).toThrow('nothing changed against main under lib/a.ts')
     expect(report.plan.partitions.map((partition) => partition.files)).toEqual([['src/a.ts', 'src/b.test.ts', 'src/b.ts']])
     expect(report.flowModel?.path).toBe(`${report.diffFiles?.dir}/model.md`)
-    expect(report.reads['flow-model']?.diff.map((path) => path.split('/').pop())).toEqual(['p1-code-01.diff'])
+    expect(report.reads['flow-model']?.diff).toEqual([])
+    expect(readFileSync(report.flowModel?.index ?? '', 'utf8')).toMatch(/== src\/b\.ts \[p1\] changed \+1-200/)
   })
 
   it('writes the diff for subagents once, compact, in parts that keep each file whole and an index of line ranges', () => {

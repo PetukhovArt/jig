@@ -13,7 +13,7 @@ Two modes:
 
 ```text
 jig review-plan     code: counts the diff, picks the angles and the layout, partitions the files, splits the diff into parts, estimates the cost
-   flow model       a model: reads the whole diff once, writes the states, transitions and cross-module links
+   flow model       a model: reads the flow index code wrote, writes the states, transitions and cross-module links
    finders          models: one per partition, every angle, reads only its partition's parts and the flow model
    dedup            one defect raised by several finders becomes one candidate
    judges           another model: CONFIRMED or REFUTED, each with a quoted line
@@ -23,7 +23,7 @@ jig review-plan     code: counts the diff, picks the angles and the layout, part
 
 **The plan is deterministic.** `jig review-plan` decides from the diff alone: how many lines count, which angles run, how the files split into partitions, inline or with finders, which model and effort each finder gets, which judge, what the run should cost, and which step files the agent reads. Same diff, same plan ([commands](commands.md)).
 
-**Every review starts with a flow model.** One subagent reads the whole diff once and writes, as text, the states and events of the features it touches, each transition with the `file:line` of its handler, every link across modules and processes (stores, watchers, events, requests, IPC) and, when a spec was found, its rules as checkable sentences. Every finder and judge reads it; the output names its file, so a UI verification or a bug bash can start from it ([flow model](../skills/jig-review/steps/04-flow-model.md)).
+**Every review starts with a flow model.** `jig review-plan` writes a flow index by code: the changed files and their direct importers, with imports, exports and the flow sites by `file:line` (stores, watchers and lifecycle hooks, events, IPC, requests, timers, routes; patterns for TypeScript, JavaScript and Vue, imports only for other extensions). One subagent builds from it, opening code only at the sites it needs, and writes, as text, the states and events of the features it touches, each transition with the `file:line` of its handler, every link across modules and processes (stores, watchers, events, requests, IPC) and, when a spec was found, its rules as checkable sentences. Every finder and judge reads it; the output names its file, so a UI verification or a bug bash can start from it ([flow model](../skills/jig-review/steps/04-flow-model.md)).
 
 **Finders split the files, not the questions.** The diff's files go into `N` partitions: files that import each other or share a directory stay together. Each finder takes one partition with every selected angle and reads only its part of the diff; for behavior on the other side of a partition it reads the flow model, and a candidate that crosses partitions names the model's link so the judge checks both sides. When finders split by angle, each re-read the whole diff: on a 10,263-line merge request seven of them cost about $90, mostly re-reading the same context.
 

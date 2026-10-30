@@ -35,17 +35,21 @@ const aliasTail = (spec: string): string | undefined => {
   return tail.includes('/') ? tail : undefined
 }
 
-/** A relative specifier is resolved against its file; an alias (`@/x/y`, `~/x/y`) or a bare path matches a file by its tail of at least two segments. */
-export const resolveEdges = (paths: readonly string[], specifiers: ReadonlyMap<string, readonly string[]>): Edge[] => {
+/** Resolves a specifier of `from` to one of `targets`: a relative one against `from`'s directory; an alias (`@/x/y`, `~/x/y`) or a bare path by its tail of at least two segments. */
+export const makeResolver = (targets: readonly string[]): ((from: string, spec: string) => string | undefined) => {
   const byKey = new Map<string, string>()
-  for (const path of paths) keysOf(path).forEach((key) => byKey.set(key, path))
+  for (const path of targets) keysOf(path).forEach((key) => byKey.set(key, path))
   const keys = [...byKey.keys()]
-  const target = (from: string, spec: string): string | undefined => {
+  return (from, spec) => {
     if (spec.startsWith('.')) return byKey.get(stripExtension(posix.normalize(posix.join(posix.dirname(from), spec))))
     const tail = aliasTail(spec)
     const key = tail === undefined ? undefined : keys.find((candidate) => candidate === tail || candidate.endsWith(`/${tail}`))
     return key === undefined ? undefined : byKey.get(key)
   }
+}
+
+export const resolveEdges = (paths: readonly string[], specifiers: ReadonlyMap<string, readonly string[]>): Edge[] => {
+  const target = makeResolver(paths)
   const edges: Edge[] = []
   for (const from of paths) {
     for (const spec of specifiers.get(from) ?? []) {
@@ -56,7 +60,7 @@ export const resolveEdges = (paths: readonly string[], specifiers: ReadonlyMap<s
   return edges
 }
 
-const SOURCE_PATTERN = /\.(?:[cm]?[jt]sx?|vue|svelte|astro)$/
+export const SOURCE_PATTERN = /\.(?:[cm]?[jt]sx?|vue|svelte|astro)$/
 
 export const importEdges = (root: string, paths: readonly string[]): Edge[] => {
   const specifiers = new Map<string, string[]>()

@@ -1,12 +1,12 @@
 # Flow model
 
-Every review starts with it, before any finder hunts: the inline path and every layout, a first run and a re-review. One subagent reads the whole diff once and writes what each finder would otherwise rediscover from it: the features, their states and transitions, and every link across modules. On a 10,263-line merge request seven finders each read all 14 diff parts and traced the same flow again; that was most of a $90 run.
+Every review starts with it, before any finder hunts: the inline path and every layout, a first run and a re-review. One subagent builds it from the flow index `jig review-plan` wrote and writes what each finder would otherwise rediscover from the diff: the features, their states and transitions, and every link across modules. On a 10,263-line merge request seven finders each read all 14 diff parts and traced the same flow again; that was most of a $90 run.
 
 ## Spawn
 
-`jig review-plan` printed `flow model:` with the grade, the file it `writes`, the code parts under its `diff:` and the atoms. Spawn **one** subagent, role `flow-modeler` (`<root>/skills/jig/references/roles/flow-modeler.md`), described `Flow model !<iid>` (`Flow model` without a merge request), on that grade, fresh, in the foreground. On the inline path too: you do not build the model yourself.
+`jig review-plan` printed `flow model:` with the grade, the file it `writes`, the flow index under its `index:` and the atoms. The index is built by code from the changed files and their direct importers: imports, exports and the flow sites by `file:line`, found by patterns per file extension (TypeScript, JavaScript and Vue first; other extensions get their imports only). On !1935 the modeler that read every diff part held 410k tokens and cost $16.9. Spawn **one** subagent, role `flow-modeler` (`<root>/skills/jig/references/roles/flow-modeler.md`), described `Flow model !<iid>` (`Flow model` without a merge request), on that grade, fresh, in the foreground. On the inline path too: you do not build the model yourself.
 
-Brief, in this order: the diff index and the part paths under `flow model:` `diff:`; the partitions (the `finder` lines, or `every file as one partition` on the inline path); the project root; the focus note; facts and decisions ([prepare](01-prepare.md#facts-and-decisions)); the spec file when one was found ([prepare](01-prepare.md#spec)); on a re-review, the files of `re-review scope`; the output path; the atom paths; the role template path.
+Brief, in this order: the flow index path under `flow model:` `index:` and the diff index; the partitions (the `finder` lines, or `every file as one partition` on the inline path); the project root; the focus note; facts and decisions ([prepare](01-prepare.md#facts-and-decisions)); the spec file when one was found ([prepare](01-prepare.md#spec)); on a re-review, the files of `re-review scope`; the output path; the atom paths; the role template path.
 
 The output path: the `writes` path, or with state on `<state file without .json>.model.md`, next to the state file.
 

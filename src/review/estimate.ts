@@ -7,9 +7,13 @@ export const TURNS_BASE = 15
 export const LINES_PER_TURN = 100
 export const MAX_TURNS = 150
 export const OUTPUT_PER_TURN = 800
+export const CHARS_PER_TOKEN = 4
+export const MODELER_TOKENS_PER_LINE = 6
+export const MODELER_LINES_PER_TURN = 250
 
 export interface Reader {
-  lines: number
+  context: number
+  turns: number
   model: string | undefined
 }
 
@@ -28,17 +32,26 @@ export interface Estimate {
   models: string[]
 }
 
-const finalContext = (lines: number): number => BASE_CONTEXT + Math.max(0, lines) * TOKENS_PER_LINE
-const turnsFor = (lines: number): number => Math.min(MAX_TURNS, TURNS_BASE + Math.ceil(Math.max(0, lines) / LINES_PER_TURN))
+const turnsFor = (lines: number, perTurn: number): number => Math.min(MAX_TURNS, TURNS_BASE + Math.ceil(Math.max(0, lines) / perTurn))
+
+export const finderReader = (lines: number, model: string | undefined): Reader => ({
+  context: BASE_CONTEXT + Math.max(0, lines) * TOKENS_PER_LINE,
+  turns: turnsFor(lines, LINES_PER_TURN),
+  model,
+})
+
+export const modelerReader = (indexChars: number, lines: number, model: string | undefined): Reader => ({
+  context: BASE_CONTEXT + Math.ceil(indexChars / CHARS_PER_TOKEN) + Math.max(0, lines) * MODELER_TOKENS_PER_LINE,
+  turns: turnsFor(lines, MODELER_LINES_PER_TURN),
+  model,
+})
 
 export const readerEstimate = (reader: Reader, prices: Readonly<Record<string, Price>>): ReaderEstimate => {
   const price = reader.model === undefined ? undefined : priceOf(reader.model, prices)
-  const context = finalContext(reader.lines)
-  const turns = turnsFor(reader.lines)
-  const cacheReads = turns * ((BASE_CONTEXT + context) / 2)
-  const input = cacheReads * CACHE_MULTIPLIERS.read + context * CACHE_MULTIPLIERS.write5m
-  const dollars = price === undefined ? 0 : (input * price.input + turns * OUTPUT_PER_TURN * price.output) / 1e6
-  return { context, turns, dollars, priced: price !== undefined }
+  const cacheReads = reader.turns * ((BASE_CONTEXT + reader.context) / 2)
+  const input = cacheReads * CACHE_MULTIPLIERS.read + reader.context * CACHE_MULTIPLIERS.write5m
+  const dollars = price === undefined ? 0 : (input * price.input + reader.turns * OUTPUT_PER_TURN * price.output) / 1e6
+  return { context: reader.context, turns: reader.turns, dollars, priced: price !== undefined }
 }
 
 export const estimateReview = (modeler: Reader, finders: readonly Reader[], prices: Readonly<Record<string, Price>>): Estimate => {

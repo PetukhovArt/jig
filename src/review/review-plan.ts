@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, readdirSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { isAbsolute, join, relative, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 import { Validator, childPath } from '../core/config'
@@ -12,7 +12,8 @@ import { fileSource, isTestFile } from '../catalog/languages'
 import { lexComments } from '../catalog/languages'
 import { detectAgent, loadUserConfig, resolveTiers, type TierMap } from '../tiers/tiers'
 import { DIFF_PART_MAX_LINES, isUnreviewed, writeDiffFiles, type Audience, type DiffFiles } from './diff-files'
-import { estimateLine, estimateReview, type Estimate } from './estimate'
+import { estimateLine, estimateReview, finderReader, modelerReader, type Estimate } from './estimate'
+import { changedFile, findImporters, flowIndex } from './flow-index'
 import { importEdges, type Partition, type PartitionFile } from './partition'
 import { DEFAULT_PRICES } from './prices'
 import { PROJECT_CONFIG, ruleDocuments, rulesFor } from './rule-docs'
@@ -323,7 +324,7 @@ export interface ReviewPlanReport {
   models: TierMap | undefined
   finderModels: Record<string, string | undefined>
   judge: JudgeModel[]
-  flowModel: { path: string; model: string | undefined } | null
+  flowModel: { path: string; index: string; model: string | undefined } | null
   estimate: Estimate | null
 }
 
@@ -425,7 +426,7 @@ const flowModelLines = (report: ReviewPlanReport): string[] => {
   if (plan.flow === undefined || report.flowModel === null) return []
   return [
     `flow model: first, before any finder: one subagent, role flow-modeler, ${gradeText(plan.flow, report.models)} · writes ${report.flowModel.path} · every finder and judge gets it`,
-    ...diffLine(report.reads[FLOW_READER]),
+    `  index: ${report.flowModel.index} (the changed files and their direct importers: imports, exports and flow sites by line; the modeler opens code only at the sites it needs)`,
     ...(report.reads[FLOW_READER]?.atoms.length ? [`  atoms: ${report.reads[FLOW_READER]?.atoms.join(' ')}`] : []),
   ]
 }
@@ -565,6 +566,22 @@ const flowModelPath = (statePath: string | undefined, state: boolean, diffFiles:
   return diffFiles === null ? '' : `${diffFiles.dir}/model.md`
 }
 
+const writeFlowIndex = (
+  root: string,
+  diffBase: string,
+  diffPaths: readonly string[],
+  partitions: readonly Partition[],
+  isCode: (path: string) => boolean,
+  path: string,
+): string => {
+  const patch = git(['diff', '-U0', '-M', '--no-color', '--no-ext-diff', diffBase, ...pathspec(diffPaths)], root)
+  const added = patch.ok ? addedLines(patch.stdout) : new Map<string, Set<number>>()
+  const code = partitions.flatMap((partition) => partition.files.filter(isCode).map((file) => changedFile(root, file, partition.name, added.get(file) ?? new Set())))
+  const text = flowIndex(code, findImporters(root, code.map((file) => file.path), isCode))
+  writeFileSync(path, text)
+  return text
+}
+
 export const buildReport = (root: string, options: ReportOptions): ReviewPlanReport => {
   const base = resolveBase(root, options.base, 'review-plan', options.paths ?? [])
   const { stats, diffBase, paths, diffPaths, rereview } = scopeOf(root, base, options.paths ?? [], options.statePath)
@@ -627,11 +644,16 @@ export const buildReport = (root: string, options: ReportOptions): ReviewPlanRep
     angles: [],
     rules: [],
     atoms: FLOW_ATOMS.map((name) => join(pluginRoot, 'atoms', `${name}.md`)).filter((path) => existsSync(path)).map(toSlash),
-    diff: diffFiles?.audiences.code ?? [],
+    diff: [],
   }
+  const flowIndexPath = diffFiles === null ? '' : `${diffFiles.dir}/index-flow.txt`
+  const flowIndexText = diffFiles === null ? '' : writeFlowIndex(root, diffBase, diffPaths, plan.partitions, (path) => audienceOf(path, root, testPaths) === 'code', flowIndexPath)
   const deepModel = plan.flow === undefined ? undefined : models?.[plan.flow.tier]?.[0]
   const byPartition = new Map(plan.partitions.map((partition) => [partition.name, partition.lines]))
-  const finderReaders = plan.path === 'inline' ? [{ lines: plan.lines, model: deepModel }] : plan.finders.map((finder) => ({ lines: finder.kind === 'rereview' ? plan.lines : (byPartition.get(finder.partition) ?? 0), model: finderModels[finder.name] }))
+  const finderReaders =
+    plan.path === 'inline'
+      ? [finderReader(plan.lines, deepModel)]
+      : plan.finders.map((finder) => finderReader(finder.kind === 'rereview' ? plan.lines : (byPartition.get(finder.partition) ?? 0), finderModels[finder.name]))
   return {
     base: { ref: base.ref, mergeBase: base.mergeBase, source: base.source },
     files: { counted, excluded, untracked },
@@ -654,8 +676,8 @@ export const buildReport = (root: string, options: ReportOptions): ReviewPlanRep
     models,
     finderModels,
     judge: plan.judging === 'self' ? [] : judgeModels(usedModels, verifyModels),
-    flowModel: plan.flow === undefined ? null : { path: flowModelPath(options.statePath, state, diffFiles), model: deepModel },
-    estimate: plan.flow === undefined ? null : estimateReview({ lines: plan.lines, model: deepModel }, finderReaders, { ...DEFAULT_PRICES, ...loaded.config.prices }),
+    flowModel: plan.flow === undefined ? null : { path: flowModelPath(options.statePath, state, diffFiles), index: flowIndexPath, model: deepModel },
+    estimate: plan.flow === undefined ? null : estimateReview(modelerReader(flowIndexText.length, plan.lines, deepModel), finderReaders, { ...DEFAULT_PRICES, ...loaded.config.prices }),
   }
 }
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { estimateLine, estimateReview } from '../src/review/estimate'
+import { estimateLine, estimateReview, finderReader, modelerReader } from '../src/review/estimate'
 import { importSpecifiers, partitionFiles, resolveEdges, type PartitionFile } from '../src/review/partition'
 import { DEFAULT_PRICES } from '../src/review/prices'
 
@@ -72,12 +72,16 @@ describe('import edges', () => {
 
 describe('cost estimate', () => {
   it('a partitioned run costs less than the same diff read whole by as many finders', () => {
-    const partitioned = estimateReview({ lines: 10_000, model: 'opus' }, Array.from({ length: 5 }, () => ({ lines: 2000, model: 'opus' })), DEFAULT_PRICES)
-    const whole = estimateReview({ lines: 0, model: 'opus' }, Array.from({ length: 5 }, () => ({ lines: 10_000, model: 'opus' })), DEFAULT_PRICES)
+    const partitioned = estimateReview(modelerReader(200_000, 10_000, 'opus'), Array.from({ length: 5 }, () => finderReader(2000, 'opus')), DEFAULT_PRICES)
+    const whole = estimateReview(modelerReader(0, 0, 'opus'), Array.from({ length: 5 }, () => finderReader(10_000, 'opus')), DEFAULT_PRICES)
     expect(partitioned.dollars).toBeLessThan(whole.dollars / 2)
   })
 
+  it('prices the modeler by its index, not by the whole diff a finder would read', () => {
+    expect(estimateReview(modelerReader(200_000, 10_000, 'opus'), [], DEFAULT_PRICES).modeler.dollars).toBeLessThan(estimateReview(finderReader(10_000, 'opus'), [], DEFAULT_PRICES).modeler.dollars / 2)
+  })
+
   it('names the model it has no price for instead of printing $0', () => {
-    expect(estimateLine(estimateReview({ lines: 500, model: 'gpt-x' }, [{ lines: 500, model: 'gpt-x' }], DEFAULT_PRICES))).toMatch(/^cost estimate: no price for gpt-x/)
+    expect(estimateLine(estimateReview(modelerReader(1000, 500, 'gpt-x'), [finderReader(500, 'gpt-x')], DEFAULT_PRICES))).toMatch(/^cost estimate: no price for gpt-x/)
   })
 })

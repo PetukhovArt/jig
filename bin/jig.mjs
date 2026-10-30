@@ -666,7 +666,7 @@ var skipShebang = (source) => {
 };
 var lexJs = (source) => new JsLexer(source, source.length, skipShebang(source), 1).run();
 var lineAt = (source, offset) => countNewlines(source, 0, offset) + 1;
-var isInside = (offset, ranges) => ranges.some((range) => offset >= range.start && offset < range.end);
+var isInside = (offset, ranges2) => ranges2.some((range) => offset >= range.start && offset < range.end);
 var lexVue = (source) => {
   const comments = SFC_TAG.test(source) ? [] : lexJs(source);
   const skipped = [];
@@ -5505,14 +5505,14 @@ var runLoop = (args) => {
 
 // src/pre-mr/pre-mr.ts
 import { spawnSync as spawnSync5 } from "node:child_process";
-import { copyFileSync as copyFileSync3, existsSync as existsSync15, mkdtempSync, rmSync as rmSync7 } from "node:fs";
+import { copyFileSync as copyFileSync3, existsSync as existsSync16, mkdtempSync, rmSync as rmSync7 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join as join30, resolve as resolve11 } from "node:path";
+import { join as join31, resolve as resolve11 } from "node:path";
 import { parseArgs as parseArgs3 } from "node:util";
 
 // src/review/review-plan.ts
-import { existsSync as existsSync14, readFileSync as readFileSync27, readdirSync as readdirSync14 } from "node:fs";
-import { isAbsolute as isAbsolute4, join as join29, relative as relative5, resolve as resolve10 } from "node:path";
+import { existsSync as existsSync15, readFileSync as readFileSync28, readdirSync as readdirSync14, writeFileSync as writeFileSync9 } from "node:fs";
+import { isAbsolute as isAbsolute4, join as join30, relative as relative5, resolve as resolve10 } from "node:path";
 import { parseArgs as parseArgs2 } from "node:util";
 
 // src/review/diff-files.ts
@@ -5642,16 +5642,26 @@ var TURNS_BASE = 15;
 var LINES_PER_TURN = 100;
 var MAX_TURNS = 150;
 var OUTPUT_PER_TURN = 800;
-var finalContext = (lines2) => BASE_CONTEXT + Math.max(0, lines2) * TOKENS_PER_LINE;
-var turnsFor = (lines2) => Math.min(MAX_TURNS, TURNS_BASE + Math.ceil(Math.max(0, lines2) / LINES_PER_TURN));
+var CHARS_PER_TOKEN = 4;
+var MODELER_TOKENS_PER_LINE = 6;
+var MODELER_LINES_PER_TURN = 250;
+var turnsFor = (lines2, perTurn) => Math.min(MAX_TURNS, TURNS_BASE + Math.ceil(Math.max(0, lines2) / perTurn));
+var finderReader = (lines2, model) => ({
+  context: BASE_CONTEXT + Math.max(0, lines2) * TOKENS_PER_LINE,
+  turns: turnsFor(lines2, LINES_PER_TURN),
+  model
+});
+var modelerReader = (indexChars, lines2, model) => ({
+  context: BASE_CONTEXT + Math.ceil(indexChars / CHARS_PER_TOKEN) + Math.max(0, lines2) * MODELER_TOKENS_PER_LINE,
+  turns: turnsFor(lines2, MODELER_LINES_PER_TURN),
+  model
+});
 var readerEstimate = (reader, prices) => {
   const price = reader.model === void 0 ? void 0 : priceOf(reader.model, prices);
-  const context = finalContext(reader.lines);
-  const turns = turnsFor(reader.lines);
-  const cacheReads = turns * ((BASE_CONTEXT + context) / 2);
-  const input = cacheReads * CACHE_MULTIPLIERS.read + context * CACHE_MULTIPLIERS.write5m;
-  const dollars = price === void 0 ? 0 : (input * price.input + turns * OUTPUT_PER_TURN * price.output) / 1e6;
-  return { context, turns, dollars, priced: price !== void 0 };
+  const cacheReads = reader.turns * ((BASE_CONTEXT + reader.context) / 2);
+  const input = cacheReads * CACHE_MULTIPLIERS.read + reader.context * CACHE_MULTIPLIERS.write5m;
+  const dollars = price === void 0 ? 0 : (input * price.input + reader.turns * OUTPUT_PER_TURN * price.output) / 1e6;
+  return { context: reader.context, turns: reader.turns, dollars, priced: price !== void 0 };
 };
 var estimateReview = (modeler, finders, prices) => {
   const own = readerEstimate(modeler, prices);
@@ -5672,6 +5682,10 @@ var estimateLine = (estimate) => {
   return `cost estimate: ~${money(estimate.dollars)} (flow model ${money(modeler.dollars)} + finders ${money(finderDollars)}) \xB7 ${shape} \xB7 list prices of ${models}; runner and judges not included`;
 };
 
+// src/review/flow-index.ts
+import { existsSync as existsSync12, readFileSync as readFileSync25 } from "node:fs";
+import { join as join28 } from "node:path";
+
 // src/review/partition.ts
 import { existsSync as existsSync11, readFileSync as readFileSync24 } from "node:fs";
 import { join as join27, posix as posix5 } from "node:path";
@@ -5689,16 +5703,19 @@ var aliasTail = (spec2) => {
   const tail = stripExtension(spec2.replace(/^[@~#]\//, ""));
   return tail.includes("/") ? tail : void 0;
 };
-var resolveEdges = (paths, specifiers) => {
+var makeResolver = (targets) => {
   const byKey = /* @__PURE__ */ new Map();
-  for (const path2 of paths) keysOf(path2).forEach((key) => byKey.set(key, path2));
+  for (const path2 of targets) keysOf(path2).forEach((key) => byKey.set(key, path2));
   const keys = [...byKey.keys()];
-  const target = (from, spec2) => {
+  return (from, spec2) => {
     if (spec2.startsWith(".")) return byKey.get(stripExtension(posix5.normalize(posix5.join(posix5.dirname(from), spec2))));
     const tail = aliasTail(spec2);
     const key = tail === void 0 ? void 0 : keys.find((candidate) => candidate === tail || candidate.endsWith(`/${tail}`));
     return key === void 0 ? void 0 : byKey.get(key);
   };
+};
+var resolveEdges = (paths, specifiers) => {
+  const target = makeResolver(paths);
   const edges = [];
   for (const from of paths) {
     for (const spec2 of specifiers.get(from) ?? []) {
@@ -5831,9 +5848,113 @@ var partitionFiles = (files, edges, count) => {
   }));
 };
 
+// src/review/flow-index.ts
+var SCRIPT = [
+  { kind: "store", pattern: /\b(?:defineStore|createStore|createSlice|configureStore|writable|readable)\s*\(|new\s+Vuex\.Store\b/ },
+  { kind: "store-use", pattern: /\buse\w*Store\s*\(|\bstoreToRefs\s*\(|\.\$patch\s*\(|\.(?:commit|dispatch)\s*\(\s*['"`]/ },
+  { kind: "watch", pattern: /\b(?:watch|watchEffect|watchPostEffect|watchSyncEffect|computed|useEffect|useLayoutEffect|useMemo)\s*\(/ },
+  { kind: "lifecycle", pattern: /\b(?:onMounted|onBeforeMount|onUnmounted|onBeforeUnmount|onActivated|onDeactivated|onUpdated|onScopeDispose)\s*\(/ },
+  { kind: "ipc", pattern: /\bipc(?:Main|Renderer)\.\w+\s*\(|\bcontextBridge\.\w+|\bwebContents\.send\s*\(|\butilityProcess\.\w+|\bparentPort\.\w+/ },
+  { kind: "event", pattern: /(?:\.|\b)(?:\$?emit|on|off|once|addEventListener|removeEventListener|subscribe|unsubscribe|postMessage|dispatchEvent)\s*\(|\bdefineEmits\b|\bonmessage\b/ },
+  { kind: "request", pattern: /\bfetch\s*\(|\baxios(?:\.(?:get|post|put|patch|delete|request|create))?\s*\(|\.(?:get|post|put|patch|delete|request)\s*<[^>]*>\s*\(|\.(?:get|post|put|patch|delete|request)\s*\(\s*['"`/]|\bnew\s+(?:WebSocket|EventSource)\s*\(|\b(?:HubConnectionBuilder|useQuery|useMutation)\b|\.invoke\s*\(\s*['"`]/ },
+  { kind: "timer", pattern: /\b(?:setTimeout|setInterval|requestAnimationFrame|requestIdleCallback)\s*\(/ },
+  { kind: "route", pattern: /\b(?:createRouter|useRoute|useRouter)\s*\(|\brouter\.(?:push|replace|beforeEach|afterEach)\s*\(|^\s*path:\s*['"`]\// }
+];
+var SITES = Object.fromEntries(
+  ["ts", "tsx", "mts", "cts", "js", "jsx", "mjs", "cjs", "vue", "svelte", "astro"].map((extension) => [extension, SCRIPT])
+);
+var EXPORT_PATTERN = /^\s*export\s+(?:default\s+)?(?:async\s+)?(?:declare\s+)?(?:const|let|var|function\*?|class|interface|type|enum)\s+([A-Za-z_$][\w$]*)/;
+var NAMED_IMPORT = /\bimport\s+(?:type\s+)?([^'";]+?)\s+from\s*['"]([^'"\n]+)['"]/g;
+var MAX_LINE = 140;
+var extensionOf = (path2) => /\.([^./]+)$/.exec(path2)?.[1]?.toLowerCase() ?? "";
+var importedNames = (clause) => clause.replace(/[{}]/g, ",").split(",").map((part) => part.trim().replace(/^type\s+/, "")).filter((part) => part !== "").map((part) => /(?:\bas\s+)([A-Za-z_$][\w$]*)$/.exec(part)?.[1] ?? part).filter((name) => /^[A-Za-z_$][\w$]*$/.test(name));
+var namedImports = (source) => [...source.matchAll(NAMED_IMPORT)].map((match) => ({ spec: match[2] ?? "", names: importedNames(match[1] ?? "") }));
+var trim = (line) => {
+  const text3 = line.trim().replace(/\s+/g, " ");
+  return text3.length > MAX_LINE ? `${text3.slice(0, MAX_LINE - 1)}\u2026` : text3;
+};
+var siteKind = (path2, line) => (SITES[extensionOf(path2)] ?? []).find((site) => site.pattern.test(line))?.kind;
+var ranges = (lines2) => {
+  const sorted2 = [...lines2].sort((left, right) => left - right);
+  const spans = [];
+  for (let index = 0; index < sorted2.length; index++) {
+    const start = sorted2[index] ?? 0;
+    let end = start;
+    while (sorted2[index + 1] === end + 1) end = sorted2[++index] ?? end;
+    spans.push(start === end ? `${start}` : `${start}-${end}`);
+  }
+  return spans.join(",");
+};
+var changedSection = (file) => {
+  if (file.source === void 0) return [`== ${file.path} [${file.partition}] deleted`];
+  const lines2 = file.source.split("\n");
+  const imports = [...new Set(importSpecifiers(file.source))];
+  const exports = lines2.flatMap((line) => EXPORT_PATTERN.exec(line)?.[1] ?? []);
+  const sites = lines2.flatMap((line, index) => {
+    const kind = siteKind(file.path, line);
+    const number = index + 1;
+    return kind === void 0 ? [] : [`L${number}${file.added.has(number) ? "*" : " "} ${kind.padEnd(10)} ${trim(line)}`];
+  });
+  return [
+    `== ${file.path} [${file.partition}] changed${file.added.size > 0 ? ` +${ranges(file.added)}` : ""}`,
+    ...imports.length > 0 ? [`imports: ${imports.join(", ")}`] : [],
+    ...exports.length > 0 ? [`exports: ${exports.join(", ")}`] : [],
+    ...sites
+  ];
+};
+var importerSection = (importer) => {
+  const names = [...new Set(importer.imports.flatMap((entry) => entry.names))];
+  const uses = names.length === 0 ? void 0 : new RegExp(`\\b(?:${names.map((name) => name.replace(/\$/g, "\\$")).join("|")})\\b`);
+  const sites = importer.source.split("\n").flatMap((line, index) => {
+    if (uses === void 0 || !uses.test(line) || /^\s*import\b/.test(line)) return [];
+    return [`L${index + 1}  ${(siteKind(importer.path, line) ?? "use").padEnd(10)} ${trim(line)}`];
+  });
+  return [
+    `== ${importer.path} [importer] of ${[...new Set(importer.imports.map((entry) => entry.target))].join(", ")}`,
+    ...names.length > 0 ? [`uses: ${names.join(", ")}`] : [],
+    ...sites
+  ];
+};
+var flowIndex = (files, importers) => [
+  `# flow index \xB7 ${files.length} changed files \xB7 ${importers.length} direct importers`,
+  "# site lines: L<line>[* = a line the diff adds] <kind> <code>; kinds: store, store-use, watch, lifecycle, ipc, event, request, timer, route, use (an importer using a changed export)",
+  `# sites are found for: ${Object.keys(SITES).join(", ")}; other files list their imports only`,
+  ...files.flatMap(changedSection),
+  ...importers.flatMap(importerSection),
+  ""
+].join("\n");
+var listFiles = (root) => {
+  const result = git(["-c", "core.quotePath=false", "ls-files", "-z", "--cached", "--others", "--exclude-standard"], root);
+  return result.ok ? result.stdout.split("\0").filter(Boolean) : [];
+};
+var readSource = (root, path2) => {
+  const full = join28(root, path2);
+  return existsSync12(full) ? readFileSync25(full, "utf8") : void 0;
+};
+var findImporters = (root, changed, isProduction = () => true) => {
+  const resolve17 = makeResolver(changed);
+  const own = new Set(changed);
+  return listFiles(root).filter((path2) => !own.has(path2) && Object.hasOwn(SITES, extensionOf(path2)) && isProduction(path2)).flatMap((path2) => {
+    const source = readSource(root, path2);
+    if (source === void 0) return [];
+    const named = new Map(namedImports(source).map((entry) => [entry.spec, entry.names]));
+    const imports = [...new Set(importSpecifiers(source))].flatMap((spec2) => {
+      const target = resolve17(path2, spec2);
+      return target === void 0 ? [] : [{ target, names: named.get(spec2) ?? [] }];
+    });
+    return imports.length === 0 ? [] : [{ path: path2, source, imports }];
+  });
+};
+var changedFile = (root, path2, partition, added) => ({
+  path: path2,
+  partition,
+  source: readSource(root, path2),
+  added
+});
+
 // src/review/rule-docs.ts
-import { existsSync as existsSync12, readFileSync as readFileSync25 } from "node:fs";
-import { join as join28, posix as posix6 } from "node:path";
+import { existsSync as existsSync13, readFileSync as readFileSync26 } from "node:fs";
+import { join as join29, posix as posix6 } from "node:path";
 var PROJECT_CONFIG = "review.jsonc";
 var DEFAULT_DISCOVER = {
   rules: ["AGENTS.md", "CLAUDE.md", "CLAUDE.local.md", "REVIEW.md"],
@@ -5847,9 +5968,9 @@ var ADR_DIR = /(^|\/)adrs?\//i;
 var MARKDOWN_LINK = /\]\(<?([^)>\s#]+\.md)(?:#[^)\s]*)?>?\)|(?:^|\s)@([^\s]+\.md)/g;
 var isStrings2 = (value) => Array.isArray(value) && value.every((item) => typeof item === "string");
 var readDiscover = (root) => {
-  const path2 = join28(jigPaths(root).dir, PROJECT_CONFIG);
-  if (!existsSync12(path2)) return DEFAULT_DISCOVER;
-  const config = parseJsonc(readFileSync25(path2, "utf8"));
+  const path2 = join29(jigPaths(root).dir, PROJECT_CONFIG);
+  if (!existsSync13(path2)) return DEFAULT_DISCOVER;
+  const config = parseJsonc(readFileSync26(path2, "utf8"));
   const discover2 = config?.discover ?? {};
   const pick = (key) => {
     const value = discover2[key];
@@ -5874,7 +5995,7 @@ var linkedDocuments = (index, text3) => [...text3.matchAll(MARKDOWN_LINK)].map((
 var standardScopes = (root, indexes, standards) => {
   const linkers = /* @__PURE__ */ new Map();
   for (const index of indexes) {
-    for (const target of linkedDocuments(index, readFileSync25(join28(root, index), "utf8"))) linkers.set(target, [...linkers.get(target) ?? [], dirOf2(index)]);
+    for (const target of linkedDocuments(index, readFileSync26(join29(root, index), "utf8"))) linkers.set(target, [...linkers.get(target) ?? [], dirOf2(index)]);
   }
   const shallowest = (dirs) => [...dirs].sort((left, right) => depthOf(left) - depthOf(right) || left.localeCompare(right))[0] ?? "";
   return Object.fromEntries(standards.map((path2) => [path2, shallowest(linkers.get(path2) ?? [""])]));
@@ -5883,7 +6004,7 @@ var ruleDocuments = (root, changed, env) => {
   const discover2 = readDiscover(root);
   const dirs = new Set(changed.flatMap(ancestors));
   const indexes = sorted(
-    [...dirs].flatMap((dir) => discover2.rules.map((name) => dir === "" ? name : `${dir}/${name}`)).filter((path2) => existsSync12(join28(root, path2)))
+    [...dirs].flatMap((dir) => discover2.rules.map((name) => dir === "" ? name : `${dir}/${name}`)).filter((path2) => existsSync13(join29(root, path2)))
   );
   const documents = gitList(root, ["ls-files", "-z", "--cached", "--others", "--exclude-standard"]);
   const reviewRules = env["REVIEW_RULES"];
@@ -5903,7 +6024,7 @@ var covers2 = (scope, file) => scope === "" || file.startsWith(`${scope}/`);
 var rulesFor = (inputs, files) => [...inputs.indexes, ...inputs.standards].filter((path2) => files.some((file) => covers2(inputs.scopes[path2] ?? "", file)));
 
 // src/review/scope.ts
-import { existsSync as existsSync13, readFileSync as readFileSync26 } from "node:fs";
+import { existsSync as existsSync14, readFileSync as readFileSync27 } from "node:fs";
 var PATCH = ["-c", "core.quotePath=false", "diff", "--no-color", "--no-ext-diff"];
 var gitOut = (root, args, input) => {
   const result = git(args, root, input);
@@ -5960,8 +6081,8 @@ var rereviewScope = (root, state, base) => {
   return { kind: "patches", files: changed, total, renamed };
 };
 var readReviewedState = (path2) => {
-  if (!existsSync13(path2)) throw new Error(`no state at ${path2}`);
-  return JSON.parse(readFileSync26(path2, "utf8"));
+  if (!existsSync14(path2)) throw new Error(`no state at ${path2}`);
+  return JSON.parse(readFileSync27(path2, "utf8"));
 };
 
 // src/review/layout.ts
@@ -6338,10 +6459,10 @@ var parseProjectConfig = (text3, label) => {
   return { layout, angles, grades, maxParallel: maxParallel ?? MAX_PARALLEL, testPaths: testPaths ?? [] };
 };
 var loadProjectConfig = (root) => {
-  const path2 = join29(jigPaths(root).dir, PROJECT_CONFIG);
-  if (!existsSync14(path2)) return void 0;
+  const path2 = join30(jigPaths(root).dir, PROJECT_CONFIG);
+  if (!existsSync15(path2)) return void 0;
   const label = `.jig/${PROJECT_CONFIG}`;
-  return { label, config: parseProjectConfig(readFileSync27(path2, "utf8"), label) };
+  return { label, config: parseProjectConfig(readFileSync28(path2, "utf8"), label) };
 };
 var firstLine3 = (text3) => text3.split("\n")[0]?.trim() || void 0;
 var gitLine = (args, root) => {
@@ -6384,8 +6505,8 @@ var anyAddedComment = (root, mergeBase, stats) => {
   const result = git(["diff", "-U0", "-M", "--no-color", "--no-ext-diff", mergeBase, "--", ...candidates], root);
   if (!result.ok) return false;
   for (const [file, lines2] of addedLines(result.stdout)) {
-    const path2 = join29(root, file);
-    if (lines2.size > 0 && existsSync14(path2) && hasAddedComment(file, readFileSync27(path2, "utf8"), lines2)) return true;
+    const path2 = join30(root, file);
+    if (lines2.size > 0 && existsSync15(path2) && hasAddedComment(file, readFileSync28(path2, "utf8"), lines2)) return true;
   }
   return false;
 };
@@ -6415,11 +6536,11 @@ var angleAtoms = (text3) => {
   return [...header.matchAll(/`([^`]+)`/g)].map((match) => match[1] ?? "").filter((name) => name !== "");
 };
 var readsFor = (pluginRoot, angles) => {
-  const angleDir = join29(pluginRoot, "skills", "jig-review", "angles");
-  const atomDir = join29(pluginRoot, "atoms");
-  const names = existsSync14(angleDir) ? readdirSync14(angleDir) : [];
-  const files = angles.flatMap((angle) => names.filter((name) => name.startsWith(`${angle}.`) && name.endsWith(".md")).map((name) => join29(angleDir, name)));
-  const atoms = [...new Set(files.flatMap((file) => angleAtoms(readFileSync27(file, "utf8"))))].map((name) => join29(atomDir, `${name}.md`)).filter((path2) => existsSync14(path2));
+  const angleDir = join30(pluginRoot, "skills", "jig-review", "angles");
+  const atomDir = join30(pluginRoot, "atoms");
+  const names = existsSync15(angleDir) ? readdirSync14(angleDir) : [];
+  const files = angles.flatMap((angle) => names.filter((name) => name.startsWith(`${angle}.`) && name.endsWith(".md")).map((name) => join30(angleDir, name)));
+  const atoms = [...new Set(files.flatMap((file) => angleAtoms(readFileSync28(file, "utf8"))))].map((name) => join30(atomDir, `${name}.md`)).filter((path2) => existsSync15(path2));
   return { angles: files.map(toSlash), atoms: atoms.map(toSlash), diff: [], rules: [] };
 };
 var angleList = (angles) => angles.join("+");
@@ -6467,7 +6588,7 @@ var flowModelLines = (report) => {
   if (plan.flow === void 0 || report.flowModel === null) return [];
   return [
     `flow model: first, before any finder: one subagent, role flow-modeler, ${gradeText(plan.flow, report.models)} \xB7 writes ${report.flowModel.path} \xB7 every finder and judge gets it`,
-    ...diffLine(report.reads[FLOW_READER]),
+    `  index: ${report.flowModel.index} (the changed files and their direct importers: imports, exports and flow sites by line; the modeler opens code only at the sites it needs)`,
     ...report.reads[FLOW_READER]?.atoms.length ? [`  atoms: ${report.reads[FLOW_READER]?.atoms.join(" ")}`] : []
   ];
 };
@@ -6569,6 +6690,14 @@ var flowModelPath = (statePath2, state, diffFiles) => {
   if (state) return STATE_MODEL_PATH;
   return diffFiles === null ? "" : `${diffFiles.dir}/model.md`;
 };
+var writeFlowIndex = (root, diffBase, diffPaths, partitions, isCode, path2) => {
+  const patch = git(["diff", "-U0", "-M", "--no-color", "--no-ext-diff", diffBase, ...pathspec(diffPaths)], root);
+  const added = patch.ok ? addedLines(patch.stdout) : /* @__PURE__ */ new Map();
+  const code = partitions.flatMap((partition) => partition.files.filter(isCode).map((file) => changedFile(root, file, partition.name, added.get(file) ?? /* @__PURE__ */ new Set())));
+  const text3 = flowIndex(code, findImporters(root, code.map((file) => file.path), isCode));
+  writeFileSync9(path2, text3);
+  return text3;
+};
 var buildReport = (root, options) => {
   const base = resolveBase(root, options.base, "review-plan", options.paths ?? []);
   const { stats, diffBase, paths, diffPaths, rereview } = scopeOf(root, base, options.paths ?? [], options.statePath);
@@ -6629,12 +6758,14 @@ var buildReport = (root, options) => {
   const flowReads = {
     angles: [],
     rules: [],
-    atoms: FLOW_ATOMS.map((name) => join29(pluginRoot, "atoms", `${name}.md`)).filter((path2) => existsSync14(path2)).map(toSlash),
-    diff: diffFiles?.audiences.code ?? []
+    atoms: FLOW_ATOMS.map((name) => join30(pluginRoot, "atoms", `${name}.md`)).filter((path2) => existsSync15(path2)).map(toSlash),
+    diff: []
   };
+  const flowIndexPath = diffFiles === null ? "" : `${diffFiles.dir}/index-flow.txt`;
+  const flowIndexText = diffFiles === null ? "" : writeFlowIndex(root, diffBase, diffPaths, plan.partitions, (path2) => audienceOf(path2, root, testPaths) === "code", flowIndexPath);
   const deepModel = plan.flow === void 0 ? void 0 : models?.[plan.flow.tier]?.[0];
   const byPartition = new Map(plan.partitions.map((partition) => [partition.name, partition.lines]));
-  const finderReaders = plan.path === "inline" ? [{ lines: plan.lines, model: deepModel }] : plan.finders.map((finder) => ({ lines: finder.kind === "rereview" ? plan.lines : byPartition.get(finder.partition) ?? 0, model: finderModels[finder.name] }));
+  const finderReaders = plan.path === "inline" ? [finderReader(plan.lines, deepModel)] : plan.finders.map((finder) => finderReader(finder.kind === "rereview" ? plan.lines : byPartition.get(finder.partition) ?? 0, finderModels[finder.name]));
   return {
     base: { ref: base.ref, mergeBase: base.mergeBase, source: base.source },
     files: { counted, excluded, untracked },
@@ -6648,7 +6779,7 @@ var buildReport = (root, options) => {
     mode,
     state,
     rereview,
-    skill: toSlash(join29(pluginRoot, "skills", "jig-review")),
+    skill: toSlash(join30(pluginRoot, "skills", "jig-review")),
     steps: stepsFor(plan, mode, state),
     reads: Object.fromEntries([...readers, ...plan.flow === void 0 ? [] : [[FLOW_READER, flowReads]]]),
     maxParallel: project?.config.maxParallel ?? MAX_PARALLEL,
@@ -6657,8 +6788,8 @@ var buildReport = (root, options) => {
     models,
     finderModels,
     judge: plan.judging === "self" ? [] : judgeModels(usedModels, verifyModels),
-    flowModel: plan.flow === void 0 ? null : { path: flowModelPath(options.statePath, state, diffFiles), model: deepModel },
-    estimate: plan.flow === void 0 ? null : estimateReview({ lines: plan.lines, model: deepModel }, finderReaders, { ...DEFAULT_PRICES, ...loaded.config.prices })
+    flowModel: plan.flow === void 0 ? null : { path: flowModelPath(options.statePath, state, diffFiles), index: flowIndexPath, model: deepModel },
+    estimate: plan.flow === void 0 ? null : estimateReview(modelerReader(flowIndexText.length, plan.lines, deepModel), finderReaders, { ...DEFAULT_PRICES, ...loaded.config.prices })
   };
 };
 var isMode = (value) => MODES.includes(value);
@@ -6746,11 +6877,11 @@ var requireRoot = (cwd) => {
   return root;
 };
 var workingTree = (root) => {
-  const dir = mkdtempSync(join30(tmpdir(), "jig-pre-mr-"));
+  const dir = mkdtempSync(join31(tmpdir(), "jig-pre-mr-"));
   try {
-    const index = join30(dir, "index");
+    const index = join31(dir, "index");
     const current = gitLine2(["rev-parse", "--git-path", "index"], root);
-    if (current !== void 0 && existsSync15(resolve11(root, current))) copyFileSync3(resolve11(root, current), index);
+    if (current !== void 0 && existsSync16(resolve11(root, current))) copyFileSync3(resolve11(root, current), index);
     const withIndex = (args) => spawnSync5("git", args, { cwd: root, env: { ...process.env, GIT_INDEX_FILE: index }, encoding: "utf8", windowsHide: true, maxBuffer: MAX_BUFFER2 });
     const added = withIndex(["add", "-A"]);
     if (added.status !== 0) throw new Error(`git add -A into a temporary index failed: ${String(added.stderr).trim()}`);
@@ -7008,9 +7139,9 @@ var runPreMr = (args) => preMr(args, { cwd: process.cwd(), io: processIo, exec: 
 var runSkipVerify = (args) => skipVerify(args, { cwd: process.cwd(), io: processIo });
 
 // src/review/cost.ts
-import { appendFileSync as appendFileSync4, existsSync as existsSync16, mkdirSync as mkdirSync14, readdirSync as readdirSync15, readFileSync as readFileSync28, statSync as statSync12 } from "node:fs";
+import { appendFileSync as appendFileSync4, existsSync as existsSync17, mkdirSync as mkdirSync14, readdirSync as readdirSync15, readFileSync as readFileSync29, statSync as statSync12 } from "node:fs";
 import { homedir as homedir2 } from "node:os";
-import { basename as basename4, dirname as dirname12, join as join31 } from "node:path";
+import { basename as basename4, dirname as dirname12, join as join32 } from "node:path";
 import { parseArgs as parseArgs4 } from "node:util";
 var ROLES = ["runner", "modeler", "finder", "judge", "deepener", "outcome", "poster", "other"];
 var ROLE_PATTERNS = [
@@ -7149,30 +7280,30 @@ var readSessionRuns = (text3, session, prices, subagents) => {
     };
   });
 };
-var claudeProjectsDir = (env = process.env) => join31(env["CLAUDE_CONFIG_DIR"] ?? join31(homedir2(), ".claude"), "projects");
+var claudeProjectsDir = (env = process.env) => join32(env["CLAUDE_CONFIG_DIR"] ?? join32(homedir2(), ".claude"), "projects");
 var projectSlug = (dir) => dir.replace(/[^a-zA-Z0-9]/g, "-");
 var TRANSCRIPTS_ONLY = "jig review cost reads Claude Code transcripts only";
 var resolveSessionDir = (given, projectDir, projectsDir) => {
-  if (given !== void 0 && existsSync16(join31(given, "subagents"))) return given;
+  if (given !== void 0 && existsSync17(join32(given, "subagents"))) return given;
   if (given !== void 0) {
-    const found = existsSync16(projectsDir) ? readdirSync15(projectsDir).map((slug) => join31(projectsDir, slug, given)).find((dir) => existsSync16(dir)) : void 0;
+    const found = existsSync17(projectsDir) ? readdirSync15(projectsDir).map((slug) => join32(projectsDir, slug, given)).find((dir) => existsSync17(dir)) : void 0;
     if (found === void 0) throw new Error(`session ${given} not found under ${toSlash(projectsDir)}; ${TRANSCRIPTS_ONLY}`);
     return found;
   }
-  const slugDir = join31(projectsDir, projectSlug(projectDir));
-  if (!existsSync16(slugDir)) throw new Error(`no sessions for ${toSlash(projectDir)} under ${toSlash(projectsDir)}; ${TRANSCRIPTS_ONLY}`);
-  const sessions = readdirSync15(slugDir).map((name) => join31(slugDir, name)).filter((dir) => existsSync16(join31(dir, "subagents"))).sort((left, right) => statSync12(right).mtimeMs - statSync12(left).mtimeMs);
+  const slugDir = join32(projectsDir, projectSlug(projectDir));
+  if (!existsSync17(slugDir)) throw new Error(`no sessions for ${toSlash(projectDir)} under ${toSlash(projectsDir)}; ${TRANSCRIPTS_ONLY}`);
+  const sessions = readdirSync15(slugDir).map((name) => join32(slugDir, name)).filter((dir) => existsSync17(join32(dir, "subagents"))).sort((left, right) => statSync12(right).mtimeMs - statSync12(left).mtimeMs);
   if (sessions[0] === void 0) throw new Error(`no session with subagents under ${toSlash(slugDir)}; ${TRANSCRIPTS_ONLY}`);
   return sessions[0];
 };
 var readAgents = (sessionDir2, prices) => {
-  const subagents = join31(sessionDir2, "subagents");
+  const subagents = join32(sessionDir2, "subagents");
   const sessionTranscript = `${sessionDir2}.jsonl`;
-  const sessionIds = existsSync16(sessionTranscript) ? messageIds(readFileSync28(sessionTranscript, "utf8")) : /* @__PURE__ */ new Set();
+  const sessionIds = existsSync17(sessionTranscript) ? messageIds(readFileSync29(sessionTranscript, "utf8")) : /* @__PURE__ */ new Set();
   const read = readdirSync15(subagents).filter((name) => name.endsWith(".jsonl")).map((name) => {
-    const metaPath = join31(subagents, name.replace(/\.jsonl$/, ".meta.json"));
-    const meta = existsSync16(metaPath) ? JSON.parse(readFileSync28(metaPath, "utf8")) : {};
-    return { id: name.replace(/^agent-/, "").replace(/\.jsonl$/, ""), meta, text: readFileSync28(join31(subagents, name), "utf8") };
+    const metaPath = join32(subagents, name.replace(/\.jsonl$/, ".meta.json"));
+    const meta = existsSync17(metaPath) ? JSON.parse(readFileSync29(metaPath, "utf8")) : {};
+    return { id: name.replace(/^agent-/, "").replace(/\.jsonl$/, ""), meta, text: readFileSync29(join32(subagents, name), "utf8") };
   });
   const idsByAgent = new Map(read.map((agent) => [agent.id, messageIds(agent.text)]));
   return read.map(({ id, meta, text: text3 }) => {
@@ -7218,11 +7349,11 @@ var groupByLatestRunner = (agents) => {
   return [...groups.values()];
 };
 var readStates = (projectRoot) => {
-  const dir = join31(projectRoot, ".jig", "runs", "review");
-  if (!existsSync16(dir)) return [];
+  const dir = join32(projectRoot, ".jig", "runs", "review");
+  if (!existsSync17(dir)) return [];
   return readdirSync15(dir).filter((name) => /^[0-9a-f]+\.json$/.test(name)).flatMap((name) => {
     try {
-      return [JSON.parse(readFileSync28(join31(dir, name), "utf8"))];
+      return [JSON.parse(readFileSync29(join32(dir, name), "utf8"))];
     } catch {
       return [];
     }
@@ -7282,8 +7413,8 @@ var formatSession = (session, agents, groups) => {
   lines2.push("", "prices are estimates: per 1M tokens from ~/.jig/config.jsonc `prices`, else built-in list prices; cache write 5m \xD71.25, 1h \xD72, cache read \xD70.1");
   return lines2.join("\n");
 };
-var costLogPath = (env = process.env) => env["JIG_COST_LOG"] ?? join31(homedir2(), ".jig", "review-cost.jsonl");
-var readLog = (path2) => existsSync16(path2) ? readFileSync28(path2, "utf8").split("\n").filter((line) => line.trim() !== "").map((line) => JSON.parse(line)) : [];
+var costLogPath = (env = process.env) => env["JIG_COST_LOG"] ?? join32(homedir2(), ".jig", "review-cost.jsonl");
+var readLog = (path2) => existsSync17(path2) ? readFileSync29(path2, "utf8").split("\n").filter((line) => line.trim() !== "").map((line) => JSON.parse(line)) : [];
 var toRecords = (session, project, groups) => groups.filter((group) => group.runner !== void 0).map((group) => {
   const usage2 = emptyUsage();
   group.agents.forEach((agent) => addUsage(usage2, agent.usage));
@@ -7373,7 +7504,7 @@ var runReviewCost = (args) => {
   const session = basename4(sessionDir2);
   const subagents = readAgents(sessionDir2, prices);
   const transcript = `${sessionDir2}.jsonl`;
-  const agents = [...existsSync16(transcript) ? readSessionRuns(readFileSync28(transcript, "utf8"), session, prices, subagents) : [], ...subagents];
+  const agents = [...existsSync17(transcript) ? readSessionRuns(readFileSync29(transcript, "utf8"), session, prices, subagents) : [], ...subagents];
   const groups = groupByLatestRunner(agents);
   attachStates(groups, projectRoot);
   if (values.json === true) {
@@ -7393,7 +7524,7 @@ var runReviewCost = (args) => {
 };
 
 // src/review/route.ts
-import { readFileSync as readFileSync29 } from "node:fs";
+import { readFileSync as readFileSync30 } from "node:fs";
 import { parseArgs as parseArgs5 } from "node:util";
 var FORGE_CONTEXT_LINES = 3;
 var gitOut2 = (root, args) => {
@@ -7461,7 +7592,7 @@ var runReviewRoute = (args) => {
   const { values, positionals } = parseArgs5({ args, options: { hold: { type: "string", multiple: true } }, allowPositionals: true, strict: true });
   const [path2, base, head] = positionals;
   if (path2 === void 0 || base === void 0 || head === void 0 || positionals.length > 3) throw new Error(USAGE4);
-  const state = JSON.parse(readFileSync29(path2, "utf8"));
+  const state = JSON.parse(readFileSync30(path2, "utf8"));
   process.stdout.write(`${formatRoutes(routeFindings(process.cwd(), state, base, head, values.hold ?? [])).join("\n")}
 `);
   return 0;
@@ -7492,7 +7623,7 @@ var runReviewRules = (args) => {
 };
 
 // src/review/state-summary.ts
-import { readFileSync as readFileSync30 } from "node:fs";
+import { readFileSync as readFileSync31 } from "node:fs";
 var SUMMARY_WIDTH = 100;
 var SHA_WIDTH = 12;
 var short = (value, width) => {
@@ -7522,7 +7653,7 @@ var summarizeState = (state) => {
 var runReviewState = (args) => {
   const [path2] = args;
   if (path2 === void 0 || args.length > 1) throw new Error("usage: jig review state <state file>");
-  process.stdout.write(`${summarizeState(JSON.parse(readFileSync30(path2, "utf8")))}
+  process.stdout.write(`${summarizeState(JSON.parse(readFileSync31(path2, "utf8")))}
 `);
   return 0;
 };
@@ -7542,14 +7673,14 @@ var runReview = (args) => {
 };
 
 // src/review-cycle/review-cycle.ts
-import { existsSync as existsSync20, readFileSync as readFileSync33 } from "node:fs";
+import { existsSync as existsSync21, readFileSync as readFileSync34 } from "node:fs";
 import { basename as basename6, relative as relative6, resolve as resolve13 } from "node:path";
 import { parseArgs as parseArgs6 } from "node:util";
 
 // src/review-cycle/adapter.ts
-import { existsSync as existsSync17 } from "node:fs";
+import { existsSync as existsSync18 } from "node:fs";
 import { homedir as homedir3 } from "node:os";
-import { dirname as dirname13, extname as extname4, isAbsolute as isAbsolute5, join as join32, resolve as resolve12 } from "node:path";
+import { dirname as dirname13, extname as extname4, isAbsolute as isAbsolute5, join as join33, resolve as resolve12 } from "node:path";
 
 // src/review-cycle/exec.ts
 import { spawnSync as spawnSync6 } from "node:child_process";
@@ -7637,8 +7768,8 @@ var findBash = (env = process.env, platform = process.platform) => {
   const git2 = findInPath("git.exe", env);
   if (git2 !== void 0) {
     for (const root of [dirname13(dirname13(git2)), dirname13(dirname13(dirname13(git2)))]) {
-      const candidate = join32(root, "bin", "bash.exe");
-      if (existsSync17(candidate)) return candidate;
+      const candidate = join33(root, "bin", "bash.exe");
+      if (existsSync18(candidate)) return candidate;
     }
   }
   const bash = findInPath("bash", env);
@@ -7656,11 +7787,11 @@ var adapterCommand = (path2, env = process.env, platform = process.platform) => 
   return [path2];
 };
 var resolveAdapterPath = (path2, base) => {
-  if (path2 === "~" || path2.startsWith("~/")) return join32(homedir3(), path2.slice(1));
+  if (path2 === "~" || path2.startsWith("~/")) return join33(homedir3(), path2.slice(1));
   return isAbsolute5(path2) ? path2 : resolve12(base, path2);
 };
 var scriptAdapter = (path2, exec, cwd) => {
-  if (!existsSync17(path2)) throw new EnvironmentError(`process adapter not found: ${path2}`);
+  if (!existsSync18(path2)) throw new EnvironmentError(`process adapter not found: ${path2}`);
   const [command, ...prefix] = adapterCommand(path2);
   if (command === void 0) throw new EnvironmentError(`process adapter: cannot run ${path2}`);
   const op = (args) => {
@@ -7765,9 +7896,9 @@ var reviewDecision = (facts2) => {
 };
 
 // src/review-cycle/forge.ts
-import { mkdtempSync as mkdtempSync2, rmSync as rmSync8, writeFileSync as writeFileSync9 } from "node:fs";
+import { mkdtempSync as mkdtempSync2, rmSync as rmSync8, writeFileSync as writeFileSync10 } from "node:fs";
 import { tmpdir as tmpdir2 } from "node:os";
-import { join as join33 } from "node:path";
+import { join as join34 } from "node:path";
 var detectForge = (remote) => /github/i.test(remote) ? "github" : "gitlab";
 var isObject4 = (value) => typeof value === "object" && value !== null && !Array.isArray(value);
 var text2 = (value) => typeof value === "string" ? value : typeof value === "number" ? String(value) : "";
@@ -7870,10 +8001,10 @@ var gitlabForge = (exec, cwd) => {
     },
     reply(iid, discussionId, body) {
       const path2 = `${mr(iid)}/discussions/${discussionId}/notes`;
-      const dir = mkdtempSync2(join33(tmpdir2(), "jig-note-"));
+      const dir = mkdtempSync2(join34(tmpdir2(), "jig-note-"));
       try {
-        const payload = join33(dir, "payload.json");
-        writeFileSync9(payload, JSON.stringify({ body }));
+        const payload = join34(dir, "payload.json");
+        writeFileSync10(payload, JSON.stringify({ body }));
         cli.run(["api", "--method", "POST", path2, "-H", "Content-Type: application/json", "--input", payload], `api POST ${path2}`);
       } finally {
         rmSync8(dir, { recursive: true, force: true });
@@ -7967,20 +8098,20 @@ var createForge = (name, exec, cwd) => name === "github" ? githubForge(exec, cwd
 
 // src/review-cycle/import-state.ts
 import { createHash as createHash9 } from "node:crypto";
-import { copyFileSync as copyFileSync5, existsSync as existsSync19, mkdirSync as mkdirSync15, readdirSync as readdirSync16, readFileSync as readFileSync32, statSync as statSync13, writeFileSync as writeFileSync11 } from "node:fs";
+import { copyFileSync as copyFileSync5, existsSync as existsSync20, mkdirSync as mkdirSync15, readdirSync as readdirSync16, readFileSync as readFileSync33, statSync as statSync13, writeFileSync as writeFileSync12 } from "node:fs";
 import { tmpdir as tmpdir3 } from "node:os";
-import { basename as basename5, dirname as dirname14, join as join35 } from "node:path";
+import { basename as basename5, dirname as dirname14, join as join36 } from "node:path";
 
 // src/review-cycle/state.ts
 import { createHash as createHash8 } from "node:crypto";
-import { copyFileSync as copyFileSync4, existsSync as existsSync18, readFileSync as readFileSync31, writeFileSync as writeFileSync10 } from "node:fs";
-import { join as join34 } from "node:path";
+import { copyFileSync as copyFileSync4, existsSync as existsSync19, readFileSync as readFileSync32, writeFileSync as writeFileSync11 } from "node:fs";
+import { join as join35 } from "node:path";
 var FINDING_STATUSES = ["open", "fixed", "skipped", "unverified", "no_change_needed", "optional"];
 var reviewStateKey = (remote, target) => {
   const content = Buffer.from(`${remote}:${target}`, "utf8");
   return createHash8("sha1").update(`blob ${content.length}\0`).update(content).digest("hex").slice(0, 12);
 };
-var reviewStatePath = (mainRoot, remote, target) => join34(mainRoot, ".jig", "runs", "review", `${reviewStateKey(remote, target)}.json`);
+var reviewStatePath = (mainRoot, remote, target) => join35(mainRoot, ".jig", "runs", "review", `${reviewStateKey(remote, target)}.json`);
 var isObject5 = (value) => typeof value === "object" && value !== null && !Array.isArray(value);
 var optionalText = (value) => typeof value === "string" && value !== "" ? value : void 0;
 var isStatus = (value) => typeof value === "string" && FINDING_STATUSES.includes(value);
@@ -8015,10 +8146,10 @@ var parseReviewState = (text3, label) => {
   return { lastReviewedSha: optionalText(raw["last_reviewed_sha"]), diffHash: optionalText(raw["diff_hash"]), findings };
 };
 var readReviewState = (path2) => {
-  if (!existsSync18(path2)) return void 0;
+  if (!existsSync19(path2)) return void 0;
   let text3;
   try {
-    text3 = readFileSync31(path2, "utf8");
+    text3 = readFileSync32(path2, "utf8");
   } catch (error) {
     throw new EnvironmentError(`${path2}: ${error instanceof Error ? error.message : String(error)}`);
   }
@@ -8062,8 +8193,8 @@ var specHold = (state, spec2) => {
   return state.findings.filter((finding) => finding.category === "spec" && finding.status === "open" && finding.discussionId === void 0 && !isQuoted(finding)).map((finding) => finding.id);
 };
 var updateFindings = (path2, ids, backup, change, now) => {
-  if (ids.length === 0 || !existsSync18(path2)) return 0;
-  const raw = JSON.parse(readFileSync31(path2, "utf8"));
+  if (ids.length === 0 || !existsSync19(path2)) return 0;
+  const raw = JSON.parse(readFileSync32(path2, "utf8"));
   if (!isObject5(raw) || !Array.isArray(raw["findings"])) throw new EnvironmentError(`${path2}: no findings array`);
   const hits = raw["findings"].filter(
     (finding) => isObject5(finding) && typeof finding["discussion_id"] === "string" && ids.includes(finding["discussion_id"])
@@ -8071,7 +8202,7 @@ var updateFindings = (path2, ids, backup, change, now) => {
   if (hits.length === 0) return 0;
   copyFileSync4(path2, `${path2}.bak-${backup}-${now.toISOString().replace(/[:.]/g, "-")}`);
   hits.forEach(change);
-  writeFileSync10(path2, `${JSON.stringify(raw, null, 2)}
+  writeFileSync11(path2, `${JSON.stringify(raw, null, 2)}
 `);
   return hits.length;
 };
@@ -8085,7 +8216,7 @@ var withdrawFromState = (path2, gone, now = /* @__PURE__ */ new Date()) => updat
 
 // src/review-cycle/import-state.ts
 var LEGACY_STATE_DIR = "claude-review";
-var defaultImportDir = () => join35(tmpdir3(), LEGACY_STATE_DIR);
+var defaultImportDir = () => join36(tmpdir3(), LEGACY_STATE_DIR);
 var legacyStateKey = (remote, iid) => createHash9("sha1").update(`${remote}:${iid}`).digest("hex").slice(0, 12);
 var LEGACY_FILE = /^(.+)-([0-9a-f]{12})\.json$/;
 var MAX_IID = 99999;
@@ -8168,7 +8299,7 @@ var finishedAt = (raw, path2) => {
 };
 var readJson = (path2) => {
   try {
-    return JSON.parse(readFileSync32(path2, "utf8"));
+    return JSON.parse(readFileSync33(path2, "utf8"));
   } catch {
     return void 0;
   }
@@ -8176,7 +8307,7 @@ var readJson = (path2) => {
 var sameJson = (left, right) => JSON.stringify(left) === JSON.stringify(right);
 var importLegacyStates = (options) => {
   const { from, mainRoot, remote, dryRun } = options;
-  if (!existsSync19(from)) throw new EnvironmentError(`no such directory ${toSlash(from)}`);
+  if (!existsSync20(from)) throw new EnvironmentError(`no such directory ${toSlash(from)}`);
   const lines2 = [];
   let imported = 0;
   let skipped = 0;
@@ -8188,7 +8319,7 @@ var importLegacyStates = (options) => {
   for (const name of readdirSync16(from).sort()) {
     const fileKey = LEGACY_FILE.exec(name)?.[2];
     if (fileKey === void 0) continue;
-    const source = join35(from, name);
+    const source = join36(from, name);
     const raw = readJson(source);
     if (!isObject6(raw) || raw["remote"] !== remote) {
       other++;
@@ -8208,7 +8339,7 @@ var importLegacyStates = (options) => {
     }
     const destination = reviewStatePath(mainRoot, remote, String(iid));
     const { state, dropped } = convertLegacyState(raw, basename5(destination, ".json"), iid);
-    if (existsSync19(destination)) {
+    if (existsSync20(destination)) {
       const current = readJson(destination);
       if (sameJson(current, state)) {
         skip(label, "already imported");
@@ -8222,7 +8353,7 @@ var importLegacyStates = (options) => {
     }
     if (!dryRun) {
       mkdirSync15(dirname14(destination), { recursive: true });
-      writeFileSync11(destination, `${JSON.stringify(state, null, 2)}
+      writeFileSync12(destination, `${JSON.stringify(state, null, 2)}
 `);
     }
     imported++;
@@ -8336,7 +8467,7 @@ var hasReviewedDiff = (root, head, reviewedHash) => {
     return false;
   }
 };
-var isBusy = (repo, worktree) => existsSync20(worktree) || worktreesOf(repo.mainRoot).some((entry) => samePath(entry.path, worktree));
+var isBusy = (repo, worktree) => existsSync21(worktree) || worktreesOf(repo.mainRoot).some((entry) => samePath(entry.path, worktree));
 var judgeRow = (row, adapter, repos) => {
   try {
     const repo = repos(row.repoDir);
@@ -8479,7 +8610,7 @@ var spec = (args, deps) => {
 };
 var readText4 = (path2) => {
   try {
-    return readFileSync33(path2, "utf8");
+    return readFileSync34(path2, "utf8");
   } catch (error) {
     throw new EnvironmentError(`${path2}: ${error instanceof Error ? error.message : String(error)}`);
   }
@@ -8551,7 +8682,7 @@ var withdraw = (args, deps) => {
   const gone = [];
   const writeState2 = () => {
     const count = withdrawFromState(path2, gone);
-    deps.print(existsSync20(path2) ? `state: ${toSlash(path2)} \xB7 findings withdrawn: ${count}` : "state: none");
+    deps.print(existsSync21(path2) ? `state: ${toSlash(path2)} \xB7 findings withdrawn: ${count}` : "state: none");
   };
   try {
     for (const id of ids) {
@@ -8597,7 +8728,7 @@ var merge = (args, deps) => {
   const merged2 = [];
   const writeState2 = () => {
     const count = mergeInState(path2, merged2);
-    deps.print(existsSync20(path2) ? `state: ${toSlash(path2)} \xB7 findings merged: ${count}` : "state: none");
+    deps.print(existsSync21(path2) ? `state: ${toSlash(path2)} \xB7 findings merged: ${count}` : "state: none");
   };
   try {
     for (const id of duplicates) {
@@ -8688,8 +8819,8 @@ var runReviewCycle = (args) => runReviewCycleWith(args, { exec: spawnExec, cwd: 
 
 // src/slot/slot.ts
 import { spawnSync as spawnSync7 } from "node:child_process";
-import { existsSync as existsSync21, mkdirSync as mkdirSync16, readFileSync as readFileSync34, rmSync as rmSync9, writeFileSync as writeFileSync12 } from "node:fs";
-import { basename as basename7, dirname as dirname15, isAbsolute as isAbsolute6, join as join36, relative as relative7, resolve as resolve14 } from "node:path";
+import { existsSync as existsSync22, mkdirSync as mkdirSync16, readFileSync as readFileSync35, rmSync as rmSync9, writeFileSync as writeFileSync13 } from "node:fs";
+import { basename as basename7, dirname as dirname15, isAbsolute as isAbsolute6, join as join37, relative as relative7, resolve as resolve14 } from "node:path";
 import { parseArgs as parseArgs7 } from "node:util";
 
 // src/worktree/lockfiles.ts
@@ -8812,9 +8943,9 @@ var loadContext = () => {
 var formatDuplicates = (duplicates) => [...duplicates].map(([slot, group]) => `s${slot}: ${group.map((worktree) => toSlash(worktree.path)).join(", ")}`).join("; ");
 var isTracked = (dir, file) => git(["ls-files", "--error-unmatch", "--", file], dir).ok;
 var writeLocalFile = (dir, file, content) => {
-  const path2 = join36(dir, file);
+  const path2 = join37(dir, file);
   mkdirSync16(dirname15(path2), { recursive: true });
-  writeFileSync12(path2, content);
+  writeFileSync13(path2, content);
   if (isTracked(dir, file)) {
     git(["update-index", "--skip-worktree", "--", file], dir);
   }
@@ -8827,7 +8958,7 @@ var insideDir = (dir, file) => {
 };
 var writeEnv = (dir, target, key, value) => {
   const path2 = insideDir(dir, target);
-  const text3 = existsSync21(path2) ? readFileSync34(path2, "utf8") : "";
+  const text3 = existsSync22(path2) ? readFileSync35(path2, "utf8") : "";
   writeLocalFile(dir, target, setEnvValue(text3, key, String(value)));
 };
 var writePorts = (dir, slots, slot) => {
@@ -8839,14 +8970,14 @@ var writePorts = (dir, slots, slot) => {
   }
 };
 var readJsonObject = (path2) => {
-  if (!existsSync21(path2)) return {};
-  const value = parseJsonc(readFileSync34(path2, "utf8"));
+  if (!existsSync22(path2)) return {};
+  const value = parseJsonc(readFileSync35(path2, "utf8"));
   const isObject7 = typeof value === "object" && value !== null && !Array.isArray(value);
   return isObject7 ? value : {};
 };
 var writeAgentView = (mainRoot, dir, slots, slot, cdpPort) => {
-  const own = join36(dir, AGENT_VIEW_CONFIG2);
-  const base = readJsonObject(existsSync21(own) ? own : join36(mainRoot, AGENT_VIEW_CONFIG2));
+  const own = join37(dir, AGENT_VIEW_CONFIG2);
+  const base = readJsonObject(existsSync22(own) ? own : join37(mainRoot, AGENT_VIEW_CONFIG2));
   writeLocalFile(dir, AGENT_VIEW_CONFIG2, `${JSON.stringify(agentViewConfig(base, slots, slot, cdpPort), null, 2)}
 `);
 };
@@ -8856,7 +8987,7 @@ var worktreeAddArgs = (cwd, dir, branch) => {
   return branchExists(cwd, branch) ? ["worktree", "add", dir, branch] : ["worktree", "add", dir, "-b", branch];
 };
 var reserveSlot = async (context, slots, options) => {
-  const lock = await acquireLock(join36(ensureJigDir(context.mainRoot).cache, SLOT_LOCK));
+  const lock = await acquireLock(join37(ensureJigDir(context.mainRoot).cache, SLOT_LOCK));
   if (lock === void 0) return fail3("slot new is running elsewhere, retry", 1);
   try {
     git(["worktree", "prune"], context.projectRoot);
@@ -9024,7 +9155,7 @@ var runSlot = (args) => {
 };
 
 // src/worktree/worktree.ts
-import { existsSync as existsSync22 } from "node:fs";
+import { existsSync as existsSync23 } from "node:fs";
 import { basename as basename9, resolve as resolve16 } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { parseArgs as parseArgs8 } from "node:util";
@@ -9120,7 +9251,7 @@ var checkoutTarget = (positionals, usage2) => {
   const [target] = positionals;
   if (positionals.length !== 1 || target === void 0) return fail4(`usage: ${usage2}`, 2);
   const dir = resolve16(target);
-  if (!existsSync22(dir)) return fail4(`no such dir ${toSlash(dir)}`, 1);
+  if (!existsSync23(dir)) return fail4(`no such dir ${toSlash(dir)}`, 1);
   const toplevel = gitToplevel(dir);
   if (toplevel === void 0 || !samePath(toplevel, dir)) return fail4(`${toSlash(dir)} is not the root of a git worktree`, 1);
   const main = mainCheckout(dir);
@@ -9168,7 +9299,7 @@ var worktreeRemove = (args) => {
   const [target] = positionals;
   if (positionals.length !== 1 || target === void 0) return fail4("usage: worktree remove <dir>", 2);
   const dir = resolve16(target);
-  const worktrees = listWorktrees(existsSync22(dir) ? dir : process.cwd());
+  const worktrees = listWorktrees(existsSync23(dir) ? dir : process.cwd());
   const main = worktrees[0]?.path;
   if (main === void 0) return fail4(`no git worktrees found from ${toSlash(dir)}`, 1);
   if (samePath(main, dir)) return fail4(`${toSlash(dir)} is the main checkout, remove takes a linked worktree`, 1);
