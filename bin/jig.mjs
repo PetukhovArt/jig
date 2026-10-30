@@ -7894,6 +7894,7 @@ var USAGE5 = [
   "  reconcile <state-before|none> <tally-file|tally-json>",
   "  unresolved <mr> [--repo <dir>]",
   "  standing <mr> [--repo <dir>]",
+  "  head <mr> [--reviewed <sha>] [--repo <dir>]",
   "  spec-hold <state> <spec>",
   "  withdraw <mr> <discussion-id>... [--repo <dir>]",
   "  verdict <refs>=<outcome>... [--adapter <path>] [--dry-run]"
@@ -7931,11 +7932,12 @@ var adapterFor = (repo, flag, deps) => {
   return defaultAdapter(repo.forge, repo.mainRoot);
 };
 var reviewWorktreePath = (repo, iid) => resolve13(repo.mainRoot, repo.worktreesDir, `${basename6(repo.mainRoot)}-review-${iid}`);
+var fetched = (root, ref) => git(["fetch", "-q", "--no-tags", "origin", ref], root).ok ? git(["rev-parse", "FETCH_HEAD"], root).stdout.trim() : void 0;
+var hasCommit = (root, sha) => git(["cat-file", "-e", `${sha}^{commit}`], root).ok || fetched(root, sha) !== void 0;
 var hasReviewedDiff = (root, head, reviewedHash) => {
-  const fetched = (ref) => git(["fetch", "-q", "--no-tags", "origin", ref], root).ok ? git(["rev-parse", "FETCH_HEAD"], root).stdout.trim() : void 0;
-  const target = head.target === "" ? void 0 : fetched(head.target);
+  const target = head.target === "" ? void 0 : fetched(root, head.target);
   if (target === void 0) return false;
-  if (!git(["cat-file", "-e", `${head.sha}^{commit}`], root).ok && fetched(head.sha) === void 0) return false;
+  if (!hasCommit(root, head.sha)) return false;
   try {
     return diffHash(root, `${target}...${head.sha}`) === reviewedHash;
   } catch {
@@ -8008,6 +8010,7 @@ var flagOptions = {
   json: { type: "boolean" },
   repo: { type: "string" },
   from: { type: "string" },
+  reviewed: { type: "string" },
   "dry-run": { type: "boolean" }
 };
 var parse = (args) => {
@@ -8117,6 +8120,25 @@ var standing = (args, deps) => {
   deps.print(String(state === void 0 ? 0 : standingBlocking(blockingFindings(state), repo.forge.discussions(iid))));
   return 0;
 };
+var commitsBetween = (root, from, to) => {
+  if (!hasCommit(root, from) || !hasCommit(root, to)) return "unknown";
+  const count = git(["rev-list", "--count", `${from}..${to}`], root);
+  return count.ok ? count.stdout.trim() : "unknown";
+};
+var headCommand = (args, deps) => {
+  const { values, positionals } = parse(args);
+  const iid = mrNumber(positionals[0]);
+  const repo = repoContext(resolve13(deps.cwd, values.repo ?? "."), deps.exec);
+  const reviewed = values.reviewed ?? readReviewState(reviewStatePath(repo.mainRoot, repo.remote, String(iid)))?.lastReviewedSha;
+  if (reviewed === void 0) throw new UsageError2(`head needs --reviewed <sha>: no last_reviewed_sha in the state of !${iid}`);
+  const head = repo.forge.head(iid).sha;
+  if (head === reviewed) {
+    deps.print(`UNCHANGED	${head}`);
+    return 0;
+  }
+  deps.print(`MOVED	${reviewed}	${head}	commits=${commitsBetween(repo.mainRoot, reviewed, head)}`);
+  return 1;
+};
 var specHoldCommand = (args, deps) => {
   const { positionals } = parse(args);
   const [state, specFile] = positionals;
@@ -8196,6 +8218,7 @@ var subcommands = /* @__PURE__ */ new Map([
   ["reconcile", reconcileCommand],
   ["unresolved", unresolved],
   ["standing", standing],
+  ["head", headCommand],
   ["spec-hold", specHoldCommand],
   ["withdraw", withdraw],
   ["verdict", verdict]

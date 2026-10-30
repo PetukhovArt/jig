@@ -14,7 +14,7 @@ One line with **different** mechanisms: two candidates, never merged.
 
 Mode `review` with state on only. While finders ran, the author may have pushed fixes, and judges spent turns on `REFUTED: fixed in <sha>`.
 
-Read the current head ("Read a merge request" in `forge.md`). Equal to the reviewed HEAD: go on. Moved: `git fetch`, then `git diff <reviewed>..<new>` on the candidates' files. A candidate whose line this diff changed or removed is dropped without a judge and counted in `tally.suppressed_stale`. The rest are judged against the reviewed tree. `last_reviewed_sha` stays the reviewed HEAD ([output](08-output.md)), so the next run sees the push as an increment: the dropped code is not lost. Summary: `head moved: <old8>→<new8>, dropped N`.
+Read the head from the forge, never from the local checkout: `node "<root>/bin/jig.mjs" review-cycle head <iid> --reviewed <reviewed HEAD>`. The worktree stays at the reviewed commit while the author pushes, so its own `HEAD` never moves; one runner reported "the head did not move" from it while five commits had landed. `UNCHANGED`: go on. `MOVED <reviewed> <new> commits=N` (exit 1): `git fetch`, then `git diff <reviewed>..<new>` on the candidates' files. A candidate whose line this diff changed or removed is dropped without a judge and counted in `tally.suppressed_stale`. The rest are judged against the reviewed tree. `last_reviewed_sha` stays the reviewed HEAD ([output](08-output.md)), so the next run sees the push as an increment: the dropped code is not lost. Summary: `head moved: <old8>→<new8>, dropped N`.
 
 ## Clusters
 
@@ -50,7 +50,7 @@ In this order: the diff index `jig review-plan` printed under `diff files:` (the
 
 ## Layout lean
 
-Only when `jig review-plan` printed `layout: lean`: the finders ran on the deep tier, and instead of a judge per cluster you judge, as on the [inline path](04-inline.md#judge-yourself). Head before verify and clusters do not apply.
+Only when `jig review-plan` printed `layout: lean`: the finders ran on the deep tier, and instead of a judge per cluster you judge, as on the [inline path](04-inline.md#judge-yourself). Clusters do not apply; [head before verify](#head-before-verify) does.
 
 1. Judge every deduped candidate yourself by the gate files the steps list, the self-check of `gates/bugs.md` asked literally before each bug `CONFIRMED`; refute with a quoted line, not with doubt.
 2. No `CONFIRMED` `Important`: no subagent; the output says `judge: you only (no Important candidate)`.

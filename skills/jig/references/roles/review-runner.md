@@ -24,6 +24,7 @@ Return, in this order:
 ```
 ran jig-review: yes|no
 state: <absolute path of the state file>
+head: unchanged <sha8> | moved <reviewed8> → <head8>, N commits | unknown (<reason>)
 spec: <source> · <absolute path of the spec file the review judged by> | none
 tally: <the machine line, verbatim>
 <the survivors as jig-review printed them, each mrComment verbatim>
@@ -34,3 +35,5 @@ FYI: <discussion_id> → <the answer under the FYI note verbatim> | none
 ```
 
 Statuses only, no evidence: the caller counts outcomes and never reads their justification.
+
+The `head:` line is the one jig-review printed from `jig review-cycle head`, the forge head against the reviewed sha. Never write it from the worktree's own `HEAD`: the worktree stays at the reviewed commit whatever the author pushed.

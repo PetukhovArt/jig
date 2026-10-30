@@ -36,6 +36,8 @@ It does not add up: the run lost findings. Say so, name the ones without a statu
 
 Mode `review`. Always printed, in this order.
 
+**The head at the end.** With state on, before printing, read the forge head once more: `node "<root>/bin/jig.mjs" review-cycle head <iid>` (it compares with the `last_reviewed_sha` just written). The output's first line is `head: unchanged <sha8>` on `UNCHANGED`, or `head moved: <reviewed8> → <head8>, N commits` on `MOVED`: the findings, replies, FYI answer and line numbers below describe the reviewed commit, and the caller runs a follow-up round on the increment before posting. Exit 3 (the forge cannot answer): `head: unknown (<reason>)`. Never compare with the local `HEAD`: the checkout does not move when the author pushes.
+
 0. **Degraded line, only with `tally.degraded`** ([refused spawn](04-finders.md#refused-spawn)): `degraded: <reason>; coverage below normal`. First, before the tally. Not degraded: no line at all.
 1. **Tally line:** `2 Important, 1 Nit · optional: 3 · prior: 3 fixed, 1 skipped, 1 unverified · suppressed: 4 nit, 3 under rework, 2 rare · spec: 2 findings`.
    With `suppressed_rare`, then the line `known risks: <file> · <defect>; …` ([rare gate](../gates/bugs.md#rare-gate)).

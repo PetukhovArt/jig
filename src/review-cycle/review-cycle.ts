@@ -45,6 +45,7 @@ const USAGE = [
   '  reconcile <state-before|none> <tally-file|tally-json>',
   '  unresolved <mr> [--repo <dir>]',
   '  standing <mr> [--repo <dir>]',
+  '  head <mr> [--reviewed <sha>] [--repo <dir>]',
   '  spec-hold <state> <spec>',
   '  withdraw <mr> <discussion-id>... [--repo <dir>]',
   '  verdict <refs>=<outcome>... [--adapter <path>] [--dry-run]',
@@ -97,13 +98,16 @@ const adapterFor = (repo: Repo, flag: string | undefined, deps: CycleDeps): Proc
 export const reviewWorktreePath = (repo: Pick<Repo, 'mainRoot' | 'worktreesDir'>, iid: number): string =>
   resolve(repo.mainRoot, repo.worktreesDir, `${basename(repo.mainRoot)}-review-${iid}`)
 
+const fetched = (root: string, ref: string): string | undefined =>
+  git(['fetch', '-q', '--no-tags', 'origin', ref], root).ok ? git(['rev-parse', 'FETCH_HEAD'], root).stdout.trim() : undefined
+
+const hasCommit = (root: string, sha: string): boolean => git(['cat-file', '-e', `${sha}^{commit}`], root).ok || fetched(root, sha) !== undefined
+
 /** Fetches the target and the head into the main checkout; false when either cannot be fetched or diffed. */
 const hasReviewedDiff = (root: string, head: Head, reviewedHash: string): boolean => {
-  const fetched = (ref: string): string | undefined =>
-    git(['fetch', '-q', '--no-tags', 'origin', ref], root).ok ? git(['rev-parse', 'FETCH_HEAD'], root).stdout.trim() : undefined
-  const target = head.target === '' ? undefined : fetched(head.target)
+  const target = head.target === '' ? undefined : fetched(root, head.target)
   if (target === undefined) return false
-  if (!git(['cat-file', '-e', `${head.sha}^{commit}`], root).ok && fetched(head.sha) === undefined) return false
+  if (!hasCommit(root, head.sha)) return false
   try {
     return diffHash(root, `${target}...${head.sha}`) === reviewedHash
   } catch {
@@ -189,11 +193,12 @@ const flagOptions = {
   json: { type: 'boolean' },
   repo: { type: 'string' },
   from: { type: 'string' },
+  reviewed: { type: 'string' },
   'dry-run': { type: 'boolean' },
 } as const
 
 interface Parsed {
-  values: { adapter?: string; json?: boolean; repo?: string; from?: string; 'dry-run'?: boolean }
+  values: { adapter?: string; json?: boolean; repo?: string; from?: string; reviewed?: string; 'dry-run'?: boolean }
   positionals: string[]
 }
 
@@ -317,6 +322,27 @@ const standing = (args: string[], deps: CycleDeps): number => {
   return 0
 }
 
+const commitsBetween = (root: string, from: string, to: string): string => {
+  if (!hasCommit(root, from) || !hasCommit(root, to)) return 'unknown'
+  const count = git(['rev-list', '--count', `${from}..${to}`], root)
+  return count.ok ? count.stdout.trim() : 'unknown'
+}
+
+const headCommand = (args: string[], deps: CycleDeps): number => {
+  const { values, positionals } = parse(args)
+  const iid = mrNumber(positionals[0])
+  const repo = repoContext(resolve(deps.cwd, values.repo ?? '.'), deps.exec)
+  const reviewed = values.reviewed ?? readReviewState(reviewStatePath(repo.mainRoot, repo.remote, String(iid)))?.lastReviewedSha
+  if (reviewed === undefined) throw new UsageError(`head needs --reviewed <sha>: no last_reviewed_sha in the state of !${iid}`)
+  const head = repo.forge.head(iid).sha
+  if (head === reviewed) {
+    deps.print(`UNCHANGED\t${head}`)
+    return 0
+  }
+  deps.print(`MOVED\t${reviewed}\t${head}\tcommits=${commitsBetween(repo.mainRoot, reviewed, head)}`)
+  return 1
+}
+
 const specHoldCommand = (args: string[], deps: CycleDeps): number => {
   const { positionals } = parse(args)
   const [state, specFile] = positionals
@@ -402,12 +428,13 @@ const subcommands = new Map<string, (args: string[], deps: CycleDeps) => number>
   ['reconcile', reconcileCommand],
   ['unresolved', unresolved],
   ['standing', standing],
+  ['head', headCommand],
   ['spec-hold', specHoldCommand],
   ['withdraw', withdraw],
   ['verdict', verdict],
 ])
 
-/** Exit codes: 0 done, 1 reconcile blocked, 2 usage, 3 the environment could not answer (never a verdict). */
+/** Exit codes: 0 done, 1 reconcile blocked or the head moved, 2 usage, 3 the environment could not answer (never a verdict). */
 export const runReviewCycleWith = (args: string[], deps: CycleDeps): number => {
   const [name, ...rest] = args
   const subcommand = name === undefined ? undefined : subcommands.get(name)

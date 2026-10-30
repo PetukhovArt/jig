@@ -22,7 +22,11 @@ Postable = `open` and not yet posted (no `discussion_id`), plus **all** `optiona
 
 ## 3. Head and routing
 
-Read the merge request's diff refs ("Diff refs" row): `base_sha`, `start_sha`, `head_sha`. For each postable finding:
+Read the merge request's diff refs ("Diff refs" row): `base_sha`, `start_sha`, `head_sha`.
+
+**The head must be the reviewed one.** `head_sha` differs from the state's `last_reviewed_sha` (`node "<root>/bin/jig.mjs" review-cycle head <iid>` prints `MOVED`): post nothing and report `head moved: <reviewed8> → <head8>, N commits`. The author pushed after the review: its findings, replies, FYI answer and line numbers may already be false, and the caller runs a follow-up round on the increment first. Post anyway only when the user (or the caller's brief) acknowledges the moved head in so many words; then every finding is re-anchored on the new head as in step 5.
+
+For each postable finding:
 
 - the file is in the merge request diff and the line is an added or context line of the new side → a **thread** on `file:new_line`;
 - the file is not in the diff, and `caused_by` holds: its `file` is in the diff, its `diff_line` appears verbatim among that file's added or removed lines, and its `victim_line` appears verbatim in the affected file of the reviewed tree → a **promoted** thread on the cause line; its body ends with one line naming the affected `file:line`;

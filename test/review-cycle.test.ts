@@ -420,6 +420,21 @@ describe('jig review-cycle verdict', () => {
   })
 })
 
+describe('jig review-cycle head', () => {
+  it('compares the forge head with the reviewed sha of the state, not with the local HEAD', () => {
+    const commit = (message: string): string => {
+      spawnSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-q', '--allow-empty', '-m', message], { cwd: root })
+      return spawnSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).stdout.trim()
+    }
+    const reviewed = commit('reviewed')
+    const pushed = [commit('fix 1'), commit('fix 2')].at(-1) ?? ''
+    spawnSync('git', ['checkout', '-q', '--detach', reviewed], { cwd: root })
+    writeState(1, { last_reviewed_sha: reviewed, findings: [] })
+    expect(run({ mrs: { 1: { sha: reviewed } } }, ['head', '1'])).toEqual({ code: 0, out: [`UNCHANGED\t${reviewed}`] })
+    expect(run({ mrs: { 1: { sha: pushed } } }, ['head', '1'])).toEqual({ code: 1, out: [`MOVED\t${reviewed}\t${pushed}\tcommits=2`] })
+  })
+})
+
 describe('jig review-cycle spec-hold', () => {
   it('holds open unposted spec findings whose quote is not in the spec', () => {
     const state = writeState(1, {
