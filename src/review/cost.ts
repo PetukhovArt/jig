@@ -6,23 +6,19 @@ import { git } from '../core/git'
 import { toSlash } from '../core/paths'
 import { loadUserConfig, type Price } from '../tiers/tiers'
 import { listWorktrees } from '../worktree/list'
+import { CACHE_MULTIPLIERS, DEFAULT_PRICES, priceOf } from './prices'
 import { exclusionOf, parseNumstat } from './review-plan'
+
+export { CACHE_MULTIPLIERS, DEFAULT_PRICES, priceOf }
 
 type Command = (args: string[]) => number
 
-export const DEFAULT_PRICES: Readonly<Record<string, Price>> = {
-  opus: { input: 5, output: 25 },
-  sonnet: { input: 3, output: 15 },
-  haiku: { input: 1, output: 5 },
-}
-
-export const CACHE_MULTIPLIERS = { write5m: 1.25, write1h: 2, read: 0.1 } as const
-
-export const ROLES = ['runner', 'finder', 'judge', 'deepener', 'outcome', 'poster', 'other'] as const
+export const ROLES = ['runner', 'modeler', 'finder', 'judge', 'deepener', 'outcome', 'poster', 'other'] as const
 export type Role = (typeof ROLES)[number]
 
 const ROLE_PATTERNS: readonly [Role, RegExp][] = [
   ['runner', /^review\b|review runner/i],
+  ['modeler', /^flow model\b|flow-model/i],
   ['finder', /^finder\b/i],
   ['deepener', /deepen/i],
   ['outcome', /outcome/i],
@@ -91,9 +87,6 @@ const addUsage = (into: Usage, from: Usage): void => {
   into.read += from.read
   into.output += from.output
 }
-
-export const priceOf = (model: string, prices: Readonly<Record<string, Price>>): Price | undefined =>
-  Object.entries(prices).find(([family]) => model.includes(family))?.[1]
 
 export const dollarsOf = (usage: Usage, price: Price | undefined): number => {
   if (price === undefined) return 0
