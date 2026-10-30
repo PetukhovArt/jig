@@ -7,7 +7,7 @@ import { git } from '../core/git'
 import { parseJsonc } from '../core/jsonc'
 import { ensureJigDir, resolveProjectRoot, toSlash } from '../core/paths'
 import { acquireLock } from '../core/proc'
-import { foreignUseOf } from './guard'
+import { clearOwner, ownerIdOf, refusalOf, writeOwner } from './guard'
 import { listWorktrees, type Worktree } from '../worktree/list'
 import { installSteps } from '../worktree/lockfiles'
 import { formatDeps, hasIgnoredLockKeyChange, provideDeps, type DepsOutcome } from '../worktree/deps-pool'
@@ -375,22 +375,27 @@ const headOf = (dir: string): string | undefined => {
 const changedFiles = (dir: string, from: string, to: string): string[] =>
   from === to ? [] : git(['diff', '--name-only', '-z', from, to], dir).stdout.split('\0').filter(Boolean)
 
-const portsOfSlot = (slots: SlotsConfig | undefined, slot: number): number[] => {
-  if (slots === undefined) return []
-  const cdp = slotCdpPort(slots, slot)
-  return [...Object.values(slotPorts(slots, slot)), ...(cdp === undefined ? [] : [cdp])]
+const slotRelease = (args: string[]): number => {
+  const { positionals } = parseArgs({ args, options: {}, allowPositionals: true, strict: true })
+  const slot = parseSlotNumber(positionals[0])
+  if (positionals.length !== 1 || slot === undefined) return fail('usage: slot release <N>', 2)
+  const worktree = findSlot(loadContext(), slot)
+  if (typeof worktree === 'string') return fail(worktree, 1)
+  clearOwner(worktree.path)
+  print(`slot ${slot} released`)
+  return 0
 }
 
-const commitOf = (dir: string, ref: string): string | undefined => {
-  const result = git(['rev-parse', '--verify', '--quiet', `${ref}^{commit}`], dir)
-  return result.ok ? result.stdout.trim() : undefined
-}
-
-const slotShow = async (args: string[]): Promise<number> => {
-  const { values, positionals } = parseArgs({ args, options: { force: { type: 'boolean' } }, allowPositionals: true, strict: true })
+const slotShow = (args: string[]): number => {
+  const { values, positionals } = parseArgs({
+    args,
+    options: { force: { type: 'boolean' }, owner: { type: 'string' } },
+    allowPositionals: true,
+    strict: true,
+  })
   const [slotText, ref] = positionals
   const slot = parseSlotNumber(slotText)
-  if (positionals.length !== 2 || slot === undefined || ref === undefined) return fail('usage: slot show <N> <branch|commit> [--force]', 2)
+  if (positionals.length !== 2 || slot === undefined || ref === undefined) return fail('usage: slot show <N> <branch|commit> [--force] [--owner <id>]', 2)
   const context = loadContext()
   const worktree = findSlot(context, slot)
   if (typeof worktree === 'string') return fail(worktree, 1)
@@ -398,17 +403,18 @@ const slotShow = async (args: string[]): Promise<number> => {
   if (changes.length > 0) {
     return fail(`slot ${slot} has tracked changes; a slot only shows branches, edits belong in a feature worktree: ${changes.join(', ')}`, 1)
   }
-  const target = commitOf(worktree.path, ref)
-  if (values.force !== true && target !== undefined) {
-    const reason = await foreignUseOf({ dir: worktree.path, target, ports: portsOfSlot(context.slots, slot) })
+  const owner = ownerIdOf({ flag: values.owner })
+  if (values.force !== true) {
+    const reason = refusalOf({ dir: worktree.path, owner })
     if (reason !== undefined) {
-      return fail(`slot ${slot} looks used by another session (${reason}); switching it to ${ref} can break its work: pass --force to switch anyway`, 1)
+      return fail(`slot ${slot} is ${reason}; switching it to ${ref} can break that work: pass --force to take the slot over (you are ${owner})`, 1)
     }
   }
   const before = headOf(worktree.path)
   const checkout = git(['checkout', '--detach', ref], worktree.path)
   if (!checkout.ok) return fail(`git checkout --detach ${ref} failed in slot ${slot}: ${checkout.stderr.trim()}`, 1)
   const after = headOf(worktree.path)
+  if (after !== undefined) writeOwner(worktree.path, { owner, commit: after })
   const changed = before === undefined || after === undefined ? [] : changedFiles(worktree.path, before, after)
   const steps = installSteps(changed, context.slots?.install)
   const isRootDepsChange = steps.some((step) => step.dir === '.') || hasIgnoredLockKeyChange(worktree.path, changed)
@@ -426,6 +432,7 @@ const slotShow = async (args: string[]): Promise<number> => {
 const subcommands = new Map<string, Command>([
   ['new', slotNew],
   ['show', slotShow],
+  ['release', slotRelease],
   ['ls', slotLs],
   ['rm', slotRm],
 ])

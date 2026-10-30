@@ -7109,12 +7109,12 @@ import { basename as basename4, dirname as dirname12, join as join32 } from "nod
 import { parseArgs as parseArgs4 } from "node:util";
 var ROLES = ["runner", "modeler", "finder", "judge", "deepener", "outcome", "poster", "other"];
 var ROLE_PATTERNS = [
-  ["runner", /^review\b|review runner/i],
-  ["modeler", /^flow model\b|flow-model/i],
+  ["runner", /^review\b/i],
+  ["modeler", /^flow[ -]model\b/i],
   ["finder", /^finder\b/i],
-  ["deepener", /deepen/i],
-  ["outcome", /outcome/i],
-  ["judge", /judge|verif/i],
+  ["deepener", /^deepen/i],
+  ["outcome", /^outcome\b/i],
+  ["judge", /^(?:judge|verifier)\b/i],
   ["poster", /^post\b/i]
 ];
 var emptyUsage = () => ({ input: 0, write5m: 0, write1h: 0, read: 0, output: 0 });
@@ -8802,54 +8802,94 @@ var runReviewCycle = (args) => runReviewCycleWith(args, { exec: spawnExec, cwd: 
 `) });
 
 // src/slot/slot.ts
-import { spawnSync as spawnSync7 } from "node:child_process";
-import { existsSync as existsSync22, mkdirSync as mkdirSync16, readFileSync as readFileSync35, rmSync as rmSync9, writeFileSync as writeFileSync13 } from "node:fs";
-import { basename as basename7, dirname as dirname15, isAbsolute as isAbsolute6, join as join37, relative as relative7, resolve as resolve14 } from "node:path";
+import { spawnSync as spawnSync8 } from "node:child_process";
+import { existsSync as existsSync22, mkdirSync as mkdirSync17, readFileSync as readFileSync36, rmSync as rmSync10, writeFileSync as writeFileSync14 } from "node:fs";
+import { basename as basename7, dirname as dirname16, isAbsolute as isAbsolute6, join as join38, relative as relative7, resolve as resolve14 } from "node:path";
 import { parseArgs as parseArgs7 } from "node:util";
 
 // src/slot/guard.ts
-import { connect } from "node:net";
-var CHECKOUT_WINDOW_MS = 2 * 60 * 60 * 1e3;
-var PROBE_TIMEOUT_MS = 400;
-var PROBE_HOSTS = ["127.0.0.1", "::1"];
+import { spawnSync as spawnSync7 } from "node:child_process";
+import { mkdirSync as mkdirSync16, readFileSync as readFileSync35, rmSync as rmSync9, writeFileSync as writeFileSync13 } from "node:fs";
+import { dirname as dirname15, join as join37 } from "node:path";
+var HOLD_WINDOW_MS = 2 * 60 * 60 * 1e3;
+var MAX_ANCESTORS = 12;
 var REFLOG_LIMIT = "50";
-var recentCheckout = (dir, now) => {
-  const log = git(["reflog", "show", "--date=unix", "--format=%H%x09%gd%x09%gs", "-n", REFLOG_LIMIT, "HEAD"], dir);
+var SHELLS = /* @__PURE__ */ new Set(["sh", "bash", "zsh", "fish", "dash", "ksh", "csh", "tcsh", "cmd", "powershell", "pwsh", "conhost"]);
+var SESSION_ENV = [
+  ["CLAUDE_CODE_SESSION_ID", "claude"],
+  ["CLAUDE_SESSION_ID", "claude"]
+];
+var processInfoOf = (pid) => {
+  const result = process.platform === "win32" ? spawnSync7(
+    "powershell",
+    ["-NoProfile", "-Command", `$p = Get-CimInstance Win32_Process -Filter 'ProcessId=${pid}'; if ($p) { "$($p.ParentProcessId) $($p.Name)" }`],
+    { encoding: "utf8", windowsHide: true }
+  ) : spawnSync7("ps", ["-o", "ppid=,comm=", "-p", String(pid)], { encoding: "utf8" });
+  const match = result.status === 0 ? /^\s*(\d+)\s+(.+?)\s*$/m.exec(result.stdout) : null;
+  return match?.[1] === void 0 || match[2] === void 0 ? void 0 : { ppid: Number(match[1]), name: match[2] };
+};
+var isShell = (name) => SHELLS.has(name.replace(/^.*[\\/]/, "").replace(/\.exe$/i, "").toLowerCase());
+var firstNonShellAncestor = (ppid, infoOf) => {
+  let pid = ppid;
+  for (let depth = 0; depth < MAX_ANCESTORS; depth++) {
+    const info = infoOf(pid);
+    if (info === void 0 || !isShell(info.name) || info.ppid <= 1) return pid;
+    pid = info.ppid;
+  }
+  return pid;
+};
+var ownerIdOf = ({ flag, env = process.env, ppid = process.ppid, infoOf = processInfoOf }) => {
+  if (flag !== void 0 && flag !== "") return flag;
+  for (const [variable, agent] of SESSION_ENV) {
+    const value = env[variable];
+    if (value !== void 0 && value !== "") return `${agent}:${value}`;
+  }
+  return `pid:${firstNonShellAncestor(ppid, infoOf)}`;
+};
+var ownerMarkerPath = (dir) => {
+  const gitDir = git(["rev-parse", "--absolute-git-dir"], dir);
+  return join37(gitDir.ok ? gitDir.stdout.trim() : join37(dir, ".git"), "jig", "slot-owner.json");
+};
+var readOwner = (dir) => {
+  try {
+    const marker = JSON.parse(readFileSync35(ownerMarkerPath(dir), "utf8"));
+    return typeof marker.owner === "string" && typeof marker.commit === "string" && typeof marker.at === "number" ? marker : void 0;
+  } catch {
+    return void 0;
+  }
+};
+var writeOwner = (dir, { owner, commit, now = Date.now() }) => {
+  const path2 = ownerMarkerPath(dir);
+  mkdirSync16(dirname15(path2), { recursive: true });
+  writeFileSync13(path2, `${JSON.stringify({ owner, commit, at: now })}
+`);
+};
+var clearOwner = (dir) => {
+  rmSync9(ownerMarkerPath(dir), { force: true });
+};
+var minutesOf = (ms) => Math.max(0, Math.round(ms / 6e4));
+var recentCheckoutEntry = (dir, now) => {
+  const log = git(["reflog", "show", "--date=unix", "--format=%gd%x09%gs", "-n", REFLOG_LIMIT, "HEAD"], dir);
   if (!log.ok) return void 0;
   const lines2 = log.stdout.split(/\r?\n/).filter(Boolean);
   for (const [index, line] of lines2.entries()) {
-    const [sha, selector, subject] = line.split("	");
+    const [selector, subject] = line.split("	");
     const seconds = Number(/\{(\d+)\}$/.exec(selector ?? "")?.[1]);
-    if (sha === void 0 || subject === void 0 || !subject.startsWith("checkout:") || !Number.isFinite(seconds)) continue;
+    if (subject === void 0 || !subject.startsWith("checkout:") || !Number.isFinite(seconds)) continue;
     const age = now - seconds * 1e3;
-    if (age > CHECKOUT_WINDOW_MS) return void 0;
-    return { entry: `HEAD@{${index}}: ${subject} (${Math.max(0, Math.round(age / 6e4))} min ago)`, sha };
+    return age > HOLD_WINDOW_MS ? void 0 : `HEAD@{${index}}: ${subject} (${minutesOf(age)} min ago)`;
   }
   return void 0;
 };
-var answers = (host, port) => new Promise((resolve17) => {
-  const socket = connect({ host, port });
-  const done = (open) => {
-    socket.destroy();
-    resolve17(open);
-  };
-  socket.setTimeout(PROBE_TIMEOUT_MS, () => done(false));
-  socket.once("connect", () => done(true));
-  socket.once("error", () => done(false));
-});
-var listeningPort = async (ports) => {
-  const probes = await Promise.all(
-    ports.map(async (port) => ({ port, open: (await Promise.all(PROBE_HOSTS.map((host) => answers(host, port)))).some(Boolean) }))
-  );
-  return probes.find((probe) => probe.open)?.port;
-};
-var foreignUseOf = async ({ dir, target, ports, now = Date.now() }) => {
+var refusalOf = ({ dir, owner, now = Date.now() }) => {
+  const marker = readOwner(dir);
+  if (marker === void 0 || marker.owner === owner) return void 0;
+  const age = now - marker.at;
+  if (age < HOLD_WINDOW_MS) return `held by ${marker.owner}, which showed ${marker.commit.slice(0, 7)} ${minutesOf(age)} min ago`;
   const head = git(["rev-parse", "HEAD"], dir);
-  if (head.ok && head.stdout.trim() === target) return void 0;
-  const checkout = recentCheckout(dir, now);
-  if (checkout !== void 0 && checkout.sha !== target) return checkout.entry;
-  const port = await listeningPort(ports);
-  return port === void 0 ? void 0 : `a process answers on port ${port}`;
+  if (!head.ok || head.stdout.trim() === marker.commit) return void 0;
+  const entry = recentCheckoutEntry(dir, now);
+  return entry === void 0 ? void 0 : `moved by a git checkout outside jig since ${marker.owner} showed ${marker.commit.slice(0, 7)}: ${entry}`;
 };
 
 // src/worktree/lockfiles.ts
@@ -8972,9 +9012,9 @@ var loadContext = () => {
 var formatDuplicates = (duplicates) => [...duplicates].map(([slot, group]) => `s${slot}: ${group.map((worktree) => toSlash(worktree.path)).join(", ")}`).join("; ");
 var isTracked2 = (dir, file) => git(["ls-files", "--error-unmatch", "--", file], dir).ok;
 var writeLocalFile = (dir, file, content) => {
-  const path2 = join37(dir, file);
-  mkdirSync16(dirname15(path2), { recursive: true });
-  writeFileSync13(path2, content);
+  const path2 = join38(dir, file);
+  mkdirSync17(dirname16(path2), { recursive: true });
+  writeFileSync14(path2, content);
   if (isTracked2(dir, file)) {
     git(["update-index", "--skip-worktree", "--", file], dir);
   }
@@ -8987,7 +9027,7 @@ var insideDir = (dir, file) => {
 };
 var writeEnv = (dir, target, key, value) => {
   const path2 = insideDir(dir, target);
-  const text3 = existsSync22(path2) ? readFileSync35(path2, "utf8") : "";
+  const text3 = existsSync22(path2) ? readFileSync36(path2, "utf8") : "";
   writeLocalFile(dir, target, setEnvValue(text3, key, String(value)));
 };
 var writePorts = (dir, slots, slot) => {
@@ -9000,13 +9040,13 @@ var writePorts = (dir, slots, slot) => {
 };
 var readJsonObject = (path2) => {
   if (!existsSync22(path2)) return {};
-  const value = parseJsonc(readFileSync35(path2, "utf8"));
+  const value = parseJsonc(readFileSync36(path2, "utf8"));
   const isObject7 = typeof value === "object" && value !== null && !Array.isArray(value);
   return isObject7 ? value : {};
 };
 var writeAgentView = (mainRoot, dir, slots, slot, cdpPort) => {
-  const own = join37(dir, AGENT_VIEW_CONFIG2);
-  const base = readJsonObject(existsSync22(own) ? own : join37(mainRoot, AGENT_VIEW_CONFIG2));
+  const own = join38(dir, AGENT_VIEW_CONFIG2);
+  const base = readJsonObject(existsSync22(own) ? own : join38(mainRoot, AGENT_VIEW_CONFIG2));
   writeLocalFile(dir, AGENT_VIEW_CONFIG2, `${JSON.stringify(agentViewConfig(base, slots, slot, cdpPort), null, 2)}
 `);
 };
@@ -9016,7 +9056,7 @@ var worktreeAddArgs = (cwd, dir, branch) => {
   return branchExists(cwd, branch) ? ["worktree", "add", dir, branch] : ["worktree", "add", dir, "-b", branch];
 };
 var reserveSlot = async (context, slots, options) => {
-  const lock = await acquireLock(join37(ensureJigDir(context.mainRoot).cache, SLOT_LOCK));
+  const lock = await acquireLock(join38(ensureJigDir(context.mainRoot).cache, SLOT_LOCK));
   if (lock === void 0) return fail3("slot new is running elsewhere, retry", 1);
   try {
     git(["worktree", "prune"], context.projectRoot);
@@ -9037,7 +9077,7 @@ var reserveSlot = async (context, slots, options) => {
     lock.release();
   }
 };
-var runInstall = (install, dir) => spawnSync7(install, { cwd: dir, shell: true, windowsHide: true, stdio: ["ignore", 2, 2] }).status;
+var runInstall = (install, dir) => spawnSync8(install, { cwd: dir, shell: true, windowsHide: true, stdio: ["ignore", 2, 2] }).status;
 var poolDeps = (context, dir) => {
   const depsPool = context.worktree?.depsPool;
   if (depsPool === void 0) return void 0;
@@ -9072,7 +9112,7 @@ var slotNew = async (args) => {
     writeAgentView(context.mainRoot, dir, slots, slot, cdpPort);
   }
   for (const cache of slots.clearCache ?? []) {
-    rmSync9(insideDir(dir, cache), { recursive: true, force: true });
+    rmSync10(insideDir(dir, cache), { recursive: true, force: true });
   }
   const deps = poolDeps(context, dir);
   if (deps?.kind === "failed") return fail3(`install failed in slot ${slot} ${toSlash(dir)}: ${deps.detail}`, 1);
@@ -9140,20 +9180,26 @@ var headOf = (dir) => {
   return result.ok ? result.stdout.trim() : void 0;
 };
 var changedFiles2 = (dir, from, to) => from === to ? [] : git(["diff", "--name-only", "-z", from, to], dir).stdout.split("\0").filter(Boolean);
-var portsOfSlot = (slots, slot) => {
-  if (slots === void 0) return [];
-  const cdp = slotCdpPort(slots, slot);
-  return [...Object.values(slotPorts(slots, slot)), ...cdp === void 0 ? [] : [cdp]];
+var slotRelease = (args) => {
+  const { positionals } = parseArgs7({ args, options: {}, allowPositionals: true, strict: true });
+  const slot = parseSlotNumber(positionals[0]);
+  if (positionals.length !== 1 || slot === void 0) return fail3("usage: slot release <N>", 2);
+  const worktree = findSlot(loadContext(), slot);
+  if (typeof worktree === "string") return fail3(worktree, 1);
+  clearOwner(worktree.path);
+  print(`slot ${slot} released`);
+  return 0;
 };
-var commitOf = (dir, ref) => {
-  const result = git(["rev-parse", "--verify", "--quiet", `${ref}^{commit}`], dir);
-  return result.ok ? result.stdout.trim() : void 0;
-};
-var slotShow = async (args) => {
-  const { values, positionals } = parseArgs7({ args, options: { force: { type: "boolean" } }, allowPositionals: true, strict: true });
+var slotShow = (args) => {
+  const { values, positionals } = parseArgs7({
+    args,
+    options: { force: { type: "boolean" }, owner: { type: "string" } },
+    allowPositionals: true,
+    strict: true
+  });
   const [slotText, ref] = positionals;
   const slot = parseSlotNumber(slotText);
-  if (positionals.length !== 2 || slot === void 0 || ref === void 0) return fail3("usage: slot show <N> <branch|commit> [--force]", 2);
+  if (positionals.length !== 2 || slot === void 0 || ref === void 0) return fail3("usage: slot show <N> <branch|commit> [--force] [--owner <id>]", 2);
   const context = loadContext();
   const worktree = findSlot(context, slot);
   if (typeof worktree === "string") return fail3(worktree, 1);
@@ -9161,17 +9207,18 @@ var slotShow = async (args) => {
   if (changes.length > 0) {
     return fail3(`slot ${slot} has tracked changes; a slot only shows branches, edits belong in a feature worktree: ${changes.join(", ")}`, 1);
   }
-  const target = commitOf(worktree.path, ref);
-  if (values.force !== true && target !== void 0) {
-    const reason = await foreignUseOf({ dir: worktree.path, target, ports: portsOfSlot(context.slots, slot) });
+  const owner = ownerIdOf({ flag: values.owner });
+  if (values.force !== true) {
+    const reason = refusalOf({ dir: worktree.path, owner });
     if (reason !== void 0) {
-      return fail3(`slot ${slot} looks used by another session (${reason}); switching it to ${ref} can break its work: pass --force to switch anyway`, 1);
+      return fail3(`slot ${slot} is ${reason}; switching it to ${ref} can break that work: pass --force to take the slot over (you are ${owner})`, 1);
     }
   }
   const before = headOf(worktree.path);
   const checkout = git(["checkout", "--detach", ref], worktree.path);
   if (!checkout.ok) return fail3(`git checkout --detach ${ref} failed in slot ${slot}: ${checkout.stderr.trim()}`, 1);
   const after = headOf(worktree.path);
+  if (after !== void 0) writeOwner(worktree.path, { owner, commit: after });
   const changed = before === void 0 || after === void 0 ? [] : changedFiles2(worktree.path, before, after);
   const steps = installSteps(changed, context.slots?.install);
   const isRootDepsChange = steps.some((step) => step.dir === ".") || hasIgnoredLockKeyChange(worktree.path, changed);
@@ -9189,6 +9236,7 @@ var slotShow = async (args) => {
 var subcommands2 = /* @__PURE__ */ new Map([
   ["new", slotNew],
   ["show", slotShow],
+  ["release", slotRelease],
   ["ls", slotLs],
   ["rm", slotRm]
 ]);
@@ -9206,14 +9254,14 @@ import { createInterface } from "node:readline/promises";
 import { parseArgs as parseArgs8 } from "node:util";
 
 // src/worktree/sweep.ts
-import { spawnSync as spawnSync8 } from "node:child_process";
+import { spawnSync as spawnSync9 } from "node:child_process";
 import { basename as basename8, resolve as resolve15 } from "node:path";
 var KEPT_BUCKETS = /* @__PURE__ */ new Set(["hold-current", "hold-locked", "hold-wip"]);
 var RECENT_MS = 24 * 60 * 60 * 1e3;
 var MS_PER_SECOND = 1e3;
 var SLOT_ITEM = /^s?(\d+)$/;
 var runJson = (bin, args, cwd) => {
-  const result = spawnSync8(bin, args, { cwd, encoding: "utf8", windowsHide: true });
+  const result = spawnSync9(bin, args, { cwd, encoding: "utf8", windowsHide: true });
   if (result.status !== 0) return void 0;
   try {
     return JSON.parse(result.stdout);
