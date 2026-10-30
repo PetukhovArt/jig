@@ -406,4 +406,29 @@ describe('buildReport on a repository', () => {
     const steps = printed.filter((line) => line.startsWith('  ') && line.includes('/steps/'))
     expect(steps.findIndex((line) => line.includes('04-flow-model.md'))).toBeLessThan(steps.findIndex((line) => line.includes('04-finders.md')))
   })
+
+  it('routes the standards an AGENTS.md links under docs/ to every finder whose partition they cover', () => {
+    const root = mkdtempSync(join(tmpdir(), 'jig-review-plan-'))
+    dirs.push(root)
+    vi.stubEnv('JIG_USER_CONFIG', join(root, 'absent.jsonc'))
+    const run = (...args: string[]) => expect(git(['-c', 'user.email=t@t', '-c', 'user.name=t', ...args], root).ok).toBe(true)
+    const body = (name: string): string => Array.from({ length: 200 }, (_, index) => `export const ${name}${index} = ${index}`).join('\n') + '\n'
+    run('init', '-q', '-b', 'main')
+    write(root, 'AGENTS.md', '## Conventions\n- [code/naming.md](docs/standards/code/naming.md)\n- [code/vue.md](docs/standards/code/vue.md)\n')
+    write(root, 'docs/standards/code/naming.md', '# naming\n')
+    write(root, 'docs/standards/code/vue.md', '# vue\n')
+    write(root, 'src/gis/AGENTS.md', '# gis\n')
+    run('add', '-A')
+    run('commit', '-qm', 'base')
+    write(root, 'src/gis/map.ts', body('m'))
+    write(root, 'src/journal/list.ts', body('l'))
+    run('add', '-A')
+    run('commit', '-qm', 'feature')
+
+    const report = buildReport(root, { base: 'HEAD~1', spec: false, agent: 'claude', layout: 'lean' })
+
+    const rulesOf = (file: string): string[] => report.reads[report.plan.partitions.find((partition) => partition.files.includes(file))?.name ?? '']?.rules ?? []
+    expect(rulesOf('src/gis/map.ts')).toEqual(['AGENTS.md', 'src/gis/AGENTS.md', 'docs/standards/code/naming.md', 'docs/standards/code/vue.md'])
+    expect(rulesOf('src/journal/list.ts')).toEqual(['AGENTS.md', 'docs/standards/code/naming.md', 'docs/standards/code/vue.md'])
+  })
 })

@@ -15,6 +15,7 @@ import { DIFF_PART_MAX_LINES, isUnreviewed, writeDiffFiles, type Audience, type 
 import { estimateLine, estimateReview, type Estimate } from './estimate'
 import { importEdges, type Partition, type PartitionFile } from './partition'
 import { DEFAULT_PRICES } from './prices'
+import { PROJECT_CONFIG, ruleDocuments, rulesFor } from './rule-docs'
 import { readReviewedState, rereviewScope, type RereviewScope } from './scope'
 import {
   AUTO_INLINE_MAX_N,
@@ -55,7 +56,7 @@ export interface FileStat {
 
 export type Exclusion = 'test' | 'fixture' | 'markdown' | 'lockfile'
 
-export const PROJECT_CONFIG = 'review.jsonc'
+export { PROJECT_CONFIG }
 
 const isTestPath = createMatcher(['**/{test,tests,__tests__,_tests_}/**'])
 const isFixturePath = createMatcher(['**/{fixture,fixtures,__fixtures__,__snapshots__}/**', '**/*.snap'])
@@ -297,6 +298,7 @@ export interface Reads {
   angles: string[]
   atoms: string[]
   diff: string[]
+  rules: string[]
 }
 
 export interface ReviewPlanReport {
@@ -359,7 +361,7 @@ export const readsFor = (pluginRoot: string, angles: readonly Angle[]): Reads =>
   const names = existsSync(angleDir) ? readdirSync(angleDir) : []
   const files = angles.flatMap((angle) => names.filter((name) => name.startsWith(`${angle}.`) && name.endsWith('.md')).map((name) => join(angleDir, name)))
   const atoms = [...new Set(files.flatMap((file) => angleAtoms(readFileSync(file, 'utf8'))))].map((name) => join(atomDir, `${name}.md`)).filter((path) => existsSync(path))
-  return { angles: files.map(toSlash), atoms: atoms.map(toSlash), diff: [] }
+  return { angles: files.map(toSlash), atoms: atoms.map(toSlash), diff: [], rules: [] }
 }
 
 const angleList = (angles: readonly number[]): string => angles.join('+')
@@ -402,7 +404,9 @@ const diffLine = (reads: Reads | undefined): string[] => (reads === undefined ||
 const angleReadLines = (reads: Reads | undefined): string[] =>
   reads === undefined ? [] : [`  read: ${reads.angles.join(' ')}`, ...(reads.atoms.length > 0 ? [`  atoms: ${reads.atoms.join(' ')}`] : [])]
 
-const readLines = (reads: Reads | undefined): string[] => [...diffLine(reads), ...angleReadLines(reads)]
+const rulesLine = (reads: Reads | undefined): string[] => (reads === undefined || reads.rules.length === 0 ? [] : [`  rules: ${reads.rules.join(' ')}`])
+
+const readLines = (reads: Reads | undefined): string[] => [...diffLine(reads), ...rulesLine(reads), ...angleReadLines(reads)]
 
 const RUNNER_LINE =
   'runner: a review with finders runs in one review runner, never in the session that asked for it: that session spawns role review-runner with this run and waits for its return; a review runner (a review cycle\'s, or one spawned so) goes on'
@@ -435,7 +439,7 @@ const finderLines = (report: ReviewPlanReport): string[] => {
   if (plan.finders.length > 0) lines.push(`partitions: ${plan.partitions.length}, by imports between files and shared directories; a link that crosses partitions is in the flow model`)
   for (const finder of plan.finders) {
     lines.push(`finder ${finder.name}: partition ${finder.partition} (${partitionText(byName.get(finder.partition))}) · angles ${angleList(finder.angles)} · ${gradeText(finder, report.models)}`)
-    lines.push(...(shared ? diffLine(report.reads[finder.name]) : readLines(report.reads[finder.name])))
+    lines.push(...(shared ? [...diffLine(report.reads[finder.name]), ...rulesLine(report.reads[finder.name])] : readLines(report.reads[finder.name])))
   }
   const first = plan.finders[0]
   if (shared && first !== undefined) lines.push('every finder reads:', ...angleReadLines(report.reads[first.name]))
@@ -610,11 +614,18 @@ export const buildReport = (root: string, options: ReportOptions): ReviewPlanRep
     const own = partition === undefined ? diffFiles.audiences : diffFiles.partitions[partition]
     return own === undefined ? [] : audiencesFor(angles).flatMap((audience) => own[audience])
   }
-  const readsOf = (partition: string | undefined, angles: readonly Angle[]): Reads => ({ ...readsFor(pluginRoot, angles), diff: partsOf(partition, angles) })
+  const ruleInputs = ruleDocuments(root, stats.map((stat) => stat.path), process.env)
+  const filesOf = (partition: string | undefined): string[] => plan.partitions.filter((own) => partition === undefined || own.name === partition).flatMap((own) => own.files)
+  const readsOf = (partition: string | undefined, angles: readonly Angle[]): Reads => ({
+    ...readsFor(pluginRoot, angles),
+    diff: partsOf(partition, angles),
+    rules: rulesFor(ruleInputs, filesOf(partition)),
+  })
   const readers: [string, Reads][] =
     plan.path === 'inline' ? [[INLINE_READER, readsOf(undefined, plan.angles)]] : plan.finders.map((finder) => [finder.name, readsOf(finder.partition, finder.angles)])
   const flowReads: Reads = {
     angles: [],
+    rules: [],
     atoms: FLOW_ATOMS.map((name) => join(pluginRoot, 'atoms', `${name}.md`)).filter((path) => existsSync(path)).map(toSlash),
     diff: diffFiles?.audiences.code ?? [],
   }

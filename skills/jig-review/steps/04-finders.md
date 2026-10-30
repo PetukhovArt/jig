@@ -40,7 +40,7 @@ Spawn every finder of the plan **in one batch**, in parallel, within the [subage
 9. the spec file, when one was found ([prepare](01-prepare.md#spec));
 10. the role template path;
 11. **personal**: this finder's partition, its name and the part paths under its `diff:` (a fork has none of them yet). The parts are split by audience: `pN-code-*` always, `pN-tests-*` when angle 16 runs, `pN-docs-*` when angle 11 or 15 runs. A finder reads no part outside its `diff:` list; it may open another file by path to confirm a candidate;
-12. **personal**: the documents routed to its angles by `route` whose scope holds a file of its partition, each with its scope ("this rule applies only under that directory").
+12. **personal**: the documents under its `rules:` line ([routing](02-rules.md#4-routing)), narrowed by `route` to its angles, each with its scope ("this rule applies only under that directory").
 
 Items 1–10 are byte-identical across the batch. Every document goes as a path, never pasted, except the severity sections and the skip rules of item 2.
 

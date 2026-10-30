@@ -12,7 +12,7 @@ Take the directories the diff touches and walk from each up to the root, collect
 node "<root>/bin/jig.mjs" review rules <base> [-- <path>...]
 ```
 
-It prints `index <path>` for each rules index on the walk up from every changed file's directory to the repository root, root included, by the names of `discover.rules` (default `AGENTS.md`, `CLAUDE.md`, `CLAUDE.local.md`, `REVIEW.md`); `standard <path>` for the standard documents of step 2; `architecture <path>` for the documents [angle 13](../angles/13.architecture.md) section B may need. It reads `discover` from `.jig/review.jsonc` itself.
+It prints `index <path>` (with `· scope <dir>/` below the root) for each rules index on the walk up from every changed file's directory to the repository root, root included, by the names of `discover.rules` (default `AGENTS.md`, `CLAUDE.md`, `CLAUDE.local.md`, `REVIEW.md`); `standard <path>` for the standard documents of step 2, with the scope of the index that links it; `architecture <path>` for the documents [angle 13](../angles/13.architecture.md) section B may need. It reads `discover` from `.jig/review.jsonc` itself.
 
 **A file's scope is its directory.** A rule from `src/payments/AGENTS.md` applies only to files under `src/payments/`. A finding by it outside that directory is invalid.
 
@@ -50,9 +50,9 @@ The severity taxonomy comes from one file ([verify](../gates/severity.md)):
 
 ## 4. Routing
 
-The `route` map of the config says which document goes to which angle. A document goes into the **personal tail** of the brief of every finder that has at least one of those angles and a file of its partition under the document's scope ([step 04](04-finders.md#spawn)).
+`jig review-plan` routes the indexes and standards itself: each finder's `rules:` line (the inline reader's too) lists those whose scope holds a file of its partition. An index governs its directory; a standard an index links governs that index's directory, an unlinked one the whole repository. Pass that list as the finder's documents ([step 04](04-finders.md#spawn)), each with its scope; add the bodies of the index's `@file` imports. A standard under `docs/` is found through the index that links it: one run listed only `AGENTS.md` while `docs/standards/code/*.md`, linked from it, went unread, and its naming and test findings were lost.
 
-A document no glob matched goes by default: indexes from `discover.rules` into the **shared block** of every agent; standard bodies from `discover.standards` to the finders with angles 6, 10 or 13. A body whose scope holds no file of a finder's partition does not reach it: the length multiplies by the number of agents.
+The `route` map of the config narrows a document to angles: such a document goes only to finders carrying one of those angles, within the same scope.
 
 The shared block overrides the skill's defaults: the severity taxonomy as a whole ([source](#severity-source)), skip rules and other defaults by their own text.
 

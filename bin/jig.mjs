@@ -5505,14 +5505,14 @@ var runLoop = (args) => {
 
 // src/pre-mr/pre-mr.ts
 import { spawnSync as spawnSync5 } from "node:child_process";
-import { copyFileSync as copyFileSync3, existsSync as existsSync14, mkdtempSync, rmSync as rmSync7 } from "node:fs";
+import { copyFileSync as copyFileSync3, existsSync as existsSync15, mkdtempSync, rmSync as rmSync7 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join as join29, resolve as resolve11 } from "node:path";
+import { join as join30, resolve as resolve11 } from "node:path";
 import { parseArgs as parseArgs3 } from "node:util";
 
 // src/review/review-plan.ts
-import { existsSync as existsSync13, readFileSync as readFileSync26, readdirSync as readdirSync14 } from "node:fs";
-import { isAbsolute as isAbsolute4, join as join28, relative as relative5, resolve as resolve10 } from "node:path";
+import { existsSync as existsSync14, readFileSync as readFileSync27, readdirSync as readdirSync14 } from "node:fs";
+import { isAbsolute as isAbsolute4, join as join29, relative as relative5, resolve as resolve10 } from "node:path";
 import { parseArgs as parseArgs2 } from "node:util";
 
 // src/review/diff-files.ts
@@ -5831,8 +5831,79 @@ var partitionFiles = (files, edges, count) => {
   }));
 };
 
-// src/review/scope.ts
+// src/review/rule-docs.ts
 import { existsSync as existsSync12, readFileSync as readFileSync25 } from "node:fs";
+import { join as join28, posix as posix6 } from "node:path";
+var PROJECT_CONFIG = "review.jsonc";
+var DEFAULT_DISCOVER = {
+  rules: ["AGENTS.md", "CLAUDE.md", "CLAUDE.local.md", "REVIEW.md"],
+  standards: ["**/{standards,conventions}/**/*.md"],
+  exclude: ["**/{tracker,packages,adr,adrs,doc}/**", "docs/*.md"]
+};
+var STANDARD_NAME = /review|convention|standard|code[-_ ]?style|guideline/i;
+var ARCHITECTURE_NAME = /architect|fsd|layers|boundar/i;
+var ARCHITECTURE_FILE = /\.(md|html)$/i;
+var ADR_DIR = /(^|\/)adrs?\//i;
+var MARKDOWN_LINK = /\]\(<?([^)>\s#]+\.md)(?:#[^)\s]*)?>?\)|(?:^|\s)@([^\s]+\.md)/g;
+var isStrings2 = (value) => Array.isArray(value) && value.every((item) => typeof item === "string");
+var readDiscover = (root) => {
+  const path2 = join28(jigPaths(root).dir, PROJECT_CONFIG);
+  if (!existsSync12(path2)) return DEFAULT_DISCOVER;
+  const config = parseJsonc(readFileSync25(path2, "utf8"));
+  const discover2 = config?.discover ?? {};
+  const pick = (key) => {
+    const value = discover2[key];
+    return isStrings2(value) ? value : DEFAULT_DISCOVER[key];
+  };
+  return { rules: pick("rules"), standards: pick("standards"), exclude: pick("exclude") };
+};
+var gitList = (root, args) => {
+  const result = git(["-c", "core.quotePath=false", ...args], root);
+  if (!result.ok) throw new Error(`git ${args.join(" ")} failed: ${result.stderr.trim()}`);
+  return result.stdout.split("\0").filter(Boolean);
+};
+var ancestors = (file) => {
+  const dirs = [];
+  for (let dir = posix6.dirname(file); dir !== "."; dir = posix6.dirname(dir)) dirs.push(dir);
+  return [...dirs, ""];
+};
+var sorted = (items) => [...new Set(items)].sort();
+var dirOf2 = (path2) => posix6.dirname(path2) === "." ? "" : posix6.dirname(path2);
+var depthOf = (dir) => dir === "" ? 0 : dir.split("/").length;
+var linkedDocuments = (index, text3) => [...text3.matchAll(MARKDOWN_LINK)].map((match) => match[1] ?? match[2] ?? "").filter((target) => target !== "" && !/^[a-z]+:/i.test(target)).map((target) => posix6.normalize(target.startsWith("/") ? target.slice(1) : posix6.join(dirOf2(index), target)));
+var standardScopes = (root, indexes, standards) => {
+  const linkers = /* @__PURE__ */ new Map();
+  for (const index of indexes) {
+    for (const target of linkedDocuments(index, readFileSync25(join28(root, index), "utf8"))) linkers.set(target, [...linkers.get(target) ?? [], dirOf2(index)]);
+  }
+  const shallowest = (dirs) => [...dirs].sort((left, right) => depthOf(left) - depthOf(right) || left.localeCompare(right))[0] ?? "";
+  return Object.fromEntries(standards.map((path2) => [path2, shallowest(linkers.get(path2) ?? [""])]));
+};
+var ruleDocuments = (root, changed, env) => {
+  const discover2 = readDiscover(root);
+  const dirs = new Set(changed.flatMap(ancestors));
+  const indexes = sorted(
+    [...dirs].flatMap((dir) => discover2.rules.map((name) => dir === "" ? name : `${dir}/${name}`)).filter((path2) => existsSync12(join28(root, path2)))
+  );
+  const documents = gitList(root, ["ls-files", "-z", "--cached", "--others", "--exclude-standard"]);
+  const reviewRules = env["REVIEW_RULES"];
+  const isStandard = createMatcher(reviewRules ? [reviewRules] : discover2.standards);
+  const isNamedStandard = (path2) => !reviewRules && STANDARD_NAME.test(path2);
+  const isExcluded = createMatcher(discover2.exclude);
+  const isIndex = (path2) => discover2.rules.includes(posix6.basename(path2));
+  const standards = sorted(
+    documents.filter((path2) => path2.toLowerCase().endsWith(".md") && !isIndex(path2) && (isStandard(path2) || isNamedStandard(path2)) && !isExcluded(path2))
+  );
+  const architecture = sorted(documents.filter((path2) => ARCHITECTURE_FILE.test(path2) && ARCHITECTURE_NAME.test(path2) && !ADR_DIR.test(path2)));
+  const scopes = { ...Object.fromEntries(indexes.map((path2) => [path2, dirOf2(path2)])), ...standardScopes(root, indexes, standards) };
+  return { indexes, standards, architecture, scopes };
+};
+var changedPaths = (root, mergeBase, paths) => gitList(root, ["diff", "--name-only", "-z", mergeBase, ...paths.length > 0 ? ["--", ...paths] : []]);
+var covers2 = (scope, file) => scope === "" || file.startsWith(`${scope}/`);
+var rulesFor = (inputs, files) => [...inputs.indexes, ...inputs.standards].filter((path2) => files.some((file) => covers2(inputs.scopes[path2] ?? "", file)));
+
+// src/review/scope.ts
+import { existsSync as existsSync13, readFileSync as readFileSync26 } from "node:fs";
 var PATCH = ["-c", "core.quotePath=false", "diff", "--no-color", "--no-ext-diff"];
 var gitOut = (root, args, input) => {
   const result = git(args, root, input);
@@ -5889,8 +5960,8 @@ var rereviewScope = (root, state, base) => {
   return { kind: "patches", files: changed, total, renamed };
 };
 var readReviewedState = (path2) => {
-  if (!existsSync12(path2)) throw new Error(`no state at ${path2}`);
-  return JSON.parse(readFileSync25(path2, "utf8"));
+  if (!existsSync13(path2)) throw new Error(`no state at ${path2}`);
+  return JSON.parse(readFileSync26(path2, "utf8"));
 };
 
 // src/review/layout.ts
@@ -6129,7 +6200,6 @@ var angleNumber = (key) => {
 };
 
 // src/review/review-plan.ts
-var PROJECT_CONFIG = "review.jsonc";
 var isTestPath = createMatcher(["**/{test,tests,__tests__,_tests_}/**"]);
 var isFixturePath = createMatcher(["**/{fixture,fixtures,__fixtures__,__snapshots__}/**", "**/*.snap"]);
 var isMarkdown = createMatcher(["**/*.md"]);
@@ -6268,10 +6338,10 @@ var parseProjectConfig = (text3, label) => {
   return { layout, angles, grades, maxParallel: maxParallel ?? MAX_PARALLEL, testPaths: testPaths ?? [] };
 };
 var loadProjectConfig = (root) => {
-  const path2 = join28(jigPaths(root).dir, PROJECT_CONFIG);
-  if (!existsSync13(path2)) return void 0;
+  const path2 = join29(jigPaths(root).dir, PROJECT_CONFIG);
+  if (!existsSync14(path2)) return void 0;
   const label = `.jig/${PROJECT_CONFIG}`;
-  return { label, config: parseProjectConfig(readFileSync26(path2, "utf8"), label) };
+  return { label, config: parseProjectConfig(readFileSync27(path2, "utf8"), label) };
 };
 var firstLine3 = (text3) => text3.split("\n")[0]?.trim() || void 0;
 var gitLine = (args, root) => {
@@ -6314,8 +6384,8 @@ var anyAddedComment = (root, mergeBase, stats) => {
   const result = git(["diff", "-U0", "-M", "--no-color", "--no-ext-diff", mergeBase, "--", ...candidates], root);
   if (!result.ok) return false;
   for (const [file, lines2] of addedLines(result.stdout)) {
-    const path2 = join28(root, file);
-    if (lines2.size > 0 && existsSync13(path2) && hasAddedComment(file, readFileSync26(path2, "utf8"), lines2)) return true;
+    const path2 = join29(root, file);
+    if (lines2.size > 0 && existsSync14(path2) && hasAddedComment(file, readFileSync27(path2, "utf8"), lines2)) return true;
   }
   return false;
 };
@@ -6345,12 +6415,12 @@ var angleAtoms = (text3) => {
   return [...header.matchAll(/`([^`]+)`/g)].map((match) => match[1] ?? "").filter((name) => name !== "");
 };
 var readsFor = (pluginRoot, angles) => {
-  const angleDir = join28(pluginRoot, "skills", "jig-review", "angles");
-  const atomDir = join28(pluginRoot, "atoms");
-  const names = existsSync13(angleDir) ? readdirSync14(angleDir) : [];
-  const files = angles.flatMap((angle) => names.filter((name) => name.startsWith(`${angle}.`) && name.endsWith(".md")).map((name) => join28(angleDir, name)));
-  const atoms = [...new Set(files.flatMap((file) => angleAtoms(readFileSync26(file, "utf8"))))].map((name) => join28(atomDir, `${name}.md`)).filter((path2) => existsSync13(path2));
-  return { angles: files.map(toSlash), atoms: atoms.map(toSlash), diff: [] };
+  const angleDir = join29(pluginRoot, "skills", "jig-review", "angles");
+  const atomDir = join29(pluginRoot, "atoms");
+  const names = existsSync14(angleDir) ? readdirSync14(angleDir) : [];
+  const files = angles.flatMap((angle) => names.filter((name) => name.startsWith(`${angle}.`) && name.endsWith(".md")).map((name) => join29(angleDir, name)));
+  const atoms = [...new Set(files.flatMap((file) => angleAtoms(readFileSync27(file, "utf8"))))].map((name) => join29(atomDir, `${name}.md`)).filter((path2) => existsSync14(path2));
+  return { angles: files.map(toSlash), atoms: atoms.map(toSlash), diff: [], rules: [] };
 };
 var angleList = (angles) => angles.join("+");
 var gradeText = (grade, models) => {
@@ -6382,7 +6452,8 @@ var stateText = (report) => {
 };
 var diffLine = (reads) => reads === void 0 || reads.diff.length === 0 ? [] : [`  diff: ${reads.diff.join(" ")}`];
 var angleReadLines = (reads) => reads === void 0 ? [] : [`  read: ${reads.angles.join(" ")}`, ...reads.atoms.length > 0 ? [`  atoms: ${reads.atoms.join(" ")}`] : []];
-var readLines = (reads) => [...diffLine(reads), ...angleReadLines(reads)];
+var rulesLine = (reads) => reads === void 0 || reads.rules.length === 0 ? [] : [`  rules: ${reads.rules.join(" ")}`];
+var readLines = (reads) => [...diffLine(reads), ...rulesLine(reads), ...angleReadLines(reads)];
 var RUNNER_LINE = "runner: a review with finders runs in one review runner, never in the session that asked for it: that session spawns role review-runner with this run and waits for its return; a review runner (a review cycle's, or one spawned so) goes on";
 var MAX_DIRS = 3;
 var partitionText = (partition) => {
@@ -6409,7 +6480,7 @@ var finderLines = (report) => {
   if (plan.finders.length > 0) lines2.push(`partitions: ${plan.partitions.length}, by imports between files and shared directories; a link that crosses partitions is in the flow model`);
   for (const finder of plan.finders) {
     lines2.push(`finder ${finder.name}: partition ${finder.partition} (${partitionText(byName.get(finder.partition))}) \xB7 angles ${angleList(finder.angles)} \xB7 ${gradeText(finder, report.models)}`);
-    lines2.push(...shared ? diffLine(report.reads[finder.name]) : readLines(report.reads[finder.name]));
+    lines2.push(...shared ? [...diffLine(report.reads[finder.name]), ...rulesLine(report.reads[finder.name])] : readLines(report.reads[finder.name]));
   }
   const first = plan.finders[0];
   if (shared && first !== void 0) lines2.push("every finder reads:", ...angleReadLines(report.reads[first.name]));
@@ -6547,11 +6618,18 @@ var buildReport = (root, options) => {
     const own = partition === void 0 ? diffFiles.audiences : diffFiles.partitions[partition];
     return own === void 0 ? [] : audiencesFor(angles).flatMap((audience) => own[audience]);
   };
-  const readsOf = (partition, angles) => ({ ...readsFor(pluginRoot, angles), diff: partsOf(partition, angles) });
+  const ruleInputs = ruleDocuments(root, stats.map((stat) => stat.path), process.env);
+  const filesOf = (partition) => plan.partitions.filter((own) => partition === void 0 || own.name === partition).flatMap((own) => own.files);
+  const readsOf = (partition, angles) => ({
+    ...readsFor(pluginRoot, angles),
+    diff: partsOf(partition, angles),
+    rules: rulesFor(ruleInputs, filesOf(partition))
+  });
   const readers = plan.path === "inline" ? [[INLINE_READER, readsOf(void 0, plan.angles)]] : plan.finders.map((finder) => [finder.name, readsOf(finder.partition, finder.angles)]);
   const flowReads = {
     angles: [],
-    atoms: FLOW_ATOMS.map((name) => join28(pluginRoot, "atoms", `${name}.md`)).filter((path2) => existsSync13(path2)).map(toSlash),
+    rules: [],
+    atoms: FLOW_ATOMS.map((name) => join29(pluginRoot, "atoms", `${name}.md`)).filter((path2) => existsSync14(path2)).map(toSlash),
     diff: diffFiles?.audiences.code ?? []
   };
   const deepModel = plan.flow === void 0 ? void 0 : models?.[plan.flow.tier]?.[0];
@@ -6570,7 +6648,7 @@ var buildReport = (root, options) => {
     mode,
     state,
     rereview,
-    skill: toSlash(join28(pluginRoot, "skills", "jig-review")),
+    skill: toSlash(join29(pluginRoot, "skills", "jig-review")),
     steps: stepsFor(plan, mode, state),
     reads: Object.fromEntries([...readers, ...plan.flow === void 0 ? [] : [[FLOW_READER, flowReads]]]),
     maxParallel: project?.config.maxParallel ?? MAX_PARALLEL,
@@ -6668,11 +6746,11 @@ var requireRoot = (cwd) => {
   return root;
 };
 var workingTree = (root) => {
-  const dir = mkdtempSync(join29(tmpdir(), "jig-pre-mr-"));
+  const dir = mkdtempSync(join30(tmpdir(), "jig-pre-mr-"));
   try {
-    const index = join29(dir, "index");
+    const index = join30(dir, "index");
     const current = gitLine2(["rev-parse", "--git-path", "index"], root);
-    if (current !== void 0 && existsSync14(resolve11(root, current))) copyFileSync3(resolve11(root, current), index);
+    if (current !== void 0 && existsSync15(resolve11(root, current))) copyFileSync3(resolve11(root, current), index);
     const withIndex = (args) => spawnSync5("git", args, { cwd: root, env: { ...process.env, GIT_INDEX_FILE: index }, encoding: "utf8", windowsHide: true, maxBuffer: MAX_BUFFER2 });
     const added = withIndex(["add", "-A"]);
     if (added.status !== 0) throw new Error(`git add -A into a temporary index failed: ${String(added.stderr).trim()}`);
@@ -6730,7 +6808,7 @@ var recordsOf = (root) => {
   }
   return records.sort((left, right) => right.ts.localeCompare(left.ts));
 };
-var changedPaths = (root, older, newer) => {
+var changedPaths2 = (root, older, newer) => {
   const result = git(["diff", "--name-only", "--no-renames", "-z", older, newer], root);
   return result.ok ? new Set(result.stdout.split("\0").filter(Boolean)) : void 0;
 };
@@ -6749,10 +6827,10 @@ var evaluate = ({ root, mergeBase, head, tree, files, records, checks }) => {
   const diffs = /* @__PURE__ */ new Map();
   const editedSince = (entry) => {
     const from = entry.tree ?? "";
-    if (!diffs.has(from)) diffs.set(from, from === "" ? void 0 : changedPaths(root, from, tree));
+    if (!diffs.has(from)) diffs.set(from, from === "" ? void 0 : changedPaths2(root, from, tree));
     return diffs.get(from);
   };
-  const covers2 = (entry, paths) => {
+  const covers3 = (entry, paths) => {
     const edited = editedSince(entry);
     return edited !== void 0 && paths.every((path2) => !edited.has(path2));
   };
@@ -6760,7 +6838,7 @@ var evaluate = ({ root, mergeBase, head, tree, files, records, checks }) => {
   const proofs = [];
   for (const { kind, files: kindFiles } of needed) {
     const candidates = records.filter((entry) => entry.kind === "proof" && (entry.rule ?? "").split(",").includes(kind));
-    const proof2 = candidates.find((entry) => covers2(entry, kindFiles));
+    const proof2 = candidates.find((entry) => covers3(entry, kindFiles));
     if (proof2 !== void 0) {
       proofs.push(proof2);
       continue;
@@ -6930,9 +7008,9 @@ var runPreMr = (args) => preMr(args, { cwd: process.cwd(), io: processIo, exec: 
 var runSkipVerify = (args) => skipVerify(args, { cwd: process.cwd(), io: processIo });
 
 // src/review/cost.ts
-import { appendFileSync as appendFileSync4, existsSync as existsSync15, mkdirSync as mkdirSync14, readdirSync as readdirSync15, readFileSync as readFileSync27, statSync as statSync12 } from "node:fs";
+import { appendFileSync as appendFileSync4, existsSync as existsSync16, mkdirSync as mkdirSync14, readdirSync as readdirSync15, readFileSync as readFileSync28, statSync as statSync12 } from "node:fs";
 import { homedir as homedir2 } from "node:os";
-import { basename as basename4, dirname as dirname12, join as join30 } from "node:path";
+import { basename as basename4, dirname as dirname12, join as join31 } from "node:path";
 import { parseArgs as parseArgs4 } from "node:util";
 var ROLES = ["runner", "modeler", "finder", "judge", "deepener", "outcome", "poster", "other"];
 var ROLE_PATTERNS = [
@@ -7071,30 +7149,30 @@ var readSessionRuns = (text3, session, prices, subagents) => {
     };
   });
 };
-var claudeProjectsDir = (env = process.env) => join30(env["CLAUDE_CONFIG_DIR"] ?? join30(homedir2(), ".claude"), "projects");
+var claudeProjectsDir = (env = process.env) => join31(env["CLAUDE_CONFIG_DIR"] ?? join31(homedir2(), ".claude"), "projects");
 var projectSlug = (dir) => dir.replace(/[^a-zA-Z0-9]/g, "-");
 var TRANSCRIPTS_ONLY = "jig review cost reads Claude Code transcripts only";
 var resolveSessionDir = (given, projectDir, projectsDir) => {
-  if (given !== void 0 && existsSync15(join30(given, "subagents"))) return given;
+  if (given !== void 0 && existsSync16(join31(given, "subagents"))) return given;
   if (given !== void 0) {
-    const found = existsSync15(projectsDir) ? readdirSync15(projectsDir).map((slug) => join30(projectsDir, slug, given)).find((dir) => existsSync15(dir)) : void 0;
+    const found = existsSync16(projectsDir) ? readdirSync15(projectsDir).map((slug) => join31(projectsDir, slug, given)).find((dir) => existsSync16(dir)) : void 0;
     if (found === void 0) throw new Error(`session ${given} not found under ${toSlash(projectsDir)}; ${TRANSCRIPTS_ONLY}`);
     return found;
   }
-  const slugDir = join30(projectsDir, projectSlug(projectDir));
-  if (!existsSync15(slugDir)) throw new Error(`no sessions for ${toSlash(projectDir)} under ${toSlash(projectsDir)}; ${TRANSCRIPTS_ONLY}`);
-  const sessions = readdirSync15(slugDir).map((name) => join30(slugDir, name)).filter((dir) => existsSync15(join30(dir, "subagents"))).sort((left, right) => statSync12(right).mtimeMs - statSync12(left).mtimeMs);
+  const slugDir = join31(projectsDir, projectSlug(projectDir));
+  if (!existsSync16(slugDir)) throw new Error(`no sessions for ${toSlash(projectDir)} under ${toSlash(projectsDir)}; ${TRANSCRIPTS_ONLY}`);
+  const sessions = readdirSync15(slugDir).map((name) => join31(slugDir, name)).filter((dir) => existsSync16(join31(dir, "subagents"))).sort((left, right) => statSync12(right).mtimeMs - statSync12(left).mtimeMs);
   if (sessions[0] === void 0) throw new Error(`no session with subagents under ${toSlash(slugDir)}; ${TRANSCRIPTS_ONLY}`);
   return sessions[0];
 };
 var readAgents = (sessionDir2, prices) => {
-  const subagents = join30(sessionDir2, "subagents");
+  const subagents = join31(sessionDir2, "subagents");
   const sessionTranscript = `${sessionDir2}.jsonl`;
-  const sessionIds = existsSync15(sessionTranscript) ? messageIds(readFileSync27(sessionTranscript, "utf8")) : /* @__PURE__ */ new Set();
+  const sessionIds = existsSync16(sessionTranscript) ? messageIds(readFileSync28(sessionTranscript, "utf8")) : /* @__PURE__ */ new Set();
   const read = readdirSync15(subagents).filter((name) => name.endsWith(".jsonl")).map((name) => {
-    const metaPath = join30(subagents, name.replace(/\.jsonl$/, ".meta.json"));
-    const meta = existsSync15(metaPath) ? JSON.parse(readFileSync27(metaPath, "utf8")) : {};
-    return { id: name.replace(/^agent-/, "").replace(/\.jsonl$/, ""), meta, text: readFileSync27(join30(subagents, name), "utf8") };
+    const metaPath = join31(subagents, name.replace(/\.jsonl$/, ".meta.json"));
+    const meta = existsSync16(metaPath) ? JSON.parse(readFileSync28(metaPath, "utf8")) : {};
+    return { id: name.replace(/^agent-/, "").replace(/\.jsonl$/, ""), meta, text: readFileSync28(join31(subagents, name), "utf8") };
   });
   const idsByAgent = new Map(read.map((agent) => [agent.id, messageIds(agent.text)]));
   return read.map(({ id, meta, text: text3 }) => {
@@ -7140,11 +7218,11 @@ var groupByLatestRunner = (agents) => {
   return [...groups.values()];
 };
 var readStates = (projectRoot) => {
-  const dir = join30(projectRoot, ".jig", "runs", "review");
-  if (!existsSync15(dir)) return [];
+  const dir = join31(projectRoot, ".jig", "runs", "review");
+  if (!existsSync16(dir)) return [];
   return readdirSync15(dir).filter((name) => /^[0-9a-f]+\.json$/.test(name)).flatMap((name) => {
     try {
-      return [JSON.parse(readFileSync27(join30(dir, name), "utf8"))];
+      return [JSON.parse(readFileSync28(join31(dir, name), "utf8"))];
     } catch {
       return [];
     }
@@ -7204,8 +7282,8 @@ var formatSession = (session, agents, groups) => {
   lines2.push("", "prices are estimates: per 1M tokens from ~/.jig/config.jsonc `prices`, else built-in list prices; cache write 5m \xD71.25, 1h \xD72, cache read \xD70.1");
   return lines2.join("\n");
 };
-var costLogPath = (env = process.env) => env["JIG_COST_LOG"] ?? join30(homedir2(), ".jig", "review-cost.jsonl");
-var readLog = (path2) => existsSync15(path2) ? readFileSync27(path2, "utf8").split("\n").filter((line) => line.trim() !== "").map((line) => JSON.parse(line)) : [];
+var costLogPath = (env = process.env) => env["JIG_COST_LOG"] ?? join31(homedir2(), ".jig", "review-cost.jsonl");
+var readLog = (path2) => existsSync16(path2) ? readFileSync28(path2, "utf8").split("\n").filter((line) => line.trim() !== "").map((line) => JSON.parse(line)) : [];
 var toRecords = (session, project, groups) => groups.filter((group) => group.runner !== void 0).map((group) => {
   const usage2 = emptyUsage();
   group.agents.forEach((agent) => addUsage(usage2, agent.usage));
@@ -7295,7 +7373,7 @@ var runReviewCost = (args) => {
   const session = basename4(sessionDir2);
   const subagents = readAgents(sessionDir2, prices);
   const transcript = `${sessionDir2}.jsonl`;
-  const agents = [...existsSync15(transcript) ? readSessionRuns(readFileSync27(transcript, "utf8"), session, prices, subagents) : [], ...subagents];
+  const agents = [...existsSync16(transcript) ? readSessionRuns(readFileSync28(transcript, "utf8"), session, prices, subagents) : [], ...subagents];
   const groups = groupByLatestRunner(agents);
   attachStates(groups, projectRoot);
   if (values.json === true) {
@@ -7315,7 +7393,7 @@ var runReviewCost = (args) => {
 };
 
 // src/review/route.ts
-import { readFileSync as readFileSync28 } from "node:fs";
+import { readFileSync as readFileSync29 } from "node:fs";
 import { parseArgs as parseArgs5 } from "node:util";
 var FORGE_CONTEXT_LINES = 3;
 var gitOut2 = (root, args) => {
@@ -7383,62 +7461,16 @@ var runReviewRoute = (args) => {
   const { values, positionals } = parseArgs5({ args, options: { hold: { type: "string", multiple: true } }, allowPositionals: true, strict: true });
   const [path2, base, head] = positionals;
   if (path2 === void 0 || base === void 0 || head === void 0 || positionals.length > 3) throw new Error(USAGE4);
-  const state = JSON.parse(readFileSync28(path2, "utf8"));
+  const state = JSON.parse(readFileSync29(path2, "utf8"));
   process.stdout.write(`${formatRoutes(routeFindings(process.cwd(), state, base, head, values.hold ?? [])).join("\n")}
 `);
   return 0;
 };
 
 // src/review/rules.ts
-import { existsSync as existsSync16, readFileSync as readFileSync29 } from "node:fs";
-import { join as join31, posix as posix6 } from "node:path";
-var DEFAULT_DISCOVER = {
-  rules: ["AGENTS.md", "CLAUDE.md", "CLAUDE.local.md", "REVIEW.md"],
-  standards: ["**/{standards,conventions}/**/*.md"],
-  exclude: ["**/{tracker,packages,adr,doc,docs}/**"]
-};
-var STANDARD_NAME = /review|convention|standard|code[-_ ]?style|guideline/i;
-var ARCHITECTURE_NAME = /architect|fsd|layers|boundar/i;
-var ARCHITECTURE_FILE = /\.(md|html)$/i;
-var ADR_DIR = /(^|\/)adrs?\//i;
-var isStrings2 = (value) => Array.isArray(value) && value.every((item) => typeof item === "string");
-var readDiscover = (root) => {
-  const path2 = join31(jigPaths(root).dir, PROJECT_CONFIG);
-  if (!existsSync16(path2)) return DEFAULT_DISCOVER;
-  const config = parseJsonc(readFileSync29(path2, "utf8"));
-  const discover2 = config?.discover ?? {};
-  const pick = (key) => {
-    const value = discover2[key];
-    return isStrings2(value) ? value : DEFAULT_DISCOVER[key];
-  };
-  return { rules: pick("rules"), standards: pick("standards"), exclude: pick("exclude") };
-};
-var gitList = (root, args) => {
-  const result = git(["-c", "core.quotePath=false", ...args], root);
-  if (!result.ok) throw new Error(`git ${args.join(" ")} failed: ${result.stderr.trim()}`);
-  return result.stdout.split("\0").filter(Boolean);
-};
-var ancestors = (file) => {
-  const dirs = [];
-  for (let dir = posix6.dirname(file); dir !== "."; dir = posix6.dirname(dir)) dirs.push(dir);
-  return [...dirs, ""];
-};
-var sorted = (items) => [...new Set(items)].sort();
 var reviewInputs = (root, base, paths, env) => {
-  const discover2 = readDiscover(root);
   const { mergeBase } = resolveBase(root, base, "review rules", paths);
-  const changed = gitList(root, ["diff", "--name-only", "-z", mergeBase, ...paths.length > 0 ? ["--", ...paths] : []]);
-  const dirs = new Set(changed.flatMap(ancestors));
-  const indexes = [...dirs].flatMap((dir) => discover2.rules.map((name) => dir === "" ? name : `${dir}/${name}`)).filter((path2) => existsSync16(join31(root, path2)));
-  const documents = gitList(root, ["ls-files", "-z", "--cached", "--others", "--exclude-standard"]);
-  const reviewRules = env["REVIEW_RULES"];
-  const isStandard = createMatcher(reviewRules ? [reviewRules] : discover2.standards);
-  const isNamedStandard = (path2) => !reviewRules && STANDARD_NAME.test(path2);
-  const isExcluded = createMatcher(discover2.exclude);
-  const isIndex = (path2) => discover2.rules.includes(posix6.basename(path2));
-  const standards = documents.filter((path2) => path2.toLowerCase().endsWith(".md") && !isIndex(path2) && (isStandard(path2) || isNamedStandard(path2)) && !isExcluded(path2));
-  const architecture = documents.filter((path2) => ARCHITECTURE_FILE.test(path2) && ARCHITECTURE_NAME.test(path2) && !ADR_DIR.test(path2));
-  return { indexes: sorted(indexes), standards: sorted(standards), architecture: sorted(architecture) };
+  return ruleDocuments(root, changedPaths(root, mergeBase, paths), env);
 };
 var USAGE5 = "usage: jig review rules [<base>] [-- <pathspec>...]";
 var runReviewRules = (args) => {
@@ -7448,9 +7480,10 @@ var runReviewRules = (args) => {
   if (root === void 0) throw new Error("not inside a git repository");
   const paths = toRootPaths(root, process.cwd(), split.paths ?? []);
   const inputs = reviewInputs(root, split.options[0] ?? "", paths, process.env);
+  const scope = (path2) => inputs.scopes[path2] === "" ? "" : ` \xB7 scope ${inputs.scopes[path2]}/`;
   const output = [
-    ...inputs.indexes.map((path2) => `index ${path2}`),
-    ...inputs.standards.map((path2) => `standard ${path2}`),
+    ...inputs.indexes.map((path2) => `index ${path2}${scope(path2)}`),
+    ...inputs.standards.map((path2) => `standard ${path2}${scope(path2)}`),
     ...inputs.architecture.map((path2) => `architecture ${path2}`)
   ];
   process.stdout.write(`${output.join("\n")}

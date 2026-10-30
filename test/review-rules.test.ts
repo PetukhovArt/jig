@@ -42,7 +42,20 @@ describe('review inputs', { timeout: 30_000 }, () => {
       indexes: ['AGENTS.md', 'src/payments/AGENTS.md', 'src/payments/deep/REVIEW.md'],
       standards: ['notes/code-style.md', 'standards/naming.md'],
       architecture: ['docs/architecture.md'],
+      scopes: { 'AGENTS.md': '', 'src/payments/AGENTS.md': 'src/payments', 'src/payments/deep/REVIEW.md': 'src/payments/deep', 'notes/code-style.md': '', 'standards/naming.md': '' },
     })
+  })
+
+  it('lists the standards under docs/ that an index links, scoped to the directory of the shallowest index linking them', () => {
+    write('AGENTS.md', '- [code/naming.md](docs/standards/code/naming.md) - function naming\n')
+    write('src/payments/AGENTS.md', 'See [money](../../docs/standards/code/money.md#rounding).\n')
+    write('docs/standards/code/naming.md')
+    write('docs/standards/code/money.md')
+    write('docs/standards/tracker/gitlab.md')
+    write('docs/review.md')
+    const inputs = reviewInputs(root, 'main', [], {})
+    expect(inputs.standards).toEqual(['docs/standards/code/money.md', 'docs/standards/code/naming.md', 'notes/code-style.md', 'standards/naming.md'])
+    expect([inputs.scopes['docs/standards/code/naming.md'], inputs.scopes['docs/standards/code/money.md']]).toEqual(['', 'src/payments'])
   })
 
   it('takes the index names, standards and exclusions from .jig/review.jsonc, and REVIEW_RULES over the standards', () => {
