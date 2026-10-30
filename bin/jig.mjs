@@ -5637,18 +5637,20 @@ var priceOf = (model, prices) => Object.entries(prices).find(([family]) => model
 
 // src/review/estimate.ts
 var BASE_CONTEXT = 3e4;
-var TOKENS_PER_LINE = 150;
+var FINDER_BASE_CONTEXT = 2e5;
+var TOKENS_PER_LINE = 60;
+var FINDER_BASE_TURNS = 85;
+var LINES_PER_TURN = 120;
 var TURNS_BASE = 15;
-var LINES_PER_TURN = 24;
 var MAX_TURNS = 150;
 var OUTPUT_PER_TURN = 800;
 var CHARS_PER_TOKEN = 4;
 var MODELER_TOKENS_PER_LINE = 25;
 var MODELER_LINES_PER_TURN = 108;
-var turnsFor = (lines2, perTurn) => Math.min(MAX_TURNS, TURNS_BASE + Math.ceil(Math.max(0, lines2) / perTurn));
+var turnsFor = (lines2, perTurn, base = TURNS_BASE) => Math.min(MAX_TURNS, base + Math.ceil(Math.max(0, lines2) / perTurn));
 var finderReader = (lines2, model) => ({
-  context: BASE_CONTEXT + Math.max(0, lines2) * TOKENS_PER_LINE,
-  turns: turnsFor(lines2, LINES_PER_TURN),
+  context: FINDER_BASE_CONTEXT + Math.max(0, lines2) * TOKENS_PER_LINE,
+  turns: turnsFor(lines2, LINES_PER_TURN, FINDER_BASE_TURNS),
   model
 });
 var modelerReader = (indexChars, lines2, model) => ({

@@ -2,9 +2,11 @@ import type { Price } from '../tiers/tiers'
 import { CACHE_MULTIPLIERS, priceOf } from './prices'
 
 export const BASE_CONTEXT = 30_000
-export const TOKENS_PER_LINE = 150
+export const FINDER_BASE_CONTEXT = 200_000
+export const TOKENS_PER_LINE = 60
+export const FINDER_BASE_TURNS = 85
+export const LINES_PER_TURN = 120
 export const TURNS_BASE = 15
-export const LINES_PER_TURN = 24
 export const MAX_TURNS = 150
 export const OUTPUT_PER_TURN = 800
 export const CHARS_PER_TOKEN = 4
@@ -32,11 +34,11 @@ export interface Estimate {
   models: string[]
 }
 
-const turnsFor = (lines: number, perTurn: number): number => Math.min(MAX_TURNS, TURNS_BASE + Math.ceil(Math.max(0, lines) / perTurn))
+const turnsFor = (lines: number, perTurn: number, base = TURNS_BASE): number => Math.min(MAX_TURNS, base + Math.ceil(Math.max(0, lines) / perTurn))
 
 export const finderReader = (lines: number, model: string | undefined): Reader => ({
-  context: BASE_CONTEXT + Math.max(0, lines) * TOKENS_PER_LINE,
-  turns: turnsFor(lines, LINES_PER_TURN),
+  context: FINDER_BASE_CONTEXT + Math.max(0, lines) * TOKENS_PER_LINE,
+  turns: turnsFor(lines, LINES_PER_TURN, FINDER_BASE_TURNS),
   model,
 })
 

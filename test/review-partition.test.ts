@@ -93,5 +93,8 @@ describe('cost estimate', () => {
     expect(run.finders[0]?.dollars).toBeGreaterThan(10)
     expect(run.finders[0]?.dollars).toBeLessThan(20)
     expect(run.finders[0]?.turns).toBeGreaterThan(90)
+    const sizes = estimateReview(modelerReader(0, 0, 'opus'), [finderReader(777, 'opus'), finderReader(3075, 'opus')], DEFAULT_PRICES).finders
+    expect(sizes.map((finder) => finder.turns).every((turns) => turns >= 85 && turns <= 120)).toBe(true)
+    expect(sizes.map((finder) => finder.context).every((context) => context >= 240_000 && context <= 420_000)).toBe(true)
   })
 })
