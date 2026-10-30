@@ -20,7 +20,7 @@ It prints `index <path>` for each rules index on the walk up from every changed 
 
 ## 2. Standard documents
 
-Only when the [selector](../references/selector.md) runs angle 6, 10 or 13: only the rules finder reads standard bodies.
+Only when the [selector](../references/selector.md) runs angle 6, 10 or 13: only the finders with those angles read standard bodies.
 
 The `standard` lines of `review rules`: Markdown files named like a review document, a convention, a standard, a code style or a guideline, plus the globs of `discover.standards`, minus the globs of `discover.exclude`; `$REVIEW_RULES` (a path or glob) replaces both when set. The default drops commit formats, ADRs and versioning: they are about operating the repository, not about judging code.
 
@@ -32,7 +32,7 @@ Drop what is not a rule: meeting notes, release checklists, documents about the 
 
 **What is read as input, and nothing else:** the rules indexes of step 1 (`AGENTS.md`, `CLAUDE.md` and the other `discover.rules` names closest to the changed files), the task's spec or PRD ([prepare](01-prepare.md#spec)), and the standard bodies of step 2. A README, a directory overview, an ADR index or a glossary map is not read whole; a document an index links is opened only when a candidate needs the rule it holds.
 
-**The filter applies to the input, not the target.** Glossary and ADRs do not go into the shared block: only the rules finder searches them, for [angle 13](../angles/13.architecture.md) sections C and D, by grep and by path, never whole. When the diff **changes** them, their hunks are in the `docs-*` parts and the change is reviewed like code: [angle 11](../angles/11.docs.md), question 2.
+**The filter applies to the input, not the target.** Glossary and ADRs do not go into the shared block: only a finder with [angle 13](../angles/13.architecture.md) searches them, for sections C and D, by grep and by path, never whole. When the diff **changes** them, their hunks are in the `docs-*` parts and the change is reviewed like code: [angle 11](../angles/11.docs.md), question 2.
 
 **Priority in a conflict:** the document closest to the code beats the farther one; `REVIEW.md` beats `AGENTS.md` at the same level.
 
@@ -50,15 +50,15 @@ The severity taxonomy comes from one file ([verify](../gates/severity.md)):
 
 ## 4. Routing
 
-The `route` map of the config says which document goes to which angle. A document goes into the **personal tail** of the brief of every finder that has at least one of those angles ([step 04](04-finders.md)).
+The `route` map of the config says which document goes to which angle. A document goes into the **personal tail** of the brief of every finder that has at least one of those angles and a file of its partition under the document's scope ([step 04](04-finders.md#spawn)).
 
-A document no glob matched goes by default: indexes from `discover.rules` into the **shared block** of every agent; standard bodies from `discover.standards` to the rules finder (angles 6, 10, 13). Other finders do not see the bodies: they do not need them, and the length multiplies by the number of agents.
+A document no glob matched goes by default: indexes from `discover.rules` into the **shared block** of every agent; standard bodies from `discover.standards` to the finders with angles 6, 10 or 13. A body whose scope holds no file of a finder's partition does not reach it: the length multiplies by the number of agents.
 
 The shared block overrides the skill's defaults: the severity taxonomy as a whole ([source](#severity-source)), skip rules and other defaults by their own text.
 
 **The size limit is per angle's share, after routing.** A share over ~400 lines keeps the documents closest to the code.
 
-**Architecture document, ADRs and glossary** for sections B, C and D of [angle 13](../angles/13.architecture.md) are a special case: the search is described in the angle itself, the only recipient is the rules finder.
+**Architecture document, ADRs and glossary** for sections B, C and D of [angle 13](../angles/13.architecture.md) are a special case: the search is described in the angle itself, the only recipients are the finders with angle 13.
 
 **Name the result in the summary, always:**
 

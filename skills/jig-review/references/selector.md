@@ -10,7 +10,7 @@ No selector: `quick` on the [inline path](../steps/04-inline.md) (`N = 1`, or `N
 
 ## Presets
 
-- `full` (default when finders run): every angle, plus `deepening` when the diff adds source files. Cost: on the inline path it adds the cleanup and rules angles to your own reading; with finders it adds the cleanup, rules and tests-and-comments finders (on the 784-line reference merge request the lean layout ran 7 finders on `full` for $10.7, inline on `quick` cost $2.4-2.6);
+- `full` (default when finders run): every angle, plus `deepening` when the diff adds source files. Cost: on the inline path it adds the cleanup and rules angles to your own reading; with finders it adds the same angles to every partition finder's reading;
 - `quick` → `important` (default on the inline path): only what a merge waits for (bugs, security, layers and placement, spread across modules, structural smells), without cleanup and `deepening`.
 
 ## Tokens
@@ -63,7 +63,7 @@ Tokens chosen by the diff shape; the summary prints the expansion first: `select
 
 ## Tiers
 
-Each token runs on a tier and an effort; a finder whose angles differ splits by them ([finders](../steps/04-finders.md#layout-of-angles-over-finders)). Defaults, overridable per token or role in the project config (`tiers`):
+Each token runs on a tier and an effort. Under `fanout` a partition finder whose angles differ splits by them; `lean` and `solo` run one finder per partition on the deep tier at the highest effort of its angles ([finders](../steps/04-finders.md#partitions)). Defaults, overridable per token or role in the project config (`tiers`):
 
 | Token or role | Tier / effort |
 |---|---|
@@ -73,13 +73,14 @@ Each token runs on a tier and an effort; a finder whose angles differ splits by 
 | `verify` (role `verifier`) | deep / medium |
 | `outcome` (role `outcome-checker`) | deep / medium |
 | `composer` (role `composer`) | standard / medium |
+| `flow` (role `flow-modeler`) | deep / high |
 | `deepening` (role `deepener`) | deep / high |
 
 Angle 13 sections C and D (`adr`, `glossary`) run with `architecture`. The verify judge takes another model of its tier than the finder whose candidates it judges ([verify](../steps/05-verify.md#judges)).
 
 ## Deepening
 
-Not an angle and not a thread: a proposal, not a defect, until [promoted](#promotion); verify does not judge it ([angle 13](../angles/13.architecture.md), "not a finding"). One agent, role `deepener`, gets the diff and atom `module-depth`, looks at new and heavily changed modules and returns one deepening, the one with the largest effect: the most leverage for callers and locality for maintainers (how many callers stop knowing what the interface would hide). Format: module, what to deepen, effect, blast radius (how many callers change, with paths). The blast radius is reported but does not decide. Printed as its own section after the findings ([output](../steps/08-output.md#output)); in mode `pre-mr` it goes to Consider. With state on it is written to state as `deepening` ([schema](state-schema.md)) and posting puts it in the FYI note as its own section ([posting](posting.md#8-the-fyi-note-one-per-merge-request)): never a thread, never in the tally, never under the outcome check.
+Not an angle and not a thread: a proposal, not a defect, until [promoted](#promotion); verify does not judge it ([angle 13](../angles/13.architecture.md), "not a finding"). One agent, role `deepener`, gets the diff, the [flow model](../steps/04-flow-model.md) and atom `module-depth`, looks at new and heavily changed modules and returns one deepening, the one with the largest effect: the most leverage for callers and locality for maintainers (how many callers stop knowing what the interface would hide). Format: module, what to deepen, effect, blast radius (how many callers change, with paths). The blast radius is reported but does not decide. Printed as its own section after the findings ([output](../steps/08-output.md#output)); in mode `pre-mr` it goes to Consider. With state on it is written to state as `deepening` ([schema](state-schema.md)) and posting puts it in the FYI note as its own section ([posting](posting.md#8-the-fyi-note-one-per-merge-request)): never a thread, never in the tally, never under the outcome check.
 
 ### Promotion
 

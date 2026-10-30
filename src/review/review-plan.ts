@@ -11,7 +11,10 @@ import { isLockfile } from '../catalog'
 import { fileSource, isTestFile } from '../catalog/languages'
 import { lexComments } from '../catalog/languages'
 import { detectAgent, loadUserConfig, resolveTiers, type TierMap } from '../tiers/tiers'
-import { DIFF_PART_MAX_LINES, writeDiffFiles, type Audience, type DiffFiles } from './diff-files'
+import { DIFF_PART_MAX_LINES, isUnreviewed, writeDiffFiles, type Audience, type DiffFiles } from './diff-files'
+import { estimateLine, estimateReview, type Estimate } from './estimate'
+import { importEdges, type Partition, type PartitionFile } from './partition'
+import { DEFAULT_PRICES } from './prices'
 import { readReviewedState, rereviewScope, type RereviewScope } from './scope'
 import {
   AUTO_INLINE_MAX_N,
@@ -318,9 +321,14 @@ export interface ReviewPlanReport {
   models: TierMap | undefined
   finderModels: Record<string, string | undefined>
   judge: JudgeModel[]
+  flowModel: { path: string; model: string | undefined } | null
+  estimate: Estimate | null
 }
 
 export const INLINE_READER = 'inline'
+export const FLOW_READER = 'flow-model'
+export const FLOW_ATOMS = ['change-impact', 'domain-model', 'system-edges']
+export const STATE_MODEL_PATH = '<state file without .json>.model.md'
 export const LAYOUT_ENV = 'JIG_REVIEW_LAYOUT'
 export const DEFAULT_LAYOUT: Layout = 'auto'
 
@@ -371,9 +379,9 @@ const LAYOUT_SOURCE_TEXT: Readonly<Record<LayoutSource, string>> = { argument: '
 
 const LAYOUT_TEXT: Readonly<Record<ConcreteLayout, string>> = {
   inline: 'the session hunts and judges; a judge subagent only for Important',
-  fanout: 'finders by LINES on their angle tiers, a judge per cluster on the other model',
-  lean: 'finders by LINES on the deep tier, the model of the runner; you judge, a deep judge only for Important',
-  solo: 'finders by LINES on the deep tier prove their own candidates; no judge subagents',
+  fanout: 'a finder per partition and angle tier, a judge per cluster on the other model',
+  lean: 'a finder per partition on the deep tier, the model of the runner; you judge, a deep judge only for Important',
+  solo: 'a finder per partition on the deep tier proves its own candidates; no judge subagents',
 }
 
 const layoutLine = (report: ReviewPlanReport): string => {
@@ -389,17 +397,50 @@ const stateText = (report: ReviewPlanReport): string => {
   return 'off (no merge request or --no-state: no state file, no comment texts, no posting)'
 }
 
-const readLines = (reads: Reads | undefined): string[] =>
-  reads === undefined
-    ? []
-    : [
-        ...(reads.diff.length > 0 ? [`  diff: ${reads.diff.join(' ')}`] : []),
-        `  read: ${reads.angles.join(' ')}`,
-        ...(reads.atoms.length > 0 ? [`  atoms: ${reads.atoms.join(' ')}`] : []),
-      ]
+const diffLine = (reads: Reads | undefined): string[] => (reads === undefined || reads.diff.length === 0 ? [] : [`  diff: ${reads.diff.join(' ')}`])
+
+const angleReadLines = (reads: Reads | undefined): string[] =>
+  reads === undefined ? [] : [`  read: ${reads.angles.join(' ')}`, ...(reads.atoms.length > 0 ? [`  atoms: ${reads.atoms.join(' ')}`] : [])]
+
+const readLines = (reads: Reads | undefined): string[] => [...diffLine(reads), ...angleReadLines(reads)]
 
 const RUNNER_LINE =
   'runner: a review with finders runs in one review runner, never in the session that asked for it: that session spawns role review-runner with this run and waits for its return; a review runner (a review cycle\'s, or one spawned so) goes on'
+
+const MAX_DIRS = 3
+
+const partitionText = (partition: Partition | undefined): string => {
+  if (partition === undefined || partition.files.length === 0) return 'every file'
+  const more = partition.dirs.length - MAX_DIRS
+  const dirs = `${partition.dirs.slice(0, MAX_DIRS).join(', ')}${more > 0 ? ` +${more} more` : ''}`
+  return `${partition.files.length} file${partition.files.length === 1 ? '' : 's'}, ${partition.lines} lines, under ${dirs}`
+}
+
+const flowModelLines = (report: ReviewPlanReport): string[] => {
+  const { plan } = report
+  if (plan.flow === undefined || report.flowModel === null) return []
+  return [
+    `flow model: first, before any finder: one subagent, role flow-modeler, ${gradeText(plan.flow, report.models)} · writes ${report.flowModel.path} · every finder and judge gets it`,
+    ...diffLine(report.reads[FLOW_READER]),
+    ...(report.reads[FLOW_READER]?.atoms.length ? [`  atoms: ${report.reads[FLOW_READER]?.atoms.join(' ')}`] : []),
+  ]
+}
+
+const finderLines = (report: ReviewPlanReport): string[] => {
+  const { plan } = report
+  const byName = new Map(plan.partitions.map((partition) => [partition.name, partition]))
+  const angleSets = new Set(plan.finders.map((finder) => angleList(finder.angles)))
+  const shared = angleSets.size === 1
+  const lines: string[] = []
+  if (plan.finders.length > 0) lines.push(`partitions: ${plan.partitions.length}, by imports between files and shared directories; a link that crosses partitions is in the flow model`)
+  for (const finder of plan.finders) {
+    lines.push(`finder ${finder.name}: partition ${finder.partition} (${partitionText(byName.get(finder.partition))}) · angles ${angleList(finder.angles)} · ${gradeText(finder, report.models)}`)
+    lines.push(...(shared ? diffLine(report.reads[finder.name]) : readLines(report.reads[finder.name])))
+  }
+  const first = plan.finders[0]
+  if (shared && first !== undefined) lines.push('every finder reads:', ...angleReadLines(report.reads[first.name]))
+  return lines
+}
 
 export const formatReport = (report: ReviewPlanReport): string => {
   const { plan, models } = report
@@ -413,7 +454,7 @@ export const formatReport = (report: ReviewPlanReport): string => {
     ...(report.diffFiles === null
       ? []
       : [
-          `diff files: ${report.diffFiles.index} · ${report.diffFiles.parts.length} part${report.diffFiles.parts.length === 1 ? '' : 's'} of at most ${DIFF_PART_MAX_LINES} lines, each file whole, split into code, tests and docs; each finder reads only the parts under its \`diff:\`, never the diff command`,
+          `diff files: ${report.diffFiles.index} · ${report.diffFiles.parts.length} part${report.diffFiles.parts.length === 1 ? '' : 's'} of at most ${DIFF_PART_MAX_LINES} lines, each file whole, split by partition, then into code, tests and docs; each reader reads only the parts under its \`diff:\`, never the diff command`,
         ]),
     `finders: ${report.formula}`,
     layoutLine(report),
@@ -422,18 +463,17 @@ export const formatReport = (report: ReviewPlanReport): string => {
     `config: ${report.config ?? 'default'} · agent: ${report.agent} · max parallel subagents: ${report.maxParallel}`,
     `mode: ${report.mode} · state: ${stateText(report)}`,
     ...(report.rereview === null ? [] : [`re-review scope: ${rereviewText(report.rereview)}`]),
+    ...(report.estimate === null ? [] : [estimateLine(report.estimate)]),
     '',
   ]
   if (plan.path === 'none') lines.push('finders: none (nothing to review)')
+  if (plan.path === 'subagents') lines.push(RUNNER_LINE)
+  lines.push(...flowModelLines(report))
   if (plan.path === 'inline') {
-    lines.push(`path: inline: review in this session, angles ${angleList(plan.angles)}; no finder subagents; no judge subagents unless an Important candidate survives your own gates`)
+    lines.push(`path: inline: review in this session, every file as one partition, angles ${angleList(plan.angles)}; no finder subagents; no judge subagents unless an Important candidate survives your own gates`)
     lines.push(...readLines(report.reads[INLINE_READER]))
   }
-  if (plan.path === 'subagents') lines.push(RUNNER_LINE)
-  for (const finder of plan.finders) {
-    lines.push(`finder ${finder.name}: angles ${angleList(finder.angles)} · ${gradeText(finder, models)}`)
-    lines.push(...readLines(report.reads[finder.name]))
-  }
+  lines.push(...finderLines(report))
   if (plan.deepening !== undefined) lines.push(`deepening: ${gradeText(plan.deepening, models)}`)
   if (plan.path === 'inline') {
     lines.push(`judge for Important candidates: one subagent, ${plan.verify.tier}/${plan.verify.effort}`)
@@ -507,6 +547,20 @@ const rereviewText = (scope: RereviewScope): string => {
   return `patches: ${counted}, the branch's own changes since the last review${renamed === '' ? '' : `; renamed since the last review: ${renamed}`}`
 }
 
+const partitionInput = (stats: readonly FileStat[], root: string, testPaths: readonly string[]): PartitionFile[] =>
+  stats
+    .filter((stat) => !isUnreviewed(stat.path))
+    .map((stat) => {
+      const kind = audienceOf(stat.path, root, testPaths)
+      return { path: stat.path, kind, countedLines: kind === 'code' ? stat.added + stat.deleted : 0 }
+    })
+
+const flowModelPath = (statePath: string | undefined, state: boolean, diffFiles: DiffFiles | null): string => {
+  if (statePath !== undefined) return toSlash(statePath.replace(/\.json$/, '.model.md'))
+  if (state) return STATE_MODEL_PATH
+  return diffFiles === null ? '' : `${diffFiles.dir}/model.md`
+}
+
 export const buildReport = (root: string, options: ReportOptions): ReviewPlanReport => {
   const base = resolveBase(root, options.base, 'review-plan', options.paths ?? [])
   const { stats, diffBase, paths, diffPaths, rereview } = scopeOf(root, base, options.paths ?? [], options.statePath)
@@ -523,7 +577,9 @@ export const buildReport = (root: string, options: ReportOptions): ReviewPlanRep
     spec: options.spec,
   }
   const project = loadProjectConfig(root)
+  const testPaths = project?.config.testPaths ?? []
   const layout = resolveLayout(options.layout, options.layoutEnv, project?.config.layout)
+  const files = partitionInput(stats, root, testPaths)
   const plan = planReview({
     lines,
     shape,
@@ -532,6 +588,11 @@ export const buildReport = (root: string, options: ReportOptions): ReviewPlanRep
     angles: project?.config.angles ?? {},
     grades: project?.config.grades ?? {},
     rereview: options.rereview === true || rereview !== null,
+    files,
+    edges: importEdges(
+      root,
+      files.filter((file) => file.kind !== 'docs').map((file) => file.path),
+    ),
   })
   const loaded = loadUserConfig()
   if (loaded.error !== undefined) throw new Error(`${loaded.label}: ${loaded.error}`)
@@ -543,20 +604,30 @@ export const buildReport = (root: string, options: ReportOptions): ReviewPlanRep
   const mode = options.mode ?? 'review'
   const state = mode === 'review' && options.mergeRequest === true && options.noState !== true
   const pluginRoot = options.pluginRoot ?? resolvePluginRoot()
-  const readers: [string, readonly Angle[]][] = plan.path === 'inline' ? [[INLINE_READER, plan.angles]] : plan.finders.map((finder) => [finder.name, finder.angles])
-  const testPaths = project?.config.testPaths ?? []
-  const diffFiles = plan.path === 'subagents' ? writeDiffFiles(root, [diffBase, ...pathspec(diffPaths)], (path) => audienceOf(path, root, testPaths)) : null
-  const readsOf = (angles: readonly Angle[]): Reads => ({
-    ...readsFor(pluginRoot, angles),
-    diff: diffFiles === null ? [] : audiencesFor(angles).flatMap((audience) => diffFiles.audiences[audience]),
-  })
+  const diffFiles = plan.path === 'none' ? null : writeDiffFiles(root, [diffBase, ...pathspec(diffPaths)], (path) => audienceOf(path, root, testPaths), plan.partitions)
+  const partsOf = (partition: string | undefined, angles: readonly Angle[]): string[] => {
+    if (diffFiles === null) return []
+    const own = partition === undefined ? diffFiles.audiences : diffFiles.partitions[partition]
+    return own === undefined ? [] : audiencesFor(angles).flatMap((audience) => own[audience])
+  }
+  const readsOf = (partition: string | undefined, angles: readonly Angle[]): Reads => ({ ...readsFor(pluginRoot, angles), diff: partsOf(partition, angles) })
+  const readers: [string, Reads][] =
+    plan.path === 'inline' ? [[INLINE_READER, readsOf(undefined, plan.angles)]] : plan.finders.map((finder) => [finder.name, readsOf(finder.partition, finder.angles)])
+  const flowReads: Reads = {
+    angles: [],
+    atoms: FLOW_ATOMS.map((name) => join(pluginRoot, 'atoms', `${name}.md`)).filter((path) => existsSync(path)).map(toSlash),
+    diff: diffFiles?.audiences.code ?? [],
+  }
+  const deepModel = plan.flow === undefined ? undefined : models?.[plan.flow.tier]?.[0]
+  const byPartition = new Map(plan.partitions.map((partition) => [partition.name, partition.lines]))
+  const finderReaders = plan.path === 'inline' ? [{ lines: plan.lines, model: deepModel }] : plan.finders.map((finder) => ({ lines: finder.kind === 'rereview' ? plan.lines : (byPartition.get(finder.partition) ?? 0), model: finderModels[finder.name] }))
   return {
     base: { ref: base.ref, mergeBase: base.mergeBase, source: base.source },
     files: { counted, excluded, untracked },
     scope: [...paths],
     diff: diffCommand(diffBase, diffPaths),
     diffFiles,
-    formula: `ceil(${lines}/${LINES_PER_FINDER}) = ${Math.ceil(lines / LINES_PER_FINDER)}, max ${MAX_FINDERS} → N = ${plan.n}`,
+    formula: `ceil(${lines}/${LINES_PER_FINDER}) = ${Math.ceil(lines / LINES_PER_FINDER)}, max ${MAX_FINDERS} → N = ${plan.n} (the number of partitions)`,
     layout,
     shape,
     plan,
@@ -565,13 +636,15 @@ export const buildReport = (root: string, options: ReportOptions): ReviewPlanRep
     rereview,
     skill: toSlash(join(pluginRoot, 'skills', 'jig-review')),
     steps: stepsFor(plan, mode, state),
-    reads: Object.fromEntries(readers.map(([name, angles]) => [name, readsOf(angles)])),
+    reads: Object.fromEntries([...readers, ...(plan.flow === undefined ? [] : [[FLOW_READER, flowReads] as [string, Reads]])]),
     maxParallel: project?.config.maxParallel ?? MAX_PARALLEL,
     config: project?.label ?? null,
     agent,
     models,
     finderModels,
     judge: plan.judging === 'self' ? [] : judgeModels(usedModels, verifyModels),
+    flowModel: plan.flow === undefined ? null : { path: flowModelPath(options.statePath, state, diffFiles), model: deepModel },
+    estimate: plan.flow === undefined ? null : estimateReview({ lines: plan.lines, model: deepModel }, finderReaders, { ...DEFAULT_PRICES, ...loaded.config.prices }),
   }
 }
 

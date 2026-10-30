@@ -37,7 +37,7 @@ jig creates only `.jig/` in your project: `config.jsonc` goes to git, `config.lo
 ```
 
 - `tiers`: the models of each tier per agent (`jig tiers`).
-- `prices`: estimated US dollars per million tokens per model family, matched as a substring of the model id; replaces the built-in entry of that family (opus 5/25, sonnet 3/15, haiku 1/5). Cache writes cost ×1.25 of input (5-minute) or ×2 (1-hour), cache reads ×0.1. Used by `jig review cost`; every figure it prints is an estimate.
+- `prices`: estimated US dollars per million tokens per model family, matched as a substring of the model id; replaces the built-in entry of that family (opus 5/25, sonnet 3/15, haiku 1/5). Cache writes cost ×1.25 of input (5-minute) or ×2 (1-hour), cache reads ×0.1. Used by `jig review cost` and by the cost estimate of `jig review-plan`; every figure they print is an estimate.
 
 ## Slots and worktrees
 

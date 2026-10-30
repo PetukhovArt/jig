@@ -1,4 +1,5 @@
 import { TIERS, type Tier } from '../tiers/tiers'
+import { partitionFiles, type Edge, type Partition, type PartitionFile } from './partition'
 
 export const EFFORTS = ['low', 'medium', 'high'] as const
 export type Effort = (typeof EFFORTS)[number]
@@ -78,22 +79,10 @@ export const DEFAULT_GRADES: Readonly<Record<string, Grade>> = {
   outcome: { tier: 'deep', effort: 'medium' },
   composer: { tier: 'standard', effort: 'medium' },
   deepening: { tier: 'deep', effort: 'high' },
+  flow: { tier: 'deep', effort: 'high' },
 }
 export const GRADE_KEYS = Object.keys(DEFAULT_GRADES)
 
-const BUG_GROUPS: Readonly<Record<number, readonly (readonly Angle[])[]>> = {
-  1: [[1, 2, 3, 4, 5, 8, 12, 14]],
-  2: [
-    [1, 4, 8, 14],
-    [2, 3, 5, 12],
-  ],
-  3: [[1, 4, 8, 14], [2, 3], [5, 12]],
-  4: [[1, 4, 8], [14], [2, 3], [5, 12]],
-}
-const MAX_BUG_FINDERS = 4
-const CLEANUP: readonly Angle[] = [7, 9]
-const RULES: readonly Angle[] = [6, 10, 11, 13, 15]
-const MECHANICAL: readonly Angle[] = [16, 17]
 const CLEANUP_TOKENS = ['reuse', 'simplification', 'altitude', 'conventions']
 
 export interface Shape {
@@ -130,9 +119,11 @@ export interface PlanInput {
   angles?: Readonly<Partial<Record<Angle, AngleSettings>>>
   grades?: Readonly<Record<string, Grade>>
   rereview?: boolean
+  files?: readonly PartitionFile[]
+  edges?: readonly Edge[]
 }
 
-export type FinderKind = 'bugs' | 'cleanup' | 'rules' | 'mechanical' | 'rereview'
+export type FinderKind = 'partition' | 'rereview'
 
 export const REREVIEW_FULL_LAYOUT_LINES = 600
 const REREVIEW_GRADE: Grade = { tier: 'deep', effort: 'medium' }
@@ -144,6 +135,7 @@ export interface Finder extends Grade {
   name: string
   kind: FinderKind
   angles: Angle[]
+  partition: string
 }
 
 export interface Skipped {
@@ -172,6 +164,8 @@ export interface Plan {
   outputTokens: string[]
   angles: Angle[]
   skipped: Skipped[]
+  partitions: Partition[]
+  flow: Grade | undefined
   finders: Finder[]
   deepening: Grade | undefined
   verify: Grade
@@ -236,7 +230,7 @@ const gradeOf = (angle: Angle, grades: Readonly<Record<string, Grade>>): Grade =
 const roleGrade = (key: string, grades: Readonly<Record<string, Grade>>): Grade =>
   grades[key] ?? { tier: 'deep', effort: 'medium' }
 
-const splitByGrade = (name: string, kind: FinderKind, angles: readonly Angle[], grades: Readonly<Record<string, Grade>>): Finder[] => {
+const splitByGrade = (name: string, partition: string, angles: readonly Angle[], grades: Readonly<Record<string, Grade>>): Finder[] => {
   const byGrade = new Map<string, { grade: Grade; angles: Angle[] }>()
   for (const angle of angles) {
     const grade = gradeOf(angle, grades)
@@ -248,44 +242,34 @@ const splitByGrade = (name: string, kind: FinderKind, angles: readonly Angle[], 
   const entries = [...byGrade.entries()]
   return entries.map(([key, { grade, angles: own }]) => ({
     name: entries.length === 1 ? name : `${name}-${key}`,
-    kind,
+    kind: 'partition',
     angles: own,
+    partition,
     ...grade,
   }))
 }
 
-const layoutFinders = (n: number, angles: readonly Angle[], grades: Readonly<Record<string, Grade>>): Finder[] => {
-  const has = (angle: Angle): boolean => angles.includes(angle)
-  const groups: { name: string; kind: FinderKind; angles: Angle[] }[] = []
-  if (n >= 2) {
-    const bugGroups = BUG_GROUPS[Math.min(n - 1, MAX_BUG_FINDERS)] ?? []
-    bugGroups
-      .map((group) => group.filter(has))
-      .filter((group) => group.length > 0)
-      .forEach((group, index) => groups.push({ name: `bugs-${index + 1}`, kind: 'bugs', angles: group }))
-    groups.push({ name: 'cleanup', kind: 'cleanup', angles: CLEANUP.filter(has) })
-    groups.push({ name: 'rules', kind: 'rules', angles: RULES.filter(has) })
-  } else {
-    groups.push({ name: 'rules', kind: 'rules', angles: ([11, 15] as const).filter(has) })
-  }
-  groups.push({ name: 'mechanical', kind: 'mechanical', angles: MECHANICAL.filter(has) })
-  return groups.filter((group) => group.angles.length > 0).flatMap((group) => splitByGrade(group.name, group.kind, group.angles, grades))
-}
+const highestEffort = (angles: readonly Angle[], grades: Readonly<Record<string, Grade>>): Effort =>
+  EFFORTS[Math.max(0, ...angles.map((angle) => EFFORTS.indexOf(gradeOf(angle, grades).effort)))] ?? 'high'
 
-const FINDER_TIER: Readonly<Partial<Record<ConcreteLayout, Tier>>> = { lean: 'deep', solo: 'deep' }
-const ANGLE_TOKEN_NAMES: readonly string[] = Object.values(ANGLE_TOKENS)
+const partitionFinders = (layout: ConcreteLayout, partitions: readonly Partition[], angles: readonly Angle[], grades: Readonly<Record<string, Grade>>): Finder[] =>
+  partitions.flatMap((partition): Finder[] =>
+    layout === 'fanout'
+      ? splitByGrade(partition.name, partition.name, angles, grades)
+      : [{ name: partition.name, kind: 'partition', angles: [...angles], partition: partition.name, tier: 'deep', effort: highestEffort(angles, grades) }],
+  )
 
-const finderGrades = (layout: ConcreteLayout, grades: Readonly<Record<string, Grade>>): Record<string, Grade> => {
-  const tier = FINDER_TIER[layout]
-  if (tier === undefined) return { ...grades }
-  return Object.fromEntries(Object.entries(grades).map(([key, grade]) => [key, ANGLE_TOKEN_NAMES.includes(key) ? { ...grade, tier } : grade]))
-}
+const namedPartitions = (count: number): Partition[] =>
+  Array.from({ length: count }, (_, index) => ({ name: `p${index + 1}`, files: [], lines: 0, dirs: [] }))
+
+const partitionsOf = (input: PlanInput, count: number): Partition[] =>
+  input.files === undefined ? namedPartitions(count) : partitionFiles(input.files, input.edges ?? [], count)
 
 export const planReview = (input: PlanInput): Plan => {
   const n = finderCount(input.lines)
   const layout = resolveAuto(input.layout ?? 'auto', n)
   const inline = n === 1 || (n > 1 && layout === 'inline')
-  const grades = finderGrades(layout, { ...DEFAULT_GRADES, ...input.grades })
+  const grades = { ...DEFAULT_GRADES, ...input.grades }
   const selection = parseSelector(input.selector, input.shape, n, inline)
   const wanted = selectedAngles(selection.tokens, input.angles)
   const skipped: Skipped[] = []
@@ -302,8 +286,14 @@ export const planReview = (input: PlanInput): Plan => {
   const light = isLightRereview(input.rereview, n, input.lines)
   const wantsDeepening = !light && (selection.tokens.length === 0 ? input.shape.newSourceFiles > 0 : selection.tokens.includes('deepening'))
   const path: ReviewPath = usedForCode.length === 0 ? 'none' : inline ? 'inline' : 'subagents'
+  const partitions = path === 'none' ? [] : partitionsOf(input, path === 'subagents' && !light ? Math.max(1, n) : 1)
+  const whole = partitions[0]?.name ?? 'p1'
   const finders: Finder[] =
-    path !== 'subagents' ? [] : light ? [{ name: 'rereview', kind: 'rereview', angles: usedForCode, ...REREVIEW_GRADE }] : layoutFinders(n, usedForCode, grades)
+    path !== 'subagents'
+      ? []
+      : light
+        ? [{ name: 'rereview', kind: 'rereview', angles: usedForCode, partition: whole, ...REREVIEW_GRADE }]
+        : partitionFinders(layout, partitions, usedForCode, grades)
   const judging: Judging = path !== 'subagents' || layout === 'lean' ? 'important' : layout === 'solo' ? 'self' : 'clusters'
   return {
     lines: input.lines,
@@ -315,6 +305,8 @@ export const planReview = (input: PlanInput): Plan => {
     outputTokens: selection.tokens.filter((token) => token !== 'deepening'),
     angles: usedForCode,
     skipped: skipped.sort((left, right) => left.angle - right.angle),
+    partitions,
+    flow: path === 'none' ? undefined : roleGrade('flow', grades),
     finders,
     deepening: wantsDeepening && n > 0 ? roleGrade('deepening', grades) : undefined,
     verify: roleGrade('verify', grades),
@@ -353,6 +345,7 @@ export const stepsFor = (plan: Plan, mode: Mode, state: boolean): StepRef[] => {
       { file: 'steps/09-rereview.md', when: 'only when the state file exists: replaces the next steps up to rank for its scope' },
     )
   }
+  steps.push({ file: 'steps/04-flow-model.md' })
   if (plan.path === 'inline') steps.push({ file: 'steps/04-inline.md' }, ...gateFiles(plan.angles).map((file) => ({ file })))
   else if (plan.judging === 'important') {
     steps.push({ file: 'steps/04-finders.md' }, { file: 'steps/05-verify.md', when: 'sections "Dedup" and "Layout lean"' }, ...gateFiles(plan.angles).map((file) => ({ file })))

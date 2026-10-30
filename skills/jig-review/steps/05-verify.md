@@ -10,6 +10,12 @@ Several finders that raised one defect reach verify as ONE candidate: otherwise 
 
 One line with **different** mechanisms: two candidates, never merged.
 
+Two finders on both ends of one cross-partition chain raise it from their own partitions, at different lines: one `root` collapses them like any other chain; the `cross:` links they name join the evidence.
+
+## Cross-partition candidates
+
+A candidate with `cross: L<n>` ([finder output](04-finders.md#what-a-finder-returns)) is judged on both sides: whoever judges it (a judge subagent, or you under `lean`) reads the link `L<n>` in the flow model, then the code on the other side at the `file:line` it names, before the verdict. The model says where to look; the verdict quotes the code on both sides. The model and the code disagree (the link is not there): the code wins, and the summary names the gap in the model.
+
 ## Head before verify
 
 Mode `review` with state on only. While finders ran, the author may have pushed fixes, and judges spent turns on `REFUTED: fixed in <sha>`.
@@ -30,7 +36,7 @@ One judge subagent per cluster, role `verifier`, tier and effort from its templa
 
 **The judge runs on a different model of its tier than the finder whose candidates it judges.** `jig review-plan` prints the pairs (`candidates from <model A> → judge <model B>`). A defect that survives a second model is the "two models found it" signal; a judge on the finder's own model shares its blind spots. The tier has one model only: use it, and the summary says `judge: same model as the finder`.
 
-**Fork or fresh, in the foreground.** A judge whose model is your own is forked after dedup, as [finders](04-finders.md#shared-context) are: it inherits the diff, the read set and the candidates. Others are spawned fresh with the brief below. Run them in the foreground; never `sleep`, never read their output files in a loop: each such turn re-sends the whole context.
+**Fork or fresh, in the foreground.** A judge whose model is your own is forked after dedup, as [finders](04-finders.md#shared-context) are: it inherits the flow model and the candidates. Others are spawned fresh with the brief below. Run them in the foreground; never `sleep`, never read their output files in a loop: each such turn re-sends the whole context.
 
 ### Gate files
 
@@ -44,7 +50,7 @@ A cluster of bugs gets neither the rule form nor the cleanup rules: a shared bri
 
 ### Brief
 
-In this order: the diff index `jig review-plan` printed under `diff files:` (the judge reads its cluster's files' ranges from the parts), the `already read` list, the files the cluster needs, the cluster's candidates, the project's severity sections verbatim ([source](02-rules.md#severity-source)), the angle ceilings from the config when set, facts and decisions ([prepare](01-prepare.md#facts-and-decisions)), on a re-review the **fix-hunk map** ([re-review](09-rereview.md)), then the gate file paths and the role template path `<root>/skills/jig/references/roles/verifier.md`.
+In this order: the diff index `jig review-plan` printed under `diff files:` (the judge reads its cluster's files' ranges from the parts), the flow model path ([flow model](04-flow-model.md)), the files the cluster needs, the cluster's candidates, the project's severity sections verbatim ([source](02-rules.md#severity-source)), the angle ceilings from the config when set, facts and decisions ([prepare](01-prepare.md#facts-and-decisions)), on a re-review the **fix-hunk map** ([re-review](09-rereview.md)), then the gate file paths and the role template path `<root>/skills/jig/references/roles/verifier.md`.
 
 **Returned per candidate, in one go:** verdict, severity, `severity_class`, `severity_gate`, `blocks` (a blocking finding only), angle, category, and a one-sentence `summary` naming the defect plus the evidence the verdict rests on: the quoted line, the input, the state. **No comment prose**: verify judges, it does not write. Texts come in a [separate step](07-comments.md), after the gate, so nothing is written for a candidate that dies.
 
@@ -52,7 +58,7 @@ In this order: the diff index `jig review-plan` printed under `diff files:` (the
 
 Only when `jig review-plan` printed `layout: lean`: the finders ran on the deep tier, and instead of a judge per cluster you judge, as on the [inline path](04-inline.md#judge-yourself). Clusters do not apply; [head before verify](#head-before-verify) does.
 
-1. Judge every deduped candidate yourself by the gate files the steps list, the self-check of `gates/bugs.md` asked literally before each bug `CONFIRMED`; refute with a quoted line, not with doubt.
+1. Judge every deduped candidate yourself by the gate files the steps list, the self-check of `gates/bugs.md` asked literally before each bug `CONFIRMED`, a [cross-partition](#cross-partition-candidates) one on both sides; refute with a quoted line, not with doubt.
 2. No `CONFIRMED` `Important`: no subagent; the output says `judge: you only (no Important candidate)`.
 3. One or more: **one** judge subagent for all of them, role `verifier`, on the model and grade `jig review-plan` printed (`candidates from <model A> → judge <model B>`), briefed as the [inline judge](04-inline.md#second-model-only-for-important). Its verdict stands, as there.
 
