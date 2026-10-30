@@ -1,3 +1,6 @@
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import type { ForgeName } from '../core/config'
 import { EnvironmentError, firstLine, parseJsonPages, type Exec } from './exec'
 
@@ -44,6 +47,8 @@ export interface Forge {
   /** undefined: no such thread on the merge request. */
   discussion(iid: number, id: string): Discussion | undefined
   deleteNote(iid: number, noteId: string): void
+  reply(iid: number, discussionId: string, body: string): void
+  resolve(iid: number, discussionId: string): void
 }
 
 /** `github` when the remote is on a GitHub host, `gitlab` otherwise (self-hosted GitLab often has no "gitlab" in its host). */
@@ -156,6 +161,21 @@ export const gitlabForge = (exec: Exec, cwd: string): Forge => {
       const path = `${mr(iid)}/notes/${noteId}`
       cli.run(['api', '--method', 'DELETE', path], `api DELETE ${path}`)
     },
+    reply(iid, discussionId, body) {
+      const path = `${mr(iid)}/discussions/${discussionId}/notes`
+      const dir = mkdtempSync(join(tmpdir(), 'jig-note-'))
+      try {
+        const payload = join(dir, 'payload.json')
+        writeFileSync(payload, JSON.stringify({ body }))
+        cli.run(['api', '--method', 'POST', path, '-H', 'Content-Type: application/json', '--input', payload], `api POST ${path}`)
+      } finally {
+        rmSync(dir, { recursive: true, force: true })
+      }
+    },
+    resolve(iid, discussionId) {
+      const path = `${mr(iid)}/discussions/${discussionId}`
+      cli.run(['api', '--method', 'PUT', path, '-f', 'resolved=true'], `api PUT ${path}`)
+    },
   }
 }
 
@@ -239,8 +259,10 @@ export const githubForge = (exec: Exec, cwd: string): Forge => {
       }))
       return [...threads, ...general]
     },
-    discussion: () => unsupported('withdraw'),
+    discussion: () => unsupported('withdraw and merge'),
     deleteNote: () => unsupported('withdraw'),
+    reply: () => unsupported('merge'),
+    resolve: () => unsupported('merge'),
   }
 }
 

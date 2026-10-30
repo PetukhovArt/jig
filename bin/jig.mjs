@@ -7483,6 +7483,9 @@ var reviewDecision = (facts2) => {
 };
 
 // src/review-cycle/forge.ts
+import { mkdtempSync as mkdtempSync2, rmSync as rmSync8, writeFileSync as writeFileSync9 } from "node:fs";
+import { tmpdir as tmpdir2 } from "node:os";
+import { join as join32 } from "node:path";
 var detectForge = (remote) => /github/i.test(remote) ? "github" : "gitlab";
 var isObject4 = (value) => typeof value === "object" && value !== null && !Array.isArray(value);
 var text2 = (value) => typeof value === "string" ? value : typeof value === "number" ? String(value) : "";
@@ -7582,6 +7585,21 @@ var gitlabForge = (exec, cwd) => {
     deleteNote(iid, noteId) {
       const path2 = `${mr(iid)}/notes/${noteId}`;
       cli.run(["api", "--method", "DELETE", path2], `api DELETE ${path2}`);
+    },
+    reply(iid, discussionId, body) {
+      const path2 = `${mr(iid)}/discussions/${discussionId}/notes`;
+      const dir = mkdtempSync2(join32(tmpdir2(), "jig-note-"));
+      try {
+        const payload = join32(dir, "payload.json");
+        writeFileSync9(payload, JSON.stringify({ body }));
+        cli.run(["api", "--method", "POST", path2, "-H", "Content-Type: application/json", "--input", payload], `api POST ${path2}`);
+      } finally {
+        rmSync8(dir, { recursive: true, force: true });
+      }
+    },
+    resolve(iid, discussionId) {
+      const path2 = `${mr(iid)}/discussions/${discussionId}`;
+      cli.run(["api", "--method", "PUT", path2, "-f", "resolved=true"], `api PUT ${path2}`);
     }
   };
 };
@@ -7657,28 +7675,30 @@ var githubForge = (exec, cwd) => {
       }));
       return [...threads, ...general];
     },
-    discussion: () => unsupported("withdraw"),
-    deleteNote: () => unsupported("withdraw")
+    discussion: () => unsupported("withdraw and merge"),
+    deleteNote: () => unsupported("withdraw"),
+    reply: () => unsupported("merge"),
+    resolve: () => unsupported("merge")
   };
 };
 var createForge = (name, exec, cwd) => name === "github" ? githubForge(exec, cwd) : gitlabForge(exec, cwd);
 
 // src/review-cycle/import-state.ts
 import { createHash as createHash9 } from "node:crypto";
-import { copyFileSync as copyFileSync5, existsSync as existsSync18, mkdirSync as mkdirSync15, readdirSync as readdirSync16, readFileSync as readFileSync31, statSync as statSync13, writeFileSync as writeFileSync10 } from "node:fs";
-import { tmpdir as tmpdir2 } from "node:os";
-import { basename as basename5, dirname as dirname14, join as join33 } from "node:path";
+import { copyFileSync as copyFileSync5, existsSync as existsSync18, mkdirSync as mkdirSync15, readdirSync as readdirSync16, readFileSync as readFileSync31, statSync as statSync13, writeFileSync as writeFileSync11 } from "node:fs";
+import { tmpdir as tmpdir3 } from "node:os";
+import { basename as basename5, dirname as dirname14, join as join34 } from "node:path";
 
 // src/review-cycle/state.ts
 import { createHash as createHash8 } from "node:crypto";
-import { copyFileSync as copyFileSync4, existsSync as existsSync17, readFileSync as readFileSync30, writeFileSync as writeFileSync9 } from "node:fs";
-import { join as join32 } from "node:path";
+import { copyFileSync as copyFileSync4, existsSync as existsSync17, readFileSync as readFileSync30, writeFileSync as writeFileSync10 } from "node:fs";
+import { join as join33 } from "node:path";
 var FINDING_STATUSES = ["open", "fixed", "skipped", "unverified", "no_change_needed", "optional"];
 var reviewStateKey = (remote, target) => {
   const content = Buffer.from(`${remote}:${target}`, "utf8");
   return createHash8("sha1").update(`blob ${content.length}\0`).update(content).digest("hex").slice(0, 12);
 };
-var reviewStatePath = (mainRoot, remote, target) => join32(mainRoot, ".jig", "runs", "review", `${reviewStateKey(remote, target)}.json`);
+var reviewStatePath = (mainRoot, remote, target) => join33(mainRoot, ".jig", "runs", "review", `${reviewStateKey(remote, target)}.json`);
 var isObject5 = (value) => typeof value === "object" && value !== null && !Array.isArray(value);
 var optionalText = (value) => typeof value === "string" && value !== "" ? value : void 0;
 var isStatus = (value) => typeof value === "string" && FINDING_STATUSES.includes(value);
@@ -7690,17 +7710,26 @@ var parseReviewState = (text3, label) => {
     throw new EnvironmentError(`${label}: not JSON`);
   }
   if (!isObject5(raw) || !Array.isArray(raw["findings"])) throw new EnvironmentError(`${label}: no findings array`);
-  const findings = raw["findings"].map((entry, index) => {
-    if (!isObject5(entry) || !isStatus(entry["status"])) throw new EnvironmentError(`${label}: findings[${index}] has no valid status`);
+  const parsed = raw["findings"].map((entry, index) => {
+    if (!isObject5(entry)) return `findings[${index}]: not an object`;
+    const status = entry["status"];
+    if (!isStatus(status)) return `findings[${index}] (${optionalText(entry["id"]) ?? "no id"}): status ${JSON.stringify(status ?? null)}`;
     return {
       id: optionalText(entry["id"]) ?? `#${index}`,
-      status: entry["status"],
+      status,
       severity: optionalText(entry["severity"]),
       category: optionalText(entry["category"]),
       discussionId: optionalText(entry["discussion_id"]),
       specQuote: typeof entry["spec_quote"] === "string" ? entry["spec_quote"] : void 0
     };
   });
+  const invalid = parsed.filter((item) => typeof item === "string");
+  if (invalid.length > 0) {
+    throw new EnvironmentError(
+      `${label}: ${invalid.join(", ")} not one of ${FINDING_STATUSES.join("|")}; the state was edited outside jig: fix the status (a duplicate thread: jig review-cycle merge) or restore a .bak copy`
+    );
+  }
+  const findings = parsed.filter((item) => typeof item !== "string");
   return { lastReviewedSha: optionalText(raw["last_reviewed_sha"]), diffHash: optionalText(raw["diff_hash"]), findings };
 };
 var readReviewState = (path2) => {
@@ -7750,27 +7779,31 @@ var specHold = (state, spec2) => {
   const isQuoted = (finding) => finding.specQuote !== void 0 && flat(finding.specQuote) !== "" && specText.includes(flat(finding.specQuote));
   return state.findings.filter((finding) => finding.category === "spec" && finding.status === "open" && finding.discussionId === void 0 && !isQuoted(finding)).map((finding) => finding.id);
 };
-var withdrawFromState = (path2, gone, now = /* @__PURE__ */ new Date()) => {
-  if (gone.length === 0 || !existsSync17(path2)) return 0;
+var updateFindings = (path2, ids, backup, change, now) => {
+  if (ids.length === 0 || !existsSync17(path2)) return 0;
   const raw = JSON.parse(readFileSync30(path2, "utf8"));
   if (!isObject5(raw) || !Array.isArray(raw["findings"])) throw new EnvironmentError(`${path2}: no findings array`);
   const hits = raw["findings"].filter(
-    (finding) => isObject5(finding) && typeof finding["discussion_id"] === "string" && gone.includes(finding["discussion_id"])
+    (finding) => isObject5(finding) && typeof finding["discussion_id"] === "string" && ids.includes(finding["discussion_id"])
   );
   if (hits.length === 0) return 0;
-  copyFileSync4(path2, `${path2}.bak-withdraw-${now.toISOString().replace(/[:.]/g, "-")}`);
-  for (const finding of hits) {
-    finding["status"] = "no_change_needed";
-    finding["discussion_id"] = null;
-  }
-  writeFileSync9(path2, `${JSON.stringify(raw, null, 2)}
+  copyFileSync4(path2, `${path2}.bak-${backup}-${now.toISOString().replace(/[:.]/g, "-")}`);
+  hits.forEach(change);
+  writeFileSync10(path2, `${JSON.stringify(raw, null, 2)}
 `);
   return hits.length;
 };
+var mergeInState = (path2, merged, now = /* @__PURE__ */ new Date()) => updateFindings(path2, merged, "merge", (finding) => {
+  finding["status"] = "no_change_needed";
+}, now);
+var withdrawFromState = (path2, gone, now = /* @__PURE__ */ new Date()) => updateFindings(path2, gone, "withdraw", (finding) => {
+  finding["status"] = "no_change_needed";
+  finding["discussion_id"] = null;
+}, now);
 
 // src/review-cycle/import-state.ts
 var LEGACY_STATE_DIR = "claude-review";
-var defaultImportDir = () => join33(tmpdir2(), LEGACY_STATE_DIR);
+var defaultImportDir = () => join34(tmpdir3(), LEGACY_STATE_DIR);
 var legacyStateKey = (remote, iid) => createHash9("sha1").update(`${remote}:${iid}`).digest("hex").slice(0, 12);
 var LEGACY_FILE = /^(.+)-([0-9a-f]{12})\.json$/;
 var MAX_IID = 99999;
@@ -7873,7 +7906,7 @@ var importLegacyStates = (options) => {
   for (const name of readdirSync16(from).sort()) {
     const fileKey = LEGACY_FILE.exec(name)?.[2];
     if (fileKey === void 0) continue;
-    const source = join33(from, name);
+    const source = join34(from, name);
     const raw = readJson(source);
     if (!isObject6(raw) || raw["remote"] !== remote) {
       other++;
@@ -7907,7 +7940,7 @@ var importLegacyStates = (options) => {
     }
     if (!dryRun) {
       mkdirSync15(dirname14(destination), { recursive: true });
-      writeFileSync10(destination, `${JSON.stringify(state, null, 2)}
+      writeFileSync11(destination, `${JSON.stringify(state, null, 2)}
 `);
     }
     imported++;
@@ -7973,6 +8006,7 @@ var USAGE6 = [
   "  head <mr> [--reviewed <sha>] [--repo <dir>]",
   "  spec-hold <state> <spec>",
   "  withdraw <mr> <discussion-id>... [--repo <dir>]",
+  "  merge <mr> <keep-discussion-id> <duplicate-discussion-id>... --note <file> [--repo <dir>]",
   "  verdict <refs>=<outcome>... [--adapter <path>] [--dry-run]"
 ].join("\n");
 var UsageError2 = class extends Error {
@@ -8087,6 +8121,7 @@ var flagOptions = {
   repo: { type: "string" },
   from: { type: "string" },
   reviewed: { type: "string" },
+  note: { type: "string" },
   "dry-run": { type: "boolean" }
 };
 var parse = (args) => {
@@ -8265,6 +8300,47 @@ var withdraw = (args, deps) => {
   writeState2();
   return 0;
 };
+var merge = (args, deps) => {
+  const { values, positionals } = parse(args);
+  const [mr, keep, ...duplicates] = positionals;
+  const iid = mrNumber(mr);
+  if (keep === void 0 || duplicates.length === 0) throw new UsageError2("merge needs <keep-discussion-id> and at least one duplicate discussion id");
+  if (values.note === void 0) throw new UsageError2("merge needs --note <file>: the reply each duplicate thread gets before it is resolved");
+  const note = readText4(resolve13(deps.cwd, values.note)).trim();
+  if (note === "") throw new UsageError2(`merge: ${values.note} is empty`);
+  const repo = repoContext(resolve13(deps.cwd, values.repo ?? "."), deps.exec);
+  if (repo.forge.discussion(iid, keep) === void 0) throw new EnvironmentError(`no thread ${keep} on !${iid} to keep`);
+  const path2 = reviewStatePath(repo.mainRoot, repo.remote, String(iid));
+  const me = repo.forge.me();
+  const merged = [];
+  const writeState2 = () => {
+    const count = mergeInState(path2, merged);
+    deps.print(existsSync19(path2) ? `state: ${toSlash(path2)} \xB7 findings merged: ${count}` : "state: none");
+  };
+  try {
+    for (const id of duplicates) {
+      const discussion = repo.forge.discussion(iid, id);
+      if (discussion === void 0) {
+        deps.print(`MISSING ${id}`);
+        continue;
+      }
+      const opening = discussion.notes.find((item) => !item.system);
+      if (opening === void 0 || opening.author !== me) {
+        deps.print(`REFUSED ${id} opened by ${opening?.author ?? "nobody"}, not by you`);
+        continue;
+      }
+      repo.forge.reply(iid, id, note);
+      repo.forge.resolve(iid, id);
+      merged.push(id);
+      deps.print(`MERGED ${id} \u2192 ${keep}`);
+    }
+  } catch (error) {
+    writeState2();
+    throw error;
+  }
+  writeState2();
+  return 0;
+};
 var HELD_ALIASES = /* @__PURE__ */ new Set(["skipped", "blocked", "stale", "unchanged", "draft", "busy", "open"]);
 var isOutcome = (word) => OUTCOMES.includes(word);
 var parseOutcome = (arg) => {
@@ -8297,6 +8373,7 @@ var subcommands = /* @__PURE__ */ new Map([
   ["head", headCommand],
   ["spec-hold", specHoldCommand],
   ["withdraw", withdraw],
+  ["merge", merge],
   ["verdict", verdict]
 ]);
 var runReviewCycleWith = (args, deps) => {
@@ -8329,8 +8406,8 @@ var runReviewCycle = (args) => runReviewCycleWith(args, { exec: spawnExec, cwd: 
 
 // src/slot/slot.ts
 import { spawnSync as spawnSync7 } from "node:child_process";
-import { existsSync as existsSync20, mkdirSync as mkdirSync16, readFileSync as readFileSync33, rmSync as rmSync8, writeFileSync as writeFileSync11 } from "node:fs";
-import { basename as basename7, dirname as dirname15, isAbsolute as isAbsolute6, join as join34, relative as relative7, resolve as resolve14 } from "node:path";
+import { existsSync as existsSync20, mkdirSync as mkdirSync16, readFileSync as readFileSync33, rmSync as rmSync9, writeFileSync as writeFileSync12 } from "node:fs";
+import { basename as basename7, dirname as dirname15, isAbsolute as isAbsolute6, join as join35, relative as relative7, resolve as resolve14 } from "node:path";
 import { parseArgs as parseArgs7 } from "node:util";
 
 // src/worktree/lockfiles.ts
@@ -8453,9 +8530,9 @@ var loadContext = () => {
 var formatDuplicates = (duplicates) => [...duplicates].map(([slot, group]) => `s${slot}: ${group.map((worktree) => toSlash(worktree.path)).join(", ")}`).join("; ");
 var isTracked = (dir, file) => git(["ls-files", "--error-unmatch", "--", file], dir).ok;
 var writeLocalFile = (dir, file, content) => {
-  const path2 = join34(dir, file);
+  const path2 = join35(dir, file);
   mkdirSync16(dirname15(path2), { recursive: true });
-  writeFileSync11(path2, content);
+  writeFileSync12(path2, content);
   if (isTracked(dir, file)) {
     git(["update-index", "--skip-worktree", "--", file], dir);
   }
@@ -8486,8 +8563,8 @@ var readJsonObject = (path2) => {
   return isObject7 ? value : {};
 };
 var writeAgentView = (mainRoot, dir, slots, slot, cdpPort) => {
-  const own = join34(dir, AGENT_VIEW_CONFIG2);
-  const base = readJsonObject(existsSync20(own) ? own : join34(mainRoot, AGENT_VIEW_CONFIG2));
+  const own = join35(dir, AGENT_VIEW_CONFIG2);
+  const base = readJsonObject(existsSync20(own) ? own : join35(mainRoot, AGENT_VIEW_CONFIG2));
   writeLocalFile(dir, AGENT_VIEW_CONFIG2, `${JSON.stringify(agentViewConfig(base, slots, slot, cdpPort), null, 2)}
 `);
 };
@@ -8497,7 +8574,7 @@ var worktreeAddArgs = (cwd, dir, branch) => {
   return branchExists(cwd, branch) ? ["worktree", "add", dir, branch] : ["worktree", "add", dir, "-b", branch];
 };
 var reserveSlot = async (context, slots, options) => {
-  const lock = await acquireLock(join34(ensureJigDir(context.mainRoot).cache, SLOT_LOCK));
+  const lock = await acquireLock(join35(ensureJigDir(context.mainRoot).cache, SLOT_LOCK));
   if (lock === void 0) return fail3("slot new is running elsewhere, retry", 1);
   try {
     git(["worktree", "prune"], context.projectRoot);
@@ -8553,7 +8630,7 @@ var slotNew = async (args) => {
     writeAgentView(context.mainRoot, dir, slots, slot, cdpPort);
   }
   for (const cache of slots.clearCache ?? []) {
-    rmSync8(insideDir(dir, cache), { recursive: true, force: true });
+    rmSync9(insideDir(dir, cache), { recursive: true, force: true });
   }
   const deps = poolDeps(context, dir);
   if (deps?.kind === "failed") return fail3(`install failed in slot ${slot} ${toSlash(dir)}: ${deps.detail}`, 1);

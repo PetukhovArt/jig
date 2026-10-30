@@ -48,17 +48,26 @@ export const parseReviewState = (text: string, label: string): ReviewState => {
     throw new EnvironmentError(`${label}: not JSON`)
   }
   if (!isObject(raw) || !Array.isArray(raw['findings'])) throw new EnvironmentError(`${label}: no findings array`)
-  const findings = raw['findings'].map((entry, index): Finding => {
-    if (!isObject(entry) || !isStatus(entry['status'])) throw new EnvironmentError(`${label}: findings[${index}] has no valid status`)
+  const parsed = raw['findings'].map((entry: unknown, index): Finding | string => {
+    if (!isObject(entry)) return `findings[${index}]: not an object`
+    const status = entry['status']
+    if (!isStatus(status)) return `findings[${index}] (${optionalText(entry['id']) ?? 'no id'}): status ${JSON.stringify(status ?? null)}`
     return {
       id: optionalText(entry['id']) ?? `#${index}`,
-      status: entry['status'],
+      status,
       severity: optionalText(entry['severity']),
       category: optionalText(entry['category']),
       discussionId: optionalText(entry['discussion_id']),
       specQuote: typeof entry['spec_quote'] === 'string' ? entry['spec_quote'] : undefined,
     }
   })
+  const invalid = parsed.filter((item): item is string => typeof item === 'string')
+  if (invalid.length > 0) {
+    throw new EnvironmentError(
+      `${label}: ${invalid.join(', ')} not one of ${FINDING_STATUSES.join('|')}; the state was edited outside jig: fix the status (a duplicate thread: jig review-cycle merge) or restore a .bak copy`,
+    )
+  }
+  const findings = parsed.filter((item): item is Finding => typeof item !== 'string')
   return { lastReviewedSha: optionalText(raw['last_reviewed_sha']), diffHash: optionalText(raw['diff_hash']), findings }
 }
 
@@ -141,23 +150,32 @@ export const specHold = (state: ReviewState, spec: string): string[] => {
     .map((finding) => finding.id)
 }
 
+const updateFindings = (path: string, ids: readonly string[], backup: string, change: (finding: Json) => void, now: Date): number => {
+  if (ids.length === 0 || !existsSync(path)) return 0
+  const raw: unknown = JSON.parse(readFileSync(path, 'utf8'))
+  if (!isObject(raw) || !Array.isArray(raw['findings'])) throw new EnvironmentError(`${path}: no findings array`)
+  const hits = raw['findings'].filter(
+    (finding): finding is Json => isObject(finding) && typeof finding['discussion_id'] === 'string' && ids.includes(finding['discussion_id']),
+  )
+  if (hits.length === 0) return 0
+  copyFileSync(path, `${path}.bak-${backup}-${now.toISOString().replace(/[:.]/g, '-')}`)
+  hits.forEach(change)
+  writeFileSync(path, `${JSON.stringify(raw, null, 2)}\n`)
+  return hits.length
+}
+
+/** Findings of merged duplicate threads close as `no_change_needed` and keep their resolved thread, so no run adopts or reposts it. */
+export const mergeInState = (path: string, merged: readonly string[], now: Date = new Date()): number =>
+  updateFindings(path, merged, 'merge', (finding) => {
+    finding['status'] = 'no_change_needed'
+  }, now)
+
 /**
  * Withdrawn threads leave the state: their findings become `no_change_needed` without a thread, so
  * the next run neither reposts nor rechecks them. A copy of the file is kept first.
  */
-export const withdrawFromState = (path: string, gone: readonly string[], now: Date = new Date()): number => {
-  if (gone.length === 0 || !existsSync(path)) return 0
-  const raw: unknown = JSON.parse(readFileSync(path, 'utf8'))
-  if (!isObject(raw) || !Array.isArray(raw['findings'])) throw new EnvironmentError(`${path}: no findings array`)
-  const hits = raw['findings'].filter(
-    (finding): finding is Json => isObject(finding) && typeof finding['discussion_id'] === 'string' && gone.includes(finding['discussion_id']),
-  )
-  if (hits.length === 0) return 0
-  copyFileSync(path, `${path}.bak-withdraw-${now.toISOString().replace(/[:.]/g, '-')}`)
-  for (const finding of hits) {
+export const withdrawFromState = (path: string, gone: readonly string[], now: Date = new Date()): number =>
+  updateFindings(path, gone, 'withdraw', (finding) => {
     finding['status'] = 'no_change_needed'
     finding['discussion_id'] = null
-  }
-  writeFileSync(path, `${JSON.stringify(raw, null, 2)}\n`)
-  return hits.length
-}
+  }, now)

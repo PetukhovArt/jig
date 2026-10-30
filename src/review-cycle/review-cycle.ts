@@ -24,7 +24,18 @@ import {
 } from './filter'
 import { createForge, detectForge, type Forge, type Head } from './forge'
 import { defaultImportDir, importLegacyStates } from './import-state'
-import { blockingFindings, parseReviewState, parseTally, readReviewState, reconcile, reviewStatePath, specHold, standingFindings, withdrawFromState } from './state'
+import {
+  blockingFindings,
+  mergeInState,
+  parseReviewState,
+  parseTally,
+  readReviewState,
+  reconcile,
+  reviewStatePath,
+  specHold,
+  standingFindings,
+  withdrawFromState,
+} from './state'
 import { applyVerdicts, foldVerdicts, OUTCOMES, type MrOutcome, type Outcome } from './verdict'
 
 type Command = (args: string[]) => number
@@ -48,6 +59,7 @@ const USAGE = [
   '  head <mr> [--reviewed <sha>] [--repo <dir>]',
   '  spec-hold <state> <spec>',
   '  withdraw <mr> <discussion-id>... [--repo <dir>]',
+  '  merge <mr> <keep-discussion-id> <duplicate-discussion-id>... --note <file> [--repo <dir>]',
   '  verdict <refs>=<outcome>... [--adapter <path>] [--dry-run]',
 ].join('\n')
 
@@ -194,11 +206,12 @@ const flagOptions = {
   repo: { type: 'string' },
   from: { type: 'string' },
   reviewed: { type: 'string' },
+  note: { type: 'string' },
   'dry-run': { type: 'boolean' },
 } as const
 
 interface Parsed {
-  values: { adapter?: string; json?: boolean; repo?: string; from?: string; reviewed?: string; 'dry-run'?: boolean }
+  values: { adapter?: string; json?: boolean; repo?: string; from?: string; reviewed?: string; note?: string; 'dry-run'?: boolean }
   positionals: string[]
 }
 
@@ -395,6 +408,48 @@ const withdraw = (args: string[], deps: CycleDeps): number => {
   return 0
 }
 
+const merge = (args: string[], deps: CycleDeps): number => {
+  const { values, positionals } = parse(args)
+  const [mr, keep, ...duplicates] = positionals
+  const iid = mrNumber(mr)
+  if (keep === undefined || duplicates.length === 0) throw new UsageError('merge needs <keep-discussion-id> and at least one duplicate discussion id')
+  if (values.note === undefined) throw new UsageError('merge needs --note <file>: the reply each duplicate thread gets before it is resolved')
+  const note = readText(resolve(deps.cwd, values.note)).trim()
+  if (note === '') throw new UsageError(`merge: ${values.note} is empty`)
+  const repo = repoContext(resolve(deps.cwd, values.repo ?? '.'), deps.exec)
+  if (repo.forge.discussion(iid, keep) === undefined) throw new EnvironmentError(`no thread ${keep} on !${iid} to keep`)
+  const path = reviewStatePath(repo.mainRoot, repo.remote, String(iid))
+  const me = repo.forge.me()
+  const merged: string[] = []
+  const writeState = (): void => {
+    const count = mergeInState(path, merged)
+    deps.print(existsSync(path) ? `state: ${toSlash(path)} · findings merged: ${count}` : 'state: none')
+  }
+  try {
+    for (const id of duplicates) {
+      const discussion = repo.forge.discussion(iid, id)
+      if (discussion === undefined) {
+        deps.print(`MISSING ${id}`)
+        continue
+      }
+      const opening = discussion.notes.find((item) => !item.system)
+      if (opening === undefined || opening.author !== me) {
+        deps.print(`REFUSED ${id} opened by ${opening?.author ?? 'nobody'}, not by you`)
+        continue
+      }
+      repo.forge.reply(iid, id, note)
+      repo.forge.resolve(iid, id)
+      merged.push(id)
+      deps.print(`MERGED ${id} → ${keep}`)
+    }
+  } catch (error) {
+    writeState()
+    throw error
+  }
+  writeState()
+  return 0
+}
+
 const HELD_ALIASES = new Set(['skipped', 'blocked', 'stale', 'unchanged', 'draft', 'busy', 'open'])
 
 const isOutcome = (word: string): word is Outcome => (OUTCOMES as readonly string[]).includes(word)
@@ -431,6 +486,7 @@ const subcommands = new Map<string, (args: string[], deps: CycleDeps) => number>
   ['head', headCommand],
   ['spec-hold', specHoldCommand],
   ['withdraw', withdraw],
+  ['merge', merge],
   ['verdict', verdict],
 ])
 

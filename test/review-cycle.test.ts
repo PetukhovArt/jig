@@ -2,7 +2,7 @@ import { spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { adapterCommand, nativePath, parseQueue } from '../src/review-cycle/adapter'
 import type { Exec, ExecResult } from '../src/review-cycle/exec'
 import { legacyStateKey } from '../src/review-cycle/import-state'
@@ -57,7 +57,13 @@ let calls: string[][]
 
 const glab = (world: World, args: readonly string[]): ExecResult => {
   if (world.glabDown) return { code: 1, stdout: '', stderr: 'connection refused' }
+  if (args[1] === '--method') return ok('{}')
   const path = args[1] ?? ''
+  const single = /merge_requests\/(\d+)\/discussions\/([^/?]+)$/.exec(path)
+  if (single !== null) {
+    const found = world.mrs[Number(single[1])]?.discussions?.find((discussion) => discussion['id'] === single[2])
+    return found === undefined ? { code: 1, stdout: '', stderr: '404 Not Found' } : ok(JSON.stringify(found))
+  }
   if (path === 'user') return ok(JSON.stringify({ id: ME }))
   if (path.startsWith('projects/:fullpath/merge_requests?')) return ok(JSON.stringify(world.reviewerQueue ?? []))
   const match = /merge_requests\/(\d+)(\/[a-z]+)?/.exec(path)
@@ -435,6 +441,39 @@ describe('jig review-cycle head', () => {
   })
 })
 
+describe('jig review-cycle merge', () => {
+  it('answers and resolves each duplicate thread of mine, keeps the kept thread id and closes the duplicate findings', () => {
+    const path = writeState(1, {
+      last_reviewed_sha: 'abc',
+      findings: [finding('kept', 'Important', 'open', 'd1'), finding('dup', 'Important', 'open', 'd2'), finding('theirs', 'Nit', 'open', 'd3')],
+    })
+    const discussions = [
+      MY_OPEN_THREAD,
+      thread('d2', { author: ME, at: '2026-10-10T10:00:00Z', body: '**[🔴 Important]** same bug', open: true }, { author: DEV, at: '2026-10-11T10:00:00Z', body: 'why', open: true }),
+      thread('d3', { author: DEV, at: '2026-10-10T10:00:00Z', body: 'a question', open: true }),
+    ]
+    const note = join(root, 'note.md')
+    writeFileSync(note, 'Duplicate: continued in the thread on a.ts:3.\n')
+    const result = run({ mrs: { 1: { discussions } } }, ['merge', '1', 'd1', 'd2', 'd3', 'd9', '--note', note])
+    expect(result.out).toEqual(['MERGED d2 → d1', 'REFUSED d3 opened by 9, not by you', 'MISSING d9', `state: ${path.replaceAll('\\', '/')} · findings merged: 1`])
+    const writes = calls.filter((call) => call[2] === '--method').map((call) => `${call[3]} ${call[4]}`)
+    expect(writes).toEqual(['POST projects/:fullpath/merge_requests/1/discussions/d2/notes', 'PUT projects/:fullpath/merge_requests/1/discussions/d2'])
+    const findings = (JSON.parse(readFileSync(path, 'utf8')) as { findings: { id: string; status: string; discussion_id: string }[] }).findings
+    expect(findings.map((item) => `${item.id} ${item.status} ${item.discussion_id}`)).toEqual(['kept open d1', 'dup no_change_needed d2', 'theirs open d3'])
+  })
+
+  it('names every finding with an unknown status and says the state was edited outside jig', () => {
+    writeState(1, { findings: [{ id: 'a', status: 'open' }, { id: 'b', status: 'merged' }, { id: 'c', status: 'resolved' }] })
+    const stderr: string[] = []
+    const spy = vi.spyOn(process.stderr, 'write').mockImplementation((chunk) => stderr.push(String(chunk)) > 0)
+    const result = run({ mrs: { 1: {} } }, ['standing', '1'])
+    spy.mockRestore()
+    expect(result.code).toBe(3)
+    expect(stderr.join('')).toContain('findings[1] (b): status "merged", findings[2] (c): status "resolved" not one of open|fixed|skipped|unverified|no_change_needed|optional')
+    expect(stderr.join('')).toContain('edited outside jig')
+  })
+})
+
 describe('jig review-cycle spec-hold', () => {
   it('holds open unposted spec findings whose quote is not in the spec', () => {
     const state = writeState(1, {
@@ -502,7 +541,7 @@ describe('jig review-cycle import-state', () => {
     const result = run({ mrs: {} }, ['import-state', '--from', legacy])
     expect(result.code).toBe(0)
     expect(result.out[0]).toMatch(/^IMPORTED\t!5\t.*\tdropped findings\[\]\.withdrawn, replies$/)
-    expect(result.out[1]).toMatch(/^SKIP\t!6\t.*no valid status$/)
+    expect(result.out[1]).toMatch(/^SKIP\t!6\t.*status "bogus" not one of open\|/)
     expect(result.out[2]).toMatch(/^import-state: 1 imported, 1 skipped, 1 of other repositories/)
     const imported = JSON.parse(readFileSync(reviewStatePath(root, REMOTE, '5'), 'utf8')) as Record<string, unknown>
     expect(imported).toMatchObject({ key: reviewStateKey(REMOTE, '5'), target: '5', tally: { degraded: 'spawn refused' } })

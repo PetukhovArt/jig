@@ -172,10 +172,20 @@ node "<root>/bin/jig.mjs" review-cycle withdraw <iid> <discussion_id>…
 
 Per thread: `DELETED <id> <notes>` (every non-system note was yours, all deleted), `REFUSED <id> <reason>` (someone replied: a human decides), `MISSING <id>`. Findings of deleted or missing threads become `no_change_needed` without a `discussion_id`, after a backup of the state; the next run neither reposts nor rechecks them. A withdrawal is a hand edit: no transition. GitLab only for now; on GitHub it exits 3 saying so.
 
+## Merge duplicate threads
+
+Two or more of your threads on one merge request say the same thing. Keep one, and write the reply each duplicate gets (in the comment language, pointing to the kept thread) to a file first:
+
+```bash
+node "<root>/bin/jig.mjs" review-cycle merge <iid> <keep_discussion_id> <duplicate_discussion_id>… --note <file>
+```
+
+Per duplicate: `MERGED <id> → <keep>` (the note was posted in it and the thread resolved; a developer's reply in it stays readable there), `REFUSED <id> opened by <author>, not by you` (a thread belongs to whoever opened it), `MISSING <id>`. Findings of merged threads become `no_change_needed` and keep their `discussion_id`, after a backup of the state; the kept finding is untouched. Never merge by editing the state or the notes by hand: a status outside the schema blocks the merge request on the next pass. A merge is a hand edit: no transition. GitLab only for now.
+
 ## Comment bodies
 
 Findings and replies arrive final from jig-review (`<root>/skills/jig-review/steps/07-comments.md` is the rule). Text you write yourself (rare: a resolve note) follows the same rules and language, never mentions CI, pipelines, linters, AI or tools, and goes through a payload file like every body.
 
 ## Requirements
 
-`git` and `node` on `PATH`; the forge CLI of the repository, authenticated (`glab` for GitLab, `gh` for GitHub: `jig review-cycle` picks by the `origin` remote, `reviewCycle.forge` in `.jig/config.jsonc` overrides). GitHub support covers the queue, the filter and the unresolved count; withdrawing is GitLab only.
+`git` and `node` on `PATH`; the forge CLI of the repository, authenticated (`glab` for GitLab, `gh` for GitHub: `jig review-cycle` picks by the `origin` remote, `reviewCycle.forge` in `.jig/config.jsonc` overrides). GitHub support covers the queue, the filter and the unresolved count; withdrawing and merging are GitLab only.
