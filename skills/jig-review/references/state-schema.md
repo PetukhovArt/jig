@@ -26,7 +26,7 @@
       "status": "open"
     }
   ],
-  "deepening": { "module": "…", "what": "…", "effect": "…", "blast_radius": "…", "sha": "…" }
+  "deepening": { "module": "…", "what": "…", "effect": "…", "blast_radius": "…", "diagram": { "before": "flowchart LR …", "after": "flowchart LR …" }, "sha": "…" }
 }
 ```
 
@@ -52,7 +52,7 @@
 - **`source_branch`** = the source branch of the merge request (posting resolves the merge request by it; a re-review checks it out).
 - **`base_sha`** = the base of the reviewed diff resolved to a sha (`git rev-parse <base>`). Updated by every run together with `last_reviewed_sha` and `diff_hash`: the triple describes one patch. Scope recovery after a force-push reads it whole ([re-review](../steps/09-rereview.md)); absent or inconsistent with `diff_hash`: the scope falls back to the full diff.
 - **`discussion_id`**: set on posting; absent before.
-- **`deepening`**: the latest deepening proposal ([selector](selector.md#deepening)): the four parts of its printed item, and `sha`, the HEAD it was proposed on. Not a finding: no status, no thread, not in the tally. Posting puts it in the FYI note. **Absent = no proposal yet.**
+- **`deepening`**: the latest deepening proposal ([selector](selector.md#deepening)): the four parts of its printed item, `diagram` (the deepener's before and after Mermaid sources; may be absent in a state an earlier run wrote) and `sha`, the HEAD it was proposed on. Not a finding: no status, no thread, not in the tally. Its texts are in the comment language ([comment texts](../steps/07-comments.md)), code names as they are. Posting puts it in the FYI note. **Absent = no proposal yet.**
 - **`category`** = the kebab slug of the angle, ONLY one of five: `correctness`, `security`, `efficiency`, `spec`, `conventions` ([severity](../gates/severity.md#category)). Invent no others. A finding an earlier run wrote may hold a slug of a removed angle (`reuse`, `simplification`, `altitude`, `architecture`); it stays as written.
 - **`severity_class`** = the class code from the taxonomy in force; **`severity_gate`** = the code of the gate that cut the severity below the class level, otherwise `null` ([severity](../gates/severity.md#class-code)). Adopted threads have neither.
 - **`mrComment`** exists on every finding that passed the verify gates; [comment texts](../steps/07-comments.md) write it.

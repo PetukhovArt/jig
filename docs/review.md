@@ -39,7 +39,7 @@ jig review-plan     code: counts the diff, picks the angles and the layout, part
 
 **Severity is a closed list.** `Important` means the merge waits: broken behavior, data loss, a crash. Everything else is a `Nit`. A project replaces the list with its own ([severity](../skills/jig-review/gates/severity.md)).
 
-When a diff adds modules, a deepener proposes the one module deepening with the most effect: a proposal in the FYI note, never a thread.
+When a diff adds modules, a deepener proposes the one module deepening with the most effect: a proposal in the FYI note (in the comment language, a labelled line per field, with a before and after Mermaid diagram of the modules), never a thread.
 
 **Spec conformance.** When the task has a spec (the tracker text or a linked spec), angle 15 checks what is missing, what was not asked for and what was done differently. All deviations go into one thread, item by item, grouped by those three kinds; it resolves when every item is closed.
 
