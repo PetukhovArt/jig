@@ -69,6 +69,7 @@ describe('slot commands in a temporary repository', () => {
   let root: string
   let main: string
   let output: string[] = []
+  let errors: string[] = []
   const previousProjectDir = process.env['CLAUDE_PROJECT_DIR']
 
   const sh = (cwd: string, ...args: string[]): string => {
@@ -77,10 +78,11 @@ describe('slot commands in a temporary repository', () => {
     return result.stdout
   }
 
-  const runIn = async (args: string[]): Promise<{ code: number; stdout: string }> => {
+  const runIn = async (args: string[]): Promise<{ code: number; stdout: string; stderr: string }> => {
     output = []
+    errors = []
     const code = await runSlot(args)
-    return { code, stdout: output.join('') }
+    return { code, stdout: output.join(''), stderr: errors.join('') }
   }
 
   beforeAll(() => {
@@ -118,7 +120,10 @@ describe('slot commands in a temporary repository', () => {
       output.push(String(chunk))
       return true
     })
-    vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+    vi.spyOn(process.stderr, 'write').mockImplementation((chunk) => {
+      errors.push(String(chunk))
+      return true
+    })
   })
 
   afterAll(() => {
@@ -196,7 +201,7 @@ describe('slot commands in a temporary repository', () => {
     expect(existsSync(installed)).toBe(true)
 
     rmSync(installed)
-    expect((await runIn(['show', 's1', 'show-b'])).code).toBe(0)
+    expect((await runIn(['show', 's1', 'show-b', '--force'])).code).toBe(0)
     expect(existsSync(installed)).toBe(false)
     expect(readFileSync(join(dir, 'README.md'), 'utf8').trim()).toBe('readme')
   })
@@ -209,6 +214,18 @@ describe('slot commands in a temporary repository', () => {
     expect((await runIn(['show', '1', 'no-such-branch'])).code).toBe(1)
     expect((await runIn(['show', '9', 'show-a'])).code).toBe(1)
     expect((await runIn(['show', '1'])).code).toBe(2)
+  })
+
+  it('refuses show over a checkout made in the slot within two hours, and --force shows anyway', async () => {
+    const dir = join(root, 'worktrees', `${REPO}-s1-again`)
+    const refused = await runIn(['show', '1', 'show-a'])
+    expect(refused.code).toBe(1)
+    expect(refused.stderr).toMatch(/HEAD@\{0\}: checkout: moving from .* to /)
+    expect(refused.stderr).toContain('--force')
+    expect(sh(dir, 'rev-parse', 'HEAD')).toBe(sh(main, 'rev-parse', 'show-b'))
+
+    expect((await runIn(['show', '1', 'show-a', '--force'])).code).toBe(0)
+    expect(sh(dir, 'rev-parse', 'HEAD')).toBe(sh(main, 'rev-parse', 'show-a'))
   })
 
   it('sweeps every worktree but main and deletes only what is confirmed', async () => {
@@ -348,7 +365,7 @@ describe('slot show with a gitignored lock file and the dependency pool', () => 
     expect(JSON.parse(readFileSync(join(dir, 'package-lock.json'), 'utf8'))).toEqual(['app', 'ws-2'])
 
     rmSync(marker)
-    expect(await runSlot(['show', '1', 'docs'])).toBe(0)
+    expect(await runSlot(['show', '1', 'docs', '--force'])).toBe(0)
     expect(existsSync(marker)).toBe(false)
   })
 })

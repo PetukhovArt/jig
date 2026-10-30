@@ -7,6 +7,7 @@ import { git } from '../core/git'
 import { parseJsonc } from '../core/jsonc'
 import { ensureJigDir, resolveProjectRoot, toSlash } from '../core/paths'
 import { acquireLock } from '../core/proc'
+import { foreignUseOf } from './guard'
 import { listWorktrees, type Worktree } from '../worktree/list'
 import { installSteps } from '../worktree/lockfiles'
 import { formatDeps, hasIgnoredLockKeyChange, provideDeps, type DepsOutcome } from '../worktree/deps-pool'
@@ -374,17 +375,35 @@ const headOf = (dir: string): string | undefined => {
 const changedFiles = (dir: string, from: string, to: string): string[] =>
   from === to ? [] : git(['diff', '--name-only', '-z', from, to], dir).stdout.split('\0').filter(Boolean)
 
-const slotShow = (args: string[]): number => {
-  const { positionals } = parseArgs({ args, options: {}, allowPositionals: true, strict: true })
+const portsOfSlot = (slots: SlotsConfig | undefined, slot: number): number[] => {
+  if (slots === undefined) return []
+  const cdp = slotCdpPort(slots, slot)
+  return [...Object.values(slotPorts(slots, slot)), ...(cdp === undefined ? [] : [cdp])]
+}
+
+const commitOf = (dir: string, ref: string): string | undefined => {
+  const result = git(['rev-parse', '--verify', '--quiet', `${ref}^{commit}`], dir)
+  return result.ok ? result.stdout.trim() : undefined
+}
+
+const slotShow = async (args: string[]): Promise<number> => {
+  const { values, positionals } = parseArgs({ args, options: { force: { type: 'boolean' } }, allowPositionals: true, strict: true })
   const [slotText, ref] = positionals
   const slot = parseSlotNumber(slotText)
-  if (positionals.length !== 2 || slot === undefined || ref === undefined) return fail('usage: slot show <N> <branch|commit>', 2)
+  if (positionals.length !== 2 || slot === undefined || ref === undefined) return fail('usage: slot show <N> <branch|commit> [--force]', 2)
   const context = loadContext()
   const worktree = findSlot(context, slot)
   if (typeof worktree === 'string') return fail(worktree, 1)
   const changes = trackedChanges(worktree.path)
   if (changes.length > 0) {
     return fail(`slot ${slot} has tracked changes; a slot only shows branches, edits belong in a feature worktree: ${changes.join(', ')}`, 1)
+  }
+  const target = commitOf(worktree.path, ref)
+  if (values.force !== true && target !== undefined) {
+    const reason = await foreignUseOf({ dir: worktree.path, target, ports: portsOfSlot(context.slots, slot) })
+    if (reason !== undefined) {
+      return fail(`slot ${slot} looks used by another session (${reason}); switching it to ${ref} can break its work: pass --force to switch anyway`, 1)
+    }
   }
   const before = headOf(worktree.path)
   const checkout = git(['checkout', '--detach', ref], worktree.path)

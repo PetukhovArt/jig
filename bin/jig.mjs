@@ -8807,6 +8807,51 @@ import { existsSync as existsSync22, mkdirSync as mkdirSync16, readFileSync as r
 import { basename as basename7, dirname as dirname15, isAbsolute as isAbsolute6, join as join37, relative as relative7, resolve as resolve14 } from "node:path";
 import { parseArgs as parseArgs7 } from "node:util";
 
+// src/slot/guard.ts
+import { connect } from "node:net";
+var CHECKOUT_WINDOW_MS = 2 * 60 * 60 * 1e3;
+var PROBE_TIMEOUT_MS = 400;
+var PROBE_HOSTS = ["127.0.0.1", "::1"];
+var REFLOG_LIMIT = "50";
+var recentCheckout = (dir, now) => {
+  const log = git(["reflog", "show", "--date=unix", "--format=%H%x09%gd%x09%gs", "-n", REFLOG_LIMIT, "HEAD"], dir);
+  if (!log.ok) return void 0;
+  const lines2 = log.stdout.split(/\r?\n/).filter(Boolean);
+  for (const [index, line] of lines2.entries()) {
+    const [sha, selector, subject] = line.split("	");
+    const seconds = Number(/\{(\d+)\}$/.exec(selector ?? "")?.[1]);
+    if (sha === void 0 || subject === void 0 || !subject.startsWith("checkout:") || !Number.isFinite(seconds)) continue;
+    const age = now - seconds * 1e3;
+    if (age > CHECKOUT_WINDOW_MS) return void 0;
+    return { entry: `HEAD@{${index}}: ${subject} (${Math.max(0, Math.round(age / 6e4))} min ago)`, sha };
+  }
+  return void 0;
+};
+var answers = (host, port) => new Promise((resolve17) => {
+  const socket = connect({ host, port });
+  const done = (open) => {
+    socket.destroy();
+    resolve17(open);
+  };
+  socket.setTimeout(PROBE_TIMEOUT_MS, () => done(false));
+  socket.once("connect", () => done(true));
+  socket.once("error", () => done(false));
+});
+var listeningPort = async (ports) => {
+  const probes = await Promise.all(
+    ports.map(async (port) => ({ port, open: (await Promise.all(PROBE_HOSTS.map((host) => answers(host, port)))).some(Boolean) }))
+  );
+  return probes.find((probe) => probe.open)?.port;
+};
+var foreignUseOf = async ({ dir, target, ports, now = Date.now() }) => {
+  const head = git(["rev-parse", "HEAD"], dir);
+  if (head.ok && head.stdout.trim() === target) return void 0;
+  const checkout = recentCheckout(dir, now);
+  if (checkout !== void 0 && checkout.sha !== target) return checkout.entry;
+  const port = await listeningPort(ports);
+  return port === void 0 ? void 0 : `a process answers on port ${port}`;
+};
+
 // src/worktree/lockfiles.ts
 import { posix as posix7 } from "node:path";
 var installSteps = (changed, install, lockfiles = LOCKFILES) => {
@@ -9095,17 +9140,33 @@ var headOf = (dir) => {
   return result.ok ? result.stdout.trim() : void 0;
 };
 var changedFiles2 = (dir, from, to) => from === to ? [] : git(["diff", "--name-only", "-z", from, to], dir).stdout.split("\0").filter(Boolean);
-var slotShow = (args) => {
-  const { positionals } = parseArgs7({ args, options: {}, allowPositionals: true, strict: true });
+var portsOfSlot = (slots, slot) => {
+  if (slots === void 0) return [];
+  const cdp = slotCdpPort(slots, slot);
+  return [...Object.values(slotPorts(slots, slot)), ...cdp === void 0 ? [] : [cdp]];
+};
+var commitOf = (dir, ref) => {
+  const result = git(["rev-parse", "--verify", "--quiet", `${ref}^{commit}`], dir);
+  return result.ok ? result.stdout.trim() : void 0;
+};
+var slotShow = async (args) => {
+  const { values, positionals } = parseArgs7({ args, options: { force: { type: "boolean" } }, allowPositionals: true, strict: true });
   const [slotText, ref] = positionals;
   const slot = parseSlotNumber(slotText);
-  if (positionals.length !== 2 || slot === void 0 || ref === void 0) return fail3("usage: slot show <N> <branch|commit>", 2);
+  if (positionals.length !== 2 || slot === void 0 || ref === void 0) return fail3("usage: slot show <N> <branch|commit> [--force]", 2);
   const context = loadContext();
   const worktree = findSlot(context, slot);
   if (typeof worktree === "string") return fail3(worktree, 1);
   const changes = trackedChanges(worktree.path);
   if (changes.length > 0) {
     return fail3(`slot ${slot} has tracked changes; a slot only shows branches, edits belong in a feature worktree: ${changes.join(", ")}`, 1);
+  }
+  const target = commitOf(worktree.path, ref);
+  if (values.force !== true && target !== void 0) {
+    const reason = await foreignUseOf({ dir: worktree.path, target, ports: portsOfSlot(context.slots, slot) });
+    if (reason !== void 0) {
+      return fail3(`slot ${slot} looks used by another session (${reason}); switching it to ${ref} can break its work: pass --force to switch anyway`, 1);
+    }
   }
   const before = headOf(worktree.path);
   const checkout = git(["checkout", "--detach", ref], worktree.path);

@@ -23,6 +23,7 @@ Pick the case and read only its reference:
 Rules for every case:
 - One writer per worktree. Never run two agents in one checkout.
 - Never run dev in the copy where an agent writes. Edits go to a worktree; the app runs in a slot and gets them with `slot show`.
+- `slot show` refuses a slot another session looks to be using (a recent checkout in it, a process on its ports). Never pass `--force` to get past that unless the slot is yours: another session's running work breaks.
 - A fresh worktree has only tracked files: `worktree seed <dir>` copies the ignored files and links from the main checkout. `slot new` seeds by itself.
 - `slot new` prints the path, the slot number and the ports. Work only inside that path.
 - Verify against the instance of your slot (its CDP port), not a neighbour's.
