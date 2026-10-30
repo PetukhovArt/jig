@@ -2,14 +2,14 @@ import type { Price } from '../tiers/tiers'
 import { CACHE_MULTIPLIERS, priceOf } from './prices'
 
 export const BASE_CONTEXT = 30_000
-export const TOKENS_PER_LINE = 30
+export const TOKENS_PER_LINE = 150
 export const TURNS_BASE = 15
-export const LINES_PER_TURN = 100
+export const LINES_PER_TURN = 24
 export const MAX_TURNS = 150
 export const OUTPUT_PER_TURN = 800
 export const CHARS_PER_TOKEN = 4
-export const MODELER_TOKENS_PER_LINE = 6
-export const MODELER_LINES_PER_TURN = 250
+export const MODELER_TOKENS_PER_LINE = 25
+export const MODELER_LINES_PER_TURN = 108
 
 export interface Reader {
   context: number

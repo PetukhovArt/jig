@@ -22,45 +22,32 @@ Mode `review` with state on only. While finders ran, the author may have pushed 
 
 Read the head from the forge, never from the local checkout: `node "<root>/bin/jig.mjs" review-cycle head <iid> --reviewed <reviewed HEAD>`. The worktree stays at the reviewed commit while the author pushes, so its own `HEAD` never moves; one runner reported "the head did not move" from it while five commits had landed. `UNCHANGED`: go on. `MOVED <reviewed> <new> commits=N` (exit 1): `git fetch`, then `git diff <reviewed>..<new>` on the candidates' files. A candidate whose line this diff changed or removed is dropped without a judge and counted in `tally.suppressed_stale`. The rest are judged against the reviewed tree. `last_reviewed_sha` stays the reviewed HEAD ([output](08-output.md)), so the next run sees the push as an increment: the dropped code is not lost. Summary: `head moved: <old8>→<new8>, dropped N`.
 
-## Clusters
-
-Survivors of dedup are clustered **by their nearest common directory and by the model of the finder that raised them**, with limits: ≤ 5 candidates AND ≤ 3 files per cluster. One file read amortizes over about 5 judgments; past that the late candidates get a shallower look, and more than three files per judge has the same effect from switching. A candidate raised by several models goes with the first of them.
-
-**Directory, not file.** The key "file" on a wide diff makes a cluster per candidate: with 20 candidates over 90 files collisions are rare, and the constant part of the brief is paid as many times as there are candidates. A directory groups neighbours whose reads overlap anyway. A dump directory (`shared/ui`) groups unrelated things: the 3-file limit guards against that, not the key.
-
-**The cost of the key, named honestly:** one judge per directory calibrates its strictness itself, and the bar may drift between directories. The literal gate wording, identical in every judge's gate files, holds it, not the number of judges.
-
-## Judges
-
-One judge subagent per cluster, role `verifier`, tier and effort from its template, in parallel across clusters within the [subagent cap](../SKILL.md#rules-for-the-whole-run); a refused spawn joins the [queue](04-finders.md#refused-spawn). It reads its files once and judges all its candidates.
-
-**The judge runs on a different model of its tier than the finder whose candidates it judges.** `jig review-plan` prints the pairs (`candidates from <model A> → judge <model B>`). A defect that survives a second model is the "two models found it" signal; a judge on the finder's own model shares its blind spots. The tier has one model only: use it, and the summary says `judge: same model as the finder`.
-
-**Fork or fresh, in the foreground.** A judge whose model is your own is forked after dedup: it inherits the flow model and the candidates (finders, unlike judges, are [always fresh](04-finders.md#shared-context)). Others are spawned fresh with the brief below. Run them in the foreground; never `sleep`, never read their output files in a loop: each such turn re-sends the whole context.
-
-### Gate files
-
-A judge reads only the gate files of the angle classes in its cluster, by path; never paste their text into the brief and never send it this file:
-
-- bug angles 1–5, 12, 14 → `<skill>/gates/bugs.md`;
-- rule angles 6, 10, 13, 15 and cleanup angles 7, 8, 9, 11, 16, 17 → `<skill>/gates/shape.md`;
-- every judge → `<skill>/gates/severity.md`.
-
-A cluster of bugs gets neither the rule form nor the cleanup rules: a shared brief for every judge is a constant part multiplied by agents and by their turns.
-
-### Brief
-
-In this order: the diff index `jig review-plan` printed under `diff files:` (the judge reads its cluster's files' ranges from the parts), the flow model path ([flow model](04-flow-model.md)), the files the cluster needs, the cluster's candidates, the project's severity sections verbatim ([source](02-rules.md#severity-source)), the angle ceilings from the config when set, facts and decisions ([prepare](01-prepare.md#facts-and-decisions)), on a re-review the **fix-hunk map** ([re-review](09-rereview.md)), then the gate file paths and the role template path `<root>/skills/jig/references/roles/verifier.md`.
-
-**Returned per candidate, in one go:** verdict, severity, `severity_class`, `severity_gate`, `blocks` (a blocking finding only), angle, category, and a one-sentence `summary` naming the defect plus the evidence the verdict rests on: the quoted line, the input, the state. **No comment prose**: verify judges, it does not write. Texts come in a [separate step](07-comments.md), after the gate, so nothing is written for a candidate that dies.
-
 ## Layout lean
 
-Only when `jig review-plan` printed `layout: lean`: the finders ran on the deep tier, and instead of a judge per cluster you judge, as on the [inline path](04-inline.md#judge-yourself). Clusters do not apply; [head before verify](#head-before-verify) does.
+Only when `jig review-plan` printed `layout: lean`: you judge every candidate; one judge subagent on another model takes only the `Important` ones.
 
-1. Judge every deduped candidate yourself by the gate files the steps list, the self-check of `gates/bugs.md` asked literally before each bug `CONFIRMED`, a [cross-partition](#cross-partition-candidates) one on both sides; refute with a quoted line, not with doubt.
-2. No `CONFIRMED` `Important`: no subagent; the output says `judge: you only (no Important candidate)`.
-3. One or more: **one** judge subagent for all of them, role `verifier`, on the model and grade `jig review-plan` printed (`candidates from <model A> → judge <model B>`), briefed as the [inline judge](04-inline.md#second-model-only-for-important). Its verdict stands, as there.
+### Judge yourself
+
+Judge every deduped candidate by the gate files the steps list (`gates/bugs.md` for bug angles 1–5, 12, 14; `gates/shape.md` for the rest; `gates/severity.md` always). The finders' candidates share their blind spots with you when you read only what they quoted: ask the self-check of `gates/bugs.md` literally before each bug `CONFIRMED`, judge a [cross-partition](#cross-partition-candidates) candidate on both sides, and refute with a quoted line, not with doubt.
+
+Per candidate record what a judge returns: verdict, severity, `severity_class`, `severity_gate` when a gate cut it, `blocks` for a blocking finding, angle, category, and a one-sentence `summary` naming the defect plus the evidence the verdict rests on (the quoted line, the input, the state). No comment prose: texts come in a [separate step](07-comments.md).
+
+### Second model, only for Important
+
+No `CONFIRMED` `Important` after your own gates: no subagent; the output says `judge: you only (no Important candidate)`.
+
+One or more: spawn **one** judge subagent for all of them, role `verifier`, fresh, in the foreground, on the model and grade `jig review-plan` printed (`candidates from <model A> → judge <model B>`; a tier with one model: the summary says `judge: same model as the finder`). Brief, in this order:
+
+1. the diff index `jig review-plan` printed under `diff files:` (the judge reads its candidates' files by their line ranges in the parts);
+2. the flow model path ([flow model](04-flow-model.md));
+3. the Important candidates with your evidence;
+4. the project's severity sections verbatim ([source](02-rules.md#severity-source)); no project section: the path `<skill>/gates/severity.md` instead;
+5. the angle ceilings from the config when set, facts and decisions ([prepare](01-prepare.md#facts-and-decisions)), on a re-review the **fix-hunk map** ([re-review](09-rereview.md));
+6. paths only: the gate files of these candidates' classes (`<skill>/gates/bugs.md` for bug angles, `<skill>/gates/shape.md` for the rest, `<skill>/gates/severity.md` always) and the role template `<root>/skills/jig/references/roles/verifier.md`. Never paste the gate text.
+
+Never `sleep` and never poll its output.
+
+**Its verdict stands.** `CONFIRMED` by it: the item carries "two models". `REFUTED`: the candidate goes to the refuted list with the judge's reason. You still hold a quoted line it ignored: apply its verdict anyway and log the doubt as `runner disagrees: <id> · <reason>` ([output](08-output.md#output)). A severity it lowered stands with its `severity_gate`.
 
 ## Layout solo
 

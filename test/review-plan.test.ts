@@ -10,7 +10,7 @@ const CODE_ONLY: Shape = { tests: false, comments: false, docs: false, newSource
 const EVERY_SHAPE: Shape = { tests: true, comments: true, docs: true, newSourceFiles: 1, spec: true }
 
 const layout = (lines: number, shape: Shape = EVERY_SHAPE, selector?: string) =>
-  planReview({ lines, shape, selector, layout: 'fanout' }).finders.map((finder) => `${finder.name}:${finder.angles.join('+')}:${finder.tier}/${finder.effort}`)
+  planReview({ lines, shape, selector }).finders.map((finder) => `${finder.name}:${finder.angles.join('+')}:${finder.tier}/${finder.effort}`)
 
 describe('finder count', () => {
   it.each([
@@ -27,129 +27,80 @@ describe('finder count', () => {
 })
 
 describe('layout', () => {
-  it('reviews N = 1 inline, without finders, on quick unless a selector is given', () => {
-    const plan = planReview({ lines: 120, shape: EVERY_SHAPE })
-    expect([plan.path, plan.finders, plan.selection.input, plan.selection.source]).toEqual(['inline', [], 'quick', 'small-diff'])
-    expect(plan.angles).toEqual([1, 2, 3, 4, 5, 8, 10, 12, 13, 14, 15, 16, 17])
-    const full = planReview({ lines: 120, shape: EVERY_SHAPE, selector: 'full' })
-    expect([full.path, full.angles.length, full.selection.source]).toEqual(['inline', 17, 'argument'])
+  it('reviews a small diff like a large one: the flow model and two finders, behavior and conventions, on full by default', () => {
+    const plan = planReview({ lines: 40, shape: EVERY_SHAPE })
+    expect([plan.path, plan.selection.input, plan.selection.source, plan.flow]).toEqual(['subagents', 'full', 'default', { tier: 'deep', effort: 'high' }])
+    expect(layout(40)).toEqual(['p1-behavior:1+2+3+4+5+12+14+15:deep/high', 'p1-conventions:6+7+8+9+10+11+13+16+17:standard/high'])
   })
 
-  it('keeps full as the default selector above N = 1', () => {
-    expect(planReview({ lines: 400, shape: CODE_ONLY }).selection).toEqual({ input: 'full', tokens: [], source: 'default' })
-  })
-
-  it('lays out one finder per partition, N of them, each with every selected angle on the deep tier at the highest effort of its angles', () => {
-    const plan = planReview({ lines: 400, shape: EVERY_SHAPE, layout: 'lean' })
+  it('gives every one of the N partitions a behavior and a conventions finder, each with only its kind of angles', () => {
+    const plan = planReview({ lines: 400, shape: EVERY_SHAPE })
     expect(plan.partitions.map((partition) => partition.name)).toEqual(['p1', 'p2', 'p3'])
-    expect(plan.finders.map((finder) => `${finder.name}:${finder.partition}:${finder.angles.length}:${finder.tier}/${finder.effort}`)).toEqual([
-      'p1:p1:17:deep/high',
-      'p2:p2:17:deep/high',
-      'p3:p3:17:deep/high',
+    expect(plan.finders.map((finder) => `${finder.name}:${finder.partition}:${finder.kind}`)).toEqual([
+      'p1-behavior:p1:behavior',
+      'p1-conventions:p1:conventions',
+      'p2-behavior:p2:behavior',
+      'p2-conventions:p2:conventions',
+      'p3-behavior:p3:behavior',
+      'p3-conventions:p3:conventions',
     ])
+    expect(planReview({ lines: 10_000, shape: CODE_ONLY }).partitions).toHaveLength(5)
   })
 
-  it('fanout splits each partition by the grades of its angles', () => {
-    expect(layout(400).filter((finder) => finder.startsWith('p1-'))).toEqual([
-      'p1-deep-high:1+2+3+4+5+9+12+13+15:deep/high',
-      'p1-standard-high:6+7+8+10+11+14:standard/high',
-      'p1-standard-medium:16+17:standard/medium',
-    ])
-    expect(layout(400)).toHaveLength(9)
-  })
-
-  it('caps the partitions at five', () => {
-    expect(planReview({ lines: 10_000, shape: CODE_ONLY }).finders.map((finder) => finder.name)).toEqual(['p1', 'p2', 'p3', 'p4', 'p5'])
-  })
-
-  it('leaves out angles the diff shape does not call for', () => {
+  it('leaves out angles the diff shape does not call for, and a finder left without angles', () => {
     const plan = planReview({ lines: 400, shape: CODE_ONLY })
-    expect(plan.finders.every((finder) => !finder.angles.includes(16))).toBe(true)
     expect(plan.skipped.map((skip) => skip.angle)).toEqual([11, 15, 16, 17])
+    expect(layout(0)).toEqual(['p1-behavior:15:deep/high', 'p1-conventions:11+16+17:standard/high'])
+    expect(layout(400, CODE_ONLY, 'bugs').every((finder) => finder.includes('-behavior:'))).toBe(true)
   })
 
-  it('reviews only docs, spec, tests and comments when no counted code changed, in one partition', () => {
-    expect(layout(0)).toEqual(['p1-standard-high:11:standard/high', 'p1-deep-high:15:deep/high', 'p1-standard-medium:16+17:standard/medium'])
+  it('takes the grade of each kind from the project tiers', () => {
+    const plan = planReview({ lines: 200, shape: CODE_ONLY, grades: { conventions: { tier: 'fast', effort: 'medium' } } })
+    expect(plan.finders.filter((finder) => finder.kind === 'conventions').map((finder) => `${finder.tier}/${finder.effort}`)).toEqual(['fast/medium', 'fast/medium'])
   })
 
-  it('applies a project grade override per token', () => {
-    const fanout = planReview({ lines: 400, shape: CODE_ONLY, layout: 'fanout', grades: { bugs: { tier: 'standard', effort: 'medium' } } })
-    expect(fanout.finders.filter((finder) => finder.partition === 'p1').map((finder) => `${finder.angles.join('+')}:${finder.tier}/${finder.effort}`)).toEqual([
-      '1+2+3+4+5+12:standard/medium',
-      '6+7+8+10+14:standard/high',
-      '9+13:deep/high',
-    ])
-    const lean = planReview({ lines: 400, shape: CODE_ONLY, selector: 'bugs', grades: { bugs: { tier: 'standard', effort: 'medium' } } })
-    expect(lean.finders.map((finder) => `${finder.tier}/${finder.effort}`)).toEqual(['deep/medium', 'deep/medium', 'deep/medium'])
-  })
-
-  it('builds the flow model on every path that reviews, never when nothing is reviewed', () => {
-    expect(planReview({ lines: 40, shape: CODE_ONLY }).flow).toEqual({ tier: 'deep', effort: 'high' })
-    expect(planReview({ lines: 900, shape: CODE_ONLY }).flow).toEqual({ tier: 'deep', effort: 'high' })
-    expect(planReview({ lines: 0, shape: CODE_ONLY }).flow).toBeUndefined()
+  it('a re-review range under 600 lines is one partition and no deepening; from 600 lines N partitions', () => {
+    const rereview = (lines: number) => planReview({ lines, shape: EVERY_SHAPE, rereview: true })
+    expect(rereview(450).partitions).toHaveLength(1)
+    expect(rereview(450).deepening).toBeUndefined()
+    expect(rereview(600).partitions).toHaveLength(4)
   })
 })
 
 describe('layouts', () => {
-  const finders = (name: Layout) =>
-    planReview({ lines: 212, shape: { ...CODE_ONLY, comments: true }, layout: name }).finders.map((finder) => `${finder.name}:${finder.angles.join('+')}:${finder.tier}/${finder.effort}`)
-
-  it.each([
-    [300, 'inline'],
-    [301, 'lean'],
-    [5000, 'lean'],
-  ])('auto, the default, lays out %i lines as %s', (lines, expected) => {
-    expect(planReview({ lines, shape: CODE_ONLY }).layout).toBe(expected)
-  })
-
-  it('lean and solo run two partition finders on 212 lines; fanout splits each by grade', () => {
-    expect(finders('lean')).toEqual(['p1:1+2+3+4+5+6+7+8+9+10+12+13+14+17:deep/high', 'p2:1+2+3+4+5+6+7+8+9+10+12+13+14+17:deep/high'])
-    expect(finders('fanout')).toHaveLength(6)
-    expect(finders('solo').every((finder) => finder.includes(':deep/'))).toBe(true)
-  })
-
-  it('a re-review range under 600 lines gets one finder for every angle and no deepening; from 600 lines the full layout', () => {
-    const rereview = (lines: number) => planReview({ lines, shape: EVERY_SHAPE, rereview: true })
-    expect(rereview(450).finders.map((finder) => `${finder.name}:${finder.tier}/${finder.effort}:${finder.angles.length}`)).toEqual(['rereview:deep/medium:17'])
-    expect(rereview(450).deepening).toBeUndefined()
-    expect(rereview(600).finders.length).toBeGreaterThan(1)
-    expect(rereview(600).deepening).toBeDefined()
-  })
-
-  it('judges by layout: clusters for fanout, the session plus one Important judge for lean and inline, the finders for solo', () => {
-    const judging = (name: Layout) => {
-      const plan = planReview({ lines: 900, shape: CODE_ONLY, layout: name })
-      return `${plan.path}/${plan.judging}`
-    }
-    expect(LAYOUTS.filter((name) => name !== 'auto').map(judging)).toEqual(['inline/important', 'subagents/clusters', 'subagents/important', 'subagents/self'])
+  it('auto is lean; solo keeps the two kinds and makes the finders their own judges', () => {
+    expect(planReview({ lines: 40, shape: CODE_ONLY }).layout).toBe('lean')
+    const solo = planReview({ lines: 400, shape: CODE_ONLY, layout: 'solo' })
+    expect([solo.judging, new Set(solo.finders.map((finder) => finder.kind)).size]).toEqual(['self', 2])
   })
 
   it('names the 05-verify sections and gate files each judging reads', () => {
     const steps = (name: Layout) => stepsFor(planReview({ lines: 400, shape: CODE_ONLY, layout: name }), 'review', false).map((step) => `${step.file}${step.when === undefined ? '' : ` · ${step.when}`}`)
-    expect(steps('lean')).toContain('steps/05-verify.md · sections "Dedup" and "Layout lean"')
+    expect(steps('lean')).toContain('steps/05-verify.md · without section "Layout solo"')
     expect(steps('lean')).toContain('gates/bugs.md')
-    expect(steps('solo')).toContain('steps/05-verify.md · sections "Dedup" and "Layout solo"')
+    expect(steps('solo')).toContain('steps/05-verify.md · without section "Layout lean"')
     expect(steps('solo').some((step) => step.startsWith('gates/'))).toBe(false)
   })
 
-  it('takes --layout over the environment over the project config over the default, and rejects an unknown name', () => {
-    expect(resolveLayout('solo', 'lean', 'fanout')).toEqual({ name: 'solo', source: 'argument' })
-    expect(resolveLayout(undefined, 'lean', 'fanout')).toEqual({ name: 'lean', source: 'env' })
-    expect(resolveLayout(undefined, '', 'fanout')).toEqual({ name: 'fanout', source: 'config' })
+  it('takes --layout over the environment over the project config over the default, and rejects an unknown or removed name', () => {
+    expect(resolveLayout('solo', 'lean', 'lean')).toEqual({ name: 'solo', source: 'argument' })
+    expect(resolveLayout(undefined, 'lean', 'solo')).toEqual({ name: 'lean', source: 'env' })
+    expect(resolveLayout(undefined, '', 'solo')).toEqual({ name: 'solo', source: 'config' })
     expect(resolveLayout(undefined, undefined, undefined)).toEqual({ name: 'auto', source: 'default' })
-    expect(() => resolveLayout(undefined, 'wide', undefined)).toThrow('unknown layout wide in JIG_REVIEW_LAYOUT')
-    expect(() => parseProjectConfig('{ "layout": "wide" }', '.jig/review.jsonc')).toThrow('$.layout')
+    expect(() => resolveLayout(undefined, 'inline', undefined)).toThrow('unknown layout inline in JIG_REVIEW_LAYOUT')
+    expect(() => parseProjectConfig('{ "layout": "fanout" }', '.jig/review.jsonc')).toThrow('$.layout')
   })
 })
 
 describe('steps', () => {
   const files = (lines: number, mode: Mode, state: boolean) => stepsFor(planReview({ lines, shape: CODE_ONLY }), mode, state).map((step) => step.file)
 
-  it('a small pre-mr review builds the flow model and reads no state, no comment texts and no finder or verify steps', () => {
+  it('a small pre-mr review builds the flow model, runs the finders and reads no state and no comment texts', () => {
     expect(files(40, 'pre-mr', false)).toEqual([
       'steps/02-rules.md',
       'steps/04-flow-model.md',
-      'steps/04-inline.md',
+      'steps/04-finders.md',
+      'steps/05-verify.md',
       'gates/bugs.md',
       'gates/shape.md',
       'gates/severity.md',
@@ -260,8 +211,8 @@ describe('numstat', () => {
 
 describe('project config', () => {
   it('reports a bad angle and tier with their paths', () => {
-    expect(() => parseProjectConfig('{ "angles": { "18": {} }, "tiers": { "bugs": { "tier": "huge", "effort": "high" } } }', '.jig/review.jsonc')).toThrow(
-      '.jig/review.jsonc: $.angles["18"]: expected an angle number 1..17; $.tiers.bugs.tier: expected one of deep, standard, fast',
+    expect(() => parseProjectConfig('{ "angles": { "18": {} }, "tiers": { "behavior": { "tier": "huge", "effort": "high" } } }', '.jig/review.jsonc')).toThrow(
+      '.jig/review.jsonc: $.angles["18"]: expected an angle number 1..17; $.tiers.behavior.tier: expected one of deep, standard, fast',
     )
   })
 })
@@ -307,10 +258,12 @@ describe('buildReport on a repository', () => {
     expect(scoped.shape).toEqual({ tests: false, comments: true, docs: false, newSourceFiles: 0, spec: false })
     expect(scoped.diff).toBe(`git diff ${scoped.base.mergeBase} -- src/a.ts`)
     expect(() => buildReport(root, { base: 'main', spec: false, agent: 'claude', paths: ['lib/a.ts'] })).toThrow('nothing changed against main under lib/a.ts')
-    expect(report.plan.partitions.map((partition) => partition.files)).toEqual([['src/a.ts', 'src/b.test.ts', 'src/b.ts']])
-    expect(report.flowModel?.path).toBe(`${report.diffFiles?.dir}/model.md`)
+    expect(report.plan.partitions.map((partition) => partition.files)).toEqual([['src/a.ts'], ['src/b.test.ts', 'src/b.ts']])
+    expect(report.flowModel?.path).toBe(`${report.diffFiles?.dir}/model-${report.run}.md`)
+    expect(report.diffFiles?.dir.startsWith(tmpdir().replaceAll('\\', '/'))).toBe(true)
+    expect(buildReport(root, { base: 'main', spec: false, agent: 'claude' }).run).not.toBe(report.run)
     expect(report.reads['flow-model']?.diff).toEqual([])
-    expect(readFileSync(report.flowModel?.index ?? '', 'utf8')).toMatch(/== src\/b\.ts \[p1\] changed \+1-200/)
+    expect(readFileSync(report.flowModel?.index ?? '', 'utf8')).toMatch(/== src\/b\.ts \[p2\] changed \+1-200/)
   })
 
   it('writes the diff for subagents once, compact, in parts that keep each file whole and an index of line ranges', () => {
@@ -367,12 +320,13 @@ describe('buildReport on a repository', () => {
     const store = report.plan.partitions.find((partition) => partition.files.includes('src/store.ts'))
     expect(store?.files).toEqual(['src/model/_tests_/store.ts', 'src/spec/store.check.ts', 'src/store.ts'])
     const partsOf = (name: string | undefined, from = report): string[] => (from.reads[name ?? ''] ?? { diff: [] }).diff.map((path) => path.split('/').pop() ?? '')
-    expect(partsOf(store?.name)).toEqual([`${store?.name}-code-01.diff`, `${store?.name}-tests-01.diff`])
+    expect(partsOf(`${store?.name}-conventions`)).toEqual([`${store?.name}-code-01.diff`, `${store?.name}-tests-01.diff`])
+    expect(partsOf(`${store?.name}-behavior`)).toEqual([`${store?.name}-code-01.diff`])
     const docs = report.plan.partitions.find((partition) => partition.files.includes('docs/store.md'))
-    expect(partsOf(docs?.name)).toContain(`${docs?.name}-docs-01.diff`)
+    expect(partsOf(`${docs?.name}-conventions`)).toContain(`${docs?.name}-docs-01.diff`)
     expect(readFileSync(report.diffFiles?.partitions[store?.name ?? '']?.tests[0] ?? '', 'utf8')).toMatch(/_tests_\/store\.ts[\s\S]*spec\/store\.check\.ts/)
     const bugsOnly = buildReport(root, { base: 'HEAD~1', spec: true, agent: 'claude', layout: 'lean', selector: 'bugs' })
-    expect(partsOf(store?.name, bugsOnly)).toEqual([`${store?.name}-code-01.diff`])
+    expect(partsOf(`${store?.name}-behavior`, bugsOnly)).toEqual([`${store?.name}-code-01.diff`])
   })
 
   it('prints the cost estimate, the flow model before any finder, and one finder per partition with every angle', () => {
@@ -399,11 +353,12 @@ describe('buildReport on a repository', () => {
 
     expect(report.plan.partitions.map((partition) => partition.files)).toEqual([['src/a/x.ts', 'src/b/y.ts'], ['src/c/one.ts', 'src/c/two.ts'], ['src/d/three.ts'], ['src/e/four.ts']])
     const finders = printed.filter((line) => line.startsWith('finder '))
-    expect(finders).toHaveLength(4)
-    expect(finders.every((line) => line.includes(`angles ${report.plan.angles.join('+')}`) && line.endsWith('· fresh, never a fork'))).toBe(true)
-    expect(finders[0]).toMatch(/^finder p1: partition p1 \(2 files, 200 lines, under src\/a, src\/b\)/)
+    expect(finders).toHaveLength(8)
+    expect(finders.every((line) => line.endsWith('· fresh, never a fork'))).toBe(true)
+    expect(finders[0]).toMatch(/^finder p1-behavior: partition p1 \(2 files, 200 lines, under src\/a, src\/b\) · behavior: angles 1\+2\+3\+4\+5\+12\+14 · deep\/high opus/)
+    expect(finders[1]).toMatch(/^finder p1-conventions: partition p1 .* · conventions: angles 6\+7\+8\+9\+10\+13 · standard\/high sonnet/)
     expect(printed.findIndex((line) => line.startsWith('flow model: first'))).toBeLessThan(printed.findIndex((line) => line.startsWith('finder ')))
-    expect(printed.find((line) => line.startsWith('cost estimate: '))).toMatch(/^cost estimate: ~\$\d+(\.\d)? \(flow model .* finders 4 × up to \d+k × \d+ turns · list prices of opus/)
+    expect(printed.find((line) => line.startsWith('cost estimate: '))).toMatch(/^cost estimate: ~\$\d+(\.\d)? \(flow model .* finders 8 × up to \d+k × \d+ turns · list prices of opus, sonnet/)
     const steps = printed.filter((line) => line.startsWith('  ') && line.includes('/steps/'))
     expect(steps.findIndex((line) => line.includes('04-flow-model.md'))).toBeLessThan(steps.findIndex((line) => line.includes('04-finders.md')))
   })
@@ -431,7 +386,8 @@ describe('buildReport on a repository', () => {
 
     const report = buildReport(root, { base: 'HEAD~1', spec: false, agent: 'claude', layout: 'lean' })
 
-    const rulesOf = (file: string): string[] => report.reads[report.plan.partitions.find((partition) => partition.files.includes(file))?.name ?? '']?.rules ?? []
+    const rulesOf = (file: string): string[] => report.reads[`${report.plan.partitions.find((partition) => partition.files.includes(file))?.name ?? ''}-conventions`]?.rules ?? []
+    expect(report.plan.finders.filter((finder) => finder.kind === 'behavior').every((finder) => report.reads[finder.name]?.rules.length === 0)).toBe(true)
     expect(rulesOf('src/gis/map.ts')).toEqual(['AGENTS.md', 'src/gis/AGENTS.md', 'docs/standards/code/naming.md', 'docs/standards/code/vue.md', 'GLOSSARY.md', 'src/gis/GLOSSARY.md'])
     expect(rulesOf('src/journal/list.ts')).toEqual(['AGENTS.md', 'docs/standards/code/naming.md', 'docs/standards/code/vue.md', 'GLOSSARY.md'])
   })

@@ -39,19 +39,18 @@ jig review-plan     code: counts the diff, picks the angles and the layout, part
 
 **Spec conformance.** When the task has a spec (the tracker text or a linked spec), angle 15 checks what is missing, what was not asked for and what was done differently.
 
-## Size decides the layout
+## One layout for every size
 
 Counted lines leave out tests, fixtures, documents, lock files and unedited renames; `N = ceil(lines / 150)`, at most 5.
 
 | diff | layout | who hunts | who judges |
 | --- | --- | --- | --- |
-| `N ≤ 2`, up to 300 counted lines | inline | the session itself | the session; a judge on another model only for an `Important` |
-| `N > 2` | lean | fresh finders spawned by the review runner, one per partition | the session; one judge on another model for the `Important` ones |
-| any, by `--layout` | `fanout`, `solo` | per partition, finders split by tier, or finders that prove their own candidates | a judge per cluster, or none |
+| any size (`auto`) | lean | per partition two fresh finders: `behavior` (bugs, state, contracts, spec; deep/high) and `conventions` (duplication, naming, glossary, standards, docs, tests, comments, dead code; standard/high) | the session; one judge on another model for the `Important` ones |
+| any, by `--layout solo` | solo | the same finders | each finder proves its own candidates; no judge |
 
-Every layout starts with the flow model. `jig review-plan` prints a one-line cost estimate: the flow model and each finder, by the context its share of the diff grows and the turns it takes, at the list prices of the tier's model (`prices` in the [user config](configuration.md#user-config) override them); the runner and the judges are not in it.
+Every layout starts with the flow model. Without state the run's files (diff parts, flow index, flow model) go to the OS temp dir; each plan prints a new `run:` id, and a flow model is reused only by a retry of the same run. `jig review-plan` prints a one-line cost estimate: the flow model and each finder, by the context its share of the diff grows and the turns it takes (calibrated on a measured 10,263-line run: the model about 110 turns, a finder about 100 turns at 250-400k tokens), at the list prices of each finder's tier model (`prices` in the [user config](configuration.md#user-config) override them); the runner and the judges are not in it.
 
-A re-review under 600 new lines runs one finder with every angle, after a flow model rebuilt on the new range and its links to unchanged code. A selector narrows a run: `quick` keeps only what blocks a merge, `full` runs every angle, `auto` picks by the diff shape, tokens like `bugs,architecture,tests` pick by hand ([selector](../skills/jig-review/references/selector.md)).
+A re-review under 600 new lines is one partition with its two finders, after a flow model rebuilt on the new range and its links to unchanged code. A selector narrows a run: `quick` keeps only what blocks a merge, `full` runs every angle, `auto` picks by the diff shape, tokens like `bugs,architecture,tests` pick by hand ([selector](../skills/jig-review/references/selector.md)).
 
 ## Re-review and outcomes
 

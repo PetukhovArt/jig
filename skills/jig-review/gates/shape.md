@@ -1,6 +1,6 @@
 # Gates: rule angles 6, 10, 13, 15 and cleanup angles 7, 8, 9, 11, 16, 17
 
-A judge of a cluster with rule or cleanup candidates reads this file and [severity](severity.md). The main session reads it on the inline path ([step 04](../steps/04-inline.md)).
+A judge of a cluster with rule or cleanup candidates reads this file and [severity](severity.md). The main session reads it when it judges ([verify](../steps/05-verify.md#judge-yourself)).
 
 ## Verdict
 

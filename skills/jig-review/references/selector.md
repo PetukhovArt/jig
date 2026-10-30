@@ -6,12 +6,12 @@ An optional argument: comma-separated tokens without spaces, `important,architec
 
 The first word after the mode, target and flags is the selector only when it is a preset or **every** token is in the table below. Otherwise it is the start of the focus note ([step 01](../steps/01-prepare.md#focus-note)). An unknown token in a selector whose other tokens are known is an error: name it and stop, do not guess.
 
-No selector: `quick` on the [inline path](../steps/04-inline.md) (`N = 1`, or `N ≤ 2` under the default layout `auto`), otherwise everything runs (`full`), plus `deepening` when the diff adds source files. An explicit `full` on a small diff runs every angle inline.
+No selector: everything runs (`full`), plus `deepening` when the diff adds source files, at every diff size.
 
 ## Presets
 
-- `full` (default when finders run): every angle, plus `deepening` when the diff adds source files. Cost: on the inline path it adds the cleanup and rules angles to your own reading; with finders it adds the same angles to every partition finder's reading;
-- `quick` → `important` (default on the inline path): only what a merge waits for (bugs, security, layers and placement, spread across modules, structural smells), without cleanup and `deepening`.
+- `full` (default): every angle, plus `deepening` when the diff adds source files. Cost: the `conventions` finders run on the standard tier, so their angles cost a fraction of the `behavior` ones;
+- `quick` → `important`: only what a merge waits for (bugs, security, layers and placement, spread across modules, structural smells), without cleanup and `deepening`.
 
 ## Tokens
 
@@ -59,17 +59,16 @@ Tokens chosen by the diff shape; the summary prints the expansion first: `select
 - comment lines were added → `comments`;
 - the diff has `*.md` → `docs`;
 - the diff adds source files → `architecture,deepening`;
-- `N = 1` ([layout](../steps/01-prepare.md#layout)) → plus `reuse,simplification,altitude,conventions`: the session reads the diff inline anyway, and the cleanup angles are almost free on it.
+- `N = 1` ([layout](../steps/01-prepare.md#layout)) → plus `reuse,simplification,altitude,conventions`: on a small diff the conventions finder reads little, and the cleanup angles are almost free on it.
 
 ## Tiers
 
-Each token runs on a tier and an effort. Under `fanout` a partition finder whose angles differ splits by them; `lean` and `solo` run one finder per partition on the deep tier at the highest effort of its angles ([finders](../steps/04-finders.md#partitions)). Defaults, overridable per token or role in the project config (`tiers`):
+A finder's grade comes from its kind, not from its angles ([finders](../steps/04-finders.md#partitions-and-kinds)). Defaults, overridable per kind or role in the project config (`tiers`):
 
-| Token or role | Tier / effort |
+| Kind or role | Tier / effort |
 |---|---|
-| `bugs`, `architecture`, `spec`, `altitude` | deep / high |
-| `efficiency`, `security`, `reuse`, `conventions`, `docs`, `simplification` | standard / high |
-| `tests`, `comments` | standard / medium |
+| `behavior` (angles 1–5, 12, 14, 15) | deep / high |
+| `conventions` (angles 6–11, 13, 16, 17) | standard / high |
 | `verify` (role `verifier`) | deep / medium |
 | `outcome` (role `outcome-checker`) | deep / medium |
 | `composer` (role `composer`) | standard / medium |

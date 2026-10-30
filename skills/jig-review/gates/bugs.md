@@ -1,6 +1,6 @@
 # Gates: bug angles 1–5, 12, 14
 
-A judge of a cluster with bug candidates reads this file and [severity](severity.md). The main session reads it on the inline path ([step 04](../steps/04-inline.md)).
+A judge of a cluster with bug candidates reads this file and [severity](severity.md). The main session reads it when it judges ([verify](../steps/05-verify.md#judge-yourself)).
 
 ## Verdict
 

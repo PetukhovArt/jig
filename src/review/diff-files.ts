@@ -4,8 +4,7 @@ import { join } from 'node:path'
 import { git } from '../core/git'
 import { isLockfile } from '../catalog'
 import { createMatcher } from '../core/glob'
-import { ensureJigDir, toSlash } from '../core/paths'
-import { listWorktrees } from '../worktree/list'
+import { toSlash } from '../core/paths'
 
 export const DIFF_PART_MAX_LINES = 1500
 const DIFF_FORMAT = 'partitions-compact-1'
@@ -124,10 +123,11 @@ const pruneOldDiffDirs = (reviewDir: string, keep: string, now: number): void =>
 const byAudience = (parts: readonly DiffPart[], pathOf: (name: string) => string): Record<Audience, string[]> =>
   Object.fromEntries(AUDIENCES.map((audience) => [audience, parts.filter((part) => part.audience === audience).map((part) => pathOf(part.name))])) as Record<Audience, string[]>
 
-/** Writes under the main checkout's `.jig/runs/review/diff-<hash of the diff and its partitions>/`, so a retry reuses it; removes such folders older than a week. */
+/** Writes under `<reviewDir>/diff-<hash of the diff and its partitions>/`, so a retry reuses it; removes such folders older than a week. */
 export const writeDiffFiles = (
   root: string,
   diffArgs: readonly string[],
+  reviewDir: string,
   audienceOf?: (path: string) => Audience,
   partitions: readonly { name: string; files: readonly string[] }[] = [],
   now: number = Date.now(),
@@ -136,8 +136,6 @@ export const writeDiffFiles = (
   if (!result.ok) throw new Error(`git diff failed: ${result.stderr.trim()}`)
   const owner = new Map(partitions.flatMap((partition) => partition.files.map((file) => [file, partition.name] as const)))
   const partitionOf = (path: string): string => owner.get(path) ?? partitions[0]?.name ?? ''
-  const main = listWorktrees(root)[0]?.path ?? root
-  const reviewDir = join(ensureJigDir(main).runs, 'review')
   const hash = createHash('sha1').update(DIFF_FORMAT).update(JSON.stringify(partitions)).update(result.stdout).digest('hex').slice(0, 12)
   const dir = join(reviewDir, `${DIFF_DIR_PREFIX}${hash}`)
   mkdirSync(dir, { recursive: true })

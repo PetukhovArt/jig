@@ -1,18 +1,21 @@
 # Finders
 
-## Partitions
+## Partitions and kinds
 
-`jig review-plan` ([prepare](01-prepare.md#layout)) prints the partitions and a finder per partition; spawn exactly what it prints. The rules below explain it, so you can tell when it is wrong for this diff and say so in the summary.
+`jig review-plan` ([prepare](01-prepare.md#layout)) prints the partitions and two finders per partition; spawn exactly what it prints. The rules below explain it, so you can tell when it is wrong for this diff and say so in the summary.
 
-**Files are split, not angles.** The diff's files go into `N` partitions (`N = ceil(LINES / 150)`, at most 5; fewer only when the diff has fewer code files), and each finder gets one partition and **every selected angle**. A finder reads only its partition's diff parts; for behavior outside it, it relies on the [flow model](04-flow-model.md). When every finder carried a few angles over the whole diff, each re-read all of it and rediscovered the same flow: on a 10,263-line merge request seven finders grew 250-300k contexts over ~100 turns each.
+**Files are split, then the kind of work.** The diff's files go into `N` partitions (`N = ceil(LINES / 150)`, at most 5, at least 1; fewer only when the diff has fewer code files). Every partition gets two finders, the same for every diff size:
+
+- **`behavior`** (`pN-behavior`): angles 1–5, 12, 14, 15: bugs, state, wire contracts, the spec. Deep tier, high effort. It reads the [flow model](04-flow-model.md) as its map of everything outside its partition.
+- **`conventions`** (`pN-conventions`): angles 6–11, 13, 16, 17: duplication, naming, glossary, standards, documents, tests, comments, dead code. Standard tier, high effort. It reads the indexes, standards and glossaries under its `rules:` line; the flow model only to check a name or a link that crosses partitions.
+
+Each reads only its kind's angle files and atoms, printed once per kind (`behavior finders … read:`, `conventions finders … read:`). One finder carrying all 16 angles on the deep tier cost $11–20 per partition on a 10,263-line merge request, and the convention angles do not need the deep tier. A finder reads only its partition's diff parts; for behavior outside it, it relies on the flow model.
 
 **Coupled files stay together.** Code files that import each other and files in one directory land in one partition, within a balance cap (about 1.5 times the average partition): a store imported by every view does not pull the whole diff into one finder. A test joins the source it names or imports; a document joins the partition of its neighbours. A link imports do not show (a store read through a key, an event, a watcher, IPC, a request) crosses partitions as often as not: the flow model lists every such link under `Cross-partition links`.
 
-**One finder per partition, unless the layout says otherwise.** `lean` and `solo`: one finder per partition on the deep tier, at the highest effort of its angles. `fanout`: a partition splits by its angles' tiers and efforts ([project config](../references/project-config.md), key `tiers`; defaults in [selector](../references/selector.md#tiers)), `p1-deep-high`, `p1-standard-high`, …, each reading the same partition. The config is applied literally: a token's tier is never raised to its neighbour's or lowered.
+**The grades come from the plan.** Defaults: `behavior` deep/high, `conventions` standard/high; the project config overrides them by these two keys ([project config](../references/project-config.md), key `tiers`). The plan's grade wins over the role template's frontmatter.
 
-**Only the angles the [selector](../references/selector.md) chose run.** `deepening` is a separate agent with its own tier, outside the partitions ([selector](../references/selector.md#deepening)). A re-review range under 600 lines runs one finder, `rereview`, over the whole range as one partition ([re-review](09-rereview.md#round-rules)).
-
-**The inline path: no finders.** At `N = 1`, and up to `N = 2` under the default layout `auto`, the session reviews the whole diff as one partition [inline](04-inline.md). This step covers the layouts with finders: `lean`, `fanout`, `solo`.
+**Only the angles the [selector](../references/selector.md) chose run**; a finder left without angles is not spawned. `deepening` is a separate agent with its own tier, outside the partitions ([selector](../references/selector.md#deepening)). A re-review range under 600 lines is one partition with its two finders ([re-review](09-rereview.md#round-rules)).
 
 ## Shared context
 
@@ -24,31 +27,30 @@ What every finder needs is read **once**, by you, before the first spawn. Tool o
 
 ## Spawn
 
-Spawn every finder of the plan **in one batch**, in parallel, within the [subagent cap](../SKILL.md#rules-for-the-whole-run). Brief each with role `finder`: pass the path of its template, `<root>/skills/jig/references/roles/finder.md`, and let the subagent read it.
+Spawn every finder of the plan **in one batch**, in parallel, within the [subagent cap](../SKILL.md#rules-for-the-whole-run); past the cap the rest [queue](#refused-spawn). Brief each with role `finder`: pass the path of its template, `<root>/skills/jig/references/roles/finder.md`, and let the subagent read it.
 
-**Every call carries the model and effort of its tier explicitly**, not the session's model. Before spawning print the plan; it goes into the [cost line](08-output.md#output): `finders: p1 deep/high <deep model> · p2 deep/high <deep model> · …`.
+**Every call carries the model and effort the plan printed for that finder**, not the session's model. Before spawning print the plan; it goes into the [cost line](08-output.md#output): `finders: p1-behavior deep/high <deep model> · p1-conventions standard/high <standard model> · …`.
 
-**The brief order is fixed**: the shared prefix first, the personal tail last, so the shared part hits the prompt cache of the whole batch:
+**The brief order is fixed**: the shared prefix first, the personal tail last, so the shared part hits the prompt cache of the batch:
 1. the diff index `jig review-plan` printed under `diff files:`;
-2. the shared rules block ([project rules](02-rules.md)): only severity (verbatim) and skip rules;
+2. the shared rules block ([project rules](02-rules.md)): only severity and skip rules. The project's severity sections verbatim; no project section: the path `<skill>/gates/severity.md` instead;
 3. the learnings block ([state](03-state.md#learnings));
 4. the project root;
 5. the focus note ([prepare](01-prepare.md#focus-note));
 6. facts and decisions ([prepare](01-prepare.md#facts-and-decisions));
 7. the flow model path ([flow model](04-flow-model.md));
-8. the angle files and atoms: the absolute paths under `every finder reads:` (`read:`, `atoms:`), so the finder reads them without searching; under `fanout` they are printed per finder and move to its tail;
-9. the spec file, when one was found ([prepare](01-prepare.md#spec));
-10. the role template path;
-11. **personal**: this finder's partition, its name and the part paths under its `diff:`. The parts are split by audience: `pN-code-*` always, `pN-tests-*` when angle 16 runs, `pN-docs-*` when angle 11 or 15 runs. A finder reads no part outside its `diff:` list; it may open another file by path to confirm a candidate;
-12. **personal**: the documents under its `rules:` line ([routing](02-rules.md#4-routing)), narrowed by `route` to its angles, each with its scope ("this rule applies only under that directory").
+8. the role template path;
+9. **per kind**: the finder's kind and the angle files and atoms printed under its kind (`read:`, `atoms:`), so the finder reads them without searching; `behavior` also gets the spec file when one was found ([prepare](01-prepare.md#spec));
+10. **personal**: this finder's partition, its name and the part paths under its `diff:`. The parts are split by audience: `pN-code-*` always, `pN-tests-*` when angle 16 runs, `pN-docs-*` when angle 11 or 15 runs. A finder reads no part outside its `diff:` list; it may open another file by path to confirm a candidate;
+11. **personal**, `conventions` only: the documents under its `rules:` line ([routing](02-rules.md#4-routing)), narrowed by `route` to its angles, each with its scope ("this rule applies only under that directory").
 
-Items 1–10 are byte-identical across the batch. Every document goes as a path, never pasted, except the severity sections and the skip rules of item 2.
+Items 1–8 are byte-identical across the batch, item 9 within a kind. Every document goes as a path, never pasted, except the severity sections and the skip rules of item 2.
 
 **Run them in the foreground and save each report.** Several spawns in one message run in parallel, and each report returns to you; a background subagent may report to the session at the top instead of you, and outlives you when you fail. As each report arrives, with state on, write it to the [checkpoint](#checkpoint). Never `sleep` and never read a subagent's output file in a loop.
 
 ### Checkpoint
 
-With state on, the run keeps its finished subagent reports in `<state file without .json>.run/`: one file per finder (`<finder name>.md`) and one for the deepener, each starting with the line `head: <reviewed HEAD sha> · diff: <the diff files folder name>`. A run that starts and finds this folder with its own head and diff is a retry: it reuses those reports and spawns only the finders that have none. Another head or diff: delete the folder and start clean. [Writing state](08-output.md#write-state) deletes it. A retry never repeats a finished finder: on one merge request a second runner restarted the whole fan-out and doubled its cost.
+With state on, the run keeps its finished subagent reports in `<state file without .json>.run/`: one file per finder (`<finder name>.md`) and one for the deepener, each starting with the line `run: <id> · head: <reviewed HEAD sha>`. A runner told to go on with its run (`retry:`) and finding reports with its own run id reuses them and spawns only the finders that have none. Any other run id: delete the folder and start clean; a new plan is a new run. [Writing state](08-output.md#write-state) deletes it. A retry never repeats a finished finder: on one merge request a second runner restarted the whole fan-out and doubled its cost.
 
 ### Refused spawn
 
@@ -78,6 +80,6 @@ Two angles on one line for different reasons: report both.
 
 ## Layout solo
 
-Only when `jig review-plan` printed `layout: solo`. No judge subagent follows: each finder proves its own candidates. Its brief gets, after item 12, the gate file paths of its angle classes (`<skill>/gates/bugs.md` for bug angles, `<skill>/gates/shape.md` for the rest, `<skill>/gates/severity.md` always) and this instruction: "Before returning a candidate, judge it by these gate files: try to reproduce it (by tracing the code, or a one-off script outside the repository; no test, no build, no install, no edits to the repository), then return a verdict per candidate in the verifier's fields: verdict, severity, `severity_class`, `severity_gate`, `blocks`, angle, category, a one-sentence summary with the evidence. A `CONFIRMED` bug names initiator, path and effect, each with a quote." A finder still reads only.
+Only when `jig review-plan` printed `layout: solo`. No judge subagent follows: each finder proves its own candidates. Its brief gets, after item 11, the gate file paths of its angle classes (`<skill>/gates/bugs.md` for bug angles, `<skill>/gates/shape.md` for the rest, `<skill>/gates/severity.md` always) and this instruction: "Before returning a candidate, judge it by these gate files: try to reproduce it (by tracing the code, or a one-off script outside the repository; no test, no build, no install, no edits to the repository), then return a verdict per candidate in the verifier's fields: verdict, severity, `severity_class`, `severity_gate`, `blocks`, angle, category, a one-sentence summary with the evidence. A `CONFIRMED` bug names initiator, path and effect, each with a quote." A finder still reads only.
 
 **No quota, either way.** Zero findings is a successful review: budgets are ceilings, there is no floor. But the rule binds reporting, not hunting: a finder hunts at full aggression, a candidate costs nothing and dies at verify. No hunk is skipped, no reading cut short, no candidate held back because "that is enough".

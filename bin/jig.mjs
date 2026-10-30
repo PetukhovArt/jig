@@ -5506,12 +5506,14 @@ var runLoop = (args) => {
 // src/pre-mr/pre-mr.ts
 import { spawnSync as spawnSync5 } from "node:child_process";
 import { copyFileSync as copyFileSync3, existsSync as existsSync16, mkdtempSync, rmSync as rmSync7 } from "node:fs";
-import { tmpdir } from "node:os";
+import { tmpdir as tmpdir2 } from "node:os";
 import { join as join31, resolve as resolve11 } from "node:path";
 import { parseArgs as parseArgs3 } from "node:util";
 
 // src/review/review-plan.ts
+import { randomBytes as randomBytes2 } from "node:crypto";
 import { existsSync as existsSync15, readFileSync as readFileSync28, readdirSync as readdirSync14, writeFileSync as writeFileSync9 } from "node:fs";
+import { tmpdir } from "node:os";
 import { isAbsolute as isAbsolute4, join as join30, relative as relative5, resolve as resolve10 } from "node:path";
 import { parseArgs as parseArgs2 } from "node:util";
 
@@ -5595,13 +5597,11 @@ var pruneOldDiffDirs = (reviewDir, keep, now) => {
   }
 };
 var byAudience = (parts, pathOf) => Object.fromEntries(AUDIENCES.map((audience) => [audience, parts.filter((part) => part.audience === audience).map((part) => pathOf(part.name))]));
-var writeDiffFiles = (root, diffArgs, audienceOf2, partitions = [], now = Date.now()) => {
+var writeDiffFiles = (root, diffArgs, reviewDir, audienceOf2, partitions = [], now = Date.now()) => {
   const result = git(["diff", "--no-color", "--no-ext-diff", ...diffArgs], root);
   if (!result.ok) throw new Error(`git diff failed: ${result.stderr.trim()}`);
   const owner = new Map(partitions.flatMap((partition) => partition.files.map((file) => [file, partition.name])));
   const partitionOf = (path2) => owner.get(path2) ?? partitions[0]?.name ?? "";
-  const main = listWorktrees(root)[0]?.path ?? root;
-  const reviewDir = join26(ensureJigDir(main).runs, "review");
   const hash = createHash7("sha1").update(DIFF_FORMAT).update(JSON.stringify(partitions)).update(result.stdout).digest("hex").slice(0, 12);
   const dir = join26(reviewDir, `${DIFF_DIR_PREFIX}${hash}`);
   mkdirSync13(dir, { recursive: true });
@@ -5637,14 +5637,14 @@ var priceOf = (model, prices) => Object.entries(prices).find(([family]) => model
 
 // src/review/estimate.ts
 var BASE_CONTEXT = 3e4;
-var TOKENS_PER_LINE = 30;
+var TOKENS_PER_LINE = 150;
 var TURNS_BASE = 15;
-var LINES_PER_TURN = 100;
+var LINES_PER_TURN = 24;
 var MAX_TURNS = 150;
 var OUTPUT_PER_TURN = 800;
 var CHARS_PER_TOKEN = 4;
-var MODELER_TOKENS_PER_LINE = 6;
-var MODELER_LINES_PER_TURN = 250;
+var MODELER_TOKENS_PER_LINE = 25;
+var MODELER_LINES_PER_TURN = 108;
 var turnsFor = (lines2, perTurn) => Math.min(MAX_TURNS, TURNS_BASE + Math.ceil(Math.max(0, lines2) / perTurn));
 var finderReader = (lines2, model) => ({
   context: BASE_CONTEXT + Math.max(0, lines2) * TOKENS_PER_LINE,
@@ -6148,18 +6148,8 @@ var SPECIAL_TOKENS = ["important", "deepening"];
 var SELECTOR_TOKENS = [...SPECIAL_TOKENS, ...Object.keys(TOKEN_ANGLES), "auto"];
 var PRESETS = { full: void 0, quick: "important" };
 var DEFAULT_GRADES = {
-  bugs: { tier: "deep", effort: "high" },
-  efficiency: { tier: "standard", effort: "high" },
-  security: { tier: "standard", effort: "high" },
-  architecture: { tier: "deep", effort: "high" },
-  spec: { tier: "deep", effort: "high" },
-  reuse: { tier: "standard", effort: "high" },
+  behavior: { tier: "deep", effort: "high" },
   conventions: { tier: "standard", effort: "high" },
-  docs: { tier: "standard", effort: "high" },
-  altitude: { tier: "deep", effort: "high" },
-  simplification: { tier: "standard", effort: "high" },
-  tests: { tier: "standard", effort: "medium" },
-  comments: { tier: "standard", effort: "medium" },
   verify: { tier: "deep", effort: "medium" },
   outcome: { tier: "deep", effort: "medium" },
   composer: { tier: "standard", effort: "medium" },
@@ -6168,16 +6158,16 @@ var DEFAULT_GRADES = {
 };
 var GRADE_KEYS = Object.keys(DEFAULT_GRADES);
 var CLEANUP_TOKENS = ["reuse", "simplification", "altitude", "conventions"];
-var LAYOUTS = ["auto", "inline", "fanout", "lean", "solo"];
+var LAYOUTS = ["auto", "lean", "solo"];
 var isLayout = (value) => LAYOUTS.includes(value);
-var AUTO_INLINE_MAX_N = 2;
-var resolveAuto = (layout, n) => {
-  if (layout !== "auto") return layout;
-  return n <= AUTO_INLINE_MAX_N ? "inline" : "lean";
+var resolveAuto = (layout) => layout === "auto" ? "lean" : layout;
+var FINDER_KINDS = ["behavior", "conventions"];
+var KIND_ANGLES = {
+  behavior: [1, 2, 3, 4, 5, 12, 14, 15],
+  conventions: [6, 7, 8, 9, 10, 11, 13, 16, 17]
 };
 var REREVIEW_FULL_LAYOUT_LINES = 600;
-var REREVIEW_GRADE = { tier: "deep", effort: "medium" };
-var isLightRereview = (rereview, n, lines2) => rereview === true && n > AUTO_INLINE_MAX_N && lines2 < REREVIEW_FULL_LAYOUT_LINES;
+var isLightRereview = (rereview, lines2) => rereview === true && lines2 < REREVIEW_FULL_LAYOUT_LINES;
 var finderCount = (lines2) => Math.min(MAX_FINDERS, Math.ceil(Math.max(0, lines2) / LINES_PER_FINDER));
 var ceilingOf = (angle, settings) => settings?.[angle]?.severityCeiling ?? (IMPORTANT_ANGLES.includes(angle) ? "Important" : "Nit");
 var autoTokens = (shape, n) => {
@@ -6189,10 +6179,10 @@ var autoTokens = (shape, n) => {
   if (n === 1) tokens.push(...CLEANUP_TOKENS);
   return tokens;
 };
-var parseSelector = (input, shape, n, inline = n === 1) => {
+var parseSelector = (input, shape, n) => {
   const given = input !== void 0 && input !== "";
-  const source = given ? "argument" : inline ? "small-diff" : "default";
-  const raw = given ? input : inline ? "quick" : "full";
+  const source = given ? "argument" : "default";
+  const raw = given ? input : "full";
   if (Object.hasOwn(PRESETS, raw)) {
     const expanded2 = PRESETS[raw];
     return { input: raw, tokens: expanded2 === void 0 ? [] : [expanded2], source };
@@ -6221,38 +6211,23 @@ var inapplicable = (angle, shape) => {
   if (angle === 17 && !shape.comments) return "no added comments";
   return void 0;
 };
-var gradeOf = (angle, grades) => grades[ANGLE_TOKENS[angle]] ?? DEFAULT_GRADES[ANGLE_TOKENS[angle]] ?? { tier: "standard", effort: "high" };
 var roleGrade = (key, grades) => grades[key] ?? { tier: "deep", effort: "medium" };
-var splitByGrade = (name, partition, angles, grades) => {
-  const byGrade = /* @__PURE__ */ new Map();
-  for (const angle of angles) {
-    const grade = gradeOf(angle, grades);
-    const key = `${grade.tier}-${grade.effort}`;
-    const entry = byGrade.get(key) ?? { grade, angles: [] };
-    entry.angles.push(angle);
-    byGrade.set(key, entry);
-  }
-  const entries = [...byGrade.entries()];
-  return entries.map(([key, { grade, angles: own }]) => ({
-    name: entries.length === 1 ? name : `${name}-${key}`,
-    kind: "partition",
-    angles: own,
-    partition,
-    ...grade
-  }));
-};
-var highestEffort = (angles, grades) => EFFORTS2[Math.max(0, ...angles.map((angle) => EFFORTS2.indexOf(gradeOf(angle, grades).effort)))] ?? "high";
-var partitionFinders = (layout, partitions, angles, grades) => partitions.flatMap(
-  (partition) => layout === "fanout" ? splitByGrade(partition.name, partition.name, angles, grades) : [{ name: partition.name, kind: "partition", angles: [...angles], partition: partition.name, tier: "deep", effort: highestEffort(angles, grades) }]
+var partitionFinders = (partitions, angles, grades) => partitions.flatMap(
+  (partition) => FINDER_KINDS.map((kind) => ({
+    name: `${partition.name}-${kind}`,
+    kind,
+    angles: angles.filter((angle) => KIND_ANGLES[kind].includes(angle)),
+    partition: partition.name,
+    ...roleGrade(kind, grades)
+  })).filter((finder) => finder.angles.length > 0)
 );
 var namedPartitions = (count) => Array.from({ length: count }, (_, index) => ({ name: `p${index + 1}`, files: [], lines: 0, dirs: [] }));
 var partitionsOf = (input, count) => input.files === void 0 ? namedPartitions(count) : partitionFiles(input.files, input.edges ?? [], count);
 var planReview = (input) => {
   const n = finderCount(input.lines);
-  const layout = resolveAuto(input.layout ?? "auto", n);
-  const inline = n === 1 || n > 1 && layout === "inline";
+  const layout = resolveAuto(input.layout ?? "auto");
   const grades = { ...DEFAULT_GRADES, ...input.grades };
-  const selection = parseSelector(input.selector, input.shape, n, inline);
+  const selection = parseSelector(input.selector, input.shape, n);
   const wanted = selectedAngles(selection.tokens, input.angles);
   const skipped = [];
   const angles = ANGLES.filter((angle) => {
@@ -6265,26 +6240,23 @@ var planReview = (input) => {
   ANGLES.filter((angle) => angles.includes(angle) && !usedForCode.includes(angle)).forEach(
     (angle) => skipped.push({ angle, reason: "no counted code lines" })
   );
-  const light = isLightRereview(input.rereview, n, input.lines);
+  const light = isLightRereview(input.rereview, input.lines);
   const wantsDeepening = !light && (selection.tokens.length === 0 ? input.shape.newSourceFiles > 0 : selection.tokens.includes("deepening"));
-  const path2 = usedForCode.length === 0 ? "none" : inline ? "inline" : "subagents";
-  const partitions = path2 === "none" ? [] : partitionsOf(input, path2 === "subagents" && !light ? Math.max(1, n) : 1);
-  const whole = partitions[0]?.name ?? "p1";
-  const finders = path2 !== "subagents" ? [] : light ? [{ name: "rereview", kind: "rereview", angles: usedForCode, partition: whole, ...REREVIEW_GRADE }] : partitionFinders(layout, partitions, usedForCode, grades);
-  const judging = path2 !== "subagents" || layout === "lean" ? "important" : layout === "solo" ? "self" : "clusters";
+  const path2 = usedForCode.length === 0 ? "none" : "subagents";
+  const partitions = path2 === "none" ? [] : partitionsOf(input, light ? 1 : Math.max(1, n));
   return {
     lines: input.lines,
     n,
     layout,
     path: path2,
-    judging,
+    judging: layout === "solo" ? "self" : "important",
     selection,
     outputTokens: selection.tokens.filter((token) => token !== "deepening"),
     angles: usedForCode,
     skipped: skipped.sort((left, right) => left.angle - right.angle),
     partitions,
     flow: path2 === "none" ? void 0 : roleGrade("flow", grades),
-    finders,
+    finders: partitionFinders(partitions, usedForCode, grades),
     deepening: wantsDeepening && n > 0 ? roleGrade("deepening", grades) : void 0,
     verify: roleGrade("verify", grades),
     outcome: roleGrade("outcome", grades),
@@ -6310,12 +6282,9 @@ var stepsFor = (plan, mode, state) => {
     );
   }
   steps.push({ file: "steps/04-flow-model.md" });
-  if (plan.path === "inline") steps.push({ file: "steps/04-inline.md" }, ...gateFiles(plan.angles).map((file) => ({ file })));
-  else if (plan.judging === "important") {
-    steps.push({ file: "steps/04-finders.md" }, { file: "steps/05-verify.md", when: 'sections "Dedup" and "Layout lean"' }, ...gateFiles(plan.angles).map((file) => ({ file })));
-  } else if (plan.judging === "self") {
-    steps.push({ file: "steps/04-finders.md", when: 'with section "Layout solo"' }, { file: "steps/05-verify.md", when: 'sections "Dedup" and "Layout solo"' });
-  } else steps.push({ file: "steps/04-finders.md", when: 'without section "Layout solo"' }, { file: "steps/05-verify.md", when: 'without sections "Layout lean" and "Layout solo"' });
+  if (plan.judging === "important") {
+    steps.push({ file: "steps/04-finders.md", when: 'without section "Layout solo"' }, { file: "steps/05-verify.md", when: 'without section "Layout solo"' }, ...gateFiles(plan.angles).map((file) => ({ file })));
+  } else steps.push({ file: "steps/04-finders.md" }, { file: "steps/05-verify.md", when: 'without section "Layout lean"' });
   steps.push({ file: "steps/06-rank.md" });
   if (state) steps.push({ file: "steps/07-comments.md" });
   steps.push(output);
@@ -6527,7 +6496,6 @@ var anyAddedComment = (root, mergeBase, stats) => {
 var untrackedCount = (root, paths) => (gitStatus(root, paths) ?? []).filter((entry) => entry.status === "??").length;
 var shellWord = (word) => /^[\w./:@=+-]+$/.test(word) ? word : `'${word.replaceAll("'", `'\\''`)}'`;
 var diffCommand = (mergeBase, paths) => ["git", "diff", mergeBase, ...pathspec(paths)].map(shellWord).join(" ");
-var INLINE_READER = "inline";
 var FLOW_READER = "flow-model";
 var FLOW_ATOMS = ["change-impact", "domain-model", "system-edges"];
 var STATE_MODEL_PATH = "<state file without .json>.model.md";
@@ -6564,32 +6532,28 @@ var gradeText = (grade, models) => {
 };
 var SELECTOR_NOTES = {
   argument: "",
-  default: " (default)",
-  "small-diff": " (default on the inline path; --selector full for every angle)"
+  default: " (default)"
 };
 var LAYOUT_SOURCE_TEXT = { argument: "--layout", env: LAYOUT_ENV, config: `.jig/${PROJECT_CONFIG}`, default: "default" };
 var LAYOUT_TEXT = {
-  inline: "the session hunts and judges; a judge subagent only for Important",
-  fanout: "a finder per partition and angle tier, a judge per cluster on the other model",
-  lean: "a fresh finder per partition on the deep tier; you judge, a deep judge only for Important",
-  solo: "a finder per partition on the deep tier proves its own candidates; no judge subagents"
+  lean: "two fresh finders per partition (behavior, conventions); you judge, a deep judge only for Important",
+  solo: "two fresh finders per partition (behavior, conventions) prove their own candidates; no judge subagents"
 };
 var layoutLine = (report) => {
   const { name, source } = report.layout;
   const resolved = report.plan.layout;
-  const chosen = name === "auto" ? `auto \u2192 ${resolved} (inline up to N = ${AUTO_INLINE_MAX_N}, lean above)` : resolved;
+  const chosen = name === "auto" ? `auto \u2192 ${resolved}` : resolved;
   return `layout: ${chosen}${source === "default" ? " (default)" : ` (from ${LAYOUT_SOURCE_TEXT[source]})`} \xB7 ${LAYOUT_TEXT[resolved]}`;
 };
 var stateText = (report) => {
   if (report.state) return "on (merge request known: state file, comment texts, re-review)";
-  if (report.mode === "pre-mr") return "off (mode pre-mr: track progress in your todo list)";
-  return "off (no merge request or --no-state: no state file, no comment texts, no posting)";
+  if (report.mode === "pre-mr") return "off (mode pre-mr: track progress in your todo list; run files in the OS temp dir)";
+  return "off (no merge request or --no-state: no state file, no comment texts, no posting; run files in the OS temp dir)";
 };
 var diffLine = (reads) => reads === void 0 || reads.diff.length === 0 ? [] : [`  diff: ${reads.diff.join(" ")}`];
 var angleReadLines = (reads) => reads === void 0 ? [] : [`  read: ${reads.angles.join(" ")}`, ...reads.atoms.length > 0 ? [`  atoms: ${reads.atoms.join(" ")}`] : []];
 var rulesLine = (reads) => reads === void 0 || reads.rules.length === 0 ? [] : [`  rules: ${reads.rules.join(" ")}`];
-var readLines = (reads) => [...diffLine(reads), ...rulesLine(reads), ...angleReadLines(reads)];
-var RUNNER_LINE = "runner: a review with finders runs in one review runner, never in the session that asked for it: that session spawns role review-runner with this run and waits for its return; a review runner (a review cycle's, or one spawned so) goes on";
+var RUNNER_LINE = "runner: the review runs in one review runner, never in the session that asked for it: that session spawns role review-runner with this run and waits for its return; a review runner (a review cycle's, or one spawned so) goes on";
 var MAX_DIRS = 3;
 var partitionText = (partition) => {
   if (partition === void 0 || partition.files.length === 0) return "every file";
@@ -6606,19 +6570,25 @@ var flowModelLines = (report) => {
     ...report.reads[FLOW_READER]?.atoms.length ? [`  atoms: ${report.reads[FLOW_READER]?.atoms.join(" ")}`] : []
   ];
 };
+var KIND_TEXT = {
+  behavior: "bugs, state, wire contracts, spec; reads the flow model",
+  conventions: "duplication, naming, glossary, standards, docs, tests, comments, dead code; reads its rules, the flow model only for names across partitions"
+};
 var finderLines = (report) => {
   const { plan } = report;
   const byName = new Map(plan.partitions.map((partition) => [partition.name, partition]));
-  const angleSets = new Set(plan.finders.map((finder) => angleList(finder.angles)));
-  const shared = angleSets.size === 1;
   const lines2 = [];
   if (plan.finders.length > 0) lines2.push(`partitions: ${plan.partitions.length}, by imports between files and shared directories; a link that crosses partitions is in the flow model`);
   for (const finder of plan.finders) {
-    lines2.push(`finder ${finder.name}: partition ${finder.partition} (${partitionText(byName.get(finder.partition))}) \xB7 angles ${angleList(finder.angles)} \xB7 ${gradeText(finder, report.models)} \xB7 fresh, never a fork`);
-    lines2.push(...shared ? [...diffLine(report.reads[finder.name]), ...rulesLine(report.reads[finder.name])] : readLines(report.reads[finder.name]));
+    lines2.push(
+      `finder ${finder.name}: partition ${finder.partition} (${partitionText(byName.get(finder.partition))}) \xB7 ${finder.kind}: angles ${angleList(finder.angles)} \xB7 ${gradeText(finder, report.models)} \xB7 fresh, never a fork`
+    );
+    lines2.push(...diffLine(report.reads[finder.name]), ...rulesLine(report.reads[finder.name]));
   }
-  const first = plan.finders[0];
-  if (shared && first !== void 0) lines2.push("every finder reads:", ...angleReadLines(report.reads[first.name]));
+  for (const kind of FINDER_KINDS) {
+    const first = plan.finders.find((finder) => finder.kind === kind);
+    if (first !== void 0) lines2.push(`${kind} finders (${KIND_TEXT[kind]}) read:`, ...angleReadLines(report.reads[first.name]));
+  }
   return lines2;
 };
 var formatReport = (report) => {
@@ -6631,7 +6601,8 @@ var formatReport = (report) => {
     ...report.diffFiles === null ? [] : [
       `diff files: ${report.diffFiles.index} \xB7 ${report.diffFiles.parts.length} part${report.diffFiles.parts.length === 1 ? "" : "s"} of at most ${DIFF_PART_MAX_LINES} lines, each file whole, split by partition, then into code, tests and docs; each reader reads only the parts under its \`diff:\`, never the diff command`
     ],
-    `finders: ${report.formula}`,
+    `run: ${report.run} (the flow model and checkpoints of this run carry it; another run never reuses them)`,
+    `partitions: ${report.formula}`,
     layoutLine(report),
     `shape: tests ${report.shape.tests ? "yes" : "no"} \xB7 added comments ${report.shape.comments ? "yes" : "no"} \xB7 markdown ${report.shape.docs ? "yes" : "no"} \xB7 new source files ${report.shape.newSourceFiles} \xB7 spec ${report.shape.spec ? "yes" : "no"}`,
     `selector: ${plan.selection.input}${plan.selection.tokens.length > 0 && plan.selection.input !== plan.selection.tokens.join(",") ? ` \u2192 ${plan.selection.tokens.join(",")}` : ""}${SELECTOR_NOTES[plan.selection.source]}`,
@@ -6644,31 +6615,17 @@ var formatReport = (report) => {
   if (plan.path === "none") lines2.push("finders: none (nothing to review)");
   if (plan.path === "subagents") lines2.push(RUNNER_LINE);
   lines2.push(...flowModelLines(report));
-  if (plan.path === "inline") {
-    lines2.push(`path: inline: review in this session, every file as one partition, angles ${angleList(plan.angles)}; no finder subagents; no judge subagents unless an Important candidate survives your own gates`);
-    lines2.push(...readLines(report.reads[INLINE_READER]));
-  }
   lines2.push(...finderLines(report));
   if (plan.deepening !== void 0) lines2.push(`deepening: ${gradeText(plan.deepening, models)}`);
-  if (plan.path === "inline") {
-    lines2.push(`judge for Important candidates: one subagent, ${plan.verify.tier}/${plan.verify.effort}`);
-    for (const judge2 of report.judge) {
-      lines2.push(`  your model ${judge2.finderModel} \u2192 judge ${judge2.judgeModel}${judge2.same ? " (same model: one model in the tier)" : ""}`);
-    }
-  } else if (plan.judging === "self") {
+  if (plan.judging === "self") {
     lines2.push("verify: no judge subagents; every finder proves its own candidates, you dedup and apply the verdicts");
-  } else if (plan.judging === "important") {
+  } else {
     lines2.push(`verify: you judge every candidate by the gate files; one judge subagent for the Important ones, ${plan.verify.tier}/${plan.verify.effort}`);
     for (const judge2 of report.judge) {
       lines2.push(`  candidates from ${judge2.finderModel} \u2192 judge ${judge2.judgeModel}${judge2.same ? " (same model: one model in the tier)" : ""}`);
     }
-  } else {
-    lines2.push(`verify: ${plan.verify.tier}/${plan.verify.effort}`);
-    for (const judge2 of report.judge) {
-      lines2.push(`  candidates from ${judge2.finderModel} \u2192 judge ${judge2.judgeModel}${judge2.same ? " (same model: one model in the tier)" : ""}`);
-    }
+    if (report.judge.length === 0) lines2.push(`  judge: a ${plan.verify.tier} model other than the finder's`);
   }
-  if (report.judge.length === 0 && plan.judging !== "self") lines2.push(`  judge: a ${plan.verify.tier} model other than the finder's`);
   lines2.push(`outcome check: ${gradeText(plan.outcome, models)} \xB7 composer: ${gradeText(plan.composer, models)}`);
   if (plan.skipped.length > 0) {
     lines2.push(`skipped angles: ${plan.skipped.map((skip) => `${skip.angle} (${skip.reason})`).join(", ")}`);
@@ -6699,11 +6656,13 @@ var partitionInput = (stats, root, testPaths) => stats.filter((stat) => !isUnrev
   const kind = audienceOf(stat.path, root, testPaths);
   return { path: stat.path, kind, countedLines: kind === "code" ? stat.added + stat.deleted : 0 };
 });
-var flowModelPath = (statePath2, state, diffFiles) => {
+var flowModelPath = (statePath2, state, diffFiles, run3) => {
   if (statePath2 !== void 0) return toSlash(statePath2.replace(/\.json$/, ".model.md"));
   if (state) return STATE_MODEL_PATH;
-  return diffFiles === null ? "" : `${diffFiles.dir}/model.md`;
+  return diffFiles === null ? "" : `${diffFiles.dir}/model-${run3}.md`;
 };
+var newRunId = () => `${Date.now().toString(36)}-${randomBytes2(3).toString("hex")}`;
+var reviewDirOf = (root, state) => state ? join30(ensureJigDir(listWorktrees(root)[0]?.path ?? root).runs, "review") : join30(tmpdir(), "jig-review");
 var writeFlowIndex = (root, diffBase, diffPaths, partitions, isCode, path2) => {
   const patch = git(["diff", "-U0", "-M", "--no-color", "--no-ext-diff", diffBase, ...pathspec(diffPaths)], root);
   const added = patch.ok ? addedLines(patch.stdout) : /* @__PURE__ */ new Map();
@@ -6751,11 +6710,12 @@ var buildReport = (root, options) => {
   const models = resolveTiers(agent, loaded.config);
   const finderModels = Object.fromEntries(plan.finders.map((finder) => [finder.name, models?.[finder.tier]?.[0]]));
   const verifyModels = models?.[plan.verify.tier] ?? [];
-  const usedModels = plan.path === "inline" ? verifyModels : Object.values(finderModels).filter((model) => model !== void 0);
+  const usedModels = Object.values(finderModels).filter((model) => model !== void 0);
+  const run3 = newRunId();
   const mode = options.mode ?? "review";
   const state = mode === "review" && options.mergeRequest === true && options.noState !== true;
   const pluginRoot = options.pluginRoot ?? resolvePluginRoot();
-  const diffFiles = plan.path === "none" ? null : writeDiffFiles(root, [diffBase, ...pathspec(diffPaths)], (path2) => audienceOf(path2, root, testPaths), plan.partitions);
+  const diffFiles = plan.path === "none" ? null : writeDiffFiles(root, [diffBase, ...pathspec(diffPaths)], reviewDirOf(root, state), (path2) => audienceOf(path2, root, testPaths), plan.partitions);
   const partsOf = (partition, angles) => {
     if (diffFiles === null) return [];
     const own = partition === void 0 ? diffFiles.audiences : diffFiles.partitions[partition];
@@ -6763,12 +6723,12 @@ var buildReport = (root, options) => {
   };
   const ruleInputs = ruleDocuments(root, stats.map((stat) => stat.path), process.env);
   const filesOf = (partition) => plan.partitions.filter((own) => partition === void 0 || own.name === partition).flatMap((own) => own.files);
-  const readsOf = (partition, angles) => ({
+  const readsOf = (partition, kind, angles) => ({
     ...readsFor(pluginRoot, angles),
     diff: partsOf(partition, angles),
-    rules: rulesFor(ruleInputs, filesOf(partition))
+    rules: kind === "conventions" ? rulesFor(ruleInputs, filesOf(partition)) : []
   });
-  const readers = plan.path === "inline" ? [[INLINE_READER, readsOf(void 0, plan.angles)]] : plan.finders.map((finder) => [finder.name, readsOf(finder.partition, finder.angles)]);
+  const readers = plan.finders.map((finder) => [finder.name, readsOf(finder.partition, finder.kind, finder.angles)]);
   const flowReads = {
     angles: [],
     rules: [],
@@ -6779,14 +6739,14 @@ var buildReport = (root, options) => {
   const flowIndexText = diffFiles === null ? "" : writeFlowIndex(root, diffBase, diffPaths, plan.partitions, (path2) => audienceOf(path2, root, testPaths) === "code", flowIndexPath);
   const deepModel = plan.flow === void 0 ? void 0 : models?.[plan.flow.tier]?.[0];
   const byPartition = new Map(plan.partitions.map((partition) => [partition.name, partition.lines]));
-  const finderReaders = plan.path === "inline" ? [finderReader(plan.lines, deepModel)] : plan.finders.map((finder) => finderReader(finder.kind === "rereview" ? plan.lines : byPartition.get(finder.partition) ?? 0, finderModels[finder.name]));
+  const finderReaders = plan.finders.map((finder) => finderReader(byPartition.get(finder.partition) ?? 0, finderModels[finder.name]));
   return {
     base: { ref: base.ref, mergeBase: base.mergeBase, source: base.source },
     files: { counted, excluded, untracked },
     scope: [...paths],
     diff: diffCommand(diffBase, diffPaths),
     diffFiles,
-    formula: `ceil(${lines2}/${LINES_PER_FINDER}) = ${Math.ceil(lines2 / LINES_PER_FINDER)}, max ${MAX_FINDERS} \u2192 N = ${plan.n} (the number of partitions)`,
+    formula: `ceil(${lines2}/${LINES_PER_FINDER}) = ${Math.ceil(lines2 / LINES_PER_FINDER)}, max ${MAX_FINDERS} \u2192 N = ${plan.n}, at least 1; two finders each`,
     layout,
     shape,
     plan,
@@ -6802,12 +6762,13 @@ var buildReport = (root, options) => {
     models,
     finderModels,
     judge: plan.judging === "self" ? [] : judgeModels(usedModels, verifyModels),
-    flowModel: plan.flow === void 0 ? null : { path: flowModelPath(options.statePath, state, diffFiles), index: flowIndexPath, model: deepModel },
+    flowModel: plan.flow === void 0 ? null : { path: flowModelPath(options.statePath, state, diffFiles, run3), index: flowIndexPath, model: deepModel },
+    run: run3,
     estimate: plan.flow === void 0 ? null : estimateReview(modelerReader(flowIndexText.length, plan.lines, deepModel), finderReaders, { ...DEFAULT_PRICES, ...loaded.config.prices })
   };
 };
 var isMode = (value) => MODES.includes(value);
-var USAGE2 = "usage: jig review-plan [<base>] [--selector full|quick|auto|<tokens>] [--layout auto|inline|fanout|lean|solo] [--spec] [--mode review|pre-mr] [--mr] [--no-state] [--rereview] [--state <path>] [--agent <id>] [--json] [-- <pathspec>...]";
+var USAGE2 = "usage: jig review-plan [<base>] [--selector full|quick|auto|<tokens>] [--layout auto|lean|solo] [--spec] [--mode review|pre-mr] [--mr] [--no-state] [--rereview] [--state <path>] [--agent <id>] [--json] [-- <pathspec>...]";
 var splitPathspec = (args) => {
   const separator = args.indexOf("--");
   return separator === -1 ? { options: [...args], paths: void 0 } : { options: args.slice(0, separator), paths: args.slice(separator + 1) };
@@ -6891,7 +6852,7 @@ var requireRoot = (cwd) => {
   return root;
 };
 var workingTree = (root) => {
-  const dir = mkdtempSync(join31(tmpdir(), "jig-pre-mr-"));
+  const dir = mkdtempSync(join31(tmpdir2(), "jig-pre-mr-"));
   try {
     const index = join31(dir, "index");
     const current = gitLine2(["rev-parse", "--git-path", "index"], root);
@@ -7912,7 +7873,7 @@ var reviewDecision = (facts2) => {
 
 // src/review-cycle/forge.ts
 import { mkdtempSync as mkdtempSync2, rmSync as rmSync8, writeFileSync as writeFileSync10 } from "node:fs";
-import { tmpdir as tmpdir2 } from "node:os";
+import { tmpdir as tmpdir3 } from "node:os";
 import { join as join34 } from "node:path";
 var detectForge = (remote) => /github/i.test(remote) ? "github" : "gitlab";
 var isObject4 = (value) => typeof value === "object" && value !== null && !Array.isArray(value);
@@ -8016,7 +7977,7 @@ var gitlabForge = (exec, cwd) => {
     },
     reply(iid, discussionId, body) {
       const path2 = `${mr(iid)}/discussions/${discussionId}/notes`;
-      const dir = mkdtempSync2(join34(tmpdir2(), "jig-note-"));
+      const dir = mkdtempSync2(join34(tmpdir3(), "jig-note-"));
       try {
         const payload = join34(dir, "payload.json");
         writeFileSync10(payload, JSON.stringify({ body }));
@@ -8114,7 +8075,7 @@ var createForge = (name, exec, cwd) => name === "github" ? githubForge(exec, cwd
 // src/review-cycle/import-state.ts
 import { createHash as createHash9 } from "node:crypto";
 import { copyFileSync as copyFileSync5, existsSync as existsSync20, mkdirSync as mkdirSync15, readdirSync as readdirSync16, readFileSync as readFileSync33, statSync as statSync13, writeFileSync as writeFileSync12 } from "node:fs";
-import { tmpdir as tmpdir3 } from "node:os";
+import { tmpdir as tmpdir4 } from "node:os";
 import { basename as basename5, dirname as dirname14, join as join36 } from "node:path";
 
 // src/review-cycle/state.ts
@@ -8231,7 +8192,7 @@ var withdrawFromState = (path2, gone, now = /* @__PURE__ */ new Date()) => updat
 
 // src/review-cycle/import-state.ts
 var LEGACY_STATE_DIR = "claude-review";
-var defaultImportDir = () => join36(tmpdir3(), LEGACY_STATE_DIR);
+var defaultImportDir = () => join36(tmpdir4(), LEGACY_STATE_DIR);
 var legacyStateKey = (remote, iid) => createHash9("sha1").update(`${remote}:${iid}`).digest("hex").slice(0, 12);
 var LEGACY_FILE = /^(.+)-([0-9a-f]{12})\.json$/;
 var MAX_IID = 99999;

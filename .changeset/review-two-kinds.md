@@ -1,0 +1,4 @@
+---
+"jig": minor
+---
+`jig-review` runs one path at every diff size: the flow model, then two fresh finders per partition, `behavior` (angles 1–5, 12, 14, 15; deep/high, reads the flow model) and `conventions` (angles 6–11, 13, 16, 17; standard/high, reads the routed rules and glossaries). The `inline` and `fanout` layouts are removed (`auto` = `lean`; `solo` keeps the two kinds); project `tiers` take the keys `behavior` and `conventions`. The cost estimate is calibrated on a measured 10,263-line run. Without state the run's files go to the OS temp dir; each plan prints a `run:` id and a flow model is reused only by a retry of the same run. Verify's lean section is self-contained, a missing project severity section passes `gates/severity.md` by path, and the output gets a `runner disagrees:` line.
