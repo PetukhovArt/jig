@@ -77,3 +77,19 @@ describe('stop gate loop protection', () => {
     expect(journalKinds().filter((kind) => kind === 'gate-giveup')).toHaveLength(1)
   })
 })
+
+describe('stop gate and linked worktrees', () => {
+  it('skips an edit a subagent made in its own worktree inside the project', async () => {
+    write('.gitignore', '.claude/worktrees/\n')
+    git(['add', '-A'], root)
+    git(['-c', 'user.email=jig@test', '-c', 'user.name=jig', 'commit', '-q', '-m', 'ignore'], root)
+    git(['worktree', 'add', '-q', '--detach', '.claude/worktrees/agent-1'], root)
+    write('.claude/worktrees/agent-1/src/a.ts', 'export const a: number = "x"\n')
+    await dispatch({ kind: 'post-edit', file: '.claude/worktrees/agent-1/src/a.ts' }, { ...base, agentId: 'agent-1' }, pluginRoot)
+    expect(await send({ kind: 'stop', stopHookActive: false })).toEqual({ type: 'none' })
+    await editView('<template>a</template>\n')
+    const outcome = await send({ kind: 'stop', stopHookActive: false })
+    expect(outcome.type === 'block' && outcome.reason).toContain('src/App.vue')
+    expect(outcome.type === 'block' && outcome.reason).not.toContain('agent-1')
+  })
+})

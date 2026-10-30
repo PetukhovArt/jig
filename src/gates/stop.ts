@@ -1,12 +1,14 @@
 import { createHash } from 'node:crypto'
+import { dirname, join } from 'node:path'
 import { TOOLS, type RegisteredTool } from '../catalog/tools'
 import type { CustomCheck, RuleId } from '../core/config'
 import { ensureJigDir, jigPaths, resolvePluginRoot, resolveProjectRoot, toProjectPath } from '../core/paths'
 import { loadPlan, type Plan } from '../core/plan'
 import { acquireLock, transferLock } from '../core/proc'
 import { takeSnapshot, turnDiff, type TurnDiff } from '../core/snapshot'
-import { resetSnapshot, type SessionState } from '../core/state'
+import { resetSnapshot, type EditRecord, type SessionState } from '../core/state'
 import { logToActiveJournal } from '../task-status/task-status'
+import { linkedWorktreeRoot, samePath } from '../worktree/list'
 import type { Outcome } from '../hook/types'
 import { collapseFindings, formatFindings, POST_EDIT_LINE_LIMIT, STOP_LINE_LIMIT, type Finding } from '../tools/finding'
 import type { JournalNote, StopToolInput, ToolRun } from '../tools/tool'
@@ -200,9 +202,25 @@ const blockNotes = (blocking: readonly Finding[]): JournalNote[] =>
 const foreignChangeNotes = (files: readonly string[]): JournalNote[] =>
   files.length === 0 ? [] : [{ kind: 'foreign-change', tool: 'jig', message: files.join(', ') }]
 
+const editsOutsideOtherWorktrees = (projectRoot: string, edits: readonly EditRecord[]): EditRecord[] => {
+  const projectWorktree = linkedWorktreeRoot(projectRoot)
+  const isOwnByDir = new Map<string, boolean>()
+  const isOwn = (path: string): boolean => {
+    const dir = dirname(join(projectRoot, path))
+    let isOwnDir = isOwnByDir.get(dir)
+    if (isOwnDir === undefined) {
+      const worktree = linkedWorktreeRoot(dir)
+      isOwnDir = worktree === undefined || (projectWorktree !== undefined && samePath(worktree, projectWorktree))
+      isOwnByDir.set(dir, isOwnDir)
+    }
+    return isOwnDir
+  }
+  return edits.filter((edit) => isOwn(edit.path))
+}
+
 export const stopGate = async (input: StopGateInput): Promise<StopVerdict> => {
   const { projectRoot, pluginRoot, state } = input
-  const diff = turnDiff(projectRoot, state.snapshot, state.edits, input.attributesShell)
+  const diff = turnDiff(projectRoot, state.snapshot, editsOutsideOtherWorktrees(projectRoot, state.edits), input.attributesShell)
   const foreignNotes = foreignChangeNotes(diff.foreign)
   const isQuiet = diff.files.length === 0 || diff.fingerprint === state.stop.lastGreenFingerprint
   if (isQuiet) return { outcome: NONE, notes: foreignNotes }
