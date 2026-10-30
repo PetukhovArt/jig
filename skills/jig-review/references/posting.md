@@ -26,15 +26,16 @@ Read the merge request's diff refs ("Diff refs" row): `base_sha`, `start_sha`, `
 
 **The head must be the reviewed one.** `head_sha` differs from the state's `last_reviewed_sha` (`node "<root>/bin/jig.mjs" review-cycle head <iid>` prints `MOVED`): post nothing and report `head moved: <reviewed8> → <head8>, N commits`. The author pushed after the review: its findings, replies, FYI answer and line numbers may already be false, and the caller runs a follow-up round on the increment first. Post anyway only when the user (or the caller's brief) acknowledges the moved head in so many words; then every finding is re-anchored on the new head as in step 5.
 
-For each postable finding:
+**jig routes, you do not.** Run `node "<root>/bin/jig.mjs" review route <state> <base_sha> <head_sha>` (add `--hold <id>` per hold id): one line per postable item, `<route>\t<id>\t<severity>\t<file:line>` (a `promoted` line ends with `victim <file:line>`), then `routes: T thread · P promoted · D discussion · F fyi`. Its route is final: the manifest (step 4) has exactly these items with exactly these kinds. It applies the rules below:
 
 - the file is in the merge request diff and the line is an added or context line of the new side → a **thread** on `file:new_line`;
 - the file is not in the diff, and `caused_by` holds: its `file` is in the diff, its `diff_line` appears verbatim among that file's added or removed lines, and its `victim_line` appears verbatim in the affected file of the reviewed tree → a **promoted** thread on the cause line; its body ends with one line naming the affected `file:line`;
 - the file is in the diff, the line is not (unchanged code outside every hunk) → a **discussion**: a general thread, resolvable, with the chip on the first line and the `file:line` line after the body;
 - the file is not in the diff, no `caused_by`, and the finding is `Important` → a **discussion** as above: a blocking finding always gets something the author resolves and a review cycle counts by its chip;
-- otherwise (a `Nit` or `Pre-existing` outside the diff) → an item of the **one FYI note** (step 8). `optional` findings and the `deepening` go there too, wherever their file is.
+- otherwise (a `Nit` or `Pre-existing` outside the diff) → an item of the **one FYI note** (step 8);
+- `optional` findings and the `deepening` → the FYI note, wherever their file is: they are not findings with a thread.
 
-The FYI note never holds an `Important` and never a finding on a file of the diff. One run routed a confirmed Important on an unchanged line of a diff file to the note: the author could miss it, nobody could resolve it, and the review cycle did not count it as open.
+Apart from `optional` items and the deepening, the FYI note never holds an `Important` and never a finding on a file of the diff. One run routed a confirmed Important on an unchanged line of a diff file to the note: the author could miss it, nobody could resolve it, and the review cycle did not count it as open.
 
 Routing is the scope gate: you do not decide it per finding, and nothing is filtered before it. A suggestion block becomes a one-line replacement of the anchored line.
 
@@ -59,7 +60,7 @@ Write `manifest.json` before posting anything: one entry per item, threads, prom
 
 ## 6. Confirm
 
-Print one line per manifest entry: `n · file:line · thread | promoted (anchor) | discussion | fyi · preview (≤80)`. An FYI item that is `Important`, or whose file is in the diff, is a routing error: print it as `ROUTING: <file:line> Important in fyi` (or `diff file in fyi`), route it again by step 3 and print the manifest again. Wait for the user's explicit confirmation. No auto-posting.
+Print one line per manifest entry: `n · file:line · thread | promoted (anchor) | discussion | fyi · preview (≤80)`. A manifest entry whose kind differs from its `review route` line, or a route line with no entry, is a routing error: print it as `ROUTING: <id> <file:line> <route> as <kind>` (or `<route> missing`), rebuild the manifest from the route lines and print it again. An `optional` item or the deepening in the FYI note is never a routing error, whatever its file. Wait for the user's explicit confirmation. No auto-posting.
 
 ## 7. Post and read back
 
@@ -80,6 +81,8 @@ The heading lines are in the comment language. Find your earlier note by the inv
 ## 9. Write back to state
 
 Write the id of each created thread into its finding (`discussion_id`). That keeps the next posting from duplicating findings and lets a later run resolve the threads.
+
+Then run `review route` again with the same arguments: every line left must be `fyi`. A `thread`, `promoted` or `discussion` line means a finding has no thread: post it, or report it as `not posted: <id> <route>`; never end the pass silently with one.
 
 After a re-review, also:
 

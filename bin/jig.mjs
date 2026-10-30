@@ -7065,8 +7065,83 @@ var runReviewCost = (args) => {
   return 0;
 };
 
+// src/review/route.ts
+import { readFileSync as readFileSync27 } from "node:fs";
+import { parseArgs as parseArgs5 } from "node:util";
+var FORGE_CONTEXT_LINES = 3;
+var gitOut2 = (root, args) => {
+  const result = git(args, root);
+  if (!result.ok) throw new Error(`git ${args.join(" ")} failed: ${result.stderr.trim()}`);
+  return result.stdout;
+};
+var parseDiff = (patch) => {
+  const files = /* @__PURE__ */ new Map();
+  let current;
+  for (const line of patch.split("\n")) {
+    const header = /^\+\+\+ (?:b\/)?(.*)$/.exec(line);
+    if (header !== null) {
+      const path2 = header[1] ?? "";
+      current = path2 === "/dev/null" ? void 0 : { shown: /* @__PURE__ */ new Set(), changed: /* @__PURE__ */ new Set() };
+      if (current !== void 0) files.set(path2, current);
+      continue;
+    }
+    if (current === void 0 || line.startsWith("--- ")) continue;
+    const hunk = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/.exec(line);
+    if (hunk !== null) {
+      const start = Number(hunk[1]);
+      const length = hunk[2] === void 0 ? 1 : Number(hunk[2]);
+      for (let offset = 0; offset < length; offset++) current.shown.add(start + offset);
+    } else if (line.startsWith("+") || line.startsWith("-")) {
+      current.changed.add(line.slice(1).trim());
+    }
+  }
+  return files;
+};
+var fileAt = (root, sha, path2) => {
+  const result = git(["show", `${sha}:${path2}`], root);
+  return result.ok ? result.stdout.split("\n").map((line) => line.trim()) : void 0;
+};
+var isPostable = (finding, held) => !held.has(finding.id ?? "") && (finding.status === "optional" || finding.status === "open" && (finding.discussion_id ?? void 0) === void 0);
+var routeFindings = (root, state, base, head, hold = []) => {
+  const diff = parseDiff(gitOut2(root, ["-c", "core.quotePath=false", "diff", "--no-color", "--no-ext-diff", "-M", `-U${FORGE_CONTEXT_LINES}`, `${base}...${head}`]));
+  const held = new Set(hold);
+  const isProvenCause = (finding, cause) => {
+    const causeFile = cause.file === void 0 ? void 0 : diff.get(cause.file);
+    if (causeFile === void 0 || cause.diff_line === void 0 || cause.victim_line === void 0 || finding.file === void 0) return false;
+    return causeFile.changed.has(cause.diff_line.trim()) && (fileAt(root, head, finding.file)?.includes(cause.victim_line.trim()) ?? false);
+  };
+  const routeOf = (finding) => {
+    const severity = finding.status === "optional" ? "optional" : finding.severity ?? "?";
+    const at = `${finding.file ?? "?"}:${finding.line ?? "?"}`;
+    const item = { id: finding.id ?? at, severity, at };
+    if (finding.status === "optional") return { route: "fyi", ...item };
+    const file = finding.file === void 0 ? void 0 : diff.get(finding.file);
+    if (file !== void 0) return { route: finding.line !== void 0 && file.shown.has(finding.line) ? "thread" : "discussion", ...item };
+    const cause = finding.caused_by ?? void 0;
+    if (cause !== void 0 && isProvenCause(finding, cause)) return { route: "promoted", ...item, at: `${cause.file}:${cause.line ?? "?"}`, victim: at };
+    return { route: finding.severity === "Important" ? "discussion" : "fyi", ...item };
+  };
+  const routed = (state.findings ?? []).filter((finding) => isPostable(finding, held)).map(routeOf);
+  return state.deepening === void 0 || state.deepening === null ? routed : [...routed, { route: "fyi", id: "deepening", severity: "deepening", at: "" }];
+};
+var ROUTES = ["thread", "promoted", "discussion", "fyi"];
+var formatRoutes = (routed) => [
+  ...routed.map((item) => [item.route, item.id, item.severity, item.at, ...item.victim === void 0 ? [] : [`victim ${item.victim}`]].join("	")),
+  `routes: ${ROUTES.map((route2) => `${routed.filter((item) => item.route === route2).length} ${route2}`).join(" \xB7 ")}`
+];
+var USAGE4 = "usage: jig review route <state file> <base_sha> <head_sha> [--hold <id>]...";
+var runReviewRoute = (args) => {
+  const { values, positionals } = parseArgs5({ args, options: { hold: { type: "string", multiple: true } }, allowPositionals: true, strict: true });
+  const [path2, base, head] = positionals;
+  if (path2 === void 0 || base === void 0 || head === void 0 || positionals.length > 3) throw new Error(USAGE4);
+  const state = JSON.parse(readFileSync27(path2, "utf8"));
+  process.stdout.write(`${formatRoutes(routeFindings(process.cwd(), state, base, head, values.hold ?? [])).join("\n")}
+`);
+  return 0;
+};
+
 // src/review/rules.ts
-import { existsSync as existsSync15, readFileSync as readFileSync27 } from "node:fs";
+import { existsSync as existsSync15, readFileSync as readFileSync28 } from "node:fs";
 import { join as join30, posix as posix5 } from "node:path";
 var DEFAULT_DISCOVER = {
   rules: ["AGENTS.md", "CLAUDE.md", "CLAUDE.local.md", "REVIEW.md"],
@@ -7081,7 +7156,7 @@ var isStrings2 = (value) => Array.isArray(value) && value.every((item) => typeof
 var readDiscover = (root) => {
   const path2 = join30(jigPaths(root).dir, PROJECT_CONFIG);
   if (!existsSync15(path2)) return DEFAULT_DISCOVER;
-  const config = parseJsonc(readFileSync27(path2, "utf8"));
+  const config = parseJsonc(readFileSync28(path2, "utf8"));
   const discover2 = config?.discover ?? {};
   const pick = (key) => {
     const value = discover2[key];
@@ -7116,10 +7191,10 @@ var reviewInputs = (root, base, paths, env) => {
   const architecture = documents.filter((path2) => ARCHITECTURE_FILE.test(path2) && ARCHITECTURE_NAME.test(path2) && !ADR_DIR.test(path2));
   return { indexes: sorted(indexes), standards: sorted(standards), architecture: sorted(architecture) };
 };
-var USAGE4 = "usage: jig review rules [<base>] [-- <pathspec>...]";
+var USAGE5 = "usage: jig review rules [<base>] [-- <pathspec>...]";
 var runReviewRules = (args) => {
   const split = splitPathspec(args);
-  if (split.options.length > 1) throw new Error(USAGE4);
+  if (split.options.length > 1) throw new Error(USAGE5);
   const root = gitToplevel(process.cwd());
   if (root === void 0) throw new Error("not inside a git repository");
   const paths = toRootPaths(root, process.cwd(), split.paths ?? []);
@@ -7135,7 +7210,7 @@ var runReviewRules = (args) => {
 };
 
 // src/review/state-summary.ts
-import { readFileSync as readFileSync28 } from "node:fs";
+import { readFileSync as readFileSync29 } from "node:fs";
 var SUMMARY_WIDTH = 100;
 var SHA_WIDTH = 12;
 var short = (value, width) => {
@@ -7165,7 +7240,7 @@ var summarizeState = (state) => {
 var runReviewState = (args) => {
   const [path2] = args;
   if (path2 === void 0 || args.length > 1) throw new Error("usage: jig review state <state file>");
-  process.stdout.write(`${summarizeState(JSON.parse(readFileSync28(path2, "utf8")))}
+  process.stdout.write(`${summarizeState(JSON.parse(readFileSync29(path2, "utf8")))}
 `);
   return 0;
 };
@@ -7173,6 +7248,7 @@ var runReviewState = (args) => {
 // src/review/review.ts
 var SUBCOMMANDS = /* @__PURE__ */ new Map([
   ["cost", runReviewCost],
+  ["route", runReviewRoute],
   ["rules", runReviewRules],
   ["state", runReviewState]
 ]);
@@ -7184,9 +7260,9 @@ var runReview = (args) => {
 };
 
 // src/review-cycle/review-cycle.ts
-import { existsSync as existsSync19, readFileSync as readFileSync31 } from "node:fs";
+import { existsSync as existsSync19, readFileSync as readFileSync32 } from "node:fs";
 import { basename as basename6, relative as relative6, resolve as resolve13 } from "node:path";
-import { parseArgs as parseArgs5 } from "node:util";
+import { parseArgs as parseArgs6 } from "node:util";
 
 // src/review-cycle/adapter.ts
 import { existsSync as existsSync16 } from "node:fs";
@@ -7589,13 +7665,13 @@ var createForge = (name, exec, cwd) => name === "github" ? githubForge(exec, cwd
 
 // src/review-cycle/import-state.ts
 import { createHash as createHash9 } from "node:crypto";
-import { copyFileSync as copyFileSync5, existsSync as existsSync18, mkdirSync as mkdirSync15, readdirSync as readdirSync16, readFileSync as readFileSync30, statSync as statSync13, writeFileSync as writeFileSync10 } from "node:fs";
+import { copyFileSync as copyFileSync5, existsSync as existsSync18, mkdirSync as mkdirSync15, readdirSync as readdirSync16, readFileSync as readFileSync31, statSync as statSync13, writeFileSync as writeFileSync10 } from "node:fs";
 import { tmpdir as tmpdir2 } from "node:os";
 import { basename as basename5, dirname as dirname14, join as join33 } from "node:path";
 
 // src/review-cycle/state.ts
 import { createHash as createHash8 } from "node:crypto";
-import { copyFileSync as copyFileSync4, existsSync as existsSync17, readFileSync as readFileSync29, writeFileSync as writeFileSync9 } from "node:fs";
+import { copyFileSync as copyFileSync4, existsSync as existsSync17, readFileSync as readFileSync30, writeFileSync as writeFileSync9 } from "node:fs";
 import { join as join32 } from "node:path";
 var FINDING_STATUSES = ["open", "fixed", "skipped", "unverified", "no_change_needed", "optional"];
 var reviewStateKey = (remote, target) => {
@@ -7631,7 +7707,7 @@ var readReviewState = (path2) => {
   if (!existsSync17(path2)) return void 0;
   let text3;
   try {
-    text3 = readFileSync29(path2, "utf8");
+    text3 = readFileSync30(path2, "utf8");
   } catch (error) {
     throw new EnvironmentError(`${path2}: ${error instanceof Error ? error.message : String(error)}`);
   }
@@ -7676,7 +7752,7 @@ var specHold = (state, spec2) => {
 };
 var withdrawFromState = (path2, gone, now = /* @__PURE__ */ new Date()) => {
   if (gone.length === 0 || !existsSync17(path2)) return 0;
-  const raw = JSON.parse(readFileSync29(path2, "utf8"));
+  const raw = JSON.parse(readFileSync30(path2, "utf8"));
   if (!isObject5(raw) || !Array.isArray(raw["findings"])) throw new EnvironmentError(`${path2}: no findings array`);
   const hits = raw["findings"].filter(
     (finding) => isObject5(finding) && typeof finding["discussion_id"] === "string" && gone.includes(finding["discussion_id"])
@@ -7777,7 +7853,7 @@ var finishedAt = (raw, path2) => {
 };
 var readJson = (path2) => {
   try {
-    return JSON.parse(readFileSync30(path2, "utf8"));
+    return JSON.parse(readFileSync31(path2, "utf8"));
   } catch {
     return void 0;
   }
@@ -7884,7 +7960,7 @@ var applyVerdicts = (adapter, verdicts, dryRun) => {
 };
 
 // src/review-cycle/review-cycle.ts
-var USAGE5 = [
+var USAGE6 = [
   "usage: jig review-cycle <subcommand>",
   "  queue [--adapter <path>] [--json]",
   "  state-path <mr> [--repo <dir>]",
@@ -8015,7 +8091,7 @@ var flagOptions = {
 };
 var parse = (args) => {
   try {
-    return parseArgs5({ args, options: flagOptions, allowPositionals: true, strict: true });
+    return parseArgs6({ args, options: flagOptions, allowPositionals: true, strict: true });
   } catch (error) {
     throw new UsageError2(error instanceof Error ? error.message : String(error));
   }
@@ -8086,7 +8162,7 @@ var spec = (args, deps) => {
 };
 var readText4 = (path2) => {
   try {
-    return readFileSync31(path2, "utf8");
+    return readFileSync32(path2, "utf8");
   } catch (error) {
     throw new EnvironmentError(`${path2}: ${error instanceof Error ? error.message : String(error)}`);
   }
@@ -8227,7 +8303,7 @@ var runReviewCycleWith = (args, deps) => {
   const [name, ...rest] = args;
   const subcommand = name === void 0 ? void 0 : subcommands.get(name);
   if (subcommand === void 0) {
-    process.stderr.write(`${USAGE5}
+    process.stderr.write(`${USAGE6}
 `);
     return 2;
   }
@@ -8236,7 +8312,7 @@ var runReviewCycleWith = (args, deps) => {
   } catch (error) {
     if (error instanceof UsageError2) {
       process.stderr.write(`jig review-cycle ${name}: ${error.message}
-${USAGE5}
+${USAGE6}
 `);
       return 2;
     }
@@ -8253,9 +8329,9 @@ var runReviewCycle = (args) => runReviewCycleWith(args, { exec: spawnExec, cwd: 
 
 // src/slot/slot.ts
 import { spawnSync as spawnSync7 } from "node:child_process";
-import { existsSync as existsSync20, mkdirSync as mkdirSync16, readFileSync as readFileSync32, rmSync as rmSync8, writeFileSync as writeFileSync11 } from "node:fs";
+import { existsSync as existsSync20, mkdirSync as mkdirSync16, readFileSync as readFileSync33, rmSync as rmSync8, writeFileSync as writeFileSync11 } from "node:fs";
 import { basename as basename7, dirname as dirname15, isAbsolute as isAbsolute6, join as join34, relative as relative7, resolve as resolve14 } from "node:path";
-import { parseArgs as parseArgs6 } from "node:util";
+import { parseArgs as parseArgs7 } from "node:util";
 
 // src/worktree/lockfiles.ts
 import { posix as posix6 } from "node:path";
@@ -8392,7 +8468,7 @@ var insideDir = (dir, file) => {
 };
 var writeEnv = (dir, target, key, value) => {
   const path2 = insideDir(dir, target);
-  const text3 = existsSync20(path2) ? readFileSync32(path2, "utf8") : "";
+  const text3 = existsSync20(path2) ? readFileSync33(path2, "utf8") : "";
   writeLocalFile(dir, target, setEnvValue(text3, key, String(value)));
 };
 var writePorts = (dir, slots, slot) => {
@@ -8405,7 +8481,7 @@ var writePorts = (dir, slots, slot) => {
 };
 var readJsonObject = (path2) => {
   if (!existsSync20(path2)) return {};
-  const value = parseJsonc(readFileSync32(path2, "utf8"));
+  const value = parseJsonc(readFileSync33(path2, "utf8"));
   const isObject7 = typeof value === "object" && value !== null && !Array.isArray(value);
   return isObject7 ? value : {};
 };
@@ -8455,7 +8531,7 @@ var poolDeps = (context, dir) => {
 };
 var isPoolServed = (outcome) => outcome !== void 0 && outcome.kind !== "skipped";
 var slotNew = async (args) => {
-  const { values } = parseArgs6({ args, options: { slug: { type: "string" }, branch: { type: "string" } }, strict: true });
+  const { values } = parseArgs7({ args, options: { slug: { type: "string" }, branch: { type: "string" } }, strict: true });
   const slug = values.slug;
   if (slug !== void 0 && !SLUG.test(slug)) return fail3(`invalid --slug ${slug}: use letters, digits, ., _, -`, 2);
   const context = loadContext();
@@ -8489,7 +8565,7 @@ var slotNew = async (args) => {
   return 0;
 };
 var slotLs = (args) => {
-  const { values } = parseArgs6({ args, options: { json: { type: "boolean" } }, strict: true });
+  const { values } = parseArgs7({ args, options: { json: { type: "boolean" } }, strict: true });
   const context = loadContext();
   const rows = slotWorktrees(listWorktrees(context.projectRoot), context.repo).sort((left, right) => left.slot - right.slot).map((worktree) => ({
     slot: worktree.slot,
@@ -8520,7 +8596,7 @@ var findSlot = (context, slot) => {
 };
 var trackedChanges = (dir) => git(["status", "--porcelain=v1", "--untracked-files=no"], dir).stdout.split(/\r?\n/).filter(Boolean).map((line) => line.slice(3));
 var slotRm = (args) => {
-  const { values, positionals } = parseArgs6({
+  const { values, positionals } = parseArgs7({
     args,
     options: { force: { type: "boolean" } },
     allowPositionals: true,
@@ -8546,7 +8622,7 @@ var headOf = (dir) => {
 };
 var changedFiles2 = (dir, from, to) => from === to ? [] : git(["diff", "--name-only", "-z", from, to], dir).stdout.split("\0").filter(Boolean);
 var slotShow = (args) => {
-  const { positionals } = parseArgs6({ args, options: {}, allowPositionals: true, strict: true });
+  const { positionals } = parseArgs7({ args, options: {}, allowPositionals: true, strict: true });
   const [slotText, ref] = positionals;
   const slot = parseSlotNumber(slotText);
   if (positionals.length !== 2 || slot === void 0 || ref === void 0) return fail3("usage: slot show <N> <branch|commit>", 2);
@@ -8592,7 +8668,7 @@ var runSlot = (args) => {
 import { existsSync as existsSync21 } from "node:fs";
 import { basename as basename9, resolve as resolve16 } from "node:path";
 import { createInterface } from "node:readline/promises";
-import { parseArgs as parseArgs7 } from "node:util";
+import { parseArgs as parseArgs8 } from "node:util";
 
 // src/worktree/sweep.ts
 import { spawnSync as spawnSync8 } from "node:child_process";
@@ -8694,7 +8770,7 @@ var checkoutTarget = (positionals, usage2) => {
   return { dir, main, config };
 };
 var worktreeSeed = (args) => {
-  const { positionals } = parseArgs7({ args, options: {}, allowPositionals: true, strict: true });
+  const { positionals } = parseArgs8({ args, options: {}, allowPositionals: true, strict: true });
   const target = checkoutTarget(positionals, "worktree seed <dir>");
   if (typeof target === "number") return target;
   if (samePath(target.main, target.dir)) return fail4(`${toSlash(target.dir)} is the main checkout, seed fills another worktree from it`, 1);
@@ -8706,7 +8782,7 @@ var worktreeSeed = (args) => {
 };
 var DEPS_USAGE = "worktree deps <dir> [--save [--force]] | worktree deps --prune [--dry-run]";
 var worktreeDeps = (args) => {
-  const { values, positionals } = parseArgs7({
+  const { values, positionals } = parseArgs8({
     args,
     options: { save: { type: "boolean" }, force: { type: "boolean" }, prune: { type: "boolean" }, "dry-run": { type: "boolean" } },
     allowPositionals: true,
@@ -8729,7 +8805,7 @@ var worktreeDeps = (args) => {
   return outcome.kind === "failed" ? 1 : 0;
 };
 var worktreeRemove = (args) => {
-  const { positionals } = parseArgs7({ args, options: {}, allowPositionals: true, strict: true });
+  const { positionals } = parseArgs8({ args, options: {}, allowPositionals: true, strict: true });
   const [target] = positionals;
   if (positionals.length !== 1 || target === void 0) return fail4("usage: worktree remove <dir>", 2);
   const dir = resolve16(target);
@@ -8771,7 +8847,7 @@ var removeRows = (rows, mainRoot) => {
   return code;
 };
 var worktreeSweep = async (args, confirm = terminalConfirm()) => {
-  const { values } = parseArgs7({
+  const { values } = parseArgs8({
     args,
     options: { json: { type: "boolean" }, ask: { type: "boolean" }, yes: { type: "string", multiple: true } },
     strict: true

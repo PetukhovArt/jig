@@ -1,4 +1,5 @@
 import { runReviewCost } from './cost'
+import { runReviewRoute } from './route'
 import { runReviewRules } from './rules'
 import { runReviewState } from './state-summary'
 
@@ -6,6 +7,7 @@ type Command = (args: string[]) => number
 
 const SUBCOMMANDS = new Map<string, Command>([
   ['cost', runReviewCost],
+  ['route', runReviewRoute],
   ['rules', runReviewRules],
   ['state', runReviewState],
 ])
