@@ -42,8 +42,20 @@ describe('review inputs', { timeout: 30_000 }, () => {
       indexes: ['AGENTS.md', 'src/payments/AGENTS.md', 'src/payments/deep/REVIEW.md'],
       standards: ['notes/code-style.md', 'standards/naming.md'],
       architecture: ['docs/architecture.md'],
+      glossaries: [],
       scopes: { 'AGENTS.md': '', 'src/payments/AGENTS.md': 'src/payments', 'src/payments/deep/REVIEW.md': 'src/payments/deep', 'notes/code-style.md': '', 'standards/naming.md': '' },
     })
+  })
+
+  it('lists the root glossary and the context glossaries its map lists, each scoped to its own directory', () => {
+    write('AGENTS.md', 'Glossary: [GLOSSARY-MAP.md](GLOSSARY-MAP.md)\n')
+    write('GLOSSARY-MAP.md', '- [Common](./GLOSSARY.md)\n- [payments](./src/payments/GLOSSARY.md)\n')
+    write('GLOSSARY.md', '**Channel**\n_Avoid_: camera\n')
+    write('src/payments/GLOSSARY.md', '**Invoice**\n')
+    write('src/other/GLOSSARY.md', '**Unlisted**\n')
+    const inputs = reviewInputs(root, 'main', [], {})
+    expect(inputs.glossaries).toEqual(['GLOSSARY.md', 'src/payments/GLOSSARY.md'])
+    expect([inputs.scopes['GLOSSARY.md'], inputs.scopes['src/payments/GLOSSARY.md']]).toEqual(['', 'src/payments'])
   })
 
   it('lists the standards under docs/ that an index links, scoped to the directory of the shallowest index linking them', () => {

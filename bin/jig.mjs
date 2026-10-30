@@ -5965,6 +5965,8 @@ var STANDARD_NAME = /review|convention|standard|code[-_ ]?style|guideline/i;
 var ARCHITECTURE_NAME = /architect|fsd|layers|boundar/i;
 var ARCHITECTURE_FILE = /\.(md|html)$/i;
 var ADR_DIR = /(^|\/)adrs?\//i;
+var GLOSSARY_MAP = /(^|\/)glossary[-_ ]?map\.md$/i;
+var GLOSSARY = /(^|\/)[^/]*glossary[^/]*\.md$/i;
 var MARKDOWN_LINK = /\]\(<?([^)>\s#]+\.md)(?:#[^)\s]*)?>?\)|(?:^|\s)@([^\s]+\.md)/g;
 var isStrings2 = (value) => Array.isArray(value) && value.every((item) => typeof item === "string");
 var readDiscover = (root) => {
@@ -6000,6 +6002,14 @@ var standardScopes = (root, indexes, standards) => {
   const shallowest = (dirs) => [...dirs].sort((left, right) => depthOf(left) - depthOf(right) || left.localeCompare(right))[0] ?? "";
   return Object.fromEntries(standards.map((path2) => [path2, shallowest(linkers.get(path2) ?? [""])]));
 };
+var linksOf = (root, path2) => linkedDocuments(path2, readFileSync26(join29(root, path2), "utf8")).filter((target) => existsSync13(join29(root, target)));
+var glossariesOf = (root, indexes, documents) => {
+  const fromIndexes = indexes.flatMap((index) => linksOf(root, index));
+  const maps = [...documents.filter((path2) => !path2.includes("/") && GLOSSARY_MAP.test(path2)), ...fromIndexes.filter((path2) => GLOSSARY_MAP.test(path2))];
+  const listed = [...new Set(maps)].flatMap((map) => linksOf(root, map));
+  const rootGlossary = documents.filter((path2) => !path2.includes("/") && GLOSSARY.test(path2) && !GLOSSARY_MAP.test(path2));
+  return sorted([...rootGlossary, ...fromIndexes, ...listed].filter((path2) => GLOSSARY.test(path2) && !GLOSSARY_MAP.test(path2)));
+};
 var ruleDocuments = (root, changed, env) => {
   const discover2 = readDiscover(root);
   const dirs = new Set(changed.flatMap(ancestors));
@@ -6016,12 +6026,16 @@ var ruleDocuments = (root, changed, env) => {
     documents.filter((path2) => path2.toLowerCase().endsWith(".md") && !isIndex(path2) && (isStandard(path2) || isNamedStandard(path2)) && !isExcluded(path2))
   );
   const architecture = sorted(documents.filter((path2) => ARCHITECTURE_FILE.test(path2) && ARCHITECTURE_NAME.test(path2) && !ADR_DIR.test(path2)));
-  const scopes = { ...Object.fromEntries(indexes.map((path2) => [path2, dirOf2(path2)])), ...standardScopes(root, indexes, standards) };
-  return { indexes, standards, architecture, scopes };
+  const glossaries = glossariesOf(root, indexes, documents);
+  const scopes = {
+    ...Object.fromEntries([...indexes, ...glossaries].map((path2) => [path2, dirOf2(path2)])),
+    ...standardScopes(root, indexes, standards)
+  };
+  return { indexes, standards, architecture, glossaries, scopes };
 };
 var changedPaths = (root, mergeBase, paths) => gitList(root, ["diff", "--name-only", "-z", mergeBase, ...paths.length > 0 ? ["--", ...paths] : []]);
 var covers2 = (scope, file) => scope === "" || file.startsWith(`${scope}/`);
-var rulesFor = (inputs, files) => [...inputs.indexes, ...inputs.standards].filter((path2) => files.some((file) => covers2(inputs.scopes[path2] ?? "", file)));
+var rulesFor = (inputs, files) => [...inputs.indexes, ...inputs.standards, ...inputs.glossaries].filter((path2) => files.some((file) => covers2(inputs.scopes[path2] ?? "", file)));
 
 // src/review/scope.ts
 import { existsSync as existsSync14, readFileSync as readFileSync27 } from "node:fs";
@@ -7615,6 +7629,7 @@ var runReviewRules = (args) => {
   const output = [
     ...inputs.indexes.map((path2) => `index ${path2}${scope(path2)}`),
     ...inputs.standards.map((path2) => `standard ${path2}${scope(path2)}`),
+    ...inputs.glossaries.map((path2) => `glossary ${path2}${scope(path2)}`),
     ...inputs.architecture.map((path2) => `architecture ${path2}`)
   ];
   process.stdout.write(`${output.join("\n")}

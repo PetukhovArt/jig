@@ -419,6 +419,9 @@ describe('buildReport on a repository', () => {
     write(root, 'docs/standards/code/naming.md', '# naming\n')
     write(root, 'docs/standards/code/vue.md', '# vue\n')
     write(root, 'src/gis/AGENTS.md', '# gis\n')
+    write(root, 'GLOSSARY-MAP.md', '- [Common](./GLOSSARY.md)\n- [gis](./src/gis/GLOSSARY.md)\n')
+    write(root, 'GLOSSARY.md', '**Channel**\n_Avoid_: camera\n')
+    write(root, 'src/gis/GLOSSARY.md', '**Marker**\n')
     run('add', '-A')
     run('commit', '-qm', 'base')
     write(root, 'src/gis/map.ts', body('m'))
@@ -429,7 +432,7 @@ describe('buildReport on a repository', () => {
     const report = buildReport(root, { base: 'HEAD~1', spec: false, agent: 'claude', layout: 'lean' })
 
     const rulesOf = (file: string): string[] => report.reads[report.plan.partitions.find((partition) => partition.files.includes(file))?.name ?? '']?.rules ?? []
-    expect(rulesOf('src/gis/map.ts')).toEqual(['AGENTS.md', 'src/gis/AGENTS.md', 'docs/standards/code/naming.md', 'docs/standards/code/vue.md'])
-    expect(rulesOf('src/journal/list.ts')).toEqual(['AGENTS.md', 'docs/standards/code/naming.md', 'docs/standards/code/vue.md'])
+    expect(rulesOf('src/gis/map.ts')).toEqual(['AGENTS.md', 'src/gis/AGENTS.md', 'docs/standards/code/naming.md', 'docs/standards/code/vue.md', 'GLOSSARY.md', 'src/gis/GLOSSARY.md'])
+    expect(rulesOf('src/journal/list.ts')).toEqual(['AGENTS.md', 'docs/standards/code/naming.md', 'docs/standards/code/vue.md', 'GLOSSARY.md'])
   })
 })

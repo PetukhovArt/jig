@@ -11,7 +11,8 @@ export interface ReviewInputs {
   indexes: string[]
   standards: string[]
   architecture: string[]
-  /** Per index and standard: the directory whose files it governs, `''` for the whole repository. */
+  glossaries: string[]
+  /** Per index, standard and glossary: the directory whose files it governs, `''` for the whole repository. */
   scopes: Record<string, string>
 }
 
@@ -30,6 +31,8 @@ const STANDARD_NAME = /review|convention|standard|code[-_ ]?style|guideline/i
 const ARCHITECTURE_NAME = /architect|fsd|layers|boundar/i
 const ARCHITECTURE_FILE = /\.(md|html)$/i
 const ADR_DIR = /(^|\/)adrs?\//i
+const GLOSSARY_MAP = /(^|\/)glossary[-_ ]?map\.md$/i
+const GLOSSARY = /(^|\/)[^/]*glossary[^/]*\.md$/i
 const MARKDOWN_LINK = /\]\(<?([^)>\s#]+\.md)(?:#[^)\s]*)?>?\)|(?:^|\s)@([^\s]+\.md)/g
 
 const isStrings = (value: unknown): value is string[] => Array.isArray(value) && value.every((item) => typeof item === 'string')
@@ -77,6 +80,16 @@ const standardScopes = (root: string, indexes: readonly string[], standards: rea
   return Object.fromEntries(standards.map((path) => [path, shallowest(linkers.get(path) ?? [''])]))
 }
 
+const linksOf = (root: string, path: string): string[] => linkedDocuments(path, readFileSync(join(root, path), 'utf8')).filter((target) => existsSync(join(root, target)))
+
+const glossariesOf = (root: string, indexes: readonly string[], documents: readonly string[]): string[] => {
+  const fromIndexes = indexes.flatMap((index) => linksOf(root, index))
+  const maps = [...documents.filter((path) => !path.includes('/') && GLOSSARY_MAP.test(path)), ...fromIndexes.filter((path) => GLOSSARY_MAP.test(path))]
+  const listed = [...new Set(maps)].flatMap((map) => linksOf(root, map))
+  const rootGlossary = documents.filter((path) => !path.includes('/') && GLOSSARY.test(path) && !GLOSSARY_MAP.test(path))
+  return sorted([...rootGlossary, ...fromIndexes, ...listed].filter((path) => GLOSSARY.test(path) && !GLOSSARY_MAP.test(path)))
+}
+
 export const ruleDocuments = (root: string, changed: readonly string[], env: NodeJS.ProcessEnv): ReviewInputs => {
   const discover = readDiscover(root)
   const dirs = new Set(changed.flatMap(ancestors))
@@ -93,8 +106,12 @@ export const ruleDocuments = (root: string, changed: readonly string[], env: Nod
     documents.filter((path) => path.toLowerCase().endsWith('.md') && !isIndex(path) && (isStandard(path) || isNamedStandard(path)) && !isExcluded(path)),
   )
   const architecture = sorted(documents.filter((path) => ARCHITECTURE_FILE.test(path) && ARCHITECTURE_NAME.test(path) && !ADR_DIR.test(path)))
-  const scopes = { ...Object.fromEntries(indexes.map((path) => [path, dirOf(path)])), ...standardScopes(root, indexes, standards) }
-  return { indexes, standards, architecture, scopes }
+  const glossaries = glossariesOf(root, indexes, documents)
+  const scopes = {
+    ...Object.fromEntries([...indexes, ...glossaries].map((path) => [path, dirOf(path)])),
+    ...standardScopes(root, indexes, standards),
+  }
+  return { indexes, standards, architecture, glossaries, scopes }
 }
 
 export const changedPaths = (root: string, mergeBase: string, paths: readonly string[]): string[] =>
@@ -103,4 +120,4 @@ export const changedPaths = (root: string, mergeBase: string, paths: readonly st
 const covers = (scope: string, file: string): boolean => scope === '' || file.startsWith(`${scope}/`)
 
 export const rulesFor = (inputs: ReviewInputs, files: readonly string[]): string[] =>
-  [...inputs.indexes, ...inputs.standards].filter((path) => files.some((file) => covers(inputs.scopes[path] ?? '', file)))
+  [...inputs.indexes, ...inputs.standards, ...inputs.glossaries].filter((path) => files.some((file) => covers(inputs.scopes[path] ?? '', file)))
