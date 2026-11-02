@@ -31,6 +31,7 @@ import {
   MAX_PARALLEL,
   MODES,
   FINDER_KINDS,
+  PROJECT_ANGLE_NAME,
   angleNumber,
   isLayout,
   isTier,
@@ -46,6 +47,7 @@ import {
   type Layout,
   type Mode,
   type Plan,
+  type ProjectAngle,
   type SelectorSource,
   type Shape,
   type StepRef,
@@ -159,6 +161,7 @@ export const hasAddedComment = (file: string, source: string, added: ReadonlySet
 export interface ProjectReviewConfig {
   layout: Layout | undefined
   angles: Partial<Record<Angle, AngleSettings>>
+  projectAngles: ProjectAngle[]
   grades: Record<string, Grade>
   maxParallel: number
   testPaths: string[]
@@ -166,31 +169,51 @@ export interface ProjectReviewConfig {
 
 const PROJECT_KEYS = ['$schema', 'iterationsMemory', 'discover', 'review', 'severity', 'route', 'angles', 'tiers', 'maxParallel', 'layout', 'testPaths']
 
-const readAngles = (validator: Validator, value: unknown): Partial<Record<Angle, AngleSettings>> => {
+const SETTING_KEYS = ['enabled', 'severityCeiling']
+const PROJECT_ANGLE_KEYS = [...SETTING_KEYS, 'file', 'kind']
+
+const readSettings = (validator: Validator, settings: Record<string, unknown>, path: string): AngleSettings => {
+  const parsed: AngleSettings = {}
+  if (settings['enabled'] !== undefined) {
+    if (typeof settings['enabled'] === 'boolean') parsed.enabled = settings['enabled']
+    else validator.report(childPath(path, 'enabled'), 'expected a boolean')
+  }
+  if (settings['severityCeiling'] !== undefined) {
+    const ceiling = validator.oneOf(settings['severityCeiling'], childPath(path, 'severityCeiling'), CEILINGS)
+    if (ceiling !== undefined) parsed.severityCeiling = ceiling
+  }
+  return parsed
+}
+
+const readProjectAngle = (validator: Validator, name: string, entry: unknown, path: string): ProjectAngle | undefined => {
+  const settings = validator.object(entry, path, PROJECT_ANGLE_KEYS)
+  if (settings === undefined) return undefined
+  const file = validator.string(settings['file'], childPath(path, 'file'))
+  const kind = validator.oneOf(settings['kind'], childPath(path, 'kind'), FINDER_KINDS)
+  const parsed = readSettings(validator, settings, path)
+  return file === undefined || kind === undefined ? undefined : { name, file, kind, ...parsed }
+}
+
+const readAngles = (validator: Validator, value: unknown): Pick<ProjectReviewConfig, 'angles' | 'projectAngles'> => {
   const object = validator.object(value, '$.angles', undefined)
-  if (object === undefined) return {}
   const angles: Partial<Record<Angle, AngleSettings>> = {}
-  for (const [key, entry] of Object.entries(object)) {
+  const projectAngles: ProjectAngle[] = []
+  for (const [key, entry] of Object.entries(object ?? {})) {
     const path = childPath('$.angles', key)
     const angle = angleNumber(key)
+    if (angle === undefined && PROJECT_ANGLE_NAME.test(key)) {
+      const parsed = readProjectAngle(validator, key, entry, path)
+      if (parsed !== undefined) projectAngles.push(parsed)
+      continue
+    }
     if (angle === undefined) {
       validator.report(path, 'expected an angle number 1..17')
       continue
     }
-    const settings = validator.object(entry, path, ['enabled', 'severityCeiling'])
-    if (settings === undefined) continue
-    const parsed: AngleSettings = {}
-    if (settings['enabled'] !== undefined) {
-      if (typeof settings['enabled'] === 'boolean') parsed.enabled = settings['enabled']
-      else validator.report(childPath(path, 'enabled'), 'expected a boolean')
-    }
-    if (settings['severityCeiling'] !== undefined) {
-      const ceiling = validator.oneOf(settings['severityCeiling'], childPath(path, 'severityCeiling'), CEILINGS)
-      if (ceiling !== undefined) parsed.severityCeiling = ceiling
-    }
-    angles[angle] = parsed
+    const settings = validator.object(entry, path, SETTING_KEYS)
+    if (settings !== undefined) angles[angle] = readSettings(validator, settings, path)
   }
-  return angles
+  return { angles, projectAngles }
 }
 
 const readGrades = (validator: Validator, value: unknown): Record<string, Grade> => {
@@ -212,20 +235,25 @@ const readGrades = (validator: Validator, value: unknown): Record<string, Grade>
 export const parseProjectConfig = (text: string, label: string): ProjectReviewConfig => {
   const validator = new Validator()
   const root = validator.object(parseJsonc(text), '$', PROJECT_KEYS)
-  const angles = root?.['angles'] === undefined ? {} : readAngles(validator, root['angles'])
+  const { angles, projectAngles } = root?.['angles'] === undefined ? { angles: {}, projectAngles: [] } : readAngles(validator, root['angles'])
   const grades = root?.['tiers'] === undefined ? {} : readGrades(validator, root['tiers'])
   const maxParallel = root?.['maxParallel'] === undefined ? MAX_PARALLEL : validator.integer(root['maxParallel'], '$.maxParallel', 1)
   const layout = root?.['layout'] === undefined ? undefined : validator.oneOf(root['layout'], '$.layout', LAYOUTS)
   const testPaths = root?.['testPaths'] === undefined ? [] : validator.strings(root['testPaths'], '$.testPaths')
   if (validator.errors.length > 0) throw new Error(`${label}: ${validator.errors.join('; ')}`)
-  return { layout, angles, grades, maxParallel: maxParallel ?? MAX_PARALLEL, testPaths: testPaths ?? [] }
+  return { layout, angles, projectAngles, grades, maxParallel: maxParallel ?? MAX_PARALLEL, testPaths: testPaths ?? [] }
 }
 
 const loadProjectConfig = (root: string): { label: string; config: ProjectReviewConfig } | undefined => {
   const path = join(jigPaths(root).dir, PROJECT_CONFIG)
   if (!existsSync(path)) return undefined
   const label = `.jig/${PROJECT_CONFIG}`
-  return { label, config: parseProjectConfig(readFileSync(path, 'utf8'), label) }
+  const config = parseProjectConfig(readFileSync(path, 'utf8'), label)
+  const missing = config.projectAngles.filter((angle) => !existsSync(join(root, angle.file)))
+  if (missing.length > 0) {
+    throw new Error(`${label}: ${missing.map((angle) => `${childPath(childPath('$.angles', angle.name), 'file')}: ${angle.file} not found under the repository root`).join('; ')}`)
+  }
+  return { label, config: { ...config, projectAngles: config.projectAngles.map((angle) => ({ ...angle, file: toSlash(join(root, angle.file)) })) } }
 }
 
 const firstLine = (text: string): string | undefined => text.split('\n')[0]?.trim() || undefined
@@ -360,16 +388,19 @@ export const angleAtoms = (text: string): string[] => {
   return [...header.matchAll(/`([^`]+)`/g)].map((match) => match[1] ?? '').filter((name) => name !== '')
 }
 
-export const readsFor = (pluginRoot: string, angles: readonly Angle[]): Reads => {
+export const readsFor = (pluginRoot: string, angles: readonly Angle[], projectFiles: readonly string[] = []): Reads => {
   const angleDir = join(pluginRoot, 'skills', 'jig-review', 'angles')
   const atomDir = join(pluginRoot, 'atoms')
   const names = existsSync(angleDir) ? readdirSync(angleDir) : []
-  const files = angles.flatMap((angle) => names.filter((name) => name.startsWith(`${angle}.`) && name.endsWith('.md')).map((name) => join(angleDir, name)))
+  const files = [
+    ...angles.flatMap((angle) => names.filter((name) => name.startsWith(`${angle}.`) && name.endsWith('.md')).map((name) => join(angleDir, name))),
+    ...projectFiles,
+  ]
   const atoms = [...new Set(files.flatMap((file) => angleAtoms(readFileSync(file, 'utf8'))))].map((name) => join(atomDir, `${name}.md`)).filter((path) => existsSync(path))
   return { angles: files.map(toSlash), atoms: atoms.map(toSlash), diff: [], rules: [] }
 }
 
-const angleList = (angles: readonly number[]): string => angles.join('+')
+const angleList = (angles: readonly (number | string)[]): string => angles.join('+')
 
 const gradeText = (grade: Grade, models: TierMap | undefined): string => {
   const model = models?.[grade.tier]?.[0]
@@ -442,7 +473,7 @@ const finderLines = (report: ReviewPlanReport): string[] => {
   if (plan.finders.length > 0) lines.push(`partitions: ${plan.partitions.length}, by imports between files and shared directories; a link that crosses partitions is in the flow model`)
   for (const finder of plan.finders) {
     lines.push(
-      `finder ${finder.name}: partition ${finder.partition} (${partitionText(byName.get(finder.partition))}) · ${finder.kind}: angles ${angleList(finder.angles)} · ${gradeText(finder, report.models)} · fresh, never a fork`,
+      `finder ${finder.name}: partition ${finder.partition} (${partitionText(byName.get(finder.partition))}) · ${finder.kind}: angles ${angleList([...finder.angles, ...finder.projectAngles])} · ${gradeText(finder, report.models)} · fresh, never a fork`,
     )
     lines.push(...diffLine(report.reads[finder.name]), ...rulesLine(report.reads[finder.name]))
   }
@@ -604,6 +635,7 @@ export const buildReport = (root: string, options: ReportOptions): ReviewPlanRep
     layout: layout.name,
     selector: options.selector,
     angles: project?.config.angles ?? {},
+    projectAngles: project?.config.projectAngles ?? [],
     grades: project?.config.grades ?? {},
     rereview: options.rereview === true || rereview !== null,
     files,
@@ -632,8 +664,9 @@ export const buildReport = (root: string, options: ReportOptions): ReviewPlanRep
   }
   const ruleInputs = ruleDocuments(root, stats.map((stat) => stat.path), process.env)
   const filesOf = (partition: string | undefined): string[] => plan.partitions.filter((own) => partition === undefined || own.name === partition).flatMap((own) => own.files)
+  const projectFiles = (kind: FinderKind): string[] => plan.projectAngles.filter((angle) => angle.kind === kind).map((angle) => angle.file)
   const readsOf = (partition: string, kind: FinderKind, angles: readonly Angle[]): Reads => ({
-    ...readsFor(pluginRoot, angles),
+    ...readsFor(pluginRoot, angles, projectFiles(kind)),
     diff: partsOf(partition, angles),
     rules: kind === 'conventions' ? rulesFor(ruleInputs, filesOf(partition)) : [],
   })

@@ -5,7 +5,7 @@ Every judge reads this file. Two parts with different owners:
 - **taxonomy**: which defect classes are `Important` and which `Nit`. The project's severity sections (verbatim in your brief) exist → only they apply; the default below applies neither whole nor in parts. None → the [default](#default-taxonomy);
 - **gates**: when severity is cut regardless of class. They always apply; a project cancels a gate only explicitly, by naming it.
 
-`angles.<n>.severityCeiling` from the project config (named in your brief when set) stands over both: it sets the ceiling of that angle's findings, up or down.
+`angles.<n>.severityCeiling` (or `angles.<name>.severityCeiling` of a project angle) from the project config (named in your brief when set) stands over both: it sets the ceiling of that angle's findings, up or down.
 
 ## Default taxonomy
 

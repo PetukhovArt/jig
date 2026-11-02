@@ -6163,6 +6163,7 @@ var CLEANUP_TOKENS = ["reuse", "simplification", "altitude", "conventions"];
 var LAYOUTS = ["auto", "lean", "solo"];
 var isLayout = (value) => LAYOUTS.includes(value);
 var resolveAuto = (layout) => layout === "auto" ? "lean" : layout;
+var PROJECT_ANGLE_NAME = /^[a-z][a-z0-9-]*$/;
 var FINDER_KINDS = ["behavior", "conventions"];
 var KIND_ANGLES = {
   behavior: [1, 2, 3, 4, 5, 8, 12, 14, 15],
@@ -6214,15 +6215,23 @@ var inapplicable = (angle, shape) => {
   return void 0;
 };
 var roleGrade = (key, grades) => grades[key] ?? { tier: "deep", effort: "medium" };
-var partitionFinders = (partitions, angles, grades) => partitions.flatMap(
+var partitionFinders = (partitions, angles, projectAngles, grades) => partitions.flatMap(
   (partition) => FINDER_KINDS.map((kind) => ({
     name: `${partition.name}-${kind}`,
     kind,
     angles: angles.filter((angle) => KIND_ANGLES[kind].includes(angle)),
+    projectAngles: projectAngles.filter((angle) => angle.kind === kind).map((angle) => angle.name),
     partition: partition.name,
     ...roleGrade(kind, grades)
-  })).filter((finder) => finder.angles.length > 0)
+  })).filter((finder) => finder.angles.length + finder.projectAngles.length > 0)
 );
+var projectAngleWanted = (angle, tokens) => tokens.length === 0 || tokens.includes("important") && (angle.severityCeiling ?? "Important") === "Important";
+var skipOrder = (skip) => typeof skip.angle === "number" ? [skip.angle, ""] : [Number.MAX_SAFE_INTEGER, skip.angle];
+var bySkipOrder = (left, right) => {
+  const [leftNumber, leftName] = skipOrder(left);
+  const [rightNumber, rightName] = skipOrder(right);
+  return leftNumber - rightNumber || leftName.localeCompare(rightName);
+};
 var namedPartitions = (count) => Array.from({ length: count }, (_, index) => ({ name: `p${index + 1}`, files: [], lines: 0, dirs: [] }));
 var partitionsOf = (input, count) => input.files === void 0 ? namedPartitions(count) : partitionFiles(input.files, input.edges ?? [], count);
 var planReview = (input) => {
@@ -6242,9 +6251,15 @@ var planReview = (input) => {
   ANGLES.filter((angle) => angles.includes(angle) && !usedForCode.includes(angle)).forEach(
     (angle) => skipped.push({ angle, reason: "no counted code lines" })
   );
+  const projectAngles = (input.projectAngles ?? []).filter((angle) => {
+    if (!projectAngleWanted(angle, selection.tokens)) return false;
+    const reason = angle.enabled === false ? "disabled in the project config" : n === 0 ? "no counted code lines" : void 0;
+    if (reason !== void 0) skipped.push({ angle: angle.name, reason });
+    return reason === void 0;
+  });
   const light = isLightRereview(input.rereview, input.lines);
   const wantsDeepening = !light && (selection.tokens.length === 0 ? input.shape.newSourceFiles > 0 : selection.tokens.includes("deepening"));
-  const path2 = usedForCode.length === 0 ? "none" : "subagents";
+  const path2 = usedForCode.length + projectAngles.length === 0 ? "none" : "subagents";
   const partitions = path2 === "none" ? [] : partitionsOf(input, light ? 1 : Math.max(1, n));
   return {
     lines: input.lines,
@@ -6255,10 +6270,11 @@ var planReview = (input) => {
     selection,
     outputTokens: selection.tokens.filter((token) => token !== "deepening"),
     angles: usedForCode,
-    skipped: skipped.sort((left, right) => left.angle - right.angle),
+    projectAngles,
+    skipped: skipped.sort(bySkipOrder),
     partitions,
     flow: path2 === "none" ? void 0 : roleGrade("flow", grades),
-    finders: partitionFinders(partitions, usedForCode, grades),
+    finders: partitionFinders(partitions, usedForCode, projectAngles, grades),
     deepening: wantsDeepening && n > 0 ? roleGrade("deepening", grades) : void 0,
     verify: roleGrade("verify", grades),
     outcome: roleGrade("outcome", grades),
@@ -6267,9 +6283,9 @@ var planReview = (input) => {
 };
 var MODES = ["review", "pre-mr"];
 var BUG_ANGLES = [1, 2, 3, 4, 5, 12, 14];
-var gateFiles = (angles) => [
-  ...angles.some((angle) => BUG_ANGLES.includes(angle)) ? ["gates/bugs.md"] : [],
-  ...angles.some((angle) => !BUG_ANGLES.includes(angle)) ? ["gates/shape.md"] : [],
+var gateFiles = (angles, projectAngles = []) => [
+  ...angles.some((angle) => BUG_ANGLES.includes(angle)) || projectAngles.some((angle) => angle.kind === "behavior") ? ["gates/bugs.md"] : [],
+  ...angles.some((angle) => !BUG_ANGLES.includes(angle)) || projectAngles.some((angle) => angle.kind === "conventions") ? ["gates/shape.md"] : [],
   "gates/severity.md"
 ];
 var stepsFor = (plan, mode, state) => {
@@ -6285,7 +6301,7 @@ var stepsFor = (plan, mode, state) => {
   }
   steps.push({ file: "steps/04-flow-model.md" });
   if (plan.judging === "important") {
-    steps.push({ file: "steps/04-finders.md", when: 'without section "Layout solo"' }, { file: "steps/05-verify.md", when: 'without section "Layout solo"' }, ...gateFiles(plan.angles).map((file) => ({ file })));
+    steps.push({ file: "steps/04-finders.md", when: 'without section "Layout solo"' }, { file: "steps/05-verify.md", when: 'without section "Layout solo"' }, ...gateFiles(plan.angles, plan.projectAngles).map((file) => ({ file })));
   } else steps.push({ file: "steps/04-finders.md" }, { file: "steps/05-verify.md", when: 'without section "Layout lean"' });
   steps.push({ file: "steps/06-rank.md" });
   if (state) steps.push({ file: "steps/07-comments.md" });
@@ -6391,31 +6407,48 @@ var hasAddedComment = (file, source, added) => {
   });
 };
 var PROJECT_KEYS = ["$schema", "iterationsMemory", "discover", "review", "severity", "route", "angles", "tiers", "maxParallel", "layout", "testPaths"];
+var SETTING_KEYS = ["enabled", "severityCeiling"];
+var PROJECT_ANGLE_KEYS = [...SETTING_KEYS, "file", "kind"];
+var readSettings = (validator, settings, path2) => {
+  const parsed = {};
+  if (settings["enabled"] !== void 0) {
+    if (typeof settings["enabled"] === "boolean") parsed.enabled = settings["enabled"];
+    else validator.report(childPath(path2, "enabled"), "expected a boolean");
+  }
+  if (settings["severityCeiling"] !== void 0) {
+    const ceiling = validator.oneOf(settings["severityCeiling"], childPath(path2, "severityCeiling"), CEILINGS);
+    if (ceiling !== void 0) parsed.severityCeiling = ceiling;
+  }
+  return parsed;
+};
+var readProjectAngle = (validator, name, entry, path2) => {
+  const settings = validator.object(entry, path2, PROJECT_ANGLE_KEYS);
+  if (settings === void 0) return void 0;
+  const file = validator.string(settings["file"], childPath(path2, "file"));
+  const kind = validator.oneOf(settings["kind"], childPath(path2, "kind"), FINDER_KINDS);
+  const parsed = readSettings(validator, settings, path2);
+  return file === void 0 || kind === void 0 ? void 0 : { name, file, kind, ...parsed };
+};
 var readAngles = (validator, value) => {
   const object = validator.object(value, "$.angles", void 0);
-  if (object === void 0) return {};
   const angles = {};
-  for (const [key, entry] of Object.entries(object)) {
+  const projectAngles = [];
+  for (const [key, entry] of Object.entries(object ?? {})) {
     const path2 = childPath("$.angles", key);
     const angle = angleNumber(key);
+    if (angle === void 0 && PROJECT_ANGLE_NAME.test(key)) {
+      const parsed = readProjectAngle(validator, key, entry, path2);
+      if (parsed !== void 0) projectAngles.push(parsed);
+      continue;
+    }
     if (angle === void 0) {
       validator.report(path2, "expected an angle number 1..17");
       continue;
     }
-    const settings = validator.object(entry, path2, ["enabled", "severityCeiling"]);
-    if (settings === void 0) continue;
-    const parsed = {};
-    if (settings["enabled"] !== void 0) {
-      if (typeof settings["enabled"] === "boolean") parsed.enabled = settings["enabled"];
-      else validator.report(childPath(path2, "enabled"), "expected a boolean");
-    }
-    if (settings["severityCeiling"] !== void 0) {
-      const ceiling = validator.oneOf(settings["severityCeiling"], childPath(path2, "severityCeiling"), CEILINGS);
-      if (ceiling !== void 0) parsed.severityCeiling = ceiling;
-    }
-    angles[angle] = parsed;
+    const settings = validator.object(entry, path2, SETTING_KEYS);
+    if (settings !== void 0) angles[angle] = readSettings(validator, settings, path2);
   }
-  return angles;
+  return { angles, projectAngles };
 };
 var readGrades = (validator, value) => {
   const object = validator.object(value, "$.tiers", GRADE_KEYS);
@@ -6435,19 +6468,24 @@ var readGrades = (validator, value) => {
 var parseProjectConfig = (text3, label) => {
   const validator = new Validator();
   const root = validator.object(parseJsonc(text3), "$", PROJECT_KEYS);
-  const angles = root?.["angles"] === void 0 ? {} : readAngles(validator, root["angles"]);
+  const { angles, projectAngles } = root?.["angles"] === void 0 ? { angles: {}, projectAngles: [] } : readAngles(validator, root["angles"]);
   const grades = root?.["tiers"] === void 0 ? {} : readGrades(validator, root["tiers"]);
   const maxParallel = root?.["maxParallel"] === void 0 ? MAX_PARALLEL : validator.integer(root["maxParallel"], "$.maxParallel", 1);
   const layout = root?.["layout"] === void 0 ? void 0 : validator.oneOf(root["layout"], "$.layout", LAYOUTS);
   const testPaths = root?.["testPaths"] === void 0 ? [] : validator.strings(root["testPaths"], "$.testPaths");
   if (validator.errors.length > 0) throw new Error(`${label}: ${validator.errors.join("; ")}`);
-  return { layout, angles, grades, maxParallel: maxParallel ?? MAX_PARALLEL, testPaths: testPaths ?? [] };
+  return { layout, angles, projectAngles, grades, maxParallel: maxParallel ?? MAX_PARALLEL, testPaths: testPaths ?? [] };
 };
 var loadProjectConfig = (root) => {
   const path2 = join30(jigPaths(root).dir, PROJECT_CONFIG);
   if (!existsSync15(path2)) return void 0;
   const label = `.jig/${PROJECT_CONFIG}`;
-  return { label, config: parseProjectConfig(readFileSync28(path2, "utf8"), label) };
+  const config = parseProjectConfig(readFileSync28(path2, "utf8"), label);
+  const missing = config.projectAngles.filter((angle) => !existsSync15(join30(root, angle.file)));
+  if (missing.length > 0) {
+    throw new Error(`${label}: ${missing.map((angle) => `${childPath(childPath("$.angles", angle.name), "file")}: ${angle.file} not found under the repository root`).join("; ")}`);
+  }
+  return { label, config: { ...config, projectAngles: config.projectAngles.map((angle) => ({ ...angle, file: toSlash(join30(root, angle.file)) })) } };
 };
 var firstLine3 = (text3) => text3.split("\n")[0]?.trim() || void 0;
 var gitLine = (args, root) => {
@@ -6519,11 +6557,14 @@ var angleAtoms = (text3) => {
   const header = /\*\*Atoms?:\*\*([^\n]*)/.exec(text3)?.[1] ?? "";
   return [...header.matchAll(/`([^`]+)`/g)].map((match) => match[1] ?? "").filter((name) => name !== "");
 };
-var readsFor = (pluginRoot, angles) => {
+var readsFor = (pluginRoot, angles, projectFiles2 = []) => {
   const angleDir = join30(pluginRoot, "skills", "jig-review", "angles");
   const atomDir = join30(pluginRoot, "atoms");
   const names = existsSync15(angleDir) ? readdirSync14(angleDir) : [];
-  const files = angles.flatMap((angle) => names.filter((name) => name.startsWith(`${angle}.`) && name.endsWith(".md")).map((name) => join30(angleDir, name)));
+  const files = [
+    ...angles.flatMap((angle) => names.filter((name) => name.startsWith(`${angle}.`) && name.endsWith(".md")).map((name) => join30(angleDir, name))),
+    ...projectFiles2
+  ];
   const atoms = [...new Set(files.flatMap((file) => angleAtoms(readFileSync28(file, "utf8"))))].map((name) => join30(atomDir, `${name}.md`)).filter((path2) => existsSync15(path2));
   return { angles: files.map(toSlash), atoms: atoms.map(toSlash), diff: [], rules: [] };
 };
@@ -6583,7 +6624,7 @@ var finderLines = (report) => {
   if (plan.finders.length > 0) lines2.push(`partitions: ${plan.partitions.length}, by imports between files and shared directories; a link that crosses partitions is in the flow model`);
   for (const finder of plan.finders) {
     lines2.push(
-      `finder ${finder.name}: partition ${finder.partition} (${partitionText(byName.get(finder.partition))}) \xB7 ${finder.kind}: angles ${angleList(finder.angles)} \xB7 ${gradeText(finder, report.models)} \xB7 fresh, never a fork`
+      `finder ${finder.name}: partition ${finder.partition} (${partitionText(byName.get(finder.partition))}) \xB7 ${finder.kind}: angles ${angleList([...finder.angles, ...finder.projectAngles])} \xB7 ${gradeText(finder, report.models)} \xB7 fresh, never a fork`
     );
     lines2.push(...diffLine(report.reads[finder.name]), ...rulesLine(report.reads[finder.name]));
   }
@@ -6698,6 +6739,7 @@ var buildReport = (root, options) => {
     layout: layout.name,
     selector: options.selector,
     angles: project?.config.angles ?? {},
+    projectAngles: project?.config.projectAngles ?? [],
     grades: project?.config.grades ?? {},
     rereview: options.rereview === true || rereview !== null,
     files,
@@ -6725,8 +6767,9 @@ var buildReport = (root, options) => {
   };
   const ruleInputs = ruleDocuments(root, stats.map((stat) => stat.path), process.env);
   const filesOf = (partition) => plan.partitions.filter((own) => partition === void 0 || own.name === partition).flatMap((own) => own.files);
+  const projectFiles2 = (kind) => plan.projectAngles.filter((angle) => angle.kind === kind).map((angle) => angle.file);
   const readsOf = (partition, kind, angles) => ({
-    ...readsFor(pluginRoot, angles),
+    ...readsFor(pluginRoot, angles, projectFiles2(kind)),
     diff: partsOf(partition, angles),
     rules: kind === "conventions" ? rulesFor(ruleInputs, filesOf(partition)) : []
   });

@@ -39,4 +39,4 @@ Simplifications 7 and 8 never become threads: they go as items into the one FYI 
 
 - [15](15.spec.md) · spec conformance: missing, unrequested, done differently
 
-Which angles a run starts and each ceiling: [selector](../references/selector.md). Layout over agents: [`../steps/04-finders.md`](../steps/04-finders.md). Turning an angle off: `angles.<n>.enabled: false` in the [project config](../references/project-config.md).
+Which angles a run starts and each ceiling: [selector](../references/selector.md). Layout over agents: [`../steps/04-finders.md`](../steps/04-finders.md). Turning an angle off: `angles.<n>.enabled: false` in the [project config](../references/project-config.md); adding a project angle: `angles.<name>` with its `file` and `kind`.

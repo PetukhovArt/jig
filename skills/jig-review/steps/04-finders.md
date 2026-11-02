@@ -15,7 +15,7 @@ Each reads only its kind's angle files and atoms, printed once per kind (`behavi
 
 **The grades come from the plan.** Defaults: `behavior` deep/high, `conventions` standard/high; the project config overrides them by these two keys ([project config](../references/project-config.md), key `tiers`). The plan's grade wins over the role template's frontmatter.
 
-**Only the angles the [selector](../references/selector.md) chose run**; a finder left without angles is not spawned. `deepening` is a separate agent with its own tier, outside the partitions ([selector](../references/selector.md#deepening)). A re-review range under 600 lines is one partition with its two finders ([re-review](09-rereview.md#round-rules)).
+**Only the angles the [selector](../references/selector.md) chose run**; a finder left without angles is not spawned. The project config turns any angle off and adds its own angles to a kind ([project config](../references/project-config.md)): a project angle shows in the finder line by its name and its file under its kind's `read:`. `deepening` is a separate agent with its own tier, outside the partitions ([selector](../references/selector.md#deepening)). A re-review range under 600 lines is one partition with its two finders ([re-review](09-rereview.md#round-rules)).
 
 ## Shared context
 

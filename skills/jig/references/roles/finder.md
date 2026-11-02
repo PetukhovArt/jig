@@ -18,6 +18,8 @@ A name in your partition's diff (symbol, field, label) that a glossary under you
 
 Hunt every assigned angle at full aggression: a candidate costs nothing and dies at verify, so never hold one back because you already have enough. Do not skip a hunk or cut a read short.
 
+A project angle is named, not numbered: its file is among your angle files, and its name is the `angle` of its candidates.
+
 Output, a section for every assigned angle, explicitly empty when it found nothing ("angle 2: nothing"); an angle you did not reach is named as unreached, never as empty. Per candidate, at most 8 per angle (no cap where the angle says so):
 - angle, `file:line`, root (the symbol where the defect originates);
 - summary and mechanism: initiator → path → effect as far as you know;

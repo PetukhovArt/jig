@@ -97,12 +97,21 @@ export const resolveAuto = (layout: Layout): ConcreteLayout => (layout === 'auto
 
 export type Judging = 'important' | 'self'
 
+export interface ProjectAngle extends AngleSettings {
+  name: string
+  file: string
+  kind: FinderKind
+}
+
+export const PROJECT_ANGLE_NAME = /^[a-z][a-z0-9-]*$/
+
 export interface PlanInput {
   lines: number
   shape: Shape
   layout?: Layout | undefined
   selector?: string | undefined
   angles?: Readonly<Partial<Record<Angle, AngleSettings>>>
+  projectAngles?: readonly ProjectAngle[]
   grades?: Readonly<Record<string, Grade>>
   rereview?: boolean
   files?: readonly PartitionFile[]
@@ -125,11 +134,12 @@ export interface Finder extends Grade {
   name: string
   kind: FinderKind
   angles: Angle[]
+  projectAngles: string[]
   partition: string
 }
 
 export interface Skipped {
-  angle: Angle
+  angle: Angle | string
   reason: string
 }
 
@@ -152,6 +162,7 @@ export interface Plan {
   selection: Selection
   outputTokens: string[]
   angles: Angle[]
+  projectAngles: ProjectAngle[]
   skipped: Skipped[]
   partitions: Partition[]
   flow: Grade | undefined
@@ -215,16 +226,33 @@ const inapplicable = (angle: Angle, shape: Shape): string | undefined => {
 const roleGrade = (key: string, grades: Readonly<Record<string, Grade>>): Grade =>
   grades[key] ?? { tier: 'deep', effort: 'medium' }
 
-const partitionFinders = (partitions: readonly Partition[], angles: readonly Angle[], grades: Readonly<Record<string, Grade>>): Finder[] =>
+const partitionFinders = (
+  partitions: readonly Partition[],
+  angles: readonly Angle[],
+  projectAngles: readonly ProjectAngle[],
+  grades: Readonly<Record<string, Grade>>,
+): Finder[] =>
   partitions.flatMap((partition) =>
     FINDER_KINDS.map((kind) => ({
       name: `${partition.name}-${kind}`,
       kind,
       angles: angles.filter((angle) => KIND_ANGLES[kind].includes(angle)),
+      projectAngles: projectAngles.filter((angle) => angle.kind === kind).map((angle) => angle.name),
       partition: partition.name,
       ...roleGrade(kind, grades),
-    })).filter((finder) => finder.angles.length > 0),
+    })).filter((finder) => finder.angles.length + finder.projectAngles.length > 0),
   )
+
+const projectAngleWanted = (angle: ProjectAngle, tokens: readonly string[]): boolean =>
+  tokens.length === 0 || (tokens.includes('important') && (angle.severityCeiling ?? 'Important') === 'Important')
+
+const skipOrder = (skip: Skipped): [number, string] => (typeof skip.angle === 'number' ? [skip.angle, ''] : [Number.MAX_SAFE_INTEGER, skip.angle])
+
+const bySkipOrder = (left: Skipped, right: Skipped): number => {
+  const [leftNumber, leftName] = skipOrder(left)
+  const [rightNumber, rightName] = skipOrder(right)
+  return leftNumber - rightNumber || leftName.localeCompare(rightName)
+}
 
 const namedPartitions = (count: number): Partition[] =>
   Array.from({ length: count }, (_, index) => ({ name: `p${index + 1}`, files: [], lines: 0, dirs: [] }))
@@ -249,9 +277,15 @@ export const planReview = (input: PlanInput): Plan => {
   ANGLES.filter((angle) => angles.includes(angle) && !usedForCode.includes(angle)).forEach((angle) =>
     skipped.push({ angle, reason: 'no counted code lines' }),
   )
+  const projectAngles = (input.projectAngles ?? []).filter((angle) => {
+    if (!projectAngleWanted(angle, selection.tokens)) return false
+    const reason = angle.enabled === false ? 'disabled in the project config' : n === 0 ? 'no counted code lines' : undefined
+    if (reason !== undefined) skipped.push({ angle: angle.name, reason })
+    return reason === undefined
+  })
   const light = isLightRereview(input.rereview, input.lines)
   const wantsDeepening = !light && (selection.tokens.length === 0 ? input.shape.newSourceFiles > 0 : selection.tokens.includes('deepening'))
-  const path: ReviewPath = usedForCode.length === 0 ? 'none' : 'subagents'
+  const path: ReviewPath = usedForCode.length + projectAngles.length === 0 ? 'none' : 'subagents'
   const partitions = path === 'none' ? [] : partitionsOf(input, light ? 1 : Math.max(1, n))
   return {
     lines: input.lines,
@@ -262,10 +296,11 @@ export const planReview = (input: PlanInput): Plan => {
     selection,
     outputTokens: selection.tokens.filter((token) => token !== 'deepening'),
     angles: usedForCode,
-    skipped: skipped.sort((left, right) => left.angle - right.angle),
+    projectAngles,
+    skipped: skipped.sort(bySkipOrder),
     partitions,
     flow: path === 'none' ? undefined : roleGrade('flow', grades),
-    finders: partitionFinders(partitions, usedForCode, grades),
+    finders: partitionFinders(partitions, usedForCode, projectAngles, grades),
     deepening: wantsDeepening && n > 0 ? roleGrade('deepening', grades) : undefined,
     verify: roleGrade('verify', grades),
     outcome: roleGrade('outcome', grades),
@@ -285,9 +320,9 @@ export interface StepRef {
 }
 
 /** Gate files for the angle classes present: bug angles prove initiator, path and effect; rule and cleanup angles pass the shape gate. */
-export const gateFiles = (angles: readonly Angle[]): string[] => [
-  ...(angles.some((angle) => BUG_ANGLES.includes(angle)) ? ['gates/bugs.md'] : []),
-  ...(angles.some((angle) => !BUG_ANGLES.includes(angle)) ? ['gates/shape.md'] : []),
+export const gateFiles = (angles: readonly Angle[], projectAngles: readonly ProjectAngle[] = []): string[] => [
+  ...(angles.some((angle) => BUG_ANGLES.includes(angle)) || projectAngles.some((angle) => angle.kind === 'behavior') ? ['gates/bugs.md'] : []),
+  ...(angles.some((angle) => !BUG_ANGLES.includes(angle)) || projectAngles.some((angle) => angle.kind === 'conventions') ? ['gates/shape.md'] : []),
   'gates/severity.md',
 ]
 
@@ -305,7 +340,7 @@ export const stepsFor = (plan: Plan, mode: Mode, state: boolean): StepRef[] => {
   }
   steps.push({ file: 'steps/04-flow-model.md' })
   if (plan.judging === 'important') {
-    steps.push({ file: 'steps/04-finders.md', when: 'without section "Layout solo"' }, { file: 'steps/05-verify.md', when: 'without section "Layout solo"' }, ...gateFiles(plan.angles).map((file) => ({ file })))
+    steps.push({ file: 'steps/04-finders.md', when: 'without section "Layout solo"' }, { file: 'steps/05-verify.md', when: 'without section "Layout solo"' }, ...gateFiles(plan.angles, plan.projectAngles).map((file) => ({ file })))
   } else steps.push({ file: 'steps/04-finders.md' }, { file: 'steps/05-verify.md', when: 'without section "Layout lean"' })
   steps.push({ file: 'steps/06-rank.md' })
   if (state) steps.push({ file: 'steps/07-comments.md' })
