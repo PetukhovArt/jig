@@ -30,7 +30,7 @@ describe('layout', () => {
   it('reviews a small diff like a large one: the flow model and two finders, behavior and conventions, on full by default', () => {
     const plan = planReview({ lines: 40, shape: EVERY_SHAPE })
     expect([plan.path, plan.selection.input, plan.selection.source, plan.flow]).toEqual(['subagents', 'full', 'default', { tier: 'deep', effort: 'high' }])
-    expect(layout(40)).toEqual(['p1-behavior:1+2+3+4+5+12+14+15:deep/high', 'p1-conventions:6+7+8+9+10+11+13+16+17:standard/high'])
+    expect(layout(40)).toEqual(['p1-behavior:1+2+3+4+5+8+12+14+15:deep/high', 'p1-conventions:6+7+9+10+11+13+16+17:standard/high'])
   })
 
   it('gives every one of the N partitions a behavior and a conventions finder, each with only its kind of angles', () => {
@@ -355,8 +355,8 @@ describe('buildReport on a repository', () => {
     const finders = printed.filter((line) => line.startsWith('finder '))
     expect(finders).toHaveLength(8)
     expect(finders.every((line) => line.endsWith('· fresh, never a fork'))).toBe(true)
-    expect(finders[0]).toMatch(/^finder p1-behavior: partition p1 \(2 files, 200 lines, under src\/a, src\/b\) · behavior: angles 1\+2\+3\+4\+5\+12\+14 · deep\/high opus/)
-    expect(finders[1]).toMatch(/^finder p1-conventions: partition p1 .* · conventions: angles 6\+7\+8\+9\+10\+13 · standard\/high sonnet/)
+    expect(finders[0]).toMatch(/^finder p1-behavior: partition p1 \(2 files, 200 lines, under src\/a, src\/b\) · behavior: angles 1\+2\+3\+4\+5\+8\+12\+14 · deep\/high opus/)
+    expect(finders[1]).toMatch(/^finder p1-conventions: partition p1 .* · conventions: angles 6\+7\+9\+10\+13 · standard\/high sonnet/)
     expect(printed.findIndex((line) => line.startsWith('flow model: first'))).toBeLessThan(printed.findIndex((line) => line.startsWith('finder ')))
     expect(printed.find((line) => line.startsWith('cost estimate: '))).toMatch(/^cost estimate: ~\$\d+(\.\d)? \(flow model .* finders 8 × up to \d+k × \d+ turns · list prices of opus, sonnet/)
     const steps = printed.filter((line) => line.startsWith('  ') && line.includes('/steps/'))

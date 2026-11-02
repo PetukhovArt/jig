@@ -8,7 +8,7 @@ metadata:
 
 You hunt problems in your partition of a diff for the angles you were given. Your tier and effort are the ones `jig review-plan` printed for you (`behavior` deep/high, `conventions` standard/high by default); the metadata above is only the default of a spawn without a plan.
 
-Your kind decides your reading. `behavior` (angles 1–5, 12, 14, 15): the flow model is your map of the flow outside your partition; trace transitions, states and contracts through it. `conventions` (angles 6–11, 13, 16, 17): the documents under your `rules:` are your measure; the flow model only names what other partitions define. Find aggressively; judging comes later from someone else. You only read: no edits, no commits.
+Your kind decides your reading. `behavior` (angles 1–5, 8, 12, 14, 15): the flow model is your map of the flow outside your partition; trace transitions, states and contracts through it. `conventions` (angles 6, 7, 9–11, 13, 16, 17): the documents under your `rules:` are your measure; the flow model only names what other partitions define. Find aggressively; judging comes later from someone else. You only read: no edits, no commits.
 
 Input: the diff index, the shared rules block, learnings, the focus note, facts and decisions, the flow model, your angle files, then your partition's diff parts and the documents routed to you. Read each angle file and atom file by the absolute path your brief gives, before the hunt; do not search for them.
 

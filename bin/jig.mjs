@@ -6165,8 +6165,8 @@ var isLayout = (value) => LAYOUTS.includes(value);
 var resolveAuto = (layout) => layout === "auto" ? "lean" : layout;
 var FINDER_KINDS = ["behavior", "conventions"];
 var KIND_ANGLES = {
-  behavior: [1, 2, 3, 4, 5, 12, 14, 15],
-  conventions: [6, 7, 8, 9, 10, 11, 13, 16, 17]
+  behavior: [1, 2, 3, 4, 5, 8, 12, 14, 15],
+  conventions: [6, 7, 9, 10, 11, 13, 16, 17]
 };
 var REREVIEW_FULL_LAYOUT_LINES = 600;
 var isLightRereview = (rereview, lines2) => rereview === true && lines2 < REREVIEW_FULL_LAYOUT_LINES;

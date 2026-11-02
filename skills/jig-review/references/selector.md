@@ -67,8 +67,8 @@ A finder's grade comes from its kind, not from its angles ([finders](../steps/04
 
 | Kind or role | Tier / effort |
 |---|---|
-| `behavior` (angles 1–5, 12, 14, 15) | deep / high |
-| `conventions` (angles 6–11, 13, 16, 17) | standard / high |
+| `behavior` (angles 1–5, 8, 12, 14, 15) | deep / high |
+| `conventions` (angles 6, 7, 9–11, 13, 16, 17) | standard / high |
 | `verify` (role `verifier`) | deep / medium |
 | `outcome` (role `outcome-checker`) | deep / medium |
 | `composer` (role `composer`) | standard / medium |

@@ -6,8 +6,8 @@
 
 **Files are split, then the kind of work.** The diff's files go into `N` partitions (`N = ceil(LINES / 150)`, at most 5, at least 1; fewer only when the diff has fewer code files). Every partition gets two finders, the same for every diff size:
 
-- **`behavior`** (`pN-behavior`): angles 1–5, 12, 14, 15: bugs, state, wire contracts, the spec. Deep tier, high effort. It reads the [flow model](04-flow-model.md) as its map of everything outside its partition.
-- **`conventions`** (`pN-conventions`): angles 6–11, 13, 16, 17: duplication, naming, glossary, standards, documents, tests, comments, dead code. Standard tier, high effort. It reads the indexes, standards and glossaries under its `rules:` line; the flow model only to check a name or a link that crosses partitions.
+- **`behavior`** (`pN-behavior`): angles 1–5, 8, 12, 14, 15: bugs, state, wire contracts, efficiency and leaks, the spec. Deep tier, high effort. It reads the [flow model](04-flow-model.md) as its map of everything outside its partition.
+- **`conventions`** (`pN-conventions`): angles 6, 7, 9–11, 13, 16, 17: duplication, naming, glossary, standards, documents, tests, comments, dead code. Standard tier, high effort. It reads the indexes, standards and glossaries under its `rules:` line; the flow model only to check a name or a link that crosses partitions.
 
 Each reads only its kind's angle files and atoms, printed once per kind (`behavior finders … read:`, `conventions finders … read:`). One finder carrying all 16 angles on the deep tier cost $11–20 per partition on a 10,263-line merge request, and the convention angles do not need the deep tier. A finder reads only its partition's diff parts; for behavior outside it, it relies on the flow model.
 
