@@ -4,6 +4,7 @@ Give the reviewer two things: why the change is needed and how the implementatio
 
 ## Rules
 
+- **One language.** Headings, labels and text are written in one language: `review.language` of `.jig/review.jsonc` when set, otherwise the language of the repository's recent merge requests. Translate the template's headings and labels; identifiers, paths and flags stay as they are.
 - **Remove a block you have nothing for.** No ticket, no trade-offs: the block goes entirely, no "n/a".
 - **Budget.** A description longer than ~70 lines stops being a description and becomes a second source of truth. Two diagrams and one contract block explain more than five code blocks. Cut type declarations already visible in the diff, pseudocode that repeats a diagram, file trees whose nodes a diagram already names.
 - **The project's own standard wins.** Read the repository's merge request standard if it has one (`CONTRIBUTING.md`, a PR/MR template, a line in `AGENTS.md`). Its required blocks (changelog, ticket link) must be there or CI blocks the merge; put them at the end, after everything written for the reviewer, unless its validator wants another place. Run its local validator before publishing, if it has one.
@@ -51,9 +52,11 @@ flowchart TD
 
 ## Change impact
 
-**Rollback:** {"simple" | "hard" + why: a migration, deleted data, a changed public contract}.
-**What can break:** {screens, scenarios or consumers the merge touches, comma-separated}.
-**Safe because:** {the one fact the change is safe because of, and how you proved it}.
+- **Rollback:** {"simple" | "hard" + why: a migration, deleted data, a changed public contract}.
+- **What can break:**
+  - {one screen, scenario or consumer the merge touches per item}
+- **Safe because:**
+  - {the fact the change is safe because of, and how you proved it}
 
 ## Verification
 
