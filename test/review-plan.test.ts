@@ -298,6 +298,35 @@ describe('buildReport on a repository', () => {
     ])
   })
 
+  it('plans a linked worktree with the main checkout config when the branch does not track one, and with the branch config when it does', () => {
+    const main = mkdtempSync(join(tmpdir(), 'jig-review-plan-'))
+    const linked = `${main}-linked`
+    const tracked = `${main}-tracked`
+    dirs.push(main, linked, tracked)
+    vi.stubEnv('JIG_USER_CONFIG', join(main, 'absent.jsonc'))
+    const run = (cwd: string, ...args: string[]) => expect(git(['-c', 'user.email=t@t', '-c', 'user.name=t', ...args], cwd).ok).toBe(true)
+    run(main, 'init', '-q', '-b', 'main')
+    write(main, '.git/info/exclude', '.jig/\n')
+    write(main, 'a.ts', 'export const a = 1\n')
+    run(main, 'add', '-A')
+    run(main, 'commit', '-qm', 'base')
+    write(main, 'a.ts', 'export const a = 2\n// note\n')
+    write(main, 'a.test.ts', "it('a', () => {})\n")
+    run(main, 'add', '-A')
+    run(main, 'commit', '-qm', 'feature')
+    run(main, 'worktree', 'add', '-q', '--detach', linked, 'HEAD')
+    run(main, 'worktree', 'add', '-q', '-b', 'own', tracked, 'HEAD')
+    write(main, '.jig/review.jsonc', '{ "angles": { "16": { "enabled": false }, "17": { "enabled": false } } }\n')
+    write(linked, '.jig/review.jsonc', '{}\n')
+    write(tracked, '.jig/review.jsonc', '{ "angles": { "17": { "enabled": false } } }\n')
+    run(tracked, 'add', '-f', '.jig/review.jsonc')
+    run(tracked, 'commit', '-qm', 'own config')
+    const angles = (root: string, base: string) => buildReport(root, { base, spec: false, agent: 'claude', layout: 'lean' }).plan.finders.flatMap((finder) => finder.angles)
+
+    expect(angles(linked, 'HEAD~1').filter((angle) => angle >= 16)).toEqual([])
+    expect(angles(tracked, 'HEAD~2').filter((angle) => angle >= 16)).toEqual([16])
+  })
+
   it('gives each finder only the parts of its partition: tests when angle 16 runs, documents when angle 11 or 15 runs', () => {
     const root = mkdtempSync(join(tmpdir(), 'jig-review-plan-'))
     dirs.push(root)

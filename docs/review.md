@@ -79,7 +79,7 @@ In the review cycle a posted `Important` that still stands sends the merge reque
 
 ## Project config
 
-`.jig/review.jsonc`, committed, is optional: documents to discover (rules, standards, spec, ADRs, glossary), the project's own severity sections, angles turned off or with a new severity ceiling, tiers, `maxParallel`, the default layout and extra test globs ([project config](../skills/jig-review/references/project-config.md)).
+`.jig/review.jsonc`, committed or local, is optional; a linked worktree uses the one its branch tracks, otherwise the main checkout's: documents to discover (rules, standards, spec, ADRs, glossary), the project's own severity sections, angles turned off or with a new severity ceiling, tiers, `maxParallel`, the default layout and extra test globs ([project config](../skills/jig-review/references/project-config.md)).
 
 ## Measured
 

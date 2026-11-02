@@ -5971,9 +5971,21 @@ var GLOSSARY_MAP = /(^|\/)glossary[-_ ]?map\.md$/i;
 var GLOSSARY = /(^|\/)[^/]*glossary[^/]*\.md$/i;
 var MARKDOWN_LINK = /\]\(<?([^)>\s#]+\.md)(?:#[^)\s]*)?>?\)|(?:^|\s)@([^\s]+\.md)/g;
 var isStrings2 = (value) => Array.isArray(value) && value.every((item) => typeof item === "string");
+var isTracked = (root, path2) => {
+  const result = git(["ls-files", "--", path2], root);
+  return result.ok && result.stdout.trim() !== "";
+};
+var projectConfigFile = (root) => {
+  const own = join29(jigPaths(root).dir, PROJECT_CONFIG);
+  if (existsSync13(own) && isTracked(root, `.jig/${PROJECT_CONFIG}`)) return { path: own, root };
+  const mainRoot = listWorktrees(root)[0]?.path;
+  const main = mainRoot === void 0 ? void 0 : join29(jigPaths(mainRoot).dir, PROJECT_CONFIG);
+  if (mainRoot !== void 0 && main !== void 0 && existsSync13(main)) return { path: main, root: mainRoot };
+  return existsSync13(own) ? { path: own, root } : void 0;
+};
 var readDiscover = (root) => {
-  const path2 = join29(jigPaths(root).dir, PROJECT_CONFIG);
-  if (!existsSync13(path2)) return DEFAULT_DISCOVER;
+  const path2 = projectConfigFile(root)?.path;
+  if (path2 === void 0) return DEFAULT_DISCOVER;
   const config = parseJsonc(readFileSync26(path2, "utf8"));
   const discover2 = config?.discover ?? {};
   const pick = (key) => {
@@ -6477,15 +6489,15 @@ var parseProjectConfig = (text3, label) => {
   return { layout, angles, projectAngles, grades, maxParallel: maxParallel ?? MAX_PARALLEL, testPaths: testPaths ?? [] };
 };
 var loadProjectConfig = (root) => {
-  const path2 = join30(jigPaths(root).dir, PROJECT_CONFIG);
-  if (!existsSync15(path2)) return void 0;
-  const label = `.jig/${PROJECT_CONFIG}`;
-  const config = parseProjectConfig(readFileSync28(path2, "utf8"), label);
-  const missing = config.projectAngles.filter((angle) => !existsSync15(join30(root, angle.file)));
+  const file = projectConfigFile(root);
+  if (file === void 0) return void 0;
+  const label = file.root === root ? `.jig/${PROJECT_CONFIG}` : `${toSlash(file.root)}/.jig/${PROJECT_CONFIG}`;
+  const config = parseProjectConfig(readFileSync28(file.path, "utf8"), label);
+  const missing = config.projectAngles.filter((angle) => !existsSync15(join30(file.root, angle.file)));
   if (missing.length > 0) {
     throw new Error(`${label}: ${missing.map((angle) => `${childPath(childPath("$.angles", angle.name), "file")}: ${angle.file} not found under the repository root`).join("; ")}`);
   }
-  return { label, config: { ...config, projectAngles: config.projectAngles.map((angle) => ({ ...angle, file: toSlash(join30(root, angle.file)) })) } };
+  return { label, config: { ...config, projectAngles: config.projectAngles.map((angle) => ({ ...angle, file: toSlash(join30(file.root, angle.file)) })) } };
 };
 var firstLine3 = (text3) => text3.split("\n")[0]?.trim() || void 0;
 var gitLine = (args, root) => {
@@ -8962,12 +8974,12 @@ var loadContext = () => {
   return context;
 };
 var formatDuplicates = (duplicates) => [...duplicates].map(([slot, group]) => `s${slot}: ${group.map((worktree) => toSlash(worktree.path)).join(", ")}`).join("; ");
-var isTracked = (dir, file) => git(["ls-files", "--error-unmatch", "--", file], dir).ok;
+var isTracked2 = (dir, file) => git(["ls-files", "--error-unmatch", "--", file], dir).ok;
 var writeLocalFile = (dir, file, content) => {
   const path2 = join37(dir, file);
   mkdirSync16(dirname15(path2), { recursive: true });
   writeFileSync13(path2, content);
-  if (isTracked(dir, file)) {
+  if (isTracked2(dir, file)) {
     git(["update-index", "--skip-worktree", "--", file], dir);
   }
 };

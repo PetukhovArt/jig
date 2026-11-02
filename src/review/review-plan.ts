@@ -19,7 +19,7 @@ import { estimateLine, estimateReview, finderReader, modelerReader, type Estimat
 import { changedFile, findImporters, flowIndex } from './flow-index'
 import { importEdges, type Partition, type PartitionFile } from './partition'
 import { DEFAULT_PRICES } from './prices'
-import { PROJECT_CONFIG, ruleDocuments, rulesFor } from './rule-docs'
+import { PROJECT_CONFIG, projectConfigFile, ruleDocuments, rulesFor } from './rule-docs'
 import { readReviewedState, rereviewScope, type RereviewScope } from './scope'
 import {
   CEILINGS,
@@ -245,15 +245,15 @@ export const parseProjectConfig = (text: string, label: string): ProjectReviewCo
 }
 
 const loadProjectConfig = (root: string): { label: string; config: ProjectReviewConfig } | undefined => {
-  const path = join(jigPaths(root).dir, PROJECT_CONFIG)
-  if (!existsSync(path)) return undefined
-  const label = `.jig/${PROJECT_CONFIG}`
-  const config = parseProjectConfig(readFileSync(path, 'utf8'), label)
-  const missing = config.projectAngles.filter((angle) => !existsSync(join(root, angle.file)))
+  const file = projectConfigFile(root)
+  if (file === undefined) return undefined
+  const label = file.root === root ? `.jig/${PROJECT_CONFIG}` : `${toSlash(file.root)}/.jig/${PROJECT_CONFIG}`
+  const config = parseProjectConfig(readFileSync(file.path, 'utf8'), label)
+  const missing = config.projectAngles.filter((angle) => !existsSync(join(file.root, angle.file)))
   if (missing.length > 0) {
     throw new Error(`${label}: ${missing.map((angle) => `${childPath(childPath('$.angles', angle.name), 'file')}: ${angle.file} not found under the repository root`).join('; ')}`)
   }
-  return { label, config: { ...config, projectAngles: config.projectAngles.map((angle) => ({ ...angle, file: toSlash(join(root, angle.file)) })) } }
+  return { label, config: { ...config, projectAngles: config.projectAngles.map((angle) => ({ ...angle, file: toSlash(join(file.root, angle.file)) })) } }
 }
 
 const firstLine = (text: string): string | undefined => text.split('\n')[0]?.trim() || undefined

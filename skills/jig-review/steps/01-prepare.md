@@ -2,7 +2,7 @@
 
 ## Project config
 
-`.jig/review.jsonc` exists: read [`../references/project-config.md`](../references/project-config.md) first; it decides what to search next and which ceilings apply. No file: the defaults apply and you need not read that reference (`jig review-plan` prints `config: default`).
+`.jig/review.jsonc` exists (the one the branch tracks, otherwise the main checkout's, the first entry of `git worktree list`; `jig review-plan` names it on its `config:` line): read [`../references/project-config.md`](../references/project-config.md) first; it decides what to search next and which ceilings apply. No file: the defaults apply and you need not read that reference (`jig review-plan` prints `config: default`).
 
 ## Target
 

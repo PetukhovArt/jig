@@ -4,6 +4,7 @@ import { git } from '../core/git'
 import { createMatcher } from '../core/glob'
 import { parseJsonc } from '../core/jsonc'
 import { jigPaths } from '../core/paths'
+import { listWorktrees } from '../worktree/list'
 
 export const PROJECT_CONFIG = 'review.jsonc'
 
@@ -37,9 +38,23 @@ const MARKDOWN_LINK = /\]\(<?([^)>\s#]+\.md)(?:#[^)\s]*)?>?\)|(?:^|\s)@([^\s]+\.
 
 const isStrings = (value: unknown): value is string[] => Array.isArray(value) && value.every((item) => typeof item === 'string')
 
+const isTracked = (root: string, path: string): boolean => {
+  const result = git(['ls-files', '--', path], root)
+  return result.ok && result.stdout.trim() !== ''
+}
+
+export const projectConfigFile = (root: string): { path: string; root: string } | undefined => {
+  const own = join(jigPaths(root).dir, PROJECT_CONFIG)
+  if (existsSync(own) && isTracked(root, `.jig/${PROJECT_CONFIG}`)) return { path: own, root }
+  const mainRoot = listWorktrees(root)[0]?.path
+  const main = mainRoot === undefined ? undefined : join(jigPaths(mainRoot).dir, PROJECT_CONFIG)
+  if (mainRoot !== undefined && main !== undefined && existsSync(main)) return { path: main, root: mainRoot }
+  return existsSync(own) ? { path: own, root } : undefined
+}
+
 const readDiscover = (root: string): Discover => {
-  const path = join(jigPaths(root).dir, PROJECT_CONFIG)
-  if (!existsSync(path)) return DEFAULT_DISCOVER
+  const path = projectConfigFile(root)?.path
+  if (path === undefined) return DEFAULT_DISCOVER
   const config = parseJsonc(readFileSync(path, 'utf8')) as { discover?: Record<string, unknown> } | null
   const discover = config?.discover ?? {}
   const pick = (key: keyof Discover): string[] => {
