@@ -24,7 +24,7 @@ Plugin root: `${CLAUDE_PLUGIN_ROOT}` when the agent sets it, otherwise the direc
 
 - `pre-mr`: the mode above. Without it the mode is `review`.
 - Merge request URL or number: the review target (mode `review`). None: the current branch.
-- Selector: `full` (every angle), `quick` (only what blocks a merge), or comma-separated tokens (`important,architecture,tests`, `auto`). No selector: `full`.
+- Selector: `full` (every angle), `quick` (only what blocks a merge), or comma-separated tokens (`important,spec`, `auto`). No selector: `full`.
 - `--layout <auto|lean|solo>`: who hunts and who judges ([paths](#paths)); passed to `jig review-plan`. Vocabulary: `<skill>/references/selector.md`, only when the argument is not `full` or `quick`.
 - `--post`: post the findings right after the review, without asking (mode `review` with a merge request only).
 - `--no-state`: do not read or write state: always a first run, no outcome check, no learnings, no posting. Diagnostic mode.
@@ -36,11 +36,11 @@ Needs on `PATH`: `git`, `node`; with a merge request also the forge CLI of the r
 
 One path for every diff size; `auto` is `lean`:
 
-- **Lean**: a flow-modeler subagent writes the [flow model](steps/04-flow-model.md); the diff's files split into `N` partitions (`N = ceil(LINES / 150)`, 1 to 5), and each partition gets two fresh finders: `behavior` (bugs, state, contracts, spec; deep/high) and `conventions` (duplication, naming, glossary, standards, docs, tests, comments, dead code; standard/high). You judge every candidate; one deep judge subagent on another model takes only the `Important` ones.
+- **Lean**: a flow-modeler subagent writes the [flow model](steps/04-flow-model.md); the diff's files split into `N` partitions (`N = ceil(LINES / 150)`, 1 to 5), and each partition gets a fresh `behavior` finder (bugs, state, contracts, efficiency, spec; deep/high), plus a `conventions` finder (standard/high) only when the project adds angles of that kind. You judge every candidate; one deep judge subagent on another model takes only the `Important` ones.
 
 **A review with finders runs in a review runner.** `jig review-plan` prints `runner:` on every run that has something to review. In the session that asked for the review (not a review runner already: a review cycle's, or one spawned here), stop after the plan and spawn **one** subagent, described `Review !<iid>` (`Review <branch>` without a merge request), role `review-runner` (`<root>/skills/jig/references/roles/review-runner.md`, deep tier), with: the repository path, the target, the mode, the focus note, this `SKILL.md` path, and `delegated: <the review-plan command you ran>`. It runs the review from step 01, spawns the finders fresh, and returns the survivors and the state path. Then you do what needs the user: the [posting](references/posting.md) confirmation in mode `review`, the four buckets in mode `pre-mr`. Its `head: moved …` line means the author pushed while it ran: re-review the increment (the state now holds the reviewed sha, so a new run plans only the new commits) before offering to post. Your session stays at its size.
 
-The other layout, by `--layout solo`, `JIG_REVIEW_LAYOUT` or the project config: the same partitions and two kinds, and every finder proves its own candidates; no judge subagents. `inline` and `fanout` are gone: the flow model and the partition finders replaced the session's own hunt, and the per-tier split is now the fixed behavior/conventions split.
+The other layout, by `--layout solo`, `JIG_REVIEW_LAYOUT` or the project config: the same partitions and finders, and every finder proves its own candidates; no judge subagents. `inline` and `fanout` are gone: the flow model and the partition finders replaced the session's own hunt.
 
 ## Rules for the whole run
 
@@ -53,5 +53,5 @@ The other layout, by `--layout solo`, `JIG_REVIEW_LAYOUT` or the project config:
 - **Subagents run in the foreground and report to you only.** Several spawns in one message run in parallel. A background subagent may deliver its report to the session at the top (a review cycle, which must never act on findings) and keeps running after you fail. Never `sleep`, never read a subagent's output file in a loop: every such turn re-sends the whole context.
 - **Read shared context once** ([finders](steps/04-finders.md#shared-context)): the flow model and the diff index; each finder reads its own partition's diff parts.
 - **Finders are spawned fresh, never forked**, with the tier and effort `jig review-plan` printed: a fork inherits the spawner's effort, and a partition finder needs nothing of its context.
-- **The convention boundary is the tooling, not the topic.** A rule the repository's linter, formatter or type checker enforces is not a finding. A rule from the project's review document that tooling does not enforce is a finding of angle 10, naming and style included. A convention without a quoted line of that document is not a finding.
+- **The review hunts what the user meets, not the shape of code.** Duplication, naming, style, layers, comments and tests belong to the project's checks, not to a reviewer ([angles](angles/00-index.md)). A project that still wants one of them reviewed adds its own angle of kind `conventions`; its rules count only with a quoted line of the project's document, and a rule its tooling enforces is not a finding.
 - **Editing this skill** (steps, angles, gates, tiers, briefs) passes the eval on reference merge requests (`<skill>/references/eval.md`) before it merges.

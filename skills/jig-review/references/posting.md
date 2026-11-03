@@ -14,7 +14,7 @@ With `--post`, step 6 is skipped: the flag IS the confirmation.
 
 ## 2. Postable set
 
-Postable = `open` and not yet posted (no `discussion_id`), plus **all** `optional` items, earlier ones included, plus the state's `deepening` when present: the note is rebuilt from the whole set, and an update without the old items would erase them.
+Postable = `open` and not yet posted (no `discussion_id`), plus **all** `optional` items (simplifications only earlier runs wrote), plus the state's `deepening` when present: the note is rebuilt from the whole set, and an update without the old items would erase them.
 
 **The postable set comes from the state file, always.** A caller's brief never lists new findings; the replies, resolves and FYI answer it names come on top of the postable set and never narrow it. `node "<root>/bin/jig.mjs" review state <state>` prints its size as `postable: N open without a thread · K optional · deepening yes|no`. One re-review posted only its reply, reported `threads 0/0`, and left its new findings and the FYI note unposted until it was sent back.
 
@@ -26,14 +26,15 @@ Read the merge request's diff refs ("Diff refs" row): `base_sha`, `start_sha`, `
 
 **The head must be the reviewed one.** `head_sha` differs from the state's `last_reviewed_sha` (`node "<root>/bin/jig.mjs" review-cycle head <iid>` prints `MOVED`): post nothing and report `head moved: <reviewed8> → <head8>, N commits`. The author pushed after the review: its findings, replies, FYI answer and line numbers may already be false, and the caller runs a follow-up round on the increment first. Post anyway only when the user (or the caller's brief) acknowledges the moved head in so many words; then every finding is re-anchored on the new head as in step 5.
 
-**jig routes, you do not.** Run `node "<root>/bin/jig.mjs" review route <state> <base_sha> <head_sha>` (add `--hold <id>` per hold id): one line per postable item, `<route>\t<id>\t<severity>\t<file:line>` (a `promoted` line ends with `victim <file:line>`), then `routes: T thread · P promoted · D discussion · F fyi`. Its route is final: the manifest (step 4) has exactly these items with exactly these kinds. It applies the rules below:
+**jig routes, you do not.** Run `node "<root>/bin/jig.mjs" review route <state> <base_sha> <head_sha>` (add `--hold <id>` per hold id): one line per postable item, `<route>\t<id>\t<severity>\t<file:line>` (a `promoted` line ends with `victim <file:line>`, a `spec-item` line with `lead <id>`), then `routes: T thread · P promoted · D discussion · S spec-item · F fyi`. Its route is final: the manifest (step 4) has exactly these items with exactly these kinds. It applies the rules below:
 
 - the file is in the merge request diff and the line is an added or context line of the new side → a **thread** on `file:new_line`;
 - the file is not in the diff, and `caused_by` holds: its `file` is in the diff, its `diff_line` appears verbatim among that file's added or removed lines, and its `victim_line` appears verbatim in the affected file of the reviewed tree → a **promoted** thread on the cause line; its body ends with one line naming the affected `file:line`;
 - the file is in the diff, the line is not (unchanged code outside every hunk) → a **discussion**: a general thread, resolvable, with the chip on the first line and the `file:line` line after the body;
 - the file is not in the diff, no `caused_by`, and the finding is `Important` → a **discussion** as above: a blocking finding always gets something the author resolves and a review cycle counts by its chip;
 - otherwise (a `Nit` or `Pre-existing` outside the diff) → an item of the **one FYI note** (step 8);
-- `optional` findings and the `deepening` → the FYI note, wherever their file is: they are not findings with a thread.
+- `optional` findings and the `deepening` → the FYI note, wherever their file is: they are not findings with a thread;
+- **spec findings (angle 15) → one thread for all of them.** The lead (an `Important` first, on a shown line when one is) routes as a `thread`, else a `discussion`, with the heaviest severity of the group; every other spec finding is a `spec-item` of it, whatever its file. The lead's body is the [spec form](../steps/07-comments.md#spec-form) listing every item. With a spec thread of an earlier run still open, every new spec finding is a `spec-item` of that thread: one reply in it lists them, in the same form.
 
 Apart from `optional` items and the deepening, the FYI note never holds an `Important` and never a finding on a file of the diff. One run routed a confirmed Important on an unchanged line of a diff file to the note: the author could miss it, nobody could resolve it, and the review cycle did not count it as open.
 
@@ -52,7 +53,7 @@ Write `manifest.json` before posting anything: one entry per item, threads, prom
  { "i": "fyi", "kind": "fyi", "count": 2, "optional": 1, "deepening": true, "payload": "<abs path>", "items": [{ "file": "src/c.ts", "line": 116, "reason": "no caused_by" }] }]
 ```
 
-`count` is the out-of-diff `Nit` and `Pre-existing` items, `optional` the simplifications, `deepening` whether the note carries the proposal. The manifest is the posting contract: the confirmation (step 6) prints it, posting fires it, the report counts against it. A manifest with only an FYI entry posts no thread: a caller reading it knows the pass returned nothing to the developer.
+The spec thread is one entry with `"items": ["<id>", …]`, every `spec-item` id of the group; a reply into an open spec thread is an entry of kind `"spec-reply"` with its `discussion_id` and `items`. `count` is the out-of-diff `Nit` and `Pre-existing` items, `optional` the simplifications of earlier runs, `deepening` whether the note carries the proposal. The manifest is the posting contract: the confirmation (step 6) prints it, posting fires it, the report counts against it. A manifest with only an FYI entry posts no thread: a caller reading it knows the pass returned nothing to the developer.
 
 ## 5. Threads, never flat notes
 
@@ -73,20 +74,20 @@ Post each entry from its payload file. A 201 proves nothing about the body: read
 One unresolvable general note, rebuilt whole on every pass, sections without items left out:
 
 - `**Outside the merge request scope**`: noticed during review, fix when the change is small; no resolve needed. One item per out-of-diff `Nit` or `Pre-existing` finding: `` `file:line` `` and the first line of its `mrComment` without the chip;
-- `**[🟡 Nit] Improvements: optional, not blocking the merge.**`: one item per `optional` finding, naming the file: `- [x]` when it is `done` in state, `- [ ]` otherwise;
+- `**[🟡 Nit] Improvements: optional, not blocking the merge.**`: one item per `optional` finding an earlier run wrote, naming the file; no such finding, no section: `- [x]` when it is `done` in state, `- [ ]` otherwise;
 - `**Deepening: a proposal, not a finding.**`: the state's `deepening` as one item, `module · what to deepen · effect · blast radius`.
 
 The heading lines are in the comment language. Find your earlier note by the invisible marker `<!-- review-fyi -->` at its end and update it ("Post or update a general note"); create one only when none exists. Keep the marker: without it every pass leaves another note.
 
 ## 9. Write back to state
 
-Write the id of each created thread into its finding (`discussion_id`). That keeps the next posting from duplicating findings and lets a later run resolve the threads.
+Write the id of each created thread into its finding (`discussion_id`); the spec thread's id goes into the lead and every one of its items, a spec reply's thread id into every item it lists. That keeps the next posting from duplicating findings and lets a later run resolve the threads.
 
-Then run `review route` again with the same arguments: every line left must be `fyi`. A `thread`, `promoted` or `discussion` line means a finding has no thread: post it, or report it as `not posted: <id> <route>`; never end the pass silently with one.
+Then run `review route` again with the same arguments: every line left must be `fyi`. A `thread`, `promoted`, `discussion` or `spec-item` line means a finding has no thread: post it, or report it as `not posted: <id> <route>`; never end the pass silently with one.
 
 After a re-review, also:
 
-- **resolve** the threads of findings whose outcome became `fixed` or `no_change_needed` ("Resolve a thread"). Never resolve a thread you did not open;
+- **resolve** the threads of findings whose outcome became `fixed` or `no_change_needed` ("Resolve a thread"); the spec thread only when every finding with its `discussion_id` did. Never resolve a thread you did not open;
 - **post the replies** of the outcome check into their threads, and the FYI answer under the FYI note ("Reply in a thread" with the note's discussion), each body from a file.
 
 ## 10. Report

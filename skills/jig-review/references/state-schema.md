@@ -10,7 +10,7 @@
   "runs": 1,
   "tokens": { "finders": 0, "verify": 0, "compose": 0 },
   "timings": { "started_at": "2026-08-07T16:30:00Z", "finished_at": "2026-08-07T16:34:12Z", "phases": { "finders": 110, "verify": 90, "compose": 25, "outcome": 0 } },
-  "tally": { "important": 0, "nit": 0, "optional": 0, "pre_existing": 0, "suppressed_nits": 0, "suppressed_speculative": 0, "suppressed_rare": 0, "suppressed_selector": 0, "suppressed_blocked": 0, "suppressed_stale": 0, "spec": null, "prior_fixed": 0, "prior_skipped": 0, "prior_unverified": 0, "prior_no_change_needed": 0 },
+  "tally": { "important": 0, "nit": 0, "pre_existing": 0, "suppressed_nits": 0, "suppressed_speculative": 0, "suppressed_rare": 0, "suppressed_selector": 0, "suppressed_stale": 0, "spec": null, "prior_fixed": 0, "prior_skipped": 0, "prior_unverified": 0, "prior_no_change_needed": 0 },
   "findings": [
     {
       "id": "src/api/auth.ts:42:missing-await",
@@ -32,13 +32,13 @@
 
 ## Field semantics
 
-- **`blocks`**: an array of paths, only on a blocking finding ([verify](../gates/severity.md#blocking-finding)). While the finding stands, Nit and Pre-existing in these files are not printed and count in `tally.suppressed_blocked` ([ranking](../steps/06-rank.md)); after `fixed` the re-review reads these files with the full patch ([lifting `blocks`](../steps/09-rereview.md#round-rules)).
+- **Fields only an earlier run wrote.** `blocks` on a finding and `tally.suppressed_blocked` come from runs that still had blocking findings; a new run writes neither and reads them for nothing. `optional`, `done` and `tally.optional` below are the same: a new run writes no simplification.
 - **`caused_by`**: only when the finding's file is outside the diff and the finder proved the causing line inside it. Posting anchors the thread on that line ([posting](posting.md)).
 - **`models`**: the models of the finders that raised the finding and of its judge. Two different models is the strongest signal the run reports.
 - **`status`**: `open | fixed | skipped | unverified | no_change_needed | optional`. A finding stays under the outcome check until its thread is resolved. Only `fixed` and `no_change_needed` close it, and exactly they resolve the thread. `skipped` (the defect stands) and `unverified` (the check did not run) are silent (nothing is posted or rejudged) but not final: the next run checks again, so a late fix still closes the thread.
-  `optional` is a simplification ([shape gate](../gates/shape.md#shape-gate)): there is and will be no thread, `discussion_id` is never set, the outcome check does not take it as a finding, it is not counted in `prior_*`. Posting collects all `optional` items into the one unresolvable FYI note as a checklist titled "[🟡 Nit] Improvements: optional, not blocking the merge" ([posting](posting.md#8-the-fyi-note-one-per-merge-request)).
+  `optional` is a simplification an earlier run wrote: there is and will be no thread, `discussion_id` is never set, the outcome check does not take it as a finding, it is not counted in `prior_*`. Posting collects all `optional` items into the one unresolvable FYI note as a checklist titled "[🟡 Nit] Improvements: optional, not blocking the merge" ([posting](posting.md#8-the-fyi-note-one-per-merge-request)).
 - **`done`**: `true` only on an `optional` finding a re-review found implemented ([optional items](../steps/09-rereview.md#optional-items)); its checklist item is ticked and it is not rechecked. **Absent = not done.**
-- **`tally.optional`** = this run's simplifications. Not part of `nit`: they do not block the merge. **Absent = 0.**
+- **`tally.optional`** = an earlier run's simplifications. Not part of `nit`: they do not block the merge. **Absent = 0.**
 - **A finding has no other fields.** A field outside this schema is not written: nothing reads it, and its data is lost silently. Thread replies (counter-replies, answers to a developer's reply, the FYI answer) do not live in state at all: they are printed with `discussion_id` in the output ([item 5](../steps/08-output.md#output)).
 - **`diff_hash`** = `git diff <base>...HEAD | git hash-object --stdin` at the end of the run. Equal to the current value means the code did not change ([re-review](../steps/09-rereview.md)); a rebase does not move it. **Absent = the comparison fails**, the run goes in full.
 - **`runs`** = how many finished rounds this key already has; incremented once per run that publishes a tally. It counts rounds BEHIND the current one: a run reading `runs: 3` is round 4. It drives the raised bar ([re-review](../steps/09-rereview.md)). **Absent = 0.** The first run writes `1`. A run that held `last_reviewed_sha` back because the convergence check failed holds the increment back too: the round did not finish.
@@ -52,8 +52,8 @@
 - **`source_branch`** = the source branch of the merge request (posting resolves the merge request by it; a re-review checks it out).
 - **`base_sha`** = the base of the reviewed diff resolved to a sha (`git rev-parse <base>`). Updated by every run together with `last_reviewed_sha` and `diff_hash`: the triple describes one patch. Scope recovery after a force-push reads it whole ([re-review](../steps/09-rereview.md)); absent or inconsistent with `diff_hash`: the scope falls back to the full diff.
 - **`discussion_id`**: set on posting; absent before.
-- **`deepening`**: the latest deepening proposal ([selector](selector.md#deepening)): the four parts of its printed item, and `sha`, the HEAD it was proposed on. Not a finding: no status, no thread, not in the tally. Posting puts it in the FYI note. A [promoted](selector.md#promotion) one becomes a finding and leaves this field. **Absent = no proposal yet, or it was promoted.**
-- **`category`** = the kebab slug of the angle, ONLY one of nine: `correctness`, `security`, `reuse`, `simplification`, `efficiency`, `altitude`, `conventions`, `architecture`, `spec`. Invent no others.
+- **`deepening`**: the latest deepening proposal ([selector](selector.md#deepening)): the four parts of its printed item, and `sha`, the HEAD it was proposed on. Not a finding: no status, no thread, not in the tally. Posting puts it in the FYI note. **Absent = no proposal yet.**
+- **`category`** = the kebab slug of the angle, ONLY one of five: `correctness`, `security`, `efficiency`, `spec`, `conventions` ([severity](../gates/severity.md#category)). Invent no others. A finding an earlier run wrote may hold a slug of a removed angle (`reuse`, `simplification`, `altitude`, `architecture`); it stays as written.
 - **`severity_class`** = the class code from the taxonomy in force; **`severity_gate`** = the code of the gate that cut the severity below the class level, otherwise `null` ([severity](../gates/severity.md#class-code)). Adopted threads have neither.
 - **`mrComment`** exists on every finding that passed the verify gates; [comment texts](../steps/07-comments.md) write it.
 - **`summary`** is in the comment language ([comment texts](../steps/07-comments.md)), code identifiers as they are.

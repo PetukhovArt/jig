@@ -5964,9 +5964,6 @@ var DEFAULT_DISCOVER = {
   exclude: ["**/{tracker,packages,adr,adrs,doc}/**", "docs/*.md"]
 };
 var STANDARD_NAME = /review|convention|standard|code[-_ ]?style|guideline/i;
-var ARCHITECTURE_NAME = /architect|fsd|layers|boundar/i;
-var ARCHITECTURE_FILE = /\.(md|html)$/i;
-var ADR_DIR = /(^|\/)adrs?\//i;
 var GLOSSARY_MAP = /(^|\/)glossary[-_ ]?map\.md$/i;
 var GLOSSARY = /(^|\/)[^/]*glossary[^/]*\.md$/i;
 var MARKDOWN_LINK = /\]\(<?([^)>\s#]+\.md)(?:#[^)\s]*)?>?\)|(?:^|\s)@([^\s]+\.md)/g;
@@ -6039,13 +6036,12 @@ var ruleDocuments = (root, changed, env) => {
   const standards = sorted(
     documents.filter((path2) => path2.toLowerCase().endsWith(".md") && !isIndex(path2) && (isStandard(path2) || isNamedStandard(path2)) && !isExcluded(path2))
   );
-  const architecture = sorted(documents.filter((path2) => ARCHITECTURE_FILE.test(path2) && ARCHITECTURE_NAME.test(path2) && !ADR_DIR.test(path2)));
   const glossaries = glossariesOf(root, indexes, documents);
   const scopes = {
     ...Object.fromEntries([...indexes, ...glossaries].map((path2) => [path2, dirOf2(path2)])),
     ...standardScopes(root, indexes, standards)
   };
-  return { indexes, standards, architecture, glossaries, scopes };
+  return { indexes, standards, glossaries, scopes };
 };
 var changedPaths = (root, mergeBase, paths) => gitList(root, ["diff", "--name-only", "-z", mergeBase, ...paths.length > 0 ? ["--", ...paths] : []]);
 var covers2 = (scope, file) => scope === "" || file.startsWith(`${scope}/`);
@@ -6125,38 +6121,20 @@ var ANGLE_TOKENS = {
   3: "bugs",
   4: "bugs",
   5: "bugs",
-  6: "reuse",
-  7: "simplification",
   8: "efficiency",
-  9: "altitude",
-  10: "conventions",
-  11: "docs",
   12: "bugs",
-  13: "architecture",
   14: "security",
-  15: "spec",
-  16: "tests",
-  17: "comments"
+  15: "spec"
 };
 var isAngle = (value) => Object.hasOwn(ANGLE_TOKENS, value);
 var ANGLES = Object.keys(ANGLE_TOKENS).map(Number).filter(isAngle);
-var IMPORTANT_ANGLES = [1, 2, 3, 4, 5, 8, 10, 12, 13, 14, 15, 16, 17];
+var REMOVED_ANGLES = [6, 7, 9, 10, 11, 13, 16, 17];
+var IMPORTANT_ANGLES = [1, 2, 3, 4, 5, 8, 12, 14, 15];
 var TOKEN_ANGLES = {
   bugs: [1, 2, 3, 4, 5, 12],
   security: [14],
-  reuse: [6],
-  simplification: [7],
   efficiency: [8],
-  altitude: [9],
-  conventions: [10],
-  smells: [10],
-  docs: [11],
-  adr: [13, 11],
-  glossary: [13, 11],
-  architecture: [13],
-  spec: [15],
-  tests: [16],
-  comments: [17]
+  spec: [15]
 };
 var SPECIAL_TOKENS = ["important", "deepening"];
 var SELECTOR_TOKENS = [...SPECIAL_TOKENS, ...Object.keys(TOKEN_ANGLES), "auto"];
@@ -6171,7 +6149,6 @@ var DEFAULT_GRADES = {
   flow: { tier: "deep", effort: "high" }
 };
 var GRADE_KEYS = Object.keys(DEFAULT_GRADES);
-var CLEANUP_TOKENS = ["reuse", "simplification", "altitude", "conventions"];
 var LAYOUTS = ["auto", "lean", "solo"];
 var isLayout = (value) => LAYOUTS.includes(value);
 var resolveAuto = (layout) => layout === "auto" ? "lean" : layout;
@@ -6179,22 +6156,14 @@ var PROJECT_ANGLE_NAME = /^[a-z][a-z0-9-]*$/;
 var FINDER_KINDS = ["behavior", "conventions"];
 var KIND_ANGLES = {
   behavior: [1, 2, 3, 4, 5, 8, 12, 14, 15],
-  conventions: [6, 7, 9, 10, 11, 13, 16, 17]
+  conventions: []
 };
 var REREVIEW_FULL_LAYOUT_LINES = 600;
 var isLightRereview = (rereview, lines2) => rereview === true && lines2 < REREVIEW_FULL_LAYOUT_LINES;
 var finderCount = (lines2) => Math.min(MAX_FINDERS, Math.ceil(Math.max(0, lines2) / LINES_PER_FINDER));
 var ceilingOf = (angle, settings) => settings?.[angle]?.severityCeiling ?? (IMPORTANT_ANGLES.includes(angle) ? "Important" : "Nit");
-var autoTokens = (shape, n) => {
-  const tokens = ["important"];
-  if (shape.tests) tokens.push("tests");
-  if (shape.comments) tokens.push("comments");
-  if (shape.docs) tokens.push("docs");
-  if (shape.newSourceFiles > 0) tokens.push("architecture", "deepening");
-  if (n === 1) tokens.push(...CLEANUP_TOKENS);
-  return tokens;
-};
-var parseSelector = (input, shape, n) => {
+var autoTokens = (shape) => shape.newSourceFiles > 0 ? ["important", "deepening"] : ["important"];
+var parseSelector = (input, shape) => {
   const given = input !== void 0 && input !== "";
   const source = given ? "argument" : "default";
   const raw = given ? input : "full";
@@ -6207,7 +6176,7 @@ var parseSelector = (input, shape, n) => {
   if (unknown.length > 0) {
     throw new Error(`unknown selector token ${unknown.join(", ")}; expected full, quick or tokens of: ${SELECTOR_TOKENS.join(", ")}`);
   }
-  const expanded = tokens.flatMap((token) => token === "auto" ? autoTokens(shape, n) : [token]);
+  const expanded = tokens.flatMap((token) => token === "auto" ? autoTokens(shape) : [token]);
   return { input: raw, tokens: [...new Set(expanded)], source };
 };
 var selectedAngles = (tokens, settings) => {
@@ -6219,13 +6188,7 @@ var selectedAngles = (tokens, settings) => {
   }
   return angles;
 };
-var inapplicable = (angle, shape) => {
-  if (angle === 11 && !shape.docs) return "no Markdown in the diff";
-  if (angle === 15 && !shape.spec) return "no spec found";
-  if (angle === 16 && !shape.tests) return "no tests in the diff";
-  if (angle === 17 && !shape.comments) return "no added comments";
-  return void 0;
-};
+var inapplicable = (angle, shape) => angle === 15 && !shape.spec ? "no spec found" : void 0;
 var roleGrade = (key, grades) => grades[key] ?? { tier: "deep", effort: "medium" };
 var partitionFinders = (partitions, angles, projectAngles, grades) => partitions.flatMap(
   (partition) => FINDER_KINDS.map((kind) => ({
@@ -6250,7 +6213,7 @@ var planReview = (input) => {
   const n = finderCount(input.lines);
   const layout = resolveAuto(input.layout ?? "auto");
   const grades = { ...DEFAULT_GRADES, ...input.grades };
-  const selection = parseSelector(input.selector, input.shape, n);
+  const selection = parseSelector(input.selector, input.shape);
   const wanted = selectedAngles(selection.tokens, input.angles);
   const skipped = [];
   const angles = ANGLES.filter((angle) => {
@@ -6259,7 +6222,7 @@ var planReview = (input) => {
     if (reason !== void 0) skipped.push({ angle, reason });
     return reason === void 0;
   });
-  const usedForCode = n === 0 ? angles.filter((angle) => angle === 11 || angle === 15 || angle === 16 || angle === 17) : angles;
+  const usedForCode = n === 0 ? angles.filter((angle) => angle === 15) : angles;
   ANGLES.filter((angle) => angles.includes(angle) && !usedForCode.includes(angle)).forEach(
     (angle) => skipped.push({ angle, reason: "no counted code lines" })
   );
@@ -6337,7 +6300,6 @@ var angleNumber = (key) => {
 var isTestPath = createMatcher(["**/{test,tests,__tests__,_tests_}/**"]);
 var isFixturePath = createMatcher(["**/{fixture,fixtures,__fixtures__,__snapshots__}/**", "**/*.snap"]);
 var isMarkdown = createMatcher(["**/*.md"]);
-var isChangelog = createMatcher(["**/CHANGELOG.md"]);
 var exclusionOf = (path2, root) => {
   if (isMarkdown(path2)) return "markdown";
   if (isLockfile(path2)) return "lockfile";
@@ -6351,13 +6313,7 @@ var audienceOf = (path2, root, testPaths = []) => {
   if (exclusion !== void 0 || testPaths.length > 0 && createMatcher([...testPaths])(path2)) return "tests";
   return "code";
 };
-var TESTS_ANGLES = [16];
-var DOCS_ANGLES = [11, 15];
-var audiencesFor = (angles) => [
-  "code",
-  ...angles.some((angle) => TESTS_ANGLES.includes(angle)) ? ["tests"] : [],
-  ...angles.some((angle) => DOCS_ANGLES.includes(angle)) ? ["docs"] : []
-];
+var audiencesFor = (angles) => ["code", ...angles.includes(15) ? ["docs"] : []];
 var parseNumstat = (output) => {
   const tokens = output.split("\0");
   const stats = [];
@@ -6408,16 +6364,6 @@ var addedLines = (patch) => {
   }
   return files;
 };
-var hasAddedComment = (file, source, added) => {
-  const comments = lexComments(file, source) ?? [];
-  return comments.some((comment) => {
-    const last = comment.line + (comment.text.match(/\n/g)?.length ?? 0);
-    for (let line = comment.line; line <= last; line++) {
-      if (added.has(line)) return true;
-    }
-    return false;
-  });
-};
 var PROJECT_KEYS = ["$schema", "iterationsMemory", "discover", "review", "severity", "route", "angles", "tiers", "maxParallel", "layout", "testPaths"];
 var SETTING_KEYS = ["enabled", "severityCeiling"];
 var PROJECT_ANGLE_KEYS = [...SETTING_KEYS, "file", "kind"];
@@ -6453,8 +6399,9 @@ var readAngles = (validator, value) => {
       if (parsed !== void 0) projectAngles.push(parsed);
       continue;
     }
+    if (angle === void 0 && REMOVED_ANGLES.includes(Number(key))) continue;
     if (angle === void 0) {
-      validator.report(path2, "expected an angle number 1..17");
+      validator.report(path2, `expected an angle number of ${ANGLES.join(", ")} or a project angle name`);
       continue;
     }
     const settings = validator.object(entry, path2, SETTING_KEYS);
@@ -6534,17 +6481,6 @@ var addedNewSourceFiles = (root, mergeBase, paths) => {
   if (!result.ok) return 0;
   return result.stdout.split("\0").filter((path2) => path2 !== "" && exclusionOf(path2, root) === void 0).length;
 };
-var anyAddedComment = (root, mergeBase, stats) => {
-  const candidates = stats.filter((stat) => stat.added > 0 && lexComments(stat.path, "") !== void 0).map((stat) => stat.path);
-  if (candidates.length === 0) return false;
-  const result = git(["diff", "-U0", "-M", "--no-color", "--no-ext-diff", mergeBase, "--", ...candidates], root);
-  if (!result.ok) return false;
-  for (const [file, lines2] of addedLines(result.stdout)) {
-    const path2 = join30(root, file);
-    if (lines2.size > 0 && existsSync15(path2) && hasAddedComment(file, readFileSync28(path2, "utf8"), lines2)) return true;
-  }
-  return false;
-};
 var untrackedCount = (root, paths) => (gitStatus(root, paths) ?? []).filter((entry) => entry.status === "??").length;
 var shellWord = (word) => /^[\w./:@=+-]+$/.test(word) ? word : `'${word.replaceAll("'", `'\\''`)}'`;
 var diffCommand = (mergeBase, paths) => ["git", "diff", mergeBase, ...pathspec(paths)].map(shellWord).join(" ");
@@ -6591,8 +6527,8 @@ var SELECTOR_NOTES = {
 };
 var LAYOUT_SOURCE_TEXT = { argument: "--layout", env: LAYOUT_ENV, config: `.jig/${PROJECT_CONFIG}`, default: "default" };
 var LAYOUT_TEXT = {
-  lean: "two fresh finders per partition (behavior, conventions); you judge, a deep judge only for Important",
-  solo: "two fresh finders per partition (behavior, conventions) prove their own candidates; no judge subagents"
+  lean: "a fresh behavior finder per partition (and a conventions finder when the project adds convention angles); you judge, a deep judge only for Important",
+  solo: "a fresh behavior finder per partition (and a conventions finder when the project adds convention angles) proves its own candidates; no judge subagents"
 };
 var layoutLine = (report) => {
   const { name, source } = report.layout;
@@ -6627,7 +6563,7 @@ var flowModelLines = (report) => {
 };
 var KIND_TEXT = {
   behavior: "bugs, state, wire contracts, spec; reads the flow model",
-  conventions: "duplication, naming, glossary, standards, docs, tests, comments, dead code; reads its rules, the flow model only for names across partitions"
+  conventions: "the project angles of kind conventions; reads its rules, the flow model only for names across partitions"
 };
 var finderLines = (report) => {
   const { plan } = report;
@@ -6659,7 +6595,7 @@ var formatReport = (report) => {
     `run: ${report.run} (the flow model and checkpoints of this run carry it; another run never reuses them)`,
     `partitions: ${report.formula}`,
     layoutLine(report),
-    `shape: tests ${report.shape.tests ? "yes" : "no"} \xB7 added comments ${report.shape.comments ? "yes" : "no"} \xB7 markdown ${report.shape.docs ? "yes" : "no"} \xB7 new source files ${report.shape.newSourceFiles} \xB7 spec ${report.shape.spec ? "yes" : "no"}`,
+    `shape: new source files ${report.shape.newSourceFiles} \xB7 spec ${report.shape.spec ? "yes" : "no"}`,
     `selector: ${plan.selection.input}${plan.selection.tokens.length > 0 && plan.selection.input !== plan.selection.tokens.join(",") ? ` \u2192 ${plan.selection.tokens.join(",")}` : ""}${SELECTOR_NOTES[plan.selection.source]}`,
     `config: ${report.config ?? "default"} \xB7 agent: ${report.agent} \xB7 max parallel subagents: ${report.maxParallel}`,
     `mode: ${report.mode} \xB7 state: ${stateText(report)}`,
@@ -6733,11 +6669,7 @@ var buildReport = (root, options) => {
   const untracked = isEmpty ? 0 : untrackedCount(root, paths);
   if (rereview === null) requireScopedChanges(paths, stats.length + untracked, base.ref);
   const { lines: lines2, counted, excluded } = countLines(stats, root);
-  const changed = stats.filter((stat) => stat.added > 0);
   const shape = {
-    tests: changed.some((stat) => exclusionOf(stat.path, root) === "test"),
-    comments: anyAddedComment(root, diffBase, stats),
-    docs: changed.some((stat) => exclusionOf(stat.path) === "markdown" && !isChangelog(stat.path)),
     newSourceFiles: isEmpty ? 0 : addedNewSourceFiles(root, diffBase, diffPaths),
     spec: options.spec
   };
@@ -7611,12 +7543,32 @@ var routeFindings = (root, state, base, head, hold = []) => {
     if (cause !== void 0 && isProvenCause(finding, cause)) return { route: "promoted", ...item, at: `${cause.file}:${cause.line ?? "?"}`, victim: at };
     return { route: finding.severity === "Important" ? "discussion" : "fyi", ...item };
   };
-  const routed = (state.findings ?? []).filter((finding) => isPostable(finding, held)).map(routeOf);
+  const findings = state.findings ?? [];
+  const postable = findings.filter((finding) => isPostable(finding, held));
+  const isSpec = (finding) => finding.category === "spec" && finding.status !== "optional";
+  const routed = postable.filter((finding) => !isSpec(finding)).map(routeOf);
+  const spec2 = postable.filter(isSpec).map(routeOf);
+  if (spec2.length > 0) {
+    const openThread = findings.find((finding) => isSpec(finding) && finding.status === "open" && (finding.discussion_id ?? void 0) !== void 0);
+    const ordered = [...spec2].sort((a, b) => Number(b.severity === "Important") - Number(a.severity === "Important"));
+    const lead = openThread === void 0 ? ordered.find((item) => item.route === "thread") ?? ordered[0] : void 0;
+    const leadId = openThread?.id ?? lead?.id ?? "";
+    for (const item of lead === void 0 ? ordered : [lead, ...ordered.filter((other) => other !== lead)]) {
+      if (item === lead) {
+        const heaviest = spec2.some((other) => other.severity === "Important") ? "Important" : item.severity;
+        routed.push({ route: item.route === "thread" ? "thread" : "discussion", id: item.id, severity: heaviest, at: item.victim ?? item.at });
+      } else {
+        routed.push({ route: "spec-item", id: item.id, severity: item.severity, at: item.at, lead: leadId });
+      }
+    }
+  }
   return state.deepening === void 0 || state.deepening === null ? routed : [...routed, { route: "fyi", id: "deepening", severity: "deepening", at: "" }];
 };
-var ROUTES = ["thread", "promoted", "discussion", "fyi"];
+var ROUTES = ["thread", "promoted", "discussion", "spec-item", "fyi"];
 var formatRoutes = (routed) => [
-  ...routed.map((item) => [item.route, item.id, item.severity, item.at, ...item.victim === void 0 ? [] : [`victim ${item.victim}`]].join("	")),
+  ...routed.map(
+    (item) => [item.route, item.id, item.severity, item.at, ...item.victim === void 0 ? [] : [`victim ${item.victim}`], ...item.lead === void 0 ? [] : [`lead ${item.lead}`]].join("	")
+  ),
   `routes: ${ROUTES.map((route2) => `${routed.filter((item) => item.route === route2).length} ${route2}`).join(" \xB7 ")}`
 ];
 var USAGE4 = "usage: jig review route <state file> <base_sha> <head_sha> [--hold <id>]...";
@@ -7647,8 +7599,7 @@ var runReviewRules = (args) => {
   const output = [
     ...inputs.indexes.map((path2) => `index ${path2}${scope(path2)}`),
     ...inputs.standards.map((path2) => `standard ${path2}${scope(path2)}`),
-    ...inputs.glossaries.map((path2) => `glossary ${path2}${scope(path2)}`),
-    ...inputs.architecture.map((path2) => `architecture ${path2}`)
+    ...inputs.glossaries.map((path2) => `glossary ${path2}${scope(path2)}`)
   ];
   process.stdout.write(`${output.join("\n")}
 `);

@@ -11,7 +11,6 @@ export const PROJECT_CONFIG = 'review.jsonc'
 export interface ReviewInputs {
   indexes: string[]
   standards: string[]
-  architecture: string[]
   glossaries: string[]
   /** Per index, standard and glossary: the directory whose files it governs, `''` for the whole repository. */
   scopes: Record<string, string>
@@ -29,9 +28,6 @@ const DEFAULT_DISCOVER: Discover = {
   exclude: ['**/{tracker,packages,adr,adrs,doc}/**', 'docs/*.md'],
 }
 const STANDARD_NAME = /review|convention|standard|code[-_ ]?style|guideline/i
-const ARCHITECTURE_NAME = /architect|fsd|layers|boundar/i
-const ARCHITECTURE_FILE = /\.(md|html)$/i
-const ADR_DIR = /(^|\/)adrs?\//i
 const GLOSSARY_MAP = /(^|\/)glossary[-_ ]?map\.md$/i
 const GLOSSARY = /(^|\/)[^/]*glossary[^/]*\.md$/i
 const MARKDOWN_LINK = /\]\(<?([^)>\s#]+\.md)(?:#[^)\s]*)?>?\)|(?:^|\s)@([^\s]+\.md)/g
@@ -120,13 +116,12 @@ export const ruleDocuments = (root: string, changed: readonly string[], env: Nod
   const standards = sorted(
     documents.filter((path) => path.toLowerCase().endsWith('.md') && !isIndex(path) && (isStandard(path) || isNamedStandard(path)) && !isExcluded(path)),
   )
-  const architecture = sorted(documents.filter((path) => ARCHITECTURE_FILE.test(path) && ARCHITECTURE_NAME.test(path) && !ADR_DIR.test(path)))
   const glossaries = glossariesOf(root, indexes, documents)
   const scopes = {
     ...Object.fromEntries([...indexes, ...glossaries].map((path) => [path, dirOf(path)])),
     ...standardScopes(root, indexes, standards),
   }
-  return { indexes, standards, architecture, glossaries, scopes }
+  return { indexes, standards, glossaries, scopes }
 }
 
 export const changedPaths = (root: string, mergeBase: string, paths: readonly string[]): string[] =>

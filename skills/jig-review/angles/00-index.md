@@ -2,7 +2,9 @@
 
 An angle is one concrete question to the diff, with a procedure for answering it and a condition for evidence. Not a topic and not a checklist.
 
-A finder carries several angles and reads the diff once. A section for every assigned angle is required, an empty one too ("angle 2: nothing"); otherwise the finder is asked again. An angle that names an atom: read `<root>/atoms/<name>.md` before the hunt; it holds the criterion.
+A finder carries several angles and reads the diff once. A section for every assigned angle is required, an empty one too ("angle 2: nothing"); otherwise the finder is asked again. An angle that names an atom: read `<root>/atoms/<name>.md` before the hunt; it holds the rules the angle applies.
+
+**What the review does not hunt.** Code shape the project's tooling can own (duplication, naming, style, layers and imports, comments, tests, documents) is not an angle: a review spends a deep model on what a linter, a type checker or an architecture check proves for free, and its threads turn into nitpicks. A project that wants such a check in its review adds it as its own angle of kind `conventions` ([project config](../references/project-config.md)); better, it moves the rule into a check that blocks the merge.
 
 ## Bugs: survive ONLY as `CONFIRMED` with initiator, path, effect
 
@@ -16,27 +18,14 @@ Every finder gets the whole diff. The questions are split, not the material.
 - [12](12.guard-siblings.md) · guard without siblings: a check added in one place of several
 - [14](14.security.md) · security: a sink in the diff with a path from untrusted input
 
-## Rules: survive ONLY as `CONFIRMED` of the rule form, own finder
+## Efficiency: survives ONLY as `CONFIRMED` with the proven rate
 
-- [6](6.reuse.md) · reuse: written what already exists
-- [10](10.conventions.md) · conventions and smells: written project rules broken, a code shape from the smell vocabulary
-- [13](13.architecture.md) · architecture: rules of abstractions and layers, ADRs in force, glossary terms
+- [8](8.efficiency.md) · efficiency: leaks, CPU load the user feels, work on a proven hot path
 
-A duplicate without an invariant and a convention without effect on behavior are not findings ([shape gate](../gates/shape.md#shape-gate)).
-
-## Cleanup: survives ONLY as `CONFIRMED`
-
-Simplifications 7 and 8 never become threads: they go as items into the one FYI note. 16 and 17 stay threads ([shape gate](../gates/shape.md#shape-gate)).
-
-- [7](7.simplification.md) · simplification: the same behavior with less code
-- [8](8.efficiency.md) · efficiency: extra work and leaks
-- [9](9.fix-altitude.md) · fix altitude: fixed at the wrong level, a feature branch in a foreign flow, a reshape removes a branch whole
-- [11](11.docs.md) · documents in the diff: will the document go stale; does a changed ADR or glossary agree
-- [16](16.tests.md) · wrong and redundant tests, by atom `tests`
-- [17](17.comments.md) · wrong and redundant comments, by atom `comments`
-
-## Spec: survives ONLY as `CONFIRMED`, with the rules finder when a spec is found
+## Spec: survives ONLY as `CONFIRMED`, when a spec is found
 
 - [15](15.spec.md) · spec conformance: missing, unrequested, done differently
 
-Which angles a run starts and each ceiling: [selector](../references/selector.md). Layout over agents: [`../steps/04-finders.md`](../steps/04-finders.md). Turning an angle off: `angles.<n>.enabled: false` in the [project config](../references/project-config.md); adding a project angle: `angles.<name>` with its `file` and `kind`.
+The numbers keep the gaps of removed angles: state files and project configs name angles by number, and a number never changes its meaning.
+
+Which angles a run starts and each ceiling: [selector](../references/selector.md). Layout over agents: [`../steps/04-finders.md`](../steps/04-finders.md). Turning an angle off: `angles.<n>.enabled: false` in the [project config](../references/project-config.md).

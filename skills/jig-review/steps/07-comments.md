@@ -10,10 +10,8 @@ You write short comments yourself from the judge's evidence, without a subagent 
 
 - **Nit / Pre-existing** → short, always. Nothing promotes them.
 - **Important, an ordinary bug** (null, race, off-by-one, missing `await`) → short.
-- **Important architectural**: angles 6, 7, 9, 10, 13, or a named pattern from the project's review vocabulary → expanded.
-- **Spec (angle 15)** → short; instead of the triggering input, the quote of the spec line.
-- **A merged finding of angle 16 or 17** ([merge per file](06-rank.md#merge-per-file)) → `**[🟡 Nit]**` and one sentence with the number of instances, then a list: one line per instance (the test name or the first words of the comment in backticks) and the criterion item. The list is outside the limit, no suggestion. One defect, several instances, so "one defect per comment" holds.
-- **Simplification** (`status: "optional"`) → one sentence: what to simplify and how. No severity badge, no suggestion: it becomes a checklist item of the FYI note, not a thread.
+- **Important by a named pattern** from the project's review vocabulary (usually a project angle) → expanded.
+- **Spec (angle 15)** → every spec finding of the run is an item of one thread, the [spec form](#spec-form).
 
 ## Short form
 
@@ -32,21 +30,25 @@ One defect per comment. A second separable problem (a test renamed past the case
 
 ## Expanded form
 
-Architectural Important only. **Up to 10 lines.** Three paragraphs, each owning one thought:
+An Important by a named pattern only. **Up to 10 lines.** Three paragraphs, each owning one thought:
 
-1. `**[🔴 Important]**` (a blocking one: `**[🔴 Important · rework]**`) plus the verdict by pattern: the name of the pattern or smell, what exactly is broken, a concrete failure scenario.
+1. `**[🔴 Important]**` plus the verdict by pattern: the name of the pattern or smell, what exactly is broken, a concrete failure scenario.
 2. **Where the truth lives:** which module or port owns this decision and why; what in the code already expresses that ownership.
 3. **Recommendation, imperative:** the fix direction as an instruction to the author: who takes the responsibility, whose argument or parameter it becomes. Naming a signature is fine, writing a body is not. A realistic alternative exists: name it and its cost in one sentence.
 
 The fix direction goes through ownership, not a step-by-step plan. Speculative code (function bodies, multi-line snippets): never.
 
-## Rules for both forms
+## Spec form
+
+One thread for every deviation from the task ([routing](../references/posting.md#3-route)). The chip of the heaviest item, one line saying the change departs from the task, then up to three groups in this order, a group without items left out: **Missing**, **Done differently**, **Unrequested**. One item per finding: `<chip> <spec_quote>` on its own line, then one sentence on what the code does or lacks, by symbol. An `Important` item is one the merge waits for; the author answers per item. A reply into an open spec thread lists the new items in the same groups.
+
+## Rules for every form
 
 - An optional tail after the main text: `<details><summary>Reasoning</summary>…</details>`, only the trace of the check: what was checked, which line proves it. Outside the line and character limits.
 - Short sentences, active voice, one thought per sentence, no nested clauses.
 - **The scenario names its entry point:** where it starts: screen, mode, element. "In the input field on the scene, at runtime, the user types…", not "the operator types…". A developer checked another panel than the one meant and answered that the finding was false.
 - **A suggestion replaces exactly one line**: the line the comment is attached to (posting normalizes the block so "Apply" replaces only it; multi-line content breaks the code). A fix wider than one line: no block, diagnosis only.
 - **No `file:line` or anchors in the body**: the comment is already attached to a line. Refer to other code by symbol (`Class.method`), not by path with a number.
-- **Name a named rule.** A finding that matches a rule, pattern or smell with a name in the project's review document carries that name in `mrComment` and `summary` as is: `**[<severity>]** <rule name>: …`. Verify assigns the severity; the rule name does not change it. Holds for every angle, not only 10.
+- **Name a named rule.** A finding that matches a rule, pattern or smell with a name in the project's review document carries that name in `mrComment` and `summary` as is: `**[<severity>]** <rule name>: …`. Verify assigns the severity; the rule name does not change it. Holds for every angle.
 - **Language:** `language` from the [project config](../references/project-config.md); otherwise the language the merge request description and its threads are written in. Identifiers, paths, flags and technology names stay as they are; project terms follow its glossary. No transliterated jargon.
 - **Never mention AI, agents, models, skills or config paths**: the authority comes from the code, not from tools.

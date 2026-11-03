@@ -66,4 +66,22 @@ describe('review route', () => {
       { route: 'fyi', id: 'deepening', severity: 'deepening', at: '' },
     ])
   })
+
+  it('posts every spec deviation as one thread: an Important on a shown line leads, the rest are its items', () => {
+    const base = commit({ 'a.ts': lines(30, 'a'), 'b.ts': lines(5, 'b') })
+    const changed = lines(30, 'a')
+    changed[9] = 'a10 changed'
+    const head = commit({ 'a.ts': changed })
+    const spec = (id: string, severity: string, file: string, line: number, extra: Record<string, unknown> = {}) => ({ id, severity, file, line, category: 'spec', status: 'open', ...extra })
+    const fresh = { findings: [spec('unrequested', 'Nit', 'a.ts', 11), spec('missing', 'Important', 'b.ts', 2), spec('differently', 'Important', 'a.ts', 12), spec('held', 'Important', 'a.ts', 10)] }
+    expect(routeFindings(root, fresh, base, head, ['held'])).toEqual([
+      { route: 'thread', id: 'differently', severity: 'Important', at: 'a.ts:12' },
+      { route: 'spec-item', id: 'missing', severity: 'Important', at: 'b.ts:2', lead: 'differently' },
+      { route: 'spec-item', id: 'unrequested', severity: 'Nit', at: 'a.ts:11', lead: 'differently' },
+    ])
+    const outside = { findings: [spec('only-nit', 'Nit', 'b.ts', 2)] }
+    expect(routeFindings(root, outside, base, head)).toEqual([{ route: 'discussion', id: 'only-nit', severity: 'Nit', at: 'b.ts:2' }])
+    const rereview = { findings: [spec('posted', 'Important', 'a.ts', 12, { discussion_id: 'd1' }), spec('new', 'Nit', 'a.ts', 11)] }
+    expect(routeFindings(root, rereview, base, head)).toEqual([{ route: 'spec-item', id: 'new', severity: 'Nit', at: 'a.ts:11', lead: 'posted' }])
+  })
 })

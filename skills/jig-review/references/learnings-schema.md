@@ -18,6 +18,6 @@
 ```
 
 - **`rule`**: one sentence, a mechanism plus its scope. A bare topic ("do not flag retry") is invalid.
-- **`category`**: the same slugs as findings; it drives how the rule applies ([state](../steps/03-state.md#learnings)): cleanup categories and `spec` → drop the candidate; `correctness` and `security` → only demote to Nit.
+- **`category`**: the same slugs as findings; it drives how the rule applies ([state](../steps/03-state.md#learnings)): `efficiency`, `conventions` and `spec` → drop the candidate; `correctness` and `security` → only demote to Nit. A learning with a slug of a removed angle (`reuse`, `simplification`, `altitude`, `architecture`) matches no new candidate.
 - **`active: false`** takes the rule out of play without losing its history. People edit this file by hand: never overwrite entries you did not add in this run.
 - The file is local to the machine and lives under `.jig/runs/`, outside git. The durable home of a rule is the project's review document, so every added learning is also proposed as a line for that document in the summary.

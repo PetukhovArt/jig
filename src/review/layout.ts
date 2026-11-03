@@ -21,42 +21,25 @@ export const ANGLE_TOKENS = {
   3: 'bugs',
   4: 'bugs',
   5: 'bugs',
-  6: 'reuse',
-  7: 'simplification',
   8: 'efficiency',
-  9: 'altitude',
-  10: 'conventions',
-  11: 'docs',
   12: 'bugs',
-  13: 'architecture',
   14: 'security',
   15: 'spec',
-  16: 'tests',
-  17: 'comments',
 } as const satisfies Record<number, string>
 
 export type Angle = keyof typeof ANGLE_TOKENS
 const isAngle = (value: number): value is Angle => Object.hasOwn(ANGLE_TOKENS, value)
 export const ANGLES: readonly Angle[] = Object.keys(ANGLE_TOKENS).map(Number).filter(isAngle)
 
-const IMPORTANT_ANGLES: readonly Angle[] = [1, 2, 3, 4, 5, 8, 10, 12, 13, 14, 15, 16, 17]
+export const REMOVED_ANGLES: readonly number[] = [6, 7, 9, 10, 11, 13, 16, 17]
+
+const IMPORTANT_ANGLES: readonly Angle[] = [1, 2, 3, 4, 5, 8, 12, 14, 15]
 
 const TOKEN_ANGLES: Readonly<Record<string, readonly Angle[]>> = {
   bugs: [1, 2, 3, 4, 5, 12],
   security: [14],
-  reuse: [6],
-  simplification: [7],
   efficiency: [8],
-  altitude: [9],
-  conventions: [10],
-  smells: [10],
-  docs: [11],
-  adr: [13, 11],
-  glossary: [13, 11],
-  architecture: [13],
   spec: [15],
-  tests: [16],
-  comments: [17],
 }
 const SPECIAL_TOKENS = ['important', 'deepening'] as const
 export const SELECTOR_TOKENS = [...SPECIAL_TOKENS, ...Object.keys(TOKEN_ANGLES), 'auto']
@@ -73,12 +56,7 @@ export const DEFAULT_GRADES: Readonly<Record<string, Grade>> = {
 }
 export const GRADE_KEYS = Object.keys(DEFAULT_GRADES)
 
-const CLEANUP_TOKENS = ['reuse', 'simplification', 'altitude', 'conventions']
-
 export interface Shape {
-  tests: boolean
-  comments: boolean
-  docs: boolean
   newSourceFiles: number
   spec: boolean
 }
@@ -123,7 +101,7 @@ export type FinderKind = (typeof FINDER_KINDS)[number]
 
 export const KIND_ANGLES: Readonly<Record<FinderKind, readonly Angle[]>> = {
   behavior: [1, 2, 3, 4, 5, 8, 12, 14, 15],
-  conventions: [6, 7, 9, 10, 11, 13, 16, 17],
+  conventions: [],
 }
 
 export const REREVIEW_FULL_LAYOUT_LINES = 600
@@ -178,17 +156,9 @@ export const finderCount = (lines: number): number => Math.min(MAX_FINDERS, Math
 const ceilingOf = (angle: Angle, settings: PlanInput['angles']): Ceiling =>
   settings?.[angle]?.severityCeiling ?? (IMPORTANT_ANGLES.includes(angle) ? 'Important' : 'Nit')
 
-export const autoTokens = (shape: Shape, n: number): string[] => {
-  const tokens = ['important']
-  if (shape.tests) tokens.push('tests')
-  if (shape.comments) tokens.push('comments')
-  if (shape.docs) tokens.push('docs')
-  if (shape.newSourceFiles > 0) tokens.push('architecture', 'deepening')
-  if (n === 1) tokens.push(...CLEANUP_TOKENS)
-  return tokens
-}
+export const autoTokens = (shape: Shape): string[] => (shape.newSourceFiles > 0 ? ['important', 'deepening'] : ['important'])
 
-export const parseSelector = (input: string | undefined, shape: Shape, n: number): Selection => {
+export const parseSelector = (input: string | undefined, shape: Shape): Selection => {
   const given = input !== undefined && input !== ''
   const source: SelectorSource = given ? 'argument' : 'default'
   const raw = given ? input : 'full'
@@ -201,7 +171,7 @@ export const parseSelector = (input: string | undefined, shape: Shape, n: number
   if (unknown.length > 0) {
     throw new Error(`unknown selector token ${unknown.join(', ')}; expected full, quick or tokens of: ${SELECTOR_TOKENS.join(', ')}`)
   }
-  const expanded = tokens.flatMap((token) => (token === 'auto' ? autoTokens(shape, n) : [token]))
+  const expanded = tokens.flatMap((token) => (token === 'auto' ? autoTokens(shape) : [token]))
   return { input: raw, tokens: [...new Set(expanded)], source }
 }
 
@@ -215,13 +185,7 @@ const selectedAngles = (tokens: readonly string[], settings: PlanInput['angles']
   return angles
 }
 
-const inapplicable = (angle: Angle, shape: Shape): string | undefined => {
-  if (angle === 11 && !shape.docs) return 'no Markdown in the diff'
-  if (angle === 15 && !shape.spec) return 'no spec found'
-  if (angle === 16 && !shape.tests) return 'no tests in the diff'
-  if (angle === 17 && !shape.comments) return 'no added comments'
-  return undefined
-}
+const inapplicable = (angle: Angle, shape: Shape): string | undefined => (angle === 15 && !shape.spec ? 'no spec found' : undefined)
 
 const roleGrade = (key: string, grades: Readonly<Record<string, Grade>>): Grade =>
   grades[key] ?? { tier: 'deep', effort: 'medium' }
@@ -264,7 +228,7 @@ export const planReview = (input: PlanInput): Plan => {
   const n = finderCount(input.lines)
   const layout = resolveAuto(input.layout ?? 'auto')
   const grades = { ...DEFAULT_GRADES, ...input.grades }
-  const selection = parseSelector(input.selector, input.shape, n)
+  const selection = parseSelector(input.selector, input.shape)
   const wanted = selectedAngles(selection.tokens, input.angles)
   const skipped: Skipped[] = []
   const angles = ANGLES.filter((angle) => {
@@ -273,7 +237,7 @@ export const planReview = (input: PlanInput): Plan => {
     if (reason !== undefined) skipped.push({ angle, reason })
     return reason === undefined
   })
-  const usedForCode = n === 0 ? angles.filter((angle) => angle === 11 || angle === 15 || angle === 16 || angle === 17) : angles
+  const usedForCode = n === 0 ? angles.filter((angle) => angle === 15) : angles
   ANGLES.filter((angle) => angles.includes(angle) && !usedForCode.includes(angle)).forEach((angle) =>
     skipped.push({ angle, reason: 'no counted code lines' }),
   )
@@ -319,7 +283,6 @@ export interface StepRef {
   when?: string
 }
 
-/** Gate files for the angle classes present: bug angles prove initiator, path and effect; rule and cleanup angles pass the shape gate. */
 export const gateFiles = (angles: readonly Angle[], projectAngles: readonly ProjectAngle[] = []): string[] => [
   ...(angles.some((angle) => BUG_ANGLES.includes(angle)) || projectAngles.some((angle) => angle.kind === 'behavior') ? ['gates/bugs.md'] : []),
   ...(angles.some((angle) => !BUG_ANGLES.includes(angle)) || projectAngles.some((angle) => angle.kind === 'conventions') ? ['gates/shape.md'] : []),

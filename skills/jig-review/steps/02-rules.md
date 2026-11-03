@@ -12,7 +12,7 @@ Take the directories the diff touches and walk from each up to the root, collect
 node "<root>/bin/jig.mjs" review rules <base> [-- <path>...]
 ```
 
-It prints `index <path>` (with `· scope <dir>/` below the root) for each rules index on the walk up from every changed file's directory to the repository root, root included, by the names of `discover.rules` (default `AGENTS.md`, `CLAUDE.md`, `CLAUDE.local.md`, `REVIEW.md`); `standard <path>` for the standard documents of step 2, with the scope of the index that links it; `architecture <path>` for the documents [angle 13](../angles/13.architecture.md) section B may need. It reads `discover` from `.jig/review.jsonc` itself.
+It prints `index <path>` (with `· scope <dir>/` below the root) for each rules index on the walk up from every changed file's directory to the repository root, root included, by the names of `discover.rules` (default `AGENTS.md`, `CLAUDE.md`, `CLAUDE.local.md`, `REVIEW.md`); `standard <path>` for the standard documents of step 2, with the scope of the index that links it. It reads `discover` from `.jig/review.jsonc` itself.
 
 **A file's scope is its directory.** A rule from `src/payments/AGENTS.md` applies only to files under `src/payments/`. A finding by it outside that directory is invalid.
 
@@ -20,7 +20,7 @@ It prints `index <path>` (with `· scope <dir>/` below the root) for each rules 
 
 ## 2. Standard documents
 
-Only when the [selector](../references/selector.md) runs angle 6, 10 or 13: only the finders with those angles read standard bodies.
+Only when the project adds angles of kind `conventions`: only those finders read standard bodies.
 
 The `standard` lines of `review rules`: Markdown files named like a review document, a convention, a standard, a code style or a guideline, plus the globs of `discover.standards`, minus the globs of `discover.exclude`; `$REVIEW_RULES` (a path or glob) replaces both when set. The default drops commit formats, ADRs and versioning: they are about operating the repository, not about judging code.
 
@@ -32,7 +32,7 @@ Drop what is not a rule: meeting notes, release checklists, documents about the 
 
 **What is read as input, and nothing else:** the rules indexes of step 1 (`AGENTS.md`, `CLAUDE.md` and the other `discover.rules` names closest to the changed files), the task's spec or PRD ([prepare](01-prepare.md#spec)), and the standard bodies of step 2. A README, a directory overview, an ADR index or a glossary map is not read whole; a document an index links is opened only when a candidate needs the rule it holds.
 
-**The filter applies to the input, not the target.** ADRs do not go into the shared block: only a finder with [angle 13](../angles/13.architecture.md) searches them, for section C, by grep and by path, never whole. Glossaries go to every finder by path, under its `rules:` line: the root `GLOSSARY.md` to all, a context glossary that the glossary map (`GLOSSARY-MAP.md` at the root or linked from an index) lists to the partitions under its directory. A finder greps them, never reads them whole. One run missed a `camera` field the root glossary lists under `_Avoid_` for Channel: no finder held the glossary. When the diff **changes** them, their hunks are in the `docs-*` parts and the change is reviewed like code: [angle 11](../angles/11.docs.md), question 2.
+**ADRs do not go into the shared block.** Glossaries go to every `conventions` finder by path, under its `rules:` line: the root `GLOSSARY.md` to all, a context glossary that the glossary map (`GLOSSARY-MAP.md` at the root or linked from an index) lists to the partitions under its directory. A finder greps them, never reads them whole.
 
 **Priority in a conflict:** the document closest to the code beats the farther one; `REVIEW.md` beats `AGENTS.md` at the same level.
 
@@ -50,7 +50,7 @@ The severity taxonomy comes from one file ([verify](../gates/severity.md)):
 
 ## 4. Routing
 
-`jig review-plan` routes the indexes and standards itself: each finder's `rules:` line (the inline reader's too) lists those whose scope holds a file of its partition. An index governs its directory; a standard an index links governs that index's directory, an unlinked one the whole repository. Pass that list as the finder's documents ([step 04](04-finders.md#spawn)), each with its scope; add the bodies of the index's `@file` imports. A standard under `docs/` is found through the index that links it: one run listed only `AGENTS.md` while `docs/standards/code/*.md`, linked from it, went unread, and its naming and test findings were lost.
+`jig review-plan` routes the indexes and standards itself: each `conventions` finder's `rules:` line lists those whose scope holds a file of its partition. An index governs its directory; a standard an index links governs that index's directory, an unlinked one the whole repository. Pass that list as the finder's documents ([step 04](04-finders.md#spawn)), each with its scope; add the bodies of the index's `@file` imports. A standard under `docs/` is found through the index that links it.
 
 The `route` map of the config narrows a document to angles: such a document goes only to finders carrying one of those angles, within the same scope.
 
@@ -58,17 +58,15 @@ The shared block overrides the skill's defaults: the severity taxonomy as a whol
 
 **The size limit is per angle's share, after routing.** A share over ~400 lines keeps the documents closest to the code.
 
-**Architecture document, ADRs and glossary** for sections B, C and D of [angle 13](../angles/13.architecture.md) are a special case: the search is described in the angle itself, the only recipients are the finders with angle 13.
-
 **Name the result in the summary, always:**
 
 ```
 config: .jig/review.jsonc
 severity: docs/REVIEW.md          (or: skill default)
-rules:  AGENTS.md (40) · docs/standards/code/*.md (124) → angle 10
-        src/payments/AGENTS.md (111) → angles 1, 8, 12, 13
-adr:    read 3 of 40 · glossary: src/billing/GLOSSARY.md
+rules:  AGENTS.md (40) · docs/standards/code/*.md (124) → naming
+        src/payments/AGENTS.md (111) → naming
+glossary: src/billing/GLOSSARY.md
 dropped: docs/standards/tracker.md, 5 GLOSSARY.md
 ```
 
-or `rules: not found: angle 10 by the base smell vocabulary only, section 13B off`.
+or `rules: none (no conventions angle)`.

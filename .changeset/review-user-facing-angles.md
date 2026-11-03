@@ -1,0 +1,7 @@
+---
+"jig": minor
+---
+
+`jig-review` hunts what the user meets, not the shape of code: angles 6 (reuse), 7 (simplification), 9 (fix altitude), 10 (conventions and smells), 11 (documents), 13 (architecture), 16 (tests) and 17 (comments) are removed, and with them the default `conventions` finder, the `layer`, `spread`, `smell` and `false-guarantee` classes, blocking findings and the optional simplifications of the FYI note. The project's checks own those rules; a project that still wants one reviewed adds its own angle of kind `conventions`, which is the only thing a `conventions` finder now carries. A removed angle number in `.jig/review.jsonc` is accepted and changes nothing; a removed selector token (`architecture`, `tests`, `comments` and the rest) is an error. The rare gate no longer asks whether the fix adds code: a bug a tester using the feature as intended does not meet is a known risk, except data loss, security, a broken invariant and what the project's severity sections name. `jig review rules` no longer prints `architecture` lines.
+
+Every spec deviation of a review goes into one thread, item by item, grouped as missing, done differently and unrequested: `jig review route` routes the lead as a `thread` (or a `discussion`) with the heaviest severity and every other spec finding as a `spec-item` of it; a later run adds its spec findings to the open thread by one reply, and the thread resolves when every item is closed.

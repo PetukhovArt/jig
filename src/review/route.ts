@@ -4,7 +4,7 @@ import { git } from '../core/git'
 
 type Command = (args: string[]) => number
 
-export type Route = 'thread' | 'promoted' | 'discussion' | 'fyi'
+export type Route = 'thread' | 'promoted' | 'discussion' | 'spec-item' | 'fyi'
 
 export interface Routed {
   route: Route
@@ -12,6 +12,7 @@ export interface Routed {
   severity: string
   at: string
   victim?: string
+  lead?: string
 }
 
 interface CausedBy {
@@ -26,6 +27,7 @@ interface RouteFinding {
   file?: string
   line?: number
   severity?: string
+  category?: string
   status?: string
   discussion_id?: string | null
   caused_by?: CausedBy | null
@@ -85,6 +87,8 @@ const isPostable = (finding: RouteFinding, held: ReadonlySet<string>): boolean =
  * The posting route of every postable finding of a state against the merge request diff `<base>...<head>`:
  * a line the forge shows on the new side → `thread`; a diff file off its hunks, or an Important outside the diff → `discussion`;
  * outside the diff with a `caused_by` the diff proves → `promoted` on the cause line; the rest outside the diff, `optional` and the deepening → `fyi`.
+ * Spec findings share one thread: the lead (an Important first, on a shown line when one is) is a `thread` or a `discussion` carrying the heaviest severity,
+ * every other one a `spec-item` of that lead; with a spec thread already open, every new one is a `spec-item` of it.
  */
 export const routeFindings = (root: string, state: RouteState, base: string, head: string, hold: readonly string[] = []): Routed[] => {
   const diff = parseDiff(gitOut(root, ['-c', 'core.quotePath=false', 'diff', '--no-color', '--no-ext-diff', '-M', `-U${FORGE_CONTEXT_LINES}`, `${base}...${head}`]))
@@ -105,14 +109,34 @@ export const routeFindings = (root: string, state: RouteState, base: string, hea
     if (cause !== undefined && isProvenCause(finding, cause)) return { route: 'promoted', ...item, at: `${cause.file}:${cause.line ?? '?'}`, victim: at }
     return { route: finding.severity === 'Important' ? 'discussion' : 'fyi', ...item }
   }
-  const routed = (state.findings ?? []).filter((finding) => isPostable(finding, held)).map(routeOf)
+  const findings = state.findings ?? []
+  const postable = findings.filter((finding) => isPostable(finding, held))
+  const isSpec = (finding: RouteFinding): boolean => finding.category === 'spec' && finding.status !== 'optional'
+  const routed = postable.filter((finding) => !isSpec(finding)).map(routeOf)
+  const spec = postable.filter(isSpec).map(routeOf)
+  if (spec.length > 0) {
+    const openThread = findings.find((finding) => isSpec(finding) && finding.status === 'open' && (finding.discussion_id ?? undefined) !== undefined)
+    const ordered = [...spec].sort((a, b) => Number(b.severity === 'Important') - Number(a.severity === 'Important'))
+    const lead = openThread === undefined ? (ordered.find((item) => item.route === 'thread') ?? ordered[0]) : undefined
+    const leadId = openThread?.id ?? lead?.id ?? ''
+    for (const item of lead === undefined ? ordered : [lead, ...ordered.filter((other) => other !== lead)]) {
+      if (item === lead) {
+        const heaviest = spec.some((other) => other.severity === 'Important') ? 'Important' : item.severity
+        routed.push({ route: item.route === 'thread' ? 'thread' : 'discussion', id: item.id, severity: heaviest, at: item.victim ?? item.at })
+      } else {
+        routed.push({ route: 'spec-item', id: item.id, severity: item.severity, at: item.at, lead: leadId })
+      }
+    }
+  }
   return state.deepening === undefined || state.deepening === null ? routed : [...routed, { route: 'fyi', id: 'deepening', severity: 'deepening', at: '' }]
 }
 
-const ROUTES: readonly Route[] = ['thread', 'promoted', 'discussion', 'fyi']
+const ROUTES: readonly Route[] = ['thread', 'promoted', 'discussion', 'spec-item', 'fyi']
 
 export const formatRoutes = (routed: readonly Routed[]): string[] => [
-  ...routed.map((item) => [item.route, item.id, item.severity, item.at, ...(item.victim === undefined ? [] : [`victim ${item.victim}`])].join('\t')),
+  ...routed.map((item) =>
+    [item.route, item.id, item.severity, item.at, ...(item.victim === undefined ? [] : [`victim ${item.victim}`]), ...(item.lead === undefined ? [] : [`lead ${item.lead}`])].join('\t'),
+  ),
   `routes: ${ROUTES.map((route) => `${routed.filter((item) => item.route === route).length} ${route}`).join(' · ')}`,
 ]
 

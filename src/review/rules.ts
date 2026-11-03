@@ -25,7 +25,6 @@ export const runReviewRules: Command = (args) => {
     ...inputs.indexes.map((path) => `index ${path}${scope(path)}`),
     ...inputs.standards.map((path) => `standard ${path}${scope(path)}`),
     ...inputs.glossaries.map((path) => `glossary ${path}${scope(path)}`),
-    ...inputs.architecture.map((path) => `architecture ${path}`),
   ]
   process.stdout.write(`${output.join('\n')}\n`)
   return 0

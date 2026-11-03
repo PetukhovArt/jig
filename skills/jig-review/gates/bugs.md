@@ -44,13 +44,10 @@ This kills a finding that exists only because the shape of the code allows it, a
 
 ## Rare gate
 
-A proven bug is not reported as a task when both hold:
-
-- the input is off the happy path, not the task's main scenario: an extreme value, a hand-edited file, a rare sequence of actions;
-- the fix adds code: a guard, a branch, new state, rather than deleting code or narrowing a type.
+A proven bug is not reported as a task when its input is off the happy path: a user or a tester who uses the feature as intended, the task's scenario and the common ways around it, does not meet it. An extreme value, a hand-edited file, a rare sequence or timing of actions. Write the steps a tester would take; when no such steps exist, the bug is rare.
 
 Recoverability is not a condition: "reload" or "fix it by hand" fits almost any front-end bug, and a wrong value in front of an operator mid-shift is not safe because it can be fixed later.
 
-Exceptions where rarity does not matter: data loss or corruption, security (angle 14), a broken system invariant.
+Exceptions where rarity does not matter: data loss or corruption, security (angle 14), a broken system invariant, and what the project's severity sections name (an irreversible action, a missed alarm).
 
 Such a finding is a known risk, not a task: it goes into neither state nor threads, is counted in `tally.suppressed_rare`, and gets one summary line `known risks: <file> · <defect>`. The author fixes everything a thread shows, so a thread on an unneeded fix turns into extra code.

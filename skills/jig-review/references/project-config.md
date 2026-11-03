@@ -11,12 +11,11 @@ Merge at the top level: a declared key replaces the default one whole; the other
   "iterationsMemory": true,
   "discover": {
     "spec": true,
-    "adr": true,
     "rules": ["AGENTS.md", "CLAUDE.md", "CLAUDE.local.md", "REVIEW.md"],
     "standards": ["**/{standards,conventions}/**/*.md"],
     "exclude": ["**/{tracker,packages,adr,adrs,doc}/**", "docs/*.md"]
   },
-  "review": { "glossary": true, "adr": true, "language": null },
+  "review": { "language": null },
   "severity": { "source": null },
   "route": {},
   "angles": {},
@@ -30,19 +29,18 @@ Merge at the top level: a declared key replaces the default one whole; the other
 ## Fields
 
 - **`iterationsMemory`**: a re-review reviews only the new diff and keeps the threads ([step 03](../steps/03-state.md)). `--no-state` wins over the config.
-- **`discover.spec` / `.adr`**: whether to look for the task's spec ([prepare](../steps/01-prepare.md#spec): a task the merge request names is read in its tracker whenever this is on), ADRs as code rules ([angle 13](../angles/13.architecture.md), section C).
+- **`discover.spec`**: whether to look for the task's spec ([prepare](../steps/01-prepare.md#spec): a task the merge request names is read in its tracker whenever this is on).
 - **`discover.rules`**: index file names. Searched at any depth by walking up from the diff's directories; `@file` inside is expanded ([step 02](../steps/02-rules.md)).
-- **`discover.standards` / `.exclude`**: globs of standard documents and what to drop from the found. The default drops the top-level pages of `docs/` (documentation, not rules) and keeps `docs/standards/**`. A standard an index links is scoped to that index's directory; an unlinked one covers the whole repository.
-- **`review.glossary` / `.adr`**: whether a changed glossary or ADR is reviewed as a target ([angle 11](../angles/11.docs.md), question 2). Not `discover`: that is about input, this is about the target. A document can be skipped as rules and still have its change judged.
+- **`discover.standards` / `.exclude`**: globs of standard documents and what to drop from the found. The default drops the top-level pages of `docs/` (documentation, not rules) and keeps `docs/standards/**`. A standard an index links is scoped to that index's directory; an unlinked one covers the whole repository. Only the finders of project angles of kind `conventions` read them.
 - **`review.language`**: the language of comment texts ([comment texts](../steps/07-comments.md)). `null`: the language of the merge request description and its threads.
 - **`severity.source`**: the path of the file whose severity sections replace the skill's taxonomy whole ([severity source](../steps/02-rules.md#severity-source)). `null`: searched among the `discover.rules` indexes. Needed when the file is not on the walk-up path.
-- **`route`**: `glob → angle numbers`. A document goes into the personal tail of the finders that have such an angle. Matched nothing: the default of [step 02](../steps/02-rules.md): indexes and standard bodies to every finder whose partition they cover, as `jig review-plan` prints under `rules:`.
-- **`angles.<n>`**: `enabled: false` turns the angle off before any spawn; `severityCeiling` (`Important` or `Nit`) sets the ceiling of its findings ([severity](../gates/severity.md)). A ceiling raised to `Important` puts the angle into the `important` selector token. Every angle is on by default. With [angle 16](../angles/16.tests.md) off, no finder reads the `pN-tests-*` parts: the test files leave the review whole.
-- **`angles.<name>`**: an angle the project adds. The key is its name (lowercase letters, digits, dashes); `file` is the angle file, from the repository root; `kind` is `behavior` or `conventions`: the finders of that kind in every partition read the file under `read:` and hunt it over their code parts, with the atoms its `**Atoms:**` header names. `enabled` and `severityCeiling` work as for a numbered angle; without a ceiling it runs under `full`, `quick` and `auto`. A missing file fails `jig review-plan`. The file follows the shape of the skill's angle files ([index](../angles/00-index.md)): what to look for, what is not a finding, the evidence.
-- **`tiers`**: tier and effort per token or role over the defaults in the [selector](selector.md#tiers), the same shape: `{ "tests": { "tier": "deep", "effort": "medium" } }`. A declared entry replaces one default entry; the others stay. Which models serve a tier is not a project matter: `~/.jig/config.jsonc`, key `tiers`, per agent (`jig tiers`).
+- **`route`**: `glob → angle numbers or project angle names`. A document goes into the personal tail of the finders that carry such an angle. Matched nothing: the default of [step 02](../steps/02-rules.md): indexes and standard bodies to every conventions finder whose partition they cover, as `jig review-plan` prints under `rules:`.
+- **`angles.<n>`**: one of the skill's angles, 1–5, 8, 12, 14, 15 ([index](../angles/00-index.md)). `enabled: false` turns the angle off before any spawn; `severityCeiling` (`Important` or `Nit`) sets the ceiling of its findings ([severity](../gates/severity.md)). Every angle is on by default, with the ceiling `Important`; a ceiling of `Nit` takes the angle out of the `important` selector token. A number of a removed angle (6, 7, 9, 10, 11, 13, 16, 17) is accepted and changes nothing, so an older config still loads.
+- **`angles.<name>`**: an angle the project adds. The key is its name (lowercase letters, digits, dashes); `file` is the angle file, from the repository root; `kind` is `behavior` or `conventions`: the finders of that kind in every partition read the file under `read:` and hunt it over their code parts, with the atoms its `**Atoms:**` header names. A `conventions` finder runs only for such angles, on the standard tier, and reads the documents under its `rules:` line. `enabled` and `severityCeiling` work as for a numbered angle; without a ceiling it runs under `full`, `quick` and `auto`. A missing file fails `jig review-plan`. The file follows the shape of the skill's angle files ([index](../angles/00-index.md)): what to look for, what is not a finding, the evidence. Prefer a check that blocks the merge over a conventions angle when tooling can prove the rule.
+- **`tiers`**: tier and effort per token or role over the defaults in the [selector](selector.md#tiers), the same shape: `{ "conventions": { "tier": "fast", "effort": "medium" } }`. A declared entry replaces one default entry; the others stay. Which models serve a tier is not a project matter: `~/.jig/config.jsonc`, key `tiers`, per agent (`jig tiers`).
 - **`maxParallel`**: the cap on subagents running at once ([rules for the whole run](../SKILL.md#rules-for-the-whole-run)).
 - **`layout`**: `auto` (default, = `lean`), `lean` or `solo` ([paths](../SKILL.md#paths)). `--layout` and the environment variable `JIG_REVIEW_LAYOUT` win over it.
-- **`testPaths`**: globs of test files on top of the built-in ones (test file names of each language, `test/`, `tests/`, `__tests__/`, `_tests_/`, fixtures and snapshots). Test files go into the `pN-tests-*` diff parts of their partition, which its finder reads when [angle 16](../angles/16.tests.md) runs ([finders](../steps/04-finders.md#spawn)).
+- **`testPaths`**: globs of test files on top of the built-in ones (test file names of each language, `test/`, `tests/`, `__tests__/`, `_tests_/`, fixtures and snapshots). Test files go into the `pN-tests-*` diff parts of their partition, which no finder reads: the review does not read tests.
 
 The skill has no caps on the number of threads: whatever survives verify reaches the author.
 
@@ -56,19 +54,17 @@ The skill has no caps on the number of threads: whatever survives verify reaches
     "exclude": ["docs/standards/{doc,packages,tracker}/**", "**/GLOSSARY*.md"]
   },
   "route": {
-    "docs/standards/code/*.md": [10],
-    "src/payments/AGENTS.md": [1, 8, 12, 13]
+    "docs/standards/code/naming.md": ["naming"]
   },
   "angles": {
-    "8": { "severityCeiling": "Important" },
-    "16": { "enabled": false },
-    "17": { "enabled": false },
-    "event-catalog": { "file": ".jig/angles/event-catalog.md", "kind": "behavior" }
+    "8": { "severityCeiling": "Nit" },
+    "event-catalog": { "file": ".jig/angles/event-catalog.md", "kind": "behavior" },
+    "naming": { "file": ".jig/angles/naming.md", "kind": "conventions" }
   }
 }
 ```
 
-The walk up finds `src/payments/AGENTS.md`, a long adapter contract that a search by name never sees. `exclude` drops large glossaries. `angles.8` raises the ceiling: the project declares the cost of an event an invariant, otherwise [angle 8](../angles/8.efficiency.md) stops at `Nit`. Angles 16 and 17 are off: the team does not review tests and comments, and the test files are not read. `event-catalog` is the project's own angle for the behavior finders.
+The walk up finds `src/payments/AGENTS.md`, a long adapter contract that a search by name never sees. `exclude` drops large glossaries. `angles.8` lowers the ceiling: the project does not hold a leak or a hot path as a merge blocker, so [angle 8](../angles/8.efficiency.md) stays at `Nit` and `quick` leaves it out. `event-catalog` is the project's own angle for the behavior finders. `naming` checks the names the user sees against the project's naming standard: tooling cannot prove it, so it runs as a conventions angle, and `route` sends it only that standard.
 
 ## Boundaries
 

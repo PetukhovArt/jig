@@ -27,17 +27,21 @@ jig review-plan     code: counts the diff, picks the angles and the layout, part
 
 **Finders split the files, not the questions.** The diff's files go into `N` partitions: files that import each other or share a directory stay together. Each finder takes one partition with every selected angle and reads only its part of the diff; for behavior on the other side of a partition it reads the flow model, and a candidate that crosses partitions names the model's link so the judge checks both sides. When finders split by angle, each re-read the whole diff: on a 10,263-line merge request seven of them cost about $90, mostly re-reading the same context.
 
-**Angles, not topics.** An angle is one concrete question with a procedure and a condition for evidence. There are 17, grouped as bugs (line by line, removed behavior, call tracing, language traps, wrappers, guards without siblings, security), rules (reuse, conventions and smells, architecture with ADRs and glossary), cleanup (simplification, efficiency, fix altitude, documents, tests, comments) and spec conformance ([angles](../skills/jig-review/angles/00-index.md)).
+**Angles, not topics.** An angle is one concrete question with a procedure and a condition for evidence. There are 9: bugs (line by line, removed behavior, call tracing, language traps, wrappers, guards without siblings, security), efficiency (leaks, CPU load the user feels, work on a proven hot path) and spec conformance ([angles](../skills/jig-review/angles/00-index.md)).
+
+**The review hunts what the user meets, not the shape of code.** Duplication, naming, style, layers and imports, comments, tests and documents are left to the project's checks: a linter, a type checker or an architecture check proves them for free and blocks the merge, while a reviewer turns them into nitpicks. A project that still wants one reviewed adds its own angle of kind `conventions` in `.jig/review.jsonc`; the old numbers (6, 7, 9, 10, 11, 13, 16, 17) stay accepted there and change nothing.
 
 **A finder is aggressive, a judge is strict.** Finders look for everything their angles ask. Judges run on a different model than the finder whose candidates they judge, so one model's blind spot does not confirm itself. A defect two models found independently is the strongest signal of a run.
 
 **A bug needs a proof in three parts**, each quoted: the initiator in a production build (a user action, a system event, a backend response), the path as `file:line` for every step to the defective line, and the effect, observable and wrong by the requirement. Any part missing: `REFUTED: not proven`. "The mechanism is real, the trigger is not proven" is not a third verdict ([bug gates](../skills/jig-review/gates/bugs.md)).
 
-**Severity is a closed list.** `Important` means the merge waits: broken behavior, data loss, a crash, a broken layer or a module in the wrong place, a responsibility spread across modules, a contradicted ADR, a structural smell, a false guarantee (a test that cannot fail, a comment the code contradicts). Everything else is a `Nit`. A project replaces the list with its own ([severity](../skills/jig-review/gates/severity.md)).
+**A bug a tester does not meet is a known risk, not a task.** When a user or a tester who uses the feature as intended never reaches the bug (an extreme value, a hand-edited file, a rare sequence or timing), it gets one summary line and no thread. Data loss, security, a broken invariant and what the project's severity sections name (an irreversible action, a missed alarm) stay tasks however rare ([rare gate](../skills/jig-review/gates/bugs.md#rare-gate)).
 
-**Architecture is reviewed, not only bugs.** Angle 13 checks layers and boundaries, ADRs in force and glossary terms. When a diff adds modules, a deepener proposes the one module deepening with the most effect: a proposal in the FYI note, until a confirmed finding of the run is an instance of the scattering it names: then it is a finding of its own, with that instance as proof.
+**Severity is a closed list.** `Important` means the merge waits: broken behavior, data loss, a crash. Everything else is a `Nit`. A project replaces the list with its own ([severity](../skills/jig-review/gates/severity.md)).
 
-**Spec conformance.** When the task has a spec (the tracker text or a linked spec), angle 15 checks what is missing, what was not asked for and what was done differently.
+When a diff adds modules, a deepener proposes the one module deepening with the most effect: a proposal in the FYI note, never a thread.
+
+**Spec conformance.** When the task has a spec (the tracker text or a linked spec), angle 15 checks what is missing, what was not asked for and what was done differently. All deviations go into one thread, item by item, grouped by those three kinds; it resolves when every item is closed.
 
 ## One layout for every size
 
@@ -45,12 +49,12 @@ Counted lines leave out tests, fixtures, documents, lock files and unedited rena
 
 | diff | layout | who hunts | who judges |
 | --- | --- | --- | --- |
-| any size (`auto`) | lean | per partition two fresh finders: `behavior` (bugs, state, contracts, spec; deep/high) and `conventions` (duplication, naming, glossary, standards, docs, tests, comments, dead code; standard/high) | the session; one judge on another model for the `Important` ones |
+| any size (`auto`) | lean | per partition a fresh `behavior` finder (bugs, state, contracts, efficiency, spec; deep/high), plus a `conventions` finder (standard/high) only for the project's own angles of that kind | the session; one judge on another model for the `Important` ones |
 | any, by `--layout solo` | solo | the same finders | each finder proves its own candidates; no judge |
 
 Every layout starts with the flow model. Without state the run's files (diff parts, flow index, flow model) go to the OS temp dir; each plan prints a new `run:` id, and a flow model is reused only by a retry of the same run. `jig review-plan` prints a one-line cost estimate: the flow model and each finder, by the context its share of the diff grows and the turns it takes (calibrated on a measured 10,263-line run: the model about 110 turns, a finder about 100 turns at 250-400k tokens), at the list prices of each finder's tier model (`prices` in the [user config](configuration.md#user-config) override them); the runner and the judges are not in it.
 
-A re-review under 600 new lines is one partition with its two finders, after a flow model rebuilt on the new range and its links to unchanged code. A selector narrows a run: `quick` keeps only what blocks a merge, `full` runs every angle, `auto` picks by the diff shape, tokens like `bugs,architecture,tests` pick by hand ([selector](../skills/jig-review/references/selector.md)).
+A re-review under 600 new lines is one partition with its finders, after a flow model rebuilt on the new range and its links to unchanged code. A selector narrows a run: `quick` keeps only what blocks a merge, `full` runs every angle, `auto` picks by the diff shape, tokens like `bugs,security` pick by hand ([selector](../skills/jig-review/references/selector.md)).
 
 ## Re-review and outcomes
 
@@ -79,7 +83,7 @@ In the review cycle a posted `Important` that still stands sends the merge reque
 
 ## Project config
 
-`.jig/review.jsonc`, committed or local, is optional; a linked worktree uses the one its branch tracks, otherwise the main checkout's: documents to discover (rules, standards, spec, ADRs, glossary), the project's own severity sections, angles turned off or with a new severity ceiling, tiers, `maxParallel`, the default layout and extra test globs ([project config](../skills/jig-review/references/project-config.md)).
+`.jig/review.jsonc`, committed or local, is optional; a linked worktree uses the one its branch tracks, otherwise the main checkout's: documents to discover (rules, standards, spec, glossary), the project's own severity sections, angles turned off or with a new severity ceiling, tiers, `maxParallel`, the default layout and extra test globs ([project config](../skills/jig-review/references/project-config.md)).
 
 ## Measured
 

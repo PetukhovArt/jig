@@ -12,7 +12,6 @@ import { listWorktrees } from '../worktree/list'
 import { realPath } from '../core/proc'
 import { isLockfile } from '../catalog'
 import { fileSource, isTestFile } from '../catalog/languages'
-import { lexComments } from '../catalog/languages'
 import { detectAgent, loadUserConfig, resolveTiers, type TierMap } from '../tiers/tiers'
 import { DIFF_PART_MAX_LINES, isUnreviewed, writeDiffFiles, type Audience, type DiffFiles } from './diff-files'
 import { estimateLine, estimateReview, finderReader, modelerReader, type Estimate } from './estimate'
@@ -22,6 +21,7 @@ import { DEFAULT_PRICES } from './prices'
 import { PROJECT_CONFIG, projectConfigFile, ruleDocuments, rulesFor } from './rule-docs'
 import { readReviewedState, rereviewScope, type RereviewScope } from './scope'
 import {
+  ANGLES,
   CEILINGS,
   EFFORTS,
   GRADE_KEYS,
@@ -32,6 +32,7 @@ import {
   MODES,
   FINDER_KINDS,
   PROJECT_ANGLE_NAME,
+  REMOVED_ANGLES,
   angleNumber,
   isLayout,
   isTier,
@@ -68,7 +69,6 @@ export { PROJECT_CONFIG }
 const isTestPath = createMatcher(['**/{test,tests,__tests__,_tests_}/**'])
 const isFixturePath = createMatcher(['**/{fixture,fixtures,__fixtures__,__snapshots__}/**', '**/*.snap'])
 const isMarkdown = createMatcher(['**/*.md'])
-const isChangelog = createMatcher(['**/CHANGELOG.md'])
 
 export const exclusionOf = (path: string, root?: string): Exclusion | undefined => {
   if (isMarkdown(path)) return 'markdown'
@@ -85,14 +85,7 @@ export const audienceOf = (path: string, root?: string, testPaths: readonly stri
   return 'code'
 }
 
-const TESTS_ANGLES: readonly Angle[] = [16]
-const DOCS_ANGLES: readonly Angle[] = [11, 15]
-
-export const audiencesFor = (angles: readonly Angle[]): Audience[] => [
-  'code',
-  ...(angles.some((angle) => TESTS_ANGLES.includes(angle)) ? (['tests'] as const) : []),
-  ...(angles.some((angle) => DOCS_ANGLES.includes(angle)) ? (['docs'] as const) : []),
-]
+export const audiencesFor = (angles: readonly Angle[]): Audience[] => ['code', ...(angles.includes(15) ? (['docs'] as const) : [])]
 
 export const parseNumstat = (output: string): FileStat[] => {
   const tokens = output.split('\0')
@@ -147,17 +140,6 @@ export const addedLines = (patch: string): Map<string, Set<number>> => {
   return files
 }
 
-export const hasAddedComment = (file: string, source: string, added: ReadonlySet<number>): boolean => {
-  const comments = lexComments(file, source) ?? []
-  return comments.some((comment) => {
-    const last = comment.line + (comment.text.match(/\n/g)?.length ?? 0)
-    for (let line = comment.line; line <= last; line++) {
-      if (added.has(line)) return true
-    }
-    return false
-  })
-}
-
 export interface ProjectReviewConfig {
   layout: Layout | undefined
   angles: Partial<Record<Angle, AngleSettings>>
@@ -206,8 +188,9 @@ const readAngles = (validator: Validator, value: unknown): Pick<ProjectReviewCon
       if (parsed !== undefined) projectAngles.push(parsed)
       continue
     }
+    if (angle === undefined && REMOVED_ANGLES.includes(Number(key))) continue
     if (angle === undefined) {
-      validator.report(path, 'expected an angle number 1..17')
+      validator.report(path, `expected an angle number of ${ANGLES.join(', ')} or a project angle name`)
       continue
     }
     const settings = validator.object(entry, path, SETTING_KEYS)
@@ -304,18 +287,6 @@ const addedNewSourceFiles = (root: string, mergeBase: string, paths: readonly st
   const result = git(['diff', '--name-only', '--diff-filter=A', '-M', '-z', mergeBase, ...pathspec(paths)], root)
   if (!result.ok) return 0
   return result.stdout.split('\0').filter((path) => path !== '' && exclusionOf(path, root) === undefined).length
-}
-
-const anyAddedComment = (root: string, mergeBase: string, stats: readonly FileStat[]): boolean => {
-  const candidates = stats.filter((stat) => stat.added > 0 && lexComments(stat.path, '') !== undefined).map((stat) => stat.path)
-  if (candidates.length === 0) return false
-  const result = git(['diff', '-U0', '-M', '--no-color', '--no-ext-diff', mergeBase, '--', ...candidates], root)
-  if (!result.ok) return false
-  for (const [file, lines] of addedLines(result.stdout)) {
-    const path = join(root, file)
-    if (lines.size > 0 && existsSync(path) && hasAddedComment(file, readFileSync(path, 'utf8'), lines)) return true
-  }
-  return false
 }
 
 const untrackedCount = (root: string, paths: readonly string[]): number =>
@@ -415,8 +386,8 @@ const SELECTOR_NOTES: Readonly<Record<SelectorSource, string>> = {
 const LAYOUT_SOURCE_TEXT: Readonly<Record<LayoutSource, string>> = { argument: '--layout', env: LAYOUT_ENV, config: `.jig/${PROJECT_CONFIG}`, default: 'default' }
 
 const LAYOUT_TEXT: Readonly<Record<ConcreteLayout, string>> = {
-  lean: 'two fresh finders per partition (behavior, conventions); you judge, a deep judge only for Important',
-  solo: 'two fresh finders per partition (behavior, conventions) prove their own candidates; no judge subagents',
+  lean: 'a fresh behavior finder per partition (and a conventions finder when the project adds convention angles); you judge, a deep judge only for Important',
+  solo: 'a fresh behavior finder per partition (and a conventions finder when the project adds convention angles) proves its own candidates; no judge subagents',
 }
 
 const layoutLine = (report: ReviewPlanReport): string => {
@@ -463,7 +434,7 @@ const flowModelLines = (report: ReviewPlanReport): string[] => {
 
 const KIND_TEXT: Readonly<Record<FinderKind, string>> = {
   behavior: 'bugs, state, wire contracts, spec; reads the flow model',
-  conventions: 'duplication, naming, glossary, standards, docs, tests, comments, dead code; reads its rules, the flow model only for names across partitions',
+  conventions: 'the project angles of kind conventions; reads its rules, the flow model only for names across partitions',
 }
 
 const finderLines = (report: ReviewPlanReport): string[] => {
@@ -501,7 +472,7 @@ export const formatReport = (report: ReviewPlanReport): string => {
     `run: ${report.run} (the flow model and checkpoints of this run carry it; another run never reuses them)`,
     `partitions: ${report.formula}`,
     layoutLine(report),
-    `shape: tests ${report.shape.tests ? 'yes' : 'no'} · added comments ${report.shape.comments ? 'yes' : 'no'} · markdown ${report.shape.docs ? 'yes' : 'no'} · new source files ${report.shape.newSourceFiles} · spec ${report.shape.spec ? 'yes' : 'no'}`,
+    `shape: new source files ${report.shape.newSourceFiles} · spec ${report.shape.spec ? 'yes' : 'no'}`,
     `selector: ${plan.selection.input}${plan.selection.tokens.length > 0 && plan.selection.input !== plan.selection.tokens.join(',') ? ` → ${plan.selection.tokens.join(',')}` : ''}${SELECTOR_NOTES[plan.selection.source]}`,
     `config: ${report.config ?? 'default'} · agent: ${report.agent} · max parallel subagents: ${report.maxParallel}`,
     `mode: ${report.mode} · state: ${stateText(report)}`,
@@ -617,11 +588,7 @@ export const buildReport = (root: string, options: ReportOptions): ReviewPlanRep
   const untracked = isEmpty ? 0 : untrackedCount(root, paths)
   if (rereview === null) requireScopedChanges(paths, stats.length + untracked, base.ref)
   const { lines, counted, excluded } = countLines(stats, root)
-  const changed = stats.filter((stat) => stat.added > 0)
   const shape: Shape = {
-    tests: changed.some((stat) => exclusionOf(stat.path, root) === 'test'),
-    comments: anyAddedComment(root, diffBase, stats),
-    docs: changed.some((stat) => exclusionOf(stat.path) === 'markdown' && !isChangelog(stat.path)),
     newSourceFiles: isEmpty ? 0 : addedNewSourceFiles(root, diffBase, diffPaths),
     spec: options.spec,
   }

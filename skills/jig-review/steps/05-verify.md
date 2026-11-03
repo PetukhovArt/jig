@@ -30,7 +30,7 @@ Only when `jig review-plan` printed `layout: lean`: you judge every candidate; o
 
 Judge every deduped candidate by the gate files the steps list (`gates/bugs.md` for bug angles 1–5, 12, 14; `gates/shape.md` for the rest; `gates/severity.md` always). The finders' candidates share their blind spots with you when you read only what they quoted: ask the self-check of `gates/bugs.md` literally before each bug `CONFIRMED`, judge a [cross-partition](#cross-partition-candidates) candidate on both sides, and refute with a quoted line, not with doubt.
 
-Per candidate record what a judge returns: verdict, severity, `severity_class`, `severity_gate` when a gate cut it, `blocks` for a blocking finding, angle, category, and a one-sentence `summary` naming the defect plus the evidence the verdict rests on (the quoted line, the input, the state). No comment prose: texts come in a [separate step](07-comments.md).
+Per candidate record what a judge returns: verdict, severity, `severity_class`, `severity_gate` when a gate cut it, angle, category, and a one-sentence `summary` naming the defect plus the evidence the verdict rests on (the quoted line, the input, the state). No comment prose: texts come in a [separate step](07-comments.md).
 
 ### Second model, only for Important
 
