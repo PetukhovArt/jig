@@ -90,7 +90,7 @@ const setManifest = (dir: string, name: string): void => {
   writeFileSync(join(dir, 'package.json'), JSON.stringify({ name }))
 }
 
-describe('dependency pool', { timeout: 30_000 }, () => {
+describe('dependency pool', () => {
   let root: string
   let main: string
   let pool: string
@@ -334,7 +334,7 @@ const RESOLVE = [
   "fs.writeFileSync(path.join('node_modules', '.package-lock.json'), '{}')",
 ].join('\n')
 
-describe('dependency pool with a gitignored lock file', { timeout: 30_000 }, () => {
+describe('dependency pool with a gitignored lock file', () => {
   let root: string
   let main: string
   let pool: string

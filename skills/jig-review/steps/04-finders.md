@@ -23,7 +23,7 @@ What every finder needs is read **once**, by you, before the first spawn. Tool o
 
 1. **The flow model.** Read the model file once ([check](04-flow-model.md#check)). It is the shared read set: what a finder needs outside its partition is in it, with `file:line`.
 2. **The diff index, not the parts.** Each finder reads its own partition's parts; you read none of them before the spawn.
-3. **Fresh, never a fork.** Every finder is spawned fresh with the brief below, on the model and effort the plan printed for it. A finder of a partition needs nothing of your conversation: the brief and the model file are its whole context. A fork inherits your effort: on !1935 the runner (deep/medium) forked the finders, they ran below the plan's deep/high and missed what the old run found.
+3. **Fresh, never a fork.** Every finder is spawned fresh with the brief below, on the model and effort the plan printed for it. A finder of a partition needs nothing of your conversation: the brief and the model file are its whole context. A fork inherits your effort: on a large merge request the runner (deep/medium) forked the finders, they ran below the plan's deep/high and missed what the old run found.
 
 ## Spawn
 

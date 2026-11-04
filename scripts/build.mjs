@@ -24,6 +24,18 @@ const isCheck = process.argv.includes('--check')
 
 const normalizeEol = (text) => text.replace(/\r\n/g, '\n')
 
+const README_MAX_LINES = 150
+const proseLines = (text) => {
+  let inBlock = false
+  let count = 0
+  for (const line of normalizeEol(text).split('\n')) {
+    if (/^<!-- [a-z]+:start -->$/.test(line)) inBlock = true
+    if (!inBlock) count += 1
+    if (/^<!-- [a-z]+:end -->$/.test(line)) inBlock = false
+  }
+  return count
+}
+
 const bundle = async () => {
   const result = await build({
     entryPoints: [join(root, 'src', 'cli', 'main.ts')],
@@ -211,6 +223,11 @@ const main = async () => {
     const stale = outputs.filter(([path, text]) => isStale(path, text)).map(([path]) => relative(root, path).replaceAll('\\', '/'))
     if (stale.length > 0) {
       process.stderr.write(`${stale.join(', ')} stale, run npm run build\n`)
+      return 1
+    }
+    const readmeLines = proseLines(readFileSync(readmePath, 'utf8'))
+    if (readmeLines > README_MAX_LINES) {
+      process.stderr.write(`README.md has ${readmeLines} lines outside the generated blocks, at most ${README_MAX_LINES}: move reference detail to docs/\n`)
       return 1
     }
     return 0

@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { git } from '../src/core/git'
-import { LAYOUTS, finderCount, gateFiles, judgeModels, planReview, stepsFor, type Angle, type Layout, type Mode, type ProjectAngle, type Shape } from '../src/review/layout'
+import { finderCount, gateFiles, judgeModels, planReview, stepsFor, type Layout, type Mode, type ProjectAngle, type Shape } from '../src/review/layout'
 import { addedLines, buildReport, countLines, formatReport, parseNumstat, parseProjectConfig, readsFor, resolveLayout } from '../src/review/review-plan'
 
 const CODE_ONLY: Shape = { newSourceFiles: 0, spec: false }

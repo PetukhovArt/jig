@@ -85,7 +85,7 @@ describe('cost estimate', () => {
     expect(estimateLine(estimateReview(modelerReader(1000, 500, 'gpt-x'), [finderReader(500, 'gpt-x')], DEFAULT_PRICES))).toMatch(/^cost estimate: no price for gpt-x/)
   })
 
-  it('lands near the measured run on web-client !1935: the model $14 over ~110 turns, an Opus finder of ~2000 lines $11-20 over ~100 turns', () => {
+  it('lands near the measured run on a large merge request: the model $14 over ~110 turns, an Opus finder of ~2000 lines $11-20 over ~100 turns', () => {
     const run = estimateReview(modelerReader(172_873, 10_263, 'opus'), [finderReader(2050, 'opus')], DEFAULT_PRICES)
     expect(run.modeler.dollars).toBeGreaterThan(10)
     expect(run.modeler.dollars).toBeLessThan(18)

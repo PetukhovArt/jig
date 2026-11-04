@@ -74,7 +74,7 @@ describe('roles and merge requests from descriptions', () => {
     ['Outcome check MR452 threads', 'outcome', '452'],
     ['Post MR !13 results', 'poster', '13'],
     ['AFK: implement jig issue #5', 'other', undefined],
-    ['Verify and bug bash !1935', 'other', '1935'],
+    ['Verify and bug bash !12', 'other', '12'],
     ['Bash the Judge pipeline !9', 'other', '9'],
     ['Fix outcome report !5', 'other', '5'],
     ['Verifier !4', 'judge', '4'],

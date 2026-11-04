@@ -40,7 +40,7 @@ afterEach(() => {
   rmSync(root, { recursive: true, force: true })
 })
 
-describe('re-review scope', { timeout: 30_000 }, () => {
+describe('re-review scope', () => {
   it('counts only the branch own change after it merged the base into a file of the merge request', () => {
     const state = reviewedState()
     sh('checkout', '-q', 'main')
