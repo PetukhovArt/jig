@@ -8,6 +8,7 @@
     "node": ">=20"
   },
   "scripts": {
+    "prepare": "node scripts/install-hooks.mjs",
     "build": "node scripts/build.mjs",
     "check": "node scripts/build.mjs --check && node scripts/sync-plugin-version.mjs --check && tsc --noEmit && vitest run && node bin/jig.mjs build --atoms-only",
     "test": "vitest run",
