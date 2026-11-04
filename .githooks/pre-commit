@@ -1,2 +1,2 @@
 #!/bin/sh
-exec node "$(git rev-parse --show-toplevel)/scripts/pre-commit.mjs"
+exec node "$(git rev-parse --show-toplevel)/scripts/hooks.mjs" pre-commit

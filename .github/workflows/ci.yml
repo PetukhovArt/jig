@@ -21,10 +21,8 @@ jobs:
       - run: npm ci
       - run: npm run check
       - name: Validate plugin
+        if: matrix.os == 'ubuntu-latest' && matrix.node == 22
         shell: bash
         run: |
-          if ! command -v claude >/dev/null 2>&1; then
-            echo "::warning::claude CLI is not available on this runner, skipping plugin validation"
-            exit 0
-          fi
+          npm install --global @anthropic-ai/claude-code
           claude plugin validate . --strict
