@@ -53,6 +53,7 @@ time, .mono { font: 12px/1.5 var(--mono); color: var(--ink-3); font-variant-nume
 .dot.done { background: var(--green); border-color: var(--green); }
 .dot.active { background: var(--accent); border-color: var(--accent); box-shadow: 0 0 0 4px var(--accent-soft); }
 .dot.blocked { background: var(--red); border-color: var(--red); }
+.dot.skipped { border-style: dashed; border-color: var(--line); }
 .line { position: relative; margin-top: 12px; }
 .line::before { content: ""; position: absolute; left: 4px; top: 10px; bottom: 10px; width: 2px; background: var(--line); }
 .line li { position: relative; display: flex; gap: 12px; align-items: flex-start; padding: 5px 0; font-size: 14px; line-height: 1.45; }
@@ -61,6 +62,7 @@ time, .mono { font: 12px/1.5 var(--mono); color: var(--ink-3); font-variant-nume
 .line li.done > div { color: var(--ink-3); }
 .line li.blocked > div { color: var(--red); }
 .line li.active > div { font-weight: 600; }
+.line li.skipped > div { color: var(--ink-3); text-decoration: line-through; }
 .line small { display: block; font-size: 12px; font-weight: 430; color: var(--ink-3); }
 .line li.blocked small { color: var(--red); }
 .runs { margin-top: 24px; font-size: 13px; color: var(--ink-3); }
@@ -140,6 +142,7 @@ const LABELS = {
     quiet: ago => `no rows ${ago}`,
     built: at => `page built at ${at}, rebuild: jig task-status open`,
     stepsDone: total => `/ ${total} steps done`,
+    fromRun: run => `from run: ${run}`,
     steps: 'Steps',
     runs: 'Runs in this journal',
     runItem: (at, count) => `${at}, ${count} rows`,
@@ -175,6 +178,7 @@ const LABELS = {
     quiet: ago => `нет строк ${ago}`,
     built: at => `страница собрана в ${at}, пересобрать: jig task-status open --lang ru`,
     stepsDone: total => `/ ${total} шагов готово`,
+    fromRun: run => `из прогона: ${run}`,
     steps: 'Шаги',
     runs: 'Прогоны в журнале',
     runItem: (at, count) => `${at}, строк: ${count}`,
@@ -226,8 +230,10 @@ const toneOf = result => {
   if (/^(open|active)\b/i.test(result)) return 'accent';
   return '';
 };
+const SKIPPED_WORDS = ['skip', 'skipped', 'superseded', 'dropped', 'cancelled', 'canceled'];
 const stepStatus = result => {
   const word = (/^\s*(\w+)/.exec(result) || [])[1]?.toLowerCase();
+  if (SKIPPED_WORDS.includes(word)) return 'skipped';
   return ['done', 'active', 'blocked'].includes(word) ? word : 'todo';
 };
 const latestBy = rows => [...rows.reduce((map, row) => map.set(row.decision, row), new Map()).values()];
@@ -239,8 +245,17 @@ const runRows = rows.slice(runFrom);
 const title = starts.length ? starts[starts.length - 1].row.decision : L.title;
 const last = rows[rows.length - 1];
 const isLive = last !== undefined && Date.now() - new Date(last.ts) < LIVE_MS;
-const steps = latestBy(runRows.filter(row => row.phase === 'step')).map(row => ({...row, status: stepStatus(row.result)}));
-const done = steps.filter(s => s.status === 'done').length;
+const isUnclosed = status => status === 'todo' || status === 'active' || status === 'blocked';
+const runTitleAt = i => starts.filter(start => start.i <= i).at(-1)?.row.decision ?? '';
+const stepsIn = (from, to) => latestBy(rows.slice(from, to).map((row, k) => ({...row, at: from + k})).filter(row => row.phase === 'step'))
+  .map(row => ({...row, status: stepStatus(row.result)}));
+const runSteps = stepsIn(runFrom, rows.length);
+const runStepTitles = new Set(runSteps.map(s => s.decision));
+const carriedSteps = stepsIn(0, runFrom).filter(s => isUnclosed(s.status) && !runStepTitles.has(s.decision))
+  .map(s => ({...s, run: runTitleAt(s.at) || dayHm(s.ts)}));
+const steps = [...carriedSteps, ...runSteps];
+const counted = steps.filter(s => s.status !== 'skipped');
+const done = counted.filter(s => s.status === 'done').length;
 const openQuestions = latestBy(runRows.filter(row => row.phase === 'question')).filter(row => row.result === '' || /^open\b/i.test(row.result));
 const runs = (starts.length && starts[0].i === 0 ? starts : [{row: rows[0], i: 0}, ...starts]).filter(({row}) => row !== undefined)
   .map(({row, i}, n, all) => ({row, count: (all[n + 1]?.i ?? rows.length) - i}));
@@ -264,7 +279,8 @@ const FILTERS = [['all', L.all, rows.length], ['d', L.decisions, counts.d], ['s'
 const savedFilter = localStorage.getItem('jig-task-status-filter');
 const filter = FILTERS.some(([k, , count]) => k === savedFilter && count) ? savedFilter : 'all';
 
-const stepLine = s => `<li class="${s.status}"><i class="dot ${s.status}"></i><div>${esc(s.decision)}${s.result ? `<small>${esc(s.result)}</small>` : ''}</div></li>`;
+const stepNote = s => [s.result, s.run ? L.fromRun(s.run) : ''].filter(Boolean).join(' · ');
+const stepLine = s => `<li class="${s.status}"><i class="dot ${s.status}"></i><div>${esc(s.decision)}${stepNote(s) ? `<small>${esc(stepNote(s))}</small>` : ''}</div></li>`;
 const askCard = (q, i) => `<section class="ask" data-i="${i}" tabindex="0" aria-expanded="${Boolean(drafts[i])}" title="${L.answerHint}"><div class="k">${dayHm(q.ts)}</div><p class="q">${esc(q.decision)}</p>${q.why ? `<p class="def">${L.taken}: ${esc(q.why)}</p>` : ''}
   <textarea class="reply" rows="2" placeholder="${L.answerPlaceholder}" aria-label="${esc(L.answerLabel(q.decision))}"${drafts[i] ? '' : ' hidden'}></textarea></section>`;
 
@@ -295,8 +311,8 @@ document.getElementById('app').innerHTML = `<div class="page">
   <aside class="rail">
     <h1>${esc(title)}</h1>
     <p class="meta mono"><span>${L.branch} ${esc(S.branch)}</span>${last ? `<span class="live"><i class="dot ${isLive ? 'done' : 'blocked'}"></i>${isLive ? L.live(ago(last.ts)) : L.quiet(ago(last.ts))}</span>` : ''}</p>
-    ${steps.length ? `<p class="big">${done}<small> ${L.stepsDone(steps.length)}</small></p>
-    <div class="seg">${steps.map(s => `<i class="${s.status}" title="${esc(s.decision)}"></i>`).join('')}</div>
+    ${steps.length ? `<p class="big">${done}<small> ${L.stepsDone(counted.length)}</small></p>
+    <div class="seg">${counted.map(s => `<i class="${s.status}" title="${esc(s.decision)}"></i>`).join('')}</div>
     <ol class="line" aria-label="${L.steps}">${steps.map(stepLine).join('')}</ol>` : ''}
     ${runs.length > 1 ? `<ol class="runs" aria-label="${L.runs}"><li><b>${L.runs}</b></li>${runs.map(({row, count}) => `<li>${esc(row.phase === 'start' ? row.decision : row.phase)} · ${L.runItem(dayHm(row.ts), count)}</li>`).join('')}</ol>` : ''}
     <p class="runs mono">${L.built(dayHm(S.builtAt))}<br>${esc(S.journal)}</p>

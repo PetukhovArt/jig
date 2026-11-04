@@ -120,10 +120,71 @@ describe('jig task-status log', () => {
     { args: ['log', 'step', 'Build', '--why'], message: /--why needs a value/ },
     { args: ['log', '\t', 'Build'], message: /usage: task-status log/ },
     { args: ['ask', 'Q?', 'yes'], message: /unknown task-status subcommand ask/ },
+    { args: ['plan'], message: /usage: task-status plan <step>/ },
+    { args: ['plan', 'Build', '\t'], message: /usage: task-status plan <step>/ },
+    { args: ['plan', 'Build', '--result', 'done'], message: /usage: task-status plan <step>/ },
   ])('exits 2 on $args without writing', async ({ args, message }) => {
     expect(await taskStatus(0, ...args)).toBe(2)
     expect(stderr.at(-1)).toMatch(message)
     expect(existsSync(join(runDir(), 'task-status.tsv'))).toBe(false)
+  })
+})
+
+describe('jig task-status plan', () => {
+  const stepRows = (): string[][] =>
+    parseJournal(journalText())
+      .filter((row) => row.phase === 'step')
+      .map(({ decision, result }) => [decision, result])
+
+  it('declares the steps up front as todo and keeps the state of steps the run already has', async () => {
+    await taskStatus(0, 'log', 'start', 'Ship')
+    await taskStatus(1, 'plan', 'Plan', 'Build', 'MR !1', 'MR !2')
+    await taskStatus(2, 'log', 'step', 'Plan', '--result', 'done')
+    stdout = []
+    expect(await taskStatus(3, 'plan', 'Plan', 'Verify', 'Verify')).toBe(0)
+
+    expect(stdout).toEqual([`${slash(root)}/.jig/runs/feat_status-x/task-status.tsv\n`])
+    expect(stepRows()).toEqual([
+      ['Plan', 'todo'],
+      ['Build', 'todo'],
+      ['MR !1', 'todo'],
+      ['MR !2', 'todo'],
+      ['Plan', 'done'],
+      ['Verify', 'todo'],
+    ])
+
+    await taskStatus(4, 'open', '--no-browser')
+    const drawn = drawPage(pageText())
+    expect(drawn.html).toContain('1<small> / 5 steps done</small>')
+    expect(drawn.html).toContain('<li class="todo"><i class="dot todo"></i><div>Build<small>todo</small></div></li>')
+
+    await taskStatus(5, 'log', 'step', 'Build', '--result', 'active')
+    await taskStatus(6, 'log', 'step', 'MR !2', '--result', 'skip: not needed')
+    await taskStatus(7, 'log', 'start', 'Ship again')
+    await taskStatus(8, 'plan', 'Plan')
+    expect(stepRows().at(-1)).toEqual(['Plan', 'todo'])
+
+    await taskStatus(9, 'open', '--no-browser')
+    const next = drawPage(pageText())
+    expect(next.html).toContain('0<small> / 4 steps done</small>')
+    expect(next.html).toContain('<li class="active"><i class="dot active"></i><div>Build<small>active · from run: Ship</small></div></li>')
+    expect(next.html).toContain('<li class="todo"><i class="dot todo"></i><div>Verify<small>todo · from run: Ship</small></div></li>')
+    expect(/<ol class="line"[\s\S]*?<\/ol>/.exec(next.html)?.[0]).not.toContain('MR !2')
+  })
+
+  it('leaves skipped and superseded steps out of the count', async () => {
+    await taskStatus(0, 'log', 'start', 'Ship')
+    await taskStatus(1, 'plan', 'Plan', 'Build', 'MR !1', 'MR !2', 'Verify')
+    await taskStatus(3, 'log', 'step', 'Plan', '--result', 'done')
+    await taskStatus(4, 'log', 'step', 'MR !2', '--result', 'superseded: folded into MR !1')
+    await taskStatus(5, 'log', 'step', 'Verify', '--result', 'skip: no UI change')
+    await taskStatus(6, 'open', '--no-browser')
+
+    const drawn = drawPage(pageText())
+    expect(drawn.html).toContain('1<small> / 3 steps done</small>')
+    expect(drawn.html).toContain('<li class="skipped"><i class="dot skipped"></i><div>MR !2<small>superseded: folded into MR !1</small></div></li>')
+    expect(drawn.html).toContain('<li class="skipped"><i class="dot skipped"></i><div>Verify<small>skip: no UI change</small></div></li>')
+    expect(drawn.html.match(/<i class="(done|todo|active|blocked)" title=/g)).toHaveLength(3)
   })
 })
 

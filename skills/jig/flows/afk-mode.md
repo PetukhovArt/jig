@@ -12,7 +12,7 @@ The afk stance of atom autonomy holds for the whole run. Progress: read `<root>/
 
 Mode: one task (default), or a queue of tasks delivered as a stack of merge requests.
 
-1. Write the done condition as a check that can pass or fail (a command, a count, a replay). "Work on it for an hour" is not a condition. A queue: done is every item in the stack with its verdict, or parked with the reason.
+1. Write the done condition as a check that can pass or fail (a command, a count, a replay). "Work on it for an hour" is not a condition. A queue: done is every item in the stack with its verdict, or parked with the reason. Right after the `start` row, declare the plan with `jig task-status plan`: every step of this flow and, in queue mode, every queue item (each merge request to open), all as todo. A step or item you drop later gets `--result "skipped: <why>"` or `"superseded: <by what>"`.
 2. Set the wake mechanism the user granted (for example `/loop` on that check), never a fixed duration.
 3. Loop: the smallest change toward the condition, verify it, then commit it or revert it. Log every decision with `jig task-status log`, reverted attempts included.
 4. A choice only the human can make: take your recommended default, continue, and log the question, the option taken and what the human could say instead.

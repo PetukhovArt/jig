@@ -30,6 +30,7 @@ Run as `node "<plugin root>/bin/jig.mjs" <command>`.
 | `pre-mr proof "<command>"` / `pre-mr bug-bash "<result>"` | runs a proof command and records it when it exits 0 / records the bug-bash result |
 | `skip-verify --level unit-test\|type-check\|none --why "<reason>"` | lets `pre-mr` pass with that level until the next edit |
 | `task-status log <phase> <decision> [--why <text>] [--evidence <text>] [--result <text>]` | appends a row to the decision journal `.jig/runs/<branch>/task-status.tsv` |
+| `task-status plan "<step>" ["<step>" ...]` | declares the run's steps up front as `todo` rows, skipping titles the run already has; on the page a step with result `skip`, `skipped`, `superseded`, `dropped` or `cancelled` is struck and left out of the count, and steps an earlier run left unclosed stay marked with their run |
 | `task-status open [--lang en\|ru] [--no-browser]` / `task-status path` | builds the HTML page from the journal, opens it in the default browser (not with `--no-browser` or `CI` set) and prints its path; the page takes answers to open questions and copies them for the chat / prints the journal path |
 | `tiers [--agent <id>] [--json]` | the models of each tier for the agent |
 | `loop [--days 7]` | aggregates the journal into improvement candidates |

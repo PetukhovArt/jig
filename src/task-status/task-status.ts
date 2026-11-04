@@ -18,6 +18,10 @@ export type RowInput = Pick<Row, 'phase' | 'decision'> & Partial<Pick<Row, 'why'
 
 export const START_PHASE = 'start'
 
+export const STEP_PHASE = 'step'
+
+const TODO_RESULT = 'todo'
+
 export const PAGE_LANGS = ['en', 'ru'] as const
 
 export type PageLang = (typeof PAGE_LANGS)[number]
@@ -45,6 +49,7 @@ const LOG_FLAGS = new Map<string, 'why' | 'evidence' | 'result'>([
   ['--result', 'result'],
 ])
 const LOG_USAGE = 'usage: task-status log <phase> <decision> [--why <text>] [--evidence <text>] [--result <text>]'
+const PLAN_USAGE = 'usage: task-status plan <step> [<step>...]'
 
 class TaskStatusFailure extends Error {
   constructor(
@@ -171,6 +176,26 @@ const parseLog = (args: string[]): RowInput => {
   return { phase, decision, ...options }
 }
 
+const parsePlan = (args: string[]): string[] => {
+  const titles = args.map(cleanCell)
+  const isValid = titles.length > 0 && titles.every((title) => title !== '' && !title.startsWith('--'))
+  if (!isValid) throw usage(PLAN_USAGE)
+  return [...new Set(titles)]
+}
+
+const currentRunRows = (rows: readonly Row[]): readonly Row[] => rows.slice(Math.max(0, rows.findLastIndex((row) => row.phase === START_PHASE)))
+
+const planSteps = (path: string, titles: readonly string[], now: Date): void => {
+  const known = new Set(
+    currentRunRows(readJournalRows(path) ?? [])
+      .filter((row) => row.phase === STEP_PHASE)
+      .map((row) => row.decision),
+  )
+  for (const title of titles) {
+    if (!known.has(title)) appendRow(path, { phase: STEP_PHASE, decision: title, result: TODO_RESULT }, now)
+  }
+}
+
 const isPageLang = (value: string | undefined): value is PageLang => PAGE_LANGS.some((lang) => lang === value)
 
 const OPEN_USAGE = 'usage: task-status open [--lang en|ru] [--no-browser]'
@@ -245,18 +270,25 @@ const dispatch = (args: string[], now: Date): string => {
   const [sub, ...rest] = args
   const projectRoot = resolveProjectRoot(process.cwd())
   const location = journalLocation(projectRoot)
+  const record = (write: () => void): string => {
+    ensureJigDir(projectRoot)
+    write()
+    return toSlash(location.journal)
+  }
   if (sub === 'log') {
     const input = parseLog(rest)
-    ensureJigDir(projectRoot)
-    appendRow(location.journal, input, now)
-    return toSlash(location.journal)
+    return record(() => appendRow(location.journal, input, now))
+  }
+  if (sub === 'plan') {
+    const titles = parsePlan(rest)
+    return record(() => planSteps(location.journal, titles, now))
   }
   if (sub === 'open') return openPage(location, rest, now)
   if (sub === 'path') {
     if (readJournalRows(location.journal) === undefined) throw noJournal(location)
     return toSlash(location.journal)
   }
-  throw usage(`unknown task-status subcommand ${sub ?? '(none)'}, expected log, open or path`)
+  throw usage(`unknown task-status subcommand ${sub ?? '(none)'}, expected log, plan, open or path`)
 }
 
 export const runTaskStatus: Command = (args) => {
