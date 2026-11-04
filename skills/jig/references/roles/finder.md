@@ -1,6 +1,6 @@
 ---
 name: finder
-description: "Use in jig-review, per partition (behavior, and conventions when the project adds such angles) as jig review-plan prints, to hunt candidates for its angles in its partition of a diff. Finds aggressively; a verifier judges later."
+description: "Use in jig-review, per partition as jig review-plan prints (behavior, and conventions when the project adds such angles), to hunt candidates for its angles in its part of a diff."
 metadata:
   tier: deep
   effort: high

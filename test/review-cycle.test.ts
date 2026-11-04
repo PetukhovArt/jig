@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -127,7 +127,7 @@ const writeState = (iid: number, state: Record<string, unknown>): string => {
 }
 
 beforeEach(() => {
-  root = mkdtempSync(join(tmpdir(), 'jig-review-cycle-'))
+  root = realpathSync.native(mkdtempSync(join(tmpdir(), 'jig-review-cycle-')))
   spawnSync('git', ['init', '-q', root])
   spawnSync('git', ['remote', 'add', 'origin', REMOTE], { cwd: root })
   adapterPath = join(root, 'adapter.mjs')
