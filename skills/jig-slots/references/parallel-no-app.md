@@ -1,6 +1,6 @@
 # Several agents in parallel, no running app
 
-Each agent gets its own worktree: one writer per worktree, never two agents in one checkout. A feature gets one worktree (`git worktree add`, then `jig worktree seed <dir>`) and one writing delegate in it; delegates working in parallel inside the feature take the agent's built-in worktrees (`native-worktrees.md`). No dev server runs where an agent writes. The slot numbering below names the slots that run the app.
+Each agent gets its own worktree: one writer per worktree, never two agents in one checkout. A feature gets one worktree (`git worktree add`, then `jig worktree seed <dir>`) and one writing delegate in it; delegates working in parallel inside the feature take the agent's built-in worktrees (`native-worktrees.md`). The slot numbering below names the slots that run the app.
 
 ## Slot math
 

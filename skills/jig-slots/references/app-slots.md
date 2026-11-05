@@ -1,6 +1,6 @@
 # Two or three slots with running app instances
 
-A **slot** is a git worktree with packages installed and the dev server always running, bound to a number N that offsets every port (dev server, CDP/verify). Slot 0 = the main checkout, left untouched. Slots 1 to 3 run concurrently and **show** branches: features are written in their own worktrees, where no dev server runs, and a slot checks a finished branch out (Show a branch, below). Everything (ports, CDP) derives from N by a fixed formula (`parallel-no-app.md`, Slot math), so two slots never overlap.
+A **slot** is a git worktree with packages installed and the dev server always running, bound to a number N that offsets every port (dev server, CDP/verify). Slot 0 = the main checkout, left untouched. Slots 1 to 3 run concurrently and **show** branches: a slot checks a finished branch out (Show a branch, below). Everything (ports, CDP) derives from N by a fixed formula (`parallel-no-app.md`, Slot math), so two slots never overlap.
 
 ## Config: the `slots` section of `.jig/config.jsonc`
 

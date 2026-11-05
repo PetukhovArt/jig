@@ -2,7 +2,7 @@
 
 Without `/jig`, only the hooks run, and a small task goes in one shot. `/jig <task>` (fallback `/jig:jig`) is invoked by the user only. It restates the task with a done check, picks a flow and copies the flow's steps into the todo list. Its rules for evidence, autonomy and questions sit in `skills/jig/SKILL.md` itself, next to the atom index: one line per atom with its trigger, grouped by the moment of work. An atom file is read when a flow step names it or its trigger matches.
 
-Every code-changing flow ends with the shared [`mr`](../skills/jig/flows/mr.md) step: the `jig-review` skill in mode `pre-mr`, UI proof in a slot, `jig pre-mr`, then the merge request. The flow list is in the [README](../README.md#usage).
+Every code-changing flow ends with the shared [`mr`](../skills/jig/flows/mr.md) step: the `jig-review` skill in mode `pre-mr`, UI proof, `jig pre-mr`, then the merge request. The flow list is in the [README](../README.md#usage).
 
 Subagent roles are templates in `skills/jig/references/roles/`; each template names a model tier and an effort (`metadata.tier`, `metadata.effort`), and `jig tiers` maps the tier to the agent's models (built-in for Claude Code, overridable in `~/.jig/config.jsonc`).
 
