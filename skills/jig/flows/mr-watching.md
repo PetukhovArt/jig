@@ -11,7 +11,7 @@ Atoms: autonomy, evidence, small-steps, shared-state.
 One pass per call. Recurrence is the user's `/loop`.
 
 1. Discover your open merge requests via `glab`/`gh` (`references/forge.md`).
-2. Filter: skip a request whose worktree is still busy from a previous pass, and one where no thread waits on you and the branch is up to date with its target.
+2. Filter: skip a request labeled `jig::no-babysit` (the human set it aside; list it in the reply as skipped by label), one whose worktree is still busy from a previous pass, and one where no thread waits on you and the branch is up to date with its target.
 3. For each remaining request: a worktree on its branch (`git worktree add`, then `jig worktree seed <dir>`).
 4. Conflicts first: rebase or merge the target; resolve conflicts by intent, run the checks.
 5. Threads next: spawn one subagent with role `fixer` per request. For each reviewer thread it decides fix, decline (with counter-evidence) or defer (with a proposed issue) and makes the fixes.

@@ -14,6 +14,8 @@ Run every command from inside the repository: both CLIs take the host and projec
 | Task | GitLab (`glab`) | GitHub (`gh`) |
 | --- | --- | --- |
 | Your open merge requests | `glab mr list --author=@me` | `gh pr list --author @me --state open` |
+| Same, without set-aside ones | `glab mr list --author=@me --not-label=jig::no-babysit` | `gh pr list --author @me --state open --search "-label:jig::no-babysit"` |
+| Set a request aside (`mr-watching` skips it) | `glab mr update <iid> --label jig::no-babysit` | `gh pr edit <n> --add-label jig::no-babysit` |
 | Merge request of the current branch | `glab mr list --source-branch <branch>` | `gh pr view --json url,number,title,baseRefName,headRefName` |
 | Read a merge request | `glab mr view <iid> --output json` | `gh pr view <n> --json title,body,baseRefName,headRefName,url` |
 | Read its threads | `glab api "projects/:fullpath/merge_requests/<iid>/discussions?per_page=100"` (`--paginate` past 100) | `gh api repos/{owner}/{repo}/pulls/<n>/comments --paginate` and `gh pr view <n> --comments` |
