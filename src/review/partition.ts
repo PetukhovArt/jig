@@ -218,16 +218,78 @@ export const partitionFiles = (files: readonly PartitionFile[], edges: readonly 
   const counts = edgeCounts(edges)
   const code = files.filter((file) => file.kind === 'code')
   const clusters: Cluster[] = code.length === 0 ? [{ files: [], weight: 0, dir: [] }] : clusterCode(code, counts, Math.max(1, Math.min(count, code.length)))
-  const rest = files.filter((file) => file.kind !== 'code').sort((left, right) => left.path.localeCompare(right.path))
-  for (const file of rest) homeOf(file, clusters, counts).files.push(file.path)
-  const counted = new Map(files.map((file) => [file.path, file.countedLines]))
+  attachRest(clusters, files.filter((file) => file.kind !== 'code'), counts)
+  const counted = countedOf(files)
   return clusters
     .map((cluster) => [...cluster.files].sort((left, right) => left.localeCompare(right)))
     .sort((left, right) => (left[0] ?? '').localeCompare(right[0] ?? ''))
-    .map((own, index) => ({
-      name: `p${index + 1}`,
-      files: own,
-      lines: own.reduce((sum, path) => sum + (counted.get(path) ?? 0), 0),
-      dirs: dirsOf(own),
-    }))
+    .map((own, index) => toPartition(`p${index + 1}`, own, counted))
+}
+
+const attachRest = (clusters: readonly Cluster[], rest: readonly PartitionFile[], counts: ReadonlyMap<string, number>): void => {
+  for (const file of [...rest].sort((left, right) => left.path.localeCompare(right.path))) homeOf(file, clusters, counts).files.push(file.path)
+}
+
+const toPartition = (name: string, files: readonly string[], counted: ReadonlyMap<string, number>): Partition => {
+  const own = [...files].sort((left, right) => left.localeCompare(right))
+  return { name, files: own, lines: own.reduce((sum, path) => sum + (counted.get(path) ?? 0), 0), dirs: dirsOf(own) }
+}
+
+const countedOf = (files: readonly PartitionFile[]): Map<string, number> => new Map(files.map((file) => [file.path, file.countedLines]))
+
+export interface GroupSpec {
+  name: string
+  entries: string[]
+}
+
+export interface Group {
+  name: string
+  files: string[]
+}
+
+export const GROUP_NAME = /^[a-z][a-z0-9-]*$/
+
+const matchesEntry = (path: string, entry: string): boolean => (entry.endsWith('/') ? path.startsWith(entry) : path === entry)
+
+export const resolveGroups = (specs: readonly GroupSpec[], files: readonly PartitionFile[], max: number): Group[] => {
+  const errors: string[] = []
+  if (specs.length > max) errors.push(`${specs.length} groups, at most ${max} (maxParallel)`)
+  const names = new Set<string>()
+  const owner = new Map<string, string>()
+  const groups = specs.map(({ name, entries }) => {
+    if (!GROUP_NAME.test(name)) errors.push(`group name ${name}: expected lowercase letters, digits and dashes`)
+    if (names.has(name)) errors.push(`group ${name} given twice`)
+    names.add(name)
+    if (entries.length === 0) errors.push(`group ${name} has no files`)
+    const own: string[] = []
+    for (const entry of entries) {
+      const matched = files.filter((file) => matchesEntry(file.path, entry))
+      if (matched.length === 0) errors.push(`${entry} in group ${name}: no changed file of this diff`)
+      for (const file of matched) {
+        const previous = owner.get(file.path)
+        if (previous !== undefined && previous !== name) errors.push(`${file.path} is in groups ${previous} and ${name}`)
+        if (previous !== undefined) continue
+        owner.set(file.path, name)
+        own.push(file.path)
+      }
+    }
+    return { name, files: own }
+  })
+  const missing = files.filter((file) => file.kind === 'code' && !owner.has(file.path)).map((file) => file.path)
+  if (missing.length > 0) errors.push(`code files in no group: ${missing.join(', ')}`)
+  if (errors.length > 0) throw new Error(`--partition: ${errors.join('; ')}`)
+  return groups
+}
+
+export const groupFiles = (files: readonly PartitionFile[], edges: readonly Edge[], groups: readonly Group[]): Partition[] => {
+  const counts = edgeCounts(edges)
+  const counted = countedOf(files)
+  const owned = new Set(groups.flatMap((group) => group.files))
+  const clusters: Cluster[] = groups.map((group) => ({
+    files: [...group.files],
+    weight: group.files.reduce((sum, path) => sum + (counted.get(path) ?? 0), 0),
+    dir: group.files.map(dirOf).reduce<string[] | undefined>((shared, dir) => (shared === undefined ? dir : commonPrefix(shared, dir)), undefined) ?? [],
+  }))
+  if (clusters.length > 0) attachRest(clusters, files.filter((file) => !owned.has(file.path)), counts)
+  return groups.map((group, index) => toPartition(group.name, clusters[index]?.files ?? [], counted))
 }

@@ -1,5 +1,5 @@
 import { TIERS, type Tier } from '../tiers/tiers'
-import { partitionFiles, type Edge, type Partition, type PartitionFile } from './partition'
+import { groupFiles, partitionFiles, type Edge, type Group, type Partition, type PartitionFile } from './partition'
 
 export const EFFORTS = ['low', 'medium', 'high'] as const
 export type Effort = (typeof EFFORTS)[number]
@@ -94,7 +94,11 @@ export interface PlanInput {
   rereview?: boolean
   files?: readonly PartitionFile[]
   edges?: readonly Edge[]
+  groups?: readonly Group[] | undefined
+  policy?: boolean
 }
+
+export type Grouping = 'lines' | 'groups' | 'pending'
 
 export const FINDER_KINDS = ['behavior', 'conventions'] as const
 export type FinderKind = (typeof FINDER_KINDS)[number]
@@ -142,6 +146,7 @@ export interface Plan {
   angles: Angle[]
   projectAngles: ProjectAngle[]
   skipped: Skipped[]
+  grouping: Grouping
   partitions: Partition[]
   finders: Finder[]
   deepening: Grade | undefined
@@ -249,7 +254,10 @@ export const planReview = (input: PlanInput): Plan => {
   const light = isLightRereview(input.rereview, input.lines)
   const wantsDeepening = !light && (selection.tokens.length === 0 ? input.shape.newSourceFiles > 0 : selection.tokens.includes('deepening'))
   const path: ReviewPath = usedForCode.length + projectAngles.length === 0 ? 'none' : 'subagents'
-  const partitions = path === 'none' ? [] : partitionsOf(input, light ? 1 : Math.max(1, n))
+  const codeFiles = (input.files ?? []).filter((file) => file.kind === 'code').length
+  const grouping: Grouping = path === 'none' ? 'lines' : input.groups !== undefined ? 'groups' : input.policy === true && !light && codeFiles > 1 ? 'pending' : 'lines'
+  const partitions =
+    path === 'none' || grouping === 'pending' ? [] : input.groups !== undefined ? groupFiles(input.files ?? [], input.edges ?? [], input.groups) : partitionsOf(input, light ? 1 : Math.max(1, n))
   return {
     lines: input.lines,
     n,
@@ -261,6 +269,7 @@ export const planReview = (input: PlanInput): Plan => {
     angles: usedForCode,
     projectAngles,
     skipped: skipped.sort(bySkipOrder),
+    grouping,
     partitions,
     finders: partitionFinders(partitions, usedForCode, projectAngles, grades),
     deepening: wantsDeepening && n > 0 ? roleGrade('deepening', grades) : undefined,

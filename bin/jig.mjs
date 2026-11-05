@@ -1305,7 +1305,7 @@ var groupByMarker = (projectRoot, files, markers) => {
     }
     byMarker.set(marker, [...byMarker.get(marker) ?? [], file]);
   }
-  return { groups: [...byMarker].map(([marker, groupFiles]) => ({ marker, files: groupFiles })), skipped };
+  return { groups: [...byMarker].map(([marker, groupFiles2]) => ({ marker, files: groupFiles2 })), skipped };
 };
 var withMarker = (entry, marker) => entry === void 0 || marker === void 0 ? void 0 : { bin: entry.bin, config: marker };
 var FAILURE_DETAIL_MAX = 200;
@@ -1814,7 +1814,7 @@ var groupByTsconfig = (projectRoot, files) => {
     }
     byConfig.set(selected, [...byConfig.get(selected) ?? [], file]);
   }
-  return { groups: [...byConfig].map(([config, groupFiles]) => ({ config, files: groupFiles })), skipped };
+  return { groups: [...byConfig].map(([config, groupFiles2]) => ({ config, files: groupFiles2 })), skipped };
 };
 var tsconfigHash = (configPath) => createHash("sha1").update(configPath).digest("hex").slice(0, HASH_LENGTH);
 var closureConfig = (projectRoot, group) => {
@@ -5847,15 +5847,60 @@ var partitionFiles = (files, edges, count) => {
   const counts = edgeCounts(edges);
   const code = files.filter((file) => file.kind === "code");
   const clusters = code.length === 0 ? [{ files: [], weight: 0, dir: [] }] : clusterCode(code, counts, Math.max(1, Math.min(count, code.length)));
-  const rest = files.filter((file) => file.kind !== "code").sort((left, right) => left.path.localeCompare(right.path));
-  for (const file of rest) homeOf(file, clusters, counts).files.push(file.path);
-  const counted = new Map(files.map((file) => [file.path, file.countedLines]));
-  return clusters.map((cluster) => [...cluster.files].sort((left, right) => left.localeCompare(right))).sort((left, right) => (left[0] ?? "").localeCompare(right[0] ?? "")).map((own, index) => ({
-    name: `p${index + 1}`,
-    files: own,
-    lines: own.reduce((sum, path2) => sum + (counted.get(path2) ?? 0), 0),
-    dirs: dirsOf(own)
+  attachRest(clusters, files.filter((file) => file.kind !== "code"), counts);
+  const counted = countedOf(files);
+  return clusters.map((cluster) => [...cluster.files].sort((left, right) => left.localeCompare(right))).sort((left, right) => (left[0] ?? "").localeCompare(right[0] ?? "")).map((own, index) => toPartition(`p${index + 1}`, own, counted));
+};
+var attachRest = (clusters, rest, counts) => {
+  for (const file of [...rest].sort((left, right) => left.path.localeCompare(right.path))) homeOf(file, clusters, counts).files.push(file.path);
+};
+var toPartition = (name, files, counted) => {
+  const own = [...files].sort((left, right) => left.localeCompare(right));
+  return { name, files: own, lines: own.reduce((sum, path2) => sum + (counted.get(path2) ?? 0), 0), dirs: dirsOf(own) };
+};
+var countedOf = (files) => new Map(files.map((file) => [file.path, file.countedLines]));
+var GROUP_NAME = /^[a-z][a-z0-9-]*$/;
+var matchesEntry = (path2, entry) => entry.endsWith("/") ? path2.startsWith(entry) : path2 === entry;
+var resolveGroups = (specs, files, max) => {
+  const errors = [];
+  if (specs.length > max) errors.push(`${specs.length} groups, at most ${max} (maxParallel)`);
+  const names = /* @__PURE__ */ new Set();
+  const owner = /* @__PURE__ */ new Map();
+  const groups = specs.map(({ name, entries }) => {
+    if (!GROUP_NAME.test(name)) errors.push(`group name ${name}: expected lowercase letters, digits and dashes`);
+    if (names.has(name)) errors.push(`group ${name} given twice`);
+    names.add(name);
+    if (entries.length === 0) errors.push(`group ${name} has no files`);
+    const own = [];
+    for (const entry of entries) {
+      const matched = files.filter((file) => matchesEntry(file.path, entry));
+      if (matched.length === 0) errors.push(`${entry} in group ${name}: no changed file of this diff`);
+      for (const file of matched) {
+        const previous = owner.get(file.path);
+        if (previous !== void 0 && previous !== name) errors.push(`${file.path} is in groups ${previous} and ${name}`);
+        if (previous !== void 0) continue;
+        owner.set(file.path, name);
+        own.push(file.path);
+      }
+    }
+    return { name, files: own };
+  });
+  const missing = files.filter((file) => file.kind === "code" && !owner.has(file.path)).map((file) => file.path);
+  if (missing.length > 0) errors.push(`code files in no group: ${missing.join(", ")}`);
+  if (errors.length > 0) throw new Error(`--partition: ${errors.join("; ")}`);
+  return groups;
+};
+var groupFiles = (files, edges, groups) => {
+  const counts = edgeCounts(edges);
+  const counted = countedOf(files);
+  const owned = new Set(groups.flatMap((group) => group.files));
+  const clusters = groups.map((group) => ({
+    files: [...group.files],
+    weight: group.files.reduce((sum, path2) => sum + (counted.get(path2) ?? 0), 0),
+    dir: group.files.map(dirOf).reduce((shared, dir) => shared === void 0 ? dir : commonPrefix(shared, dir), void 0) ?? []
   }));
+  if (clusters.length > 0) attachRest(clusters, files.filter((file) => !owned.has(file.path)), counts);
+  return groups.map((group, index) => toPartition(group.name, clusters[index]?.files ?? [], counted));
 };
 
 // src/review/rule-docs.ts
@@ -6139,7 +6184,9 @@ var planReview = (input) => {
   const light = isLightRereview(input.rereview, input.lines);
   const wantsDeepening = !light && (selection.tokens.length === 0 ? input.shape.newSourceFiles > 0 : selection.tokens.includes("deepening"));
   const path2 = usedForCode.length + projectAngles.length === 0 ? "none" : "subagents";
-  const partitions = path2 === "none" ? [] : partitionsOf(input, light ? 1 : Math.max(1, n));
+  const codeFiles = (input.files ?? []).filter((file) => file.kind === "code").length;
+  const grouping = path2 === "none" ? "lines" : input.groups !== void 0 ? "groups" : input.policy === true && !light && codeFiles > 1 ? "pending" : "lines";
+  const partitions = path2 === "none" || grouping === "pending" ? [] : input.groups !== void 0 ? groupFiles(input.files ?? [], input.edges ?? [], input.groups) : partitionsOf(input, light ? 1 : Math.max(1, n));
   return {
     lines: input.lines,
     n,
@@ -6151,6 +6198,7 @@ var planReview = (input) => {
     angles: usedForCode,
     projectAngles,
     skipped: skipped.sort(bySkipOrder),
+    grouping,
     partitions,
     finders: partitionFinders(partitions, usedForCode, projectAngles, grades),
     deepening: wantsDeepening && n > 0 ? roleGrade("deepening", grades) : void 0,
@@ -6247,7 +6295,13 @@ var countLines = (stats, root) => {
   }
   return { lines: lines2, counted, excluded };
 };
-var PROJECT_KEYS = ["$schema", "iterationsMemory", "discover", "review", "severity", "route", "angles", "tiers", "maxParallel", "layout", "testPaths"];
+var PROJECT_KEYS = ["$schema", "iterationsMemory", "discover", "review", "severity", "route", "angles", "tiers", "maxParallel", "layout", "testPaths", "partitions"];
+var readPolicy = (validator, value) => {
+  const text3 = validator.string(value, "$.partitions");
+  if (text3 === void 0) return void 0;
+  if (text3.trim() === "") return validator.report("$.partitions", "expected a non-empty text");
+  return text3.trim();
+};
 var SETTING_KEYS = ["enabled", "severityCeiling"];
 var PROJECT_ANGLE_KEYS = [...SETTING_KEYS, "file", "kind"];
 var readSettings = (validator, settings, path2) => {
@@ -6316,8 +6370,9 @@ var parseProjectConfig = (text3, label) => {
   const maxParallel = root?.["maxParallel"] === void 0 ? MAX_PARALLEL : validator.integer(root["maxParallel"], "$.maxParallel", 1);
   const layout = root?.["layout"] === void 0 ? void 0 : validator.oneOf(root["layout"], "$.layout", LAYOUTS);
   const testPaths = root?.["testPaths"] === void 0 ? [] : validator.strings(root["testPaths"], "$.testPaths");
+  const partitions = root?.["partitions"] === void 0 || root["partitions"] === null ? void 0 : readPolicy(validator, root["partitions"]);
   if (validator.errors.length > 0) throw new Error(`${label}: ${validator.errors.join("; ")}`);
-  return { layout, angles, projectAngles, grades, maxParallel: maxParallel ?? MAX_PARALLEL, testPaths: testPaths ?? [] };
+  return { layout, angles, projectAngles, grades, maxParallel: maxParallel ?? MAX_PARALLEL, testPaths: testPaths ?? [], partitions };
 };
 var loadProjectConfig = (root) => {
   const file = projectConfigFile(root);
@@ -6437,11 +6492,25 @@ var KIND_TEXT = {
   behavior: "bugs, state, wire contracts, spec",
   conventions: "the project angles of kind conventions; reads its rules"
 };
+var policyText = (policy) => policy.split("\n").join("\n  ");
+var groupingLines = (report) => {
+  const grouping = report.grouping;
+  if (grouping === null || report.policy === null) return [];
+  return [
+    `partition policy (${report.config ?? `.jig/${PROJECT_CONFIG}`}): ${policyText(report.policy)}`,
+    `group the code files below by the policy: each in exactly one group, at most ${report.maxParallel} groups; tests and documents join their code themselves. Then run this command again with the same arguments plus one --partition <name>=<path>,<path> per group (name: lowercase letters, digits, dashes; a path ending in / takes every changed file under it). That run is the plan: its steps, finders and diff parts; this one has none`,
+    "code files (counted lines, path):",
+    ...grouping.files.map((file) => `  ${file.lines}	${file.path}`),
+    ...grouping.imports.length === 0 ? ["imports between them: none"] : ["imports between them:", ...grouping.imports.map(([from, to]) => `  ${from} \u2192 ${to}`)]
+  ];
+};
 var finderLines = (report) => {
   const { plan } = report;
   const byName = new Map(plan.partitions.map((partition) => [partition.name, partition]));
   const lines2 = [];
-  if (plan.finders.length > 0) lines2.push(`partitions: ${plan.partitions.length}, by imports between files and shared directories; a finder traces a link into another partition in the code itself`);
+  const by = plan.grouping === "groups" ? "by --partition" : "by imports between files and shared directories";
+  if (plan.finders.length > 0) lines2.push(`partitions: ${plan.partitions.length}, ${by}; a finder traces a link into another partition in the code itself`);
+  if (plan.finders.length > 0 && report.policy !== null) lines2.push(`partition policy (to every finder, brief item 7): ${policyText(report.policy)}`);
   for (const finder of plan.finders) {
     lines2.push(
       `finder ${finder.name}: partition ${finder.partition} (${partitionText(byName.get(finder.partition))}) \xB7 ${finder.kind}: angles ${angleList([...finder.angles, ...finder.projectAngles])} \xB7 ${gradeText(finder, report.models)} \xB7 fresh, never a fork`
@@ -6477,6 +6546,7 @@ var formatReport = (report) => {
   ];
   if (plan.path === "none") lines2.push("finders: none (nothing to review)");
   if (plan.path === "subagents") lines2.push(RUNNER_LINE);
+  if (plan.grouping === "pending") return [...lines2, ...groupingLines(report)].join("\n");
   lines2.push(...finderLines(report));
   if (plan.deepening !== void 0) lines2.push(`deepening: ${gradeText(plan.deepening, models)}`);
   if (plan.judging === "self") {
@@ -6520,6 +6590,11 @@ var partitionInput = (stats, root, testPaths) => stats.filter((stat) => !isUnrev
 });
 var newRunId = () => `${Date.now().toString(36)}-${randomBytes2(3).toString("hex")}`;
 var reviewDirOf = (root, state) => state ? join29(ensureJigDir(listWorktrees(root)[0]?.path ?? root).runs, "review") : join29(tmpdir(), "jig-review");
+var formulaOf = (plan, lines2, policy) => {
+  if (plan.grouping === "pending") return "by the project policy, not by lines: group the code files below, then run again with --partition";
+  if (plan.grouping === "groups") return `${plan.partitions.length} from --partition${policy ? ", grouped by the project policy" : ""}; two finders each`;
+  return `ceil(${lines2}/${LINES_PER_FINDER}) = ${Math.ceil(lines2 / LINES_PER_FINDER)}, max ${MAX_FINDERS} \u2192 N = ${plan.n}, at least 1; two finders each`;
+};
 var buildReport = (root, options) => {
   const base = resolveBase(root, options.base, "review-plan", options.paths ?? []);
   const { stats, diffBase, paths, diffPaths, rereview } = scopeOf(root, base, options.paths ?? [], options.statePath);
@@ -6535,6 +6610,13 @@ var buildReport = (root, options) => {
   const testPaths = project?.config.testPaths ?? [];
   const layout = resolveLayout(options.layout, options.layoutEnv, project?.config.layout);
   const files = partitionInput(stats, root, testPaths);
+  const edges = importEdges(
+    root,
+    files.filter((file) => file.kind !== "docs").map((file) => file.path)
+  );
+  const maxParallel = project?.config.maxParallel ?? MAX_PARALLEL;
+  const policy = project?.config.partitions;
+  const groups = options.partitions === void 0 ? void 0 : resolveGroups(options.partitions, files, maxParallel);
   const plan = planReview({
     lines: lines2,
     shape,
@@ -6545,11 +6627,12 @@ var buildReport = (root, options) => {
     grades: project?.config.grades ?? {},
     rereview: options.rereview === true || rereview !== null,
     files,
-    edges: importEdges(
-      root,
-      files.filter((file) => file.kind !== "docs").map((file) => file.path)
-    )
+    edges,
+    groups,
+    policy: policy !== void 0
   });
+  const pending = plan.grouping === "pending";
+  const code = new Set(files.filter((file) => file.kind === "code").map((file) => file.path));
   const loaded = loadUserConfig();
   if (loaded.error !== void 0) throw new Error(`${loaded.label}: ${loaded.error}`);
   const agent = detectAgent(options.agent);
@@ -6561,7 +6644,7 @@ var buildReport = (root, options) => {
   const mode = options.mode ?? "review";
   const state = mode === "review" && options.mergeRequest === true && options.noState !== true;
   const pluginRoot = options.pluginRoot ?? resolvePluginRoot();
-  const diffFiles = plan.path === "none" ? null : writeDiffFiles(root, [diffBase, ...pathspec(diffPaths)], reviewDirOf(root, state), (path2) => audienceOf(path2, root, testPaths), plan.partitions);
+  const diffFiles = plan.path === "none" || pending ? null : writeDiffFiles(root, [diffBase, ...pathspec(diffPaths)], reviewDirOf(root, state), (path2) => audienceOf(path2, root, testPaths), plan.partitions);
   const partsOf = (partition, angles) => {
     if (diffFiles === null) return [];
     const own = partition === void 0 ? diffFiles.audiences : diffFiles.partitions[partition];
@@ -6584,7 +6667,12 @@ var buildReport = (root, options) => {
     scope: [...paths],
     diff: diffCommand(diffBase, diffPaths),
     diffFiles,
-    formula: `ceil(${lines2}/${LINES_PER_FINDER}) = ${Math.ceil(lines2 / LINES_PER_FINDER)}, max ${MAX_FINDERS} \u2192 N = ${plan.n}, at least 1; two finders each`,
+    formula: formulaOf(plan, lines2, policy !== void 0),
+    policy: policy ?? null,
+    grouping: pending ? {
+      files: files.filter((file) => file.kind === "code").map((file) => ({ path: file.path, lines: file.countedLines })),
+      imports: edges.filter(([from, to]) => code.has(from) && code.has(to))
+    } : null,
     layout,
     shape,
     plan,
@@ -6594,18 +6682,25 @@ var buildReport = (root, options) => {
     skill: toSlash(join29(pluginRoot, "skills", "jig-review")),
     steps: stepsFor(plan, mode, state),
     reads: Object.fromEntries(readers),
-    maxParallel: project?.config.maxParallel ?? MAX_PARALLEL,
+    maxParallel,
     config: project?.label ?? null,
     agent,
     models,
     finderModels,
     judge: plan.judging === "self" ? [] : judgeModels(usedModels, verifyModels),
     run: run3,
-    estimate: plan.path === "none" ? null : estimateReview(finderReaders, { ...DEFAULT_PRICES, ...loaded.config.prices })
+    estimate: plan.path === "none" || pending ? null : estimateReview(finderReaders, { ...DEFAULT_PRICES, ...loaded.config.prices })
   };
 };
 var isMode = (value) => MODES.includes(value);
-var USAGE2 = "usage: jig review-plan [<base>] [--selector full|quick|auto|<tokens>] [--layout auto|lean|solo] [--spec] [--mode review|pre-mr] [--mr] [--no-state] [--rereview] [--state <path>] [--agent <id>] [--json] [-- <pathspec>...]";
+var USAGE2 = "usage: jig review-plan [<base>] [--selector full|quick|auto|<tokens>] [--layout auto|lean|solo] [--spec] [--mode review|pre-mr] [--mr] [--no-state] [--rereview] [--state <path>] [--partition <name>=<path>,<dir>/...]... [--agent <id>] [--json] [-- <pathspec>...]";
+var parseGroupSpec = (text3) => {
+  const separator = text3.indexOf("=");
+  const name = separator === -1 ? "" : text3.slice(0, separator).trim();
+  if (!GROUP_NAME.test(name)) throw new Error(`--partition ${text3}: expected <name>=<path>,<path> with a name of lowercase letters, digits and dashes`);
+  const entries = text3.slice(separator + 1).split(",").map((entry) => toSlash(entry.trim()).replace(/^\.\//, "")).filter((entry) => entry !== "");
+  return { name, entries };
+};
 var splitPathspec = (args) => {
   const separator = args.indexOf("--");
   return separator === -1 ? { options: [...args], paths: void 0 } : { options: args.slice(0, separator), paths: args.slice(separator + 1) };
@@ -6639,6 +6734,7 @@ var runReviewPlan = (args) => {
       "no-state": { type: "boolean" },
       rereview: { type: "boolean" },
       state: { type: "string" },
+      partition: { type: "string", multiple: true },
       json: { type: "boolean" }
     }
   });
@@ -6660,7 +6756,8 @@ var runReviewPlan = (args) => {
     noState: values["no-state"] === true,
     rereview: values.rereview === true,
     statePath: values.state,
-    paths
+    paths,
+    partitions: values.partition?.map(parseGroupSpec)
   });
   process.stdout.write(`${values.json ? JSON.stringify(report) : formatReport(report)}
 `);

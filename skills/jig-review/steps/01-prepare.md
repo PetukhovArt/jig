@@ -74,9 +74,17 @@ node "<root>/bin/jig.mjs" review-plan <base> [--selector <selector>] [--layout <
 
 - `LINES`: added + removed lines by `git diff --numstat -M` against the merge base, without tests, fixtures, `*.md` and lock files (`package-lock.json`, `Cargo.lock` and the rest jig knows). A rename without edits counts 0. Documents are read only against the spec (angle 15) and add no readers; tests are not reviewed; lock files are read by nobody: the diff index lists them as not written. With paths, the `lines:` line names the scope.
 - `diff:` the command that prints the reviewed diff, paths included. Every brief and your own reading use this command, never a hand-written `git diff`.
-- `N = ceil(LINES / 150)`, at most 5: the number of partitions of the diff's files, at least 1 when there is code; a `behavior` finder each, plus a `conventions` finder when the project adds angles of that kind ([partitions](04-finders.md#partitions-and-kinds)).
+- `N = ceil(LINES / 150)`, at most 5: the number of partitions of the diff's files, at least 1 when there is code; a `behavior` finder each, plus a `conventions` finder when the project adds angles of that kind ([partitions](04-finders.md#partitions-and-kinds)). With `partitions` in the [project config](../references/project-config.md), no `N`: see [partition policy](#partition-policy).
 - the layout (`--layout`, else `JIG_REVIEW_LAYOUT`, else `layout` in the [project config](../references/project-config.md), else `auto`). `auto` is `lean`: fresh finders per partition, and you judge ([verify](05-verify.md#layout-lean)); `solo`: the same finders judge themselves. One path for every size.
 - the diff shape (new source files, spec), the selector expanded (`auto` too), the mode and whether state is on, the cost estimate (`cost estimate:`), the partitions, the `run:` id, every finder with its partition, kind, angles, tier, effort and model, its diff parts (`diff:`), a conventions finder's documents (`rules:`), the absolute paths of each kind's angle files (`read:`) and atoms (`atoms:`), the judge model per finder model, the subagent cap, and the angles skipped with the reason;
 - last, **the steps for this run**: the files to read from here on, in order. Only those apply.
 
 The printed layout is the plan; do not recompute it by hand. No caps on the number of findings: whatever survives the gates reaches the author.
+
+### Partition policy
+
+The project config sets `partitions`, a text: the output says `partitions: by the project policy` and prints `partition policy:` (the text), the changed code files with their counted lines and the imports between them, and no finders, diff parts or steps. The session that asked for the review delegates as for any plan with `runner:`; the review runner does the grouping:
+
+1. Group the code files by the policy text, and only by it: the file table and the imports are the material. Every code file goes into exactly one group, at most `maxParallel` groups; tests and documents follow their code by themselves.
+2. Run the same command again, the same arguments, plus one `--partition <name>=<path>,<path>` per group. A name is lowercase letters, digits and dashes (`editor`, `domain-journal`); a path is from the repository root, as printed; a path ending in `/` takes every changed file under it. A file in no group or in two fails the command with the files named: fix the grouping and run again.
+3. That output is the plan: partitions named after the groups, the finders, the diff parts (`<name>-code-*`), the steps for this run. It repeats `partition policy:`; every finder gets the text in its brief ([finders](04-finders.md#spawn), item 7). Say the grouping in one line of the summary.

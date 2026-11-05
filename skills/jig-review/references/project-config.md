@@ -1,6 +1,6 @@
 # Project config
 
-Optional: `.jig/review.jsonc` in the repository, committed or local. In a linked worktree the file the branch tracks wins; an untracked one is read from the main checkout (the first entry of `git worktree list`), never from a seeded copy in the worktree. No file: the defaults below. `jig review-plan` reads `angles`, `tiers`, `maxParallel`, `layout` and `testPaths` from it and rejects a malformed value with its path; `jig review rules` reads `discover.rules`, `.standards` and `.exclude`; the agent reads the rest.
+Optional: `.jig/review.jsonc` in the repository, committed or local. In a linked worktree the file the branch tracks wins; an untracked one is read from the main checkout (the first entry of `git worktree list`), never from a seeded copy in the worktree. No file: the defaults below. `jig review-plan` reads `angles`, `tiers`, `maxParallel`, `layout`, `testPaths` and `partitions` from it and rejects a malformed value with its path; `jig review rules` reads `discover.rules`, `.standards` and `.exclude`; the agent reads the rest.
 
 Merge at the top level: a declared key replaces the default one whole; the others come from the default. Exceptions: `angles` and `tiers` merge per entry. The summary always says `config: .jig/review.jsonc`, `config: <main checkout>/.jig/review.jsonc` or `config: default`.
 
@@ -22,7 +22,8 @@ Merge at the top level: a declared key replaces the default one whole; the other
   "tiers": {},
   "maxParallel": 6,
   "layout": "auto",
-  "testPaths": []
+  "testPaths": [],
+  "partitions": null
 }
 ```
 
@@ -41,6 +42,7 @@ Merge at the top level: a declared key replaces the default one whole; the other
 - **`maxParallel`**: the cap on subagents running at once ([rules for the whole run](../SKILL.md#rules-for-the-whole-run)).
 - **`layout`**: `auto` (default, = `lean`), `lean` or `solo` ([paths](../SKILL.md#paths)). `--layout` and the environment variable `JIG_REVIEW_LAYOUT` win over it.
 - **`testPaths`**: globs of test files on top of the built-in ones (test file names of each language, `test/`, `tests/`, `__tests__/`, `_tests_/`, fixtures and snapshots). Test files go into the `pN-tests-*` diff parts of their partition, which no finder reads: the review does not read tests.
+- **`partitions`**: a text that says how to split the diff's code files into partitions, one finder of each kind per partition. `null`: `jig review-plan` splits by lines (`N = ceil(LINES / 150)`, at most 5) along imports and directories. A text: `jig review-plan` computes no `N`; it prints the text, the changed code files with their counted lines and the imports between them, and the review runner groups the files by the text and runs the command again with one `--partition` per group ([prepare](../steps/01-prepare.md#layout)). Every finder gets the text in its brief. A re-review range under 600 lines stays one partition.
 
 The skill has no caps on the number of threads: whatever survives verify reaches the author.
 
@@ -60,11 +62,12 @@ The skill has no caps on the number of threads: whatever survives verify reaches
     "8": { "severityCeiling": "Nit" },
     "event-catalog": { "file": ".jig/angles/event-catalog.md", "kind": "behavior" },
     "naming": { "file": ".jig/angles/naming.md", "kind": "conventions" }
-  }
+  },
+  "partitions": "One finder per feature module (src/features/<x>, src/domain/<y>) whatever its size; split a module only when it has unrelated parts; glue a group under ~50 lines to its closest neighbour."
 }
 ```
 
-The walk up finds `src/payments/AGENTS.md`, a long adapter contract that a search by name never sees. `exclude` drops large glossaries. `angles.8` lowers the ceiling: the project does not hold a leak or a hot path as a merge blocker, so [angle 8](../angles/8.efficiency.md) stays at `Nit` and `quick` leaves it out. `event-catalog` is the project's own angle for the behavior finders. `naming` checks the names the user sees against the project's naming standard: tooling cannot prove it, so it runs as a conventions angle, and `route` sends it only that standard.
+The walk up finds `src/payments/AGENTS.md`, a long adapter contract that a search by name never sees. `exclude` drops large glossaries. `angles.8` lowers the ceiling: the project does not hold a leak or a hot path as a merge blocker, so [angle 8](../angles/8.efficiency.md) stays at `Nit` and `quick` leaves it out. `event-catalog` is the project's own angle for the behavior finders. `naming` checks the names the user sees against the project's naming standard: tooling cannot prove it, so it runs as a conventions angle, and `route` sends it only that standard. `partitions` gives a cohesive module one finder: split by lines, a 1,161-line module went to five finders that duplicated each other's work.
 
 ## Boundaries
 

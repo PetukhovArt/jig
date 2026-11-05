@@ -211,6 +211,13 @@ describe('project config', () => {
     expect(parseProjectConfig('{ "angles": { "16": { "enabled": false }, "13": { "severityCeiling": "Nit" } } }', '.jig/review.jsonc').angles).toEqual({})
     expect(parseProjectConfig('{ "tiers": { "flow": { "tier": "deep", "effort": "high" } } }', '.jig/review.jsonc').grades).toEqual({})
   })
+
+  it('takes the partition policy as a non-empty text', () => {
+    expect(parseProjectConfig('{ "partitions": " One finder per module. " }', '.jig/review.jsonc').partitions).toBe('One finder per module.')
+    expect(parseProjectConfig('{}', '.jig/review.jsonc').partitions).toBeUndefined()
+    expect(() => parseProjectConfig('{ "partitions": 3 }', '.jig/review.jsonc')).toThrow('.jig/review.jsonc: $.partitions: expected a string')
+    expect(() => parseProjectConfig('{ "partitions": "  " }', '.jig/review.jsonc')).toThrow('$.partitions: expected a non-empty text')
+  })
 })
 
 describe('buildReport on a repository', () => {
@@ -409,5 +416,55 @@ describe('buildReport on a repository', () => {
     expect(report.plan.finders.filter((finder) => finder.kind === 'behavior').every((finder) => report.reads[finder.name]?.rules.length === 0)).toBe(true)
     expect(rulesOf('src/gis/map.ts')).toEqual(['AGENTS.md', 'src/gis/AGENTS.md', 'docs/standards/code/naming.md', 'docs/standards/code/vue.md', 'GLOSSARY.md', 'src/gis/GLOSSARY.md'])
     expect(rulesOf('src/journal/list.ts')).toEqual(['AGENTS.md', 'docs/standards/code/naming.md', 'docs/standards/code/vue.md', 'GLOSSARY.md'])
+  })
+
+  describe('a partition policy in the project config', () => {
+    const POLICY = 'One finder per feature module whatever its size.'
+    const repository = (): string => {
+      const root = mkdtempSync(join(tmpdir(), 'jig-review-plan-'))
+      dirs.push(root)
+      vi.stubEnv('JIG_USER_CONFIG', join(root, 'absent.jsonc'))
+      const run = (...args: string[]) => expect(git(['-c', 'user.email=t@t', '-c', 'user.name=t', ...args], root).ok).toBe(true)
+      const body = (name: string): string => Array.from({ length: 200 }, (_, index) => `export const ${name}${index} = ${index}`).join('\n') + '\n'
+      run('init', '-q', '-b', 'main')
+      write(root, '.jig/review.jsonc', JSON.stringify({ partitions: POLICY }))
+      run('add', '-A')
+      run('commit', '-qm', 'base')
+      write(root, 'src/features/editor/a.ts', `import { b0 } from './b'\n${body('a')}`)
+      write(root, 'src/features/editor/b.ts', body('b'))
+      write(root, 'src/features/editor/a.test.ts', "it('a', () => {})\n")
+      write(root, 'src/domain/x/y.ts', body('y'))
+      run('add', '-A')
+      run('commit', '-qm', 'feature')
+      return root
+    }
+
+    it('prints the policy, the code files with their lines and the imports between them, and no formula, finders or diff parts', () => {
+      const report = buildReport(repository(), { base: 'HEAD~1', spec: false, agent: 'claude' })
+      const printed = formatReport(report)
+
+      expect([report.plan.grouping, report.plan.partitions, report.diffFiles, report.estimate]).toEqual(['pending', [], null, null])
+      expect(printed).toContain(`partition policy (.jig/review.jsonc): ${POLICY}`)
+      expect(printed).toContain('  200\tsrc/domain/x/y.ts\n  201\tsrc/features/editor/a.ts\n  200\tsrc/features/editor/b.ts\n')
+      expect(printed).toContain('  src/features/editor/a.ts → src/features/editor/b.ts')
+      expect(printed).not.toMatch(/ceil\(|^finder |^steps for this run/m)
+    })
+
+    it('writes the parts and finders of the given groups and passes the policy to the finders', () => {
+      const root = repository()
+      const plan = (...partitions: { name: string; entries: string[] }[]) => buildReport(root, { base: 'HEAD~1', spec: false, agent: 'claude', partitions })
+      const report = plan({ name: 'editor', entries: ['src/features/editor/'] }, { name: 'domain', entries: ['src/domain/x/y.ts'] })
+
+      expect(report.plan.partitions.map((partition) => [partition.name, partition.files])).toEqual([
+        ['editor', ['src/features/editor/a.test.ts', 'src/features/editor/a.ts', 'src/features/editor/b.ts']],
+        ['domain', ['src/domain/x/y.ts']],
+      ])
+      expect(report.reads['editor-behavior']?.diff.map((path) => path.split('/').pop())).toEqual(['editor-code-01.diff'])
+      expect(formatReport(report)).toContain(`partition policy (to every finder, brief item 7): ${POLICY}`)
+      expect(() => plan({ name: 'editor', entries: ['src/features/editor/'] })).toThrow('--partition: code files in no group: src/domain/x/y.ts')
+      expect(() => plan({ name: 'editor', entries: ['src/features/editor/', 'src/domain/x/y.ts'] }, { name: 'domain', entries: ['src/domain/'] })).toThrow(
+        'src/domain/x/y.ts is in groups editor and domain',
+      )
+    })
   })
 })

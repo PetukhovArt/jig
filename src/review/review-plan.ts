@@ -15,7 +15,7 @@ import { fileSource, isTestFile } from '../catalog/languages'
 import { detectAgent, loadUserConfig, resolveTiers, type TierMap } from '../tiers/tiers'
 import { DIFF_PART_MAX_LINES, isUnreviewed, writeDiffFiles, type Audience, type DiffFiles } from './diff-files'
 import { estimateLine, estimateReview, finderReader, type Estimate } from './estimate'
-import { importEdges, type Partition, type PartitionFile } from './partition'
+import { GROUP_NAME, importEdges, resolveGroups, type Edge, type GroupSpec, type Partition, type PartitionFile } from './partition'
 import { DEFAULT_PRICES } from './prices'
 import { PROJECT_CONFIG, projectConfigFile, ruleDocuments, rulesFor } from './rule-docs'
 import { readReviewedState, rereviewScope, type RereviewScope } from './scope'
@@ -127,9 +127,17 @@ export interface ProjectReviewConfig {
   grades: Record<string, Grade>
   maxParallel: number
   testPaths: string[]
+  partitions: string | undefined
 }
 
-const PROJECT_KEYS = ['$schema', 'iterationsMemory', 'discover', 'review', 'severity', 'route', 'angles', 'tiers', 'maxParallel', 'layout', 'testPaths']
+const PROJECT_KEYS = ['$schema', 'iterationsMemory', 'discover', 'review', 'severity', 'route', 'angles', 'tiers', 'maxParallel', 'layout', 'testPaths', 'partitions']
+
+const readPolicy = (validator: Validator, value: unknown): string | undefined => {
+  const text = validator.string(value, '$.partitions')
+  if (text === undefined) return undefined
+  if (text.trim() === '') return validator.report('$.partitions', 'expected a non-empty text')
+  return text.trim()
+}
 
 const SETTING_KEYS = ['enabled', 'severityCeiling']
 const PROJECT_ANGLE_KEYS = [...SETTING_KEYS, 'file', 'kind']
@@ -204,8 +212,9 @@ export const parseProjectConfig = (text: string, label: string): ProjectReviewCo
   const maxParallel = root?.['maxParallel'] === undefined ? MAX_PARALLEL : validator.integer(root['maxParallel'], '$.maxParallel', 1)
   const layout = root?.['layout'] === undefined ? undefined : validator.oneOf(root['layout'], '$.layout', LAYOUTS)
   const testPaths = root?.['testPaths'] === undefined ? [] : validator.strings(root['testPaths'], '$.testPaths')
+  const partitions = root?.['partitions'] === undefined || root['partitions'] === null ? undefined : readPolicy(validator, root['partitions'])
   if (validator.errors.length > 0) throw new Error(`${label}: ${validator.errors.join('; ')}`)
-  return { layout, angles, projectAngles, grades, maxParallel: maxParallel ?? MAX_PARALLEL, testPaths: testPaths ?? [] }
+  return { layout, angles, projectAngles, grades, maxParallel: maxParallel ?? MAX_PARALLEL, testPaths: testPaths ?? [], partitions }
 }
 
 const loadProjectConfig = (root: string): { label: string; config: ProjectReviewConfig } | undefined => {
@@ -286,6 +295,11 @@ export interface Reads {
   rules: string[]
 }
 
+export interface GroupingInput {
+  files: { path: string; lines: number }[]
+  imports: Edge[]
+}
+
 export interface ReviewPlanReport {
   base: { ref: string; mergeBase: string; source: Base['source'] }
   files: { counted: number; excluded: Record<Exclusion, number>; untracked: number }
@@ -293,6 +307,8 @@ export interface ReviewPlanReport {
   diff: string
   diffFiles: DiffFiles | null
   formula: string
+  policy: string | null
+  grouping: GroupingInput | null
   layout: { name: Layout; source: LayoutSource }
   shape: Shape
   plan: Plan
@@ -404,11 +420,27 @@ const KIND_TEXT: Readonly<Record<FinderKind, string>> = {
   conventions: 'the project angles of kind conventions; reads its rules',
 }
 
+const policyText = (policy: string): string => policy.split('\n').join('\n  ')
+
+const groupingLines = (report: ReviewPlanReport): string[] => {
+  const grouping = report.grouping
+  if (grouping === null || report.policy === null) return []
+  return [
+    `partition policy (${report.config ?? `.jig/${PROJECT_CONFIG}`}): ${policyText(report.policy)}`,
+    `group the code files below by the policy: each in exactly one group, at most ${report.maxParallel} groups; tests and documents join their code themselves. Then run this command again with the same arguments plus one --partition <name>=<path>,<path> per group (name: lowercase letters, digits, dashes; a path ending in / takes every changed file under it). That run is the plan: its steps, finders and diff parts; this one has none`,
+    'code files (counted lines, path):',
+    ...grouping.files.map((file) => `  ${file.lines}\t${file.path}`),
+    ...(grouping.imports.length === 0 ? ['imports between them: none'] : ['imports between them:', ...grouping.imports.map(([from, to]) => `  ${from} → ${to}`)]),
+  ]
+}
+
 const finderLines = (report: ReviewPlanReport): string[] => {
   const { plan } = report
   const byName = new Map(plan.partitions.map((partition) => [partition.name, partition]))
   const lines: string[] = []
-  if (plan.finders.length > 0) lines.push(`partitions: ${plan.partitions.length}, by imports between files and shared directories; a finder traces a link into another partition in the code itself`)
+  const by = plan.grouping === 'groups' ? 'by --partition' : 'by imports between files and shared directories'
+  if (plan.finders.length > 0) lines.push(`partitions: ${plan.partitions.length}, ${by}; a finder traces a link into another partition in the code itself`)
+  if (plan.finders.length > 0 && report.policy !== null) lines.push(`partition policy (to every finder, brief item 7): ${policyText(report.policy)}`)
   for (const finder of plan.finders) {
     lines.push(
       `finder ${finder.name}: partition ${finder.partition} (${partitionText(byName.get(finder.partition))}) · ${finder.kind}: angles ${angleList([...finder.angles, ...finder.projectAngles])} · ${gradeText(finder, report.models)} · fresh, never a fork`,
@@ -449,6 +481,7 @@ export const formatReport = (report: ReviewPlanReport): string => {
   ]
   if (plan.path === 'none') lines.push('finders: none (nothing to review)')
   if (plan.path === 'subagents') lines.push(RUNNER_LINE)
+  if (plan.grouping === 'pending') return [...lines, ...groupingLines(report)].join('\n')
   lines.push(...finderLines(report))
   if (plan.deepening !== undefined) lines.push(`deepening: ${gradeText(plan.deepening, models)}`)
   if (plan.judging === 'self') {
@@ -484,6 +517,7 @@ export interface ReportOptions {
   statePath?: string | undefined
   pluginRoot?: string
   paths?: readonly string[]
+  partitions?: readonly GroupSpec[] | undefined
 }
 
 interface Scoped {
@@ -525,6 +559,12 @@ export const newRunId = (): string => `${Date.now().toString(36)}-${randomBytes(
 
 const reviewDirOf = (root: string, state: boolean): string => (state ? join(ensureJigDir(listWorktrees(root)[0]?.path ?? root).runs, 'review') : join(tmpdir(), 'jig-review'))
 
+const formulaOf = (plan: Plan, lines: number, policy: boolean): string => {
+  if (plan.grouping === 'pending') return 'by the project policy, not by lines: group the code files below, then run again with --partition'
+  if (plan.grouping === 'groups') return `${plan.partitions.length} from --partition${policy ? ', grouped by the project policy' : ''}; two finders each`
+  return `ceil(${lines}/${LINES_PER_FINDER}) = ${Math.ceil(lines / LINES_PER_FINDER)}, max ${MAX_FINDERS} → N = ${plan.n}, at least 1; two finders each`
+}
+
 export const buildReport = (root: string, options: ReportOptions): ReviewPlanReport => {
   const base = resolveBase(root, options.base, 'review-plan', options.paths ?? [])
   const { stats, diffBase, paths, diffPaths, rereview } = scopeOf(root, base, options.paths ?? [], options.statePath)
@@ -540,6 +580,13 @@ export const buildReport = (root: string, options: ReportOptions): ReviewPlanRep
   const testPaths = project?.config.testPaths ?? []
   const layout = resolveLayout(options.layout, options.layoutEnv, project?.config.layout)
   const files = partitionInput(stats, root, testPaths)
+  const edges = importEdges(
+    root,
+    files.filter((file) => file.kind !== 'docs').map((file) => file.path),
+  )
+  const maxParallel = project?.config.maxParallel ?? MAX_PARALLEL
+  const policy = project?.config.partitions
+  const groups = options.partitions === undefined ? undefined : resolveGroups(options.partitions, files, maxParallel)
   const plan = planReview({
     lines,
     shape,
@@ -550,11 +597,12 @@ export const buildReport = (root: string, options: ReportOptions): ReviewPlanRep
     grades: project?.config.grades ?? {},
     rereview: options.rereview === true || rereview !== null,
     files,
-    edges: importEdges(
-      root,
-      files.filter((file) => file.kind !== 'docs').map((file) => file.path),
-    ),
+    edges,
+    groups,
+    policy: policy !== undefined,
   })
+  const pending = plan.grouping === 'pending'
+  const code = new Set(files.filter((file) => file.kind === 'code').map((file) => file.path))
   const loaded = loadUserConfig()
   if (loaded.error !== undefined) throw new Error(`${loaded.label}: ${loaded.error}`)
   const agent = detectAgent(options.agent)
@@ -567,7 +615,7 @@ export const buildReport = (root: string, options: ReportOptions): ReviewPlanRep
   const state = mode === 'review' && options.mergeRequest === true && options.noState !== true
   const pluginRoot = options.pluginRoot ?? resolvePluginRoot()
   const diffFiles =
-    plan.path === 'none' ? null : writeDiffFiles(root, [diffBase, ...pathspec(diffPaths)], reviewDirOf(root, state), (path) => audienceOf(path, root, testPaths), plan.partitions)
+    plan.path === 'none' || pending ? null : writeDiffFiles(root, [diffBase, ...pathspec(diffPaths)], reviewDirOf(root, state), (path) => audienceOf(path, root, testPaths), plan.partitions)
   const partsOf = (partition: string | undefined, angles: readonly Angle[]): string[] => {
     if (diffFiles === null) return []
     const own = partition === undefined ? diffFiles.audiences : diffFiles.partitions[partition]
@@ -590,7 +638,14 @@ export const buildReport = (root: string, options: ReportOptions): ReviewPlanRep
     scope: [...paths],
     diff: diffCommand(diffBase, diffPaths),
     diffFiles,
-    formula: `ceil(${lines}/${LINES_PER_FINDER}) = ${Math.ceil(lines / LINES_PER_FINDER)}, max ${MAX_FINDERS} → N = ${plan.n}, at least 1; two finders each`,
+    formula: formulaOf(plan, lines, policy !== undefined),
+    policy: policy ?? null,
+    grouping: pending
+      ? {
+          files: files.filter((file) => file.kind === 'code').map((file) => ({ path: file.path, lines: file.countedLines })),
+          imports: edges.filter(([from, to]) => code.has(from) && code.has(to)),
+        }
+      : null,
     layout,
     shape,
     plan,
@@ -600,19 +655,32 @@ export const buildReport = (root: string, options: ReportOptions): ReviewPlanRep
     skill: toSlash(join(pluginRoot, 'skills', 'jig-review')),
     steps: stepsFor(plan, mode, state),
     reads: Object.fromEntries(readers),
-    maxParallel: project?.config.maxParallel ?? MAX_PARALLEL,
+    maxParallel,
     config: project?.label ?? null,
     agent,
     models,
     finderModels,
     judge: plan.judging === 'self' ? [] : judgeModels(usedModels, verifyModels),
     run,
-    estimate: plan.path === 'none' ? null : estimateReview(finderReaders, { ...DEFAULT_PRICES, ...loaded.config.prices }),
+    estimate: plan.path === 'none' || pending ? null : estimateReview(finderReaders, { ...DEFAULT_PRICES, ...loaded.config.prices }),
   }
 }
 
 const isMode = (value: string): value is Mode => (MODES as readonly string[]).includes(value)
-const USAGE = 'usage: jig review-plan [<base>] [--selector full|quick|auto|<tokens>] [--layout auto|lean|solo] [--spec] [--mode review|pre-mr] [--mr] [--no-state] [--rereview] [--state <path>] [--agent <id>] [--json] [-- <pathspec>...]'
+const USAGE =
+  'usage: jig review-plan [<base>] [--selector full|quick|auto|<tokens>] [--layout auto|lean|solo] [--spec] [--mode review|pre-mr] [--mr] [--no-state] [--rereview] [--state <path>] [--partition <name>=<path>,<dir>/...]... [--agent <id>] [--json] [-- <pathspec>...]'
+
+export const parseGroupSpec = (text: string): GroupSpec => {
+  const separator = text.indexOf('=')
+  const name = separator === -1 ? '' : text.slice(0, separator).trim()
+  if (!GROUP_NAME.test(name)) throw new Error(`--partition ${text}: expected <name>=<path>,<path> with a name of lowercase letters, digits and dashes`)
+  const entries = text
+    .slice(separator + 1)
+    .split(',')
+    .map((entry) => toSlash(entry.trim()).replace(/^\.\//, ''))
+    .filter((entry) => entry !== '')
+  return { name, entries }
+}
 
 export const splitPathspec = (args: readonly string[]): { options: string[]; paths: string[] | undefined } => {
   const separator = args.indexOf('--')
@@ -650,6 +718,7 @@ export const runReviewPlan: Command = (args) => {
       'no-state': { type: 'boolean' },
       rereview: { type: 'boolean' },
       state: { type: 'string' },
+      partition: { type: 'string', multiple: true },
       json: { type: 'boolean' },
     },
   })
@@ -672,6 +741,7 @@ export const runReviewPlan: Command = (args) => {
     rereview: values.rereview === true,
     statePath: values.state,
     paths,
+    partitions: values.partition?.map(parseGroupSpec),
   })
   process.stdout.write(`${values.json ? JSON.stringify(report) : formatReport(report)}\n`)
   return 0

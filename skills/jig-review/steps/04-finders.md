@@ -4,14 +4,14 @@
 
 `jig review-plan` ([prepare](01-prepare.md#layout)) prints the partitions and the finders of each; spawn exactly what it prints. The rules below explain it, so you can tell when it is wrong for this diff and say so in the summary.
 
-**Files are split, then the kind of work.** The diff's files go into `N` partitions (`N = ceil(LINES / 150)`, at most 5, at least 1; fewer only when the diff has fewer code files). Every partition gets one or two finders, the same for every diff size:
+**Files are split, then the kind of work.** The diff's files go into `N` partitions (`N = ceil(LINES / 150)`, at most 5, at least 1; fewer only when the diff has fewer code files), or into the groups the runner made by the project's partition policy ([prepare](01-prepare.md#partition-policy)). Every partition gets one or two finders, the same for every diff size:
 
 - **`behavior`** (`pN-behavior`): angles 1–5, 8, 12, 14, 15 and the project angles of kind `behavior`: bugs, state, wire contracts, efficiency and leaks, the spec. Deep tier, high effort. It traces a link out of its partition into the code on the other side itself.
 - **`conventions`** (`pN-conventions`): only when the project adds angles of kind `conventions`, and only those. Standard tier, high effort. It reads the indexes, standards and glossaries under its `rules:` line.
 
 Each reads only its kind's angle files and atoms, printed once per kind (`behavior finders … read:`, `conventions finders … read:`). A finder reads only its partition's diff parts; behavior outside it, it reads in the code, changed or not.
 
-**Coupled files stay together.** Code files that import each other and files in one directory land in one partition, within a balance cap (about 1.5 times the average partition): a store imported by every view does not pull the whole diff into one finder. A test joins the source it names or imports; a document joins the partition of its neighbours. A link imports do not show (a store read through a key, an event, a watcher, IPC, a request) crosses partitions as often as not: the finder on either end searches for the other end and reads it, and names the link in `cross:` ([what a finder returns](#what-a-finder-returns)).
+**Coupled files stay together.** With a partition policy, the policy decides that. Without one, code files that import each other and files in one directory land in one partition, within a balance cap (about 1.5 times the average partition): a store imported by every view does not pull the whole diff into one finder. A test joins the source it names or imports; a document joins the partition of its neighbours. A link imports do not show (a store read through a key, an event, a watcher, IPC, a request) crosses partitions as often as not: the finder on either end searches for the other end and reads it, and names the link in `cross:` ([what a finder returns](#what-a-finder-returns)).
 
 **The grades come from the plan.** Defaults: `behavior` deep/high, `conventions` standard/high; the project config overrides them by these two keys ([project config](../references/project-config.md), key `tiers`). The plan's grade wins over the role template's frontmatter.
 
@@ -37,7 +37,7 @@ Spawn every finder of the plan **in one batch**, in parallel, within the [subage
 4. the project root;
 5. the focus note ([prepare](01-prepare.md#focus-note));
 6. facts and decisions ([prepare](01-prepare.md#facts-and-decisions));
-7. the role template path;
+7. the role template path, and the partition policy verbatim when the plan printed `partition policy:`, with the line "your partition was grouped by this policy; links into the other partitions you trace yourself";
 8. **per kind**: the finder's kind and the angle files and atoms printed under its kind (`read:`, `atoms:`), so the finder reads them without searching; `behavior` also gets the spec file when one was found ([prepare](01-prepare.md#spec));
 9. **personal**: this finder's partition, its name and the part paths under its `diff:`. The parts are split by audience: `pN-code-*` always, `pN-docs-*` when angle 15 runs; nobody reads `pN-tests-*`. A finder reads no part outside its `diff:` list; it may open another file by path to confirm a candidate;
 10. **personal**, `conventions` only: the documents under its `rules:` line ([routing](02-rules.md#4-routing)), narrowed by `route` to its angles, each with its scope ("this rule applies only under that directory").
