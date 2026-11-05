@@ -6,12 +6,8 @@ export const FINDER_BASE_CONTEXT = 200_000
 export const TOKENS_PER_LINE = 60
 export const FINDER_BASE_TURNS = 85
 export const LINES_PER_TURN = 120
-export const TURNS_BASE = 15
 export const MAX_TURNS = 150
 export const OUTPUT_PER_TURN = 800
-export const CHARS_PER_TOKEN = 4
-export const MODELER_TOKENS_PER_LINE = 25
-export const MODELER_LINES_PER_TURN = 108
 
 export interface Reader {
   context: number
@@ -27,24 +23,15 @@ export interface ReaderEstimate {
 }
 
 export interface Estimate {
-  modeler: ReaderEstimate
   finders: ReaderEstimate[]
   dollars: number
   priced: boolean
   models: string[]
 }
 
-const turnsFor = (lines: number, perTurn: number, base = TURNS_BASE): number => Math.min(MAX_TURNS, base + Math.ceil(Math.max(0, lines) / perTurn))
-
 export const finderReader = (lines: number, model: string | undefined): Reader => ({
   context: FINDER_BASE_CONTEXT + Math.max(0, lines) * TOKENS_PER_LINE,
-  turns: turnsFor(lines, LINES_PER_TURN, FINDER_BASE_TURNS),
-  model,
-})
-
-export const modelerReader = (indexChars: number, lines: number, model: string | undefined): Reader => ({
-  context: BASE_CONTEXT + Math.ceil(indexChars / CHARS_PER_TOKEN) + Math.max(0, lines) * MODELER_TOKENS_PER_LINE,
-  turns: turnsFor(lines, MODELER_LINES_PER_TURN),
+  turns: Math.min(MAX_TURNS, FINDER_BASE_TURNS + Math.ceil(Math.max(0, lines) / LINES_PER_TURN)),
   model,
 })
 
@@ -56,23 +43,20 @@ export const readerEstimate = (reader: Reader, prices: Readonly<Record<string, P
   return { context: reader.context, turns: reader.turns, dollars, priced: price !== undefined }
 }
 
-export const estimateReview = (modeler: Reader, finders: readonly Reader[], prices: Readonly<Record<string, Price>>): Estimate => {
-  const own = readerEstimate(modeler, prices)
+export const estimateReview = (finders: readonly Reader[], prices: Readonly<Record<string, Price>>): Estimate => {
   const each = finders.map((finder) => readerEstimate(finder, prices))
-  const all = [own, ...each]
-  const models = [...new Set([modeler, ...finders].map((reader) => reader.model).filter((model): model is string => model !== undefined))]
-  return { modeler: own, finders: each, dollars: all.reduce((sum, reader) => sum + reader.dollars, 0), priced: all.every((reader) => reader.priced), models }
+  const models = [...new Set(finders.map((reader) => reader.model).filter((model): model is string => model !== undefined))]
+  return { finders: each, dollars: each.reduce((sum, reader) => sum + reader.dollars, 0), priced: each.every((reader) => reader.priced), models }
 }
 
 const thousands = (tokens: number): string => `${Math.round(tokens / 1000)}k`
 const money = (dollars: number): string => `$${dollars < 10 ? dollars.toFixed(1) : Math.round(dollars).toString()}`
 
 export const estimateLine = (estimate: Estimate): string => {
-  const { modeler, finders } = estimate
-  const finderDollars = finders.reduce((sum, finder) => sum + finder.dollars, 0)
-  const widest = finders.reduce((max, finder) => (finder.context > max.context ? finder : max), finders[0] ?? modeler)
-  const shape = `flow model 1 × ${thousands(modeler.context)} context × ${modeler.turns} turns + finders ${finders.length} × up to ${thousands(widest.context)} × ${widest.turns} turns`
+  const { finders } = estimate
+  const widest = finders.reduce<ReaderEstimate | undefined>((max, finder) => (max === undefined || finder.context > max.context ? finder : max), undefined)
+  const shape = `finders ${finders.length} × up to ${thousands(widest?.context ?? 0)} context × ${widest?.turns ?? 0} turns`
   const models = estimate.models.length > 0 ? estimate.models.join(', ') : 'no model resolved'
   if (!estimate.priced) return `cost estimate: no price for ${models} (prices in ~/.jig/config.jsonc) · ${shape}`
-  return `cost estimate: ~${money(estimate.dollars)} (flow model ${money(modeler.dollars)} + finders ${money(finderDollars)}) · ${shape} · list prices of ${models}; runner and judges not included`
+  return `cost estimate: ~${money(estimate.dollars)} · ${shape} · list prices of ${models}; runner and judges not included`
 }

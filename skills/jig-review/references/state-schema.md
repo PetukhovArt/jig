@@ -1,6 +1,6 @@
 # State file schema
 
-`<main checkout>/.jig/runs/review/<KEY>.json` ([state](../steps/03-state.md)). Next to it: `<KEY>.model.md`, the [flow model](../steps/04-flow-model.md) of the last run, rebuilt by every run; `<KEY>.spec.md`, the spec text ([prepare](../steps/01-prepare.md#spec)); `<KEY>.run/`, the [checkpoint](../steps/04-finders.md#checkpoint).
+`<main checkout>/.jig/runs/review/<KEY>.json` ([state](../steps/03-state.md)). Next to it: `<KEY>.spec.md`, the spec text ([prepare](../steps/01-prepare.md#spec)); `<KEY>.run/`, the [checkpoint](../steps/04-finders.md#checkpoint).
 
 ```json
 {

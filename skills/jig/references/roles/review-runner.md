@@ -26,7 +26,6 @@ ran jig-review: yes|no
 state: <absolute path of the state file>
 head: unchanged <sha8> | moved <reviewed8> → <head8>, N commits | unknown (<reason>)
 spec: <source> · <absolute path of the spec file the review judged by> | none
-model: <absolute path of the flow model>
 tally: <the machine line, verbatim>
 <the survivors as jig-review printed them, each mrComment verbatim>
 <the ## Deepening section verbatim, when the run has one; it is in the state file too>

@@ -52,9 +52,9 @@ export const DEFAULT_GRADES: Readonly<Record<string, Grade>> = {
   outcome: { tier: 'deep', effort: 'medium' },
   composer: { tier: 'standard', effort: 'medium' },
   deepening: { tier: 'deep', effort: 'high' },
-  flow: { tier: 'deep', effort: 'high' },
 }
 export const GRADE_KEYS = Object.keys(DEFAULT_GRADES)
+export const REMOVED_GRADE_KEYS: readonly string[] = ['flow']
 
 export interface Shape {
   newSourceFiles: number
@@ -143,7 +143,6 @@ export interface Plan {
   projectAngles: ProjectAngle[]
   skipped: Skipped[]
   partitions: Partition[]
-  flow: Grade | undefined
   finders: Finder[]
   deepening: Grade | undefined
   verify: Grade
@@ -263,7 +262,6 @@ export const planReview = (input: PlanInput): Plan => {
     projectAngles,
     skipped: skipped.sort(bySkipOrder),
     partitions,
-    flow: path === 'none' ? undefined : roleGrade('flow', grades),
     finders: partitionFinders(partitions, usedForCode, projectAngles, grades),
     deepening: wantsDeepening && n > 0 ? roleGrade('deepening', grades) : undefined,
     verify: roleGrade('verify', grades),
@@ -301,7 +299,6 @@ export const stepsFor = (plan: Plan, mode: Mode, state: boolean): StepRef[] => {
       { file: 'steps/09-rereview.md', when: 'only when the state file exists: replaces the next steps up to rank for its scope' },
     )
   }
-  steps.push({ file: 'steps/04-flow-model.md' })
   if (plan.judging === 'important') {
     steps.push({ file: 'steps/04-finders.md', when: 'without section "Layout solo"' }, { file: 'steps/05-verify.md', when: 'without section "Layout solo"' }, ...gateFiles(plan.angles, plan.projectAngles).map((file) => ({ file })))
   } else steps.push({ file: 'steps/04-finders.md' }, { file: 'steps/05-verify.md', when: 'without section "Layout lean"' })

@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { git } from '../src/core/git'
 import { finderCount, gateFiles, judgeModels, planReview, stepsFor, type Layout, type Mode, type ProjectAngle, type Shape } from '../src/review/layout'
-import { addedLines, buildReport, countLines, formatReport, parseNumstat, parseProjectConfig, readsFor, resolveLayout } from '../src/review/review-plan'
+import { buildReport, countLines, formatReport, parseNumstat, parseProjectConfig, readsFor, resolveLayout } from '../src/review/review-plan'
 
 const CODE_ONLY: Shape = { newSourceFiles: 0, spec: false }
 const EVERY_SHAPE: Shape = { newSourceFiles: 1, spec: true }
@@ -28,9 +28,9 @@ describe('finder count', () => {
 })
 
 describe('layout', () => {
-  it('reviews a small diff like a large one: the flow model and one behavior finder on full by default', () => {
+  it('reviews a small diff like a large one: one behavior finder on full by default', () => {
     const plan = planReview({ lines: 40, shape: EVERY_SHAPE })
-    expect([plan.path, plan.selection.input, plan.selection.source, plan.flow]).toEqual(['subagents', 'full', 'default', { tier: 'deep', effort: 'high' }])
+    expect([plan.path, plan.selection.input, plan.selection.source]).toEqual(['subagents', 'full', 'default'])
     expect(layout(40)).toEqual(['p1-behavior:1+2+3+4+5+8+12+14+15:deep/high'])
   })
 
@@ -96,10 +96,9 @@ describe('layouts', () => {
 describe('steps', () => {
   const files = (lines: number, mode: Mode, state: boolean) => stepsFor(planReview({ lines, shape: CODE_ONLY }), mode, state).map((step) => step.file)
 
-  it('a small pre-mr review builds the flow model, runs the finders and reads no state and no comment texts', () => {
+  it('a small pre-mr review runs the finders and reads no state and no comment texts', () => {
     expect(files(40, 'pre-mr', false)).toEqual([
       'steps/02-rules.md',
-      'steps/04-flow-model.md',
       'steps/04-finders.md',
       'steps/05-verify.md',
       'gates/bugs.md',
@@ -110,13 +109,12 @@ describe('steps', () => {
     ])
   })
 
-  it('a review of a merge request with state reads state and re-review, builds the flow model before the finders, then comment texts and posting', () => {
+  it('a review of a merge request with state reads state and re-review before the finders, then comment texts and posting', () => {
     expect(files(400, 'review', true)).toEqual([
       'steps/02-rules.md',
       'steps/03-state.md',
       'references/state-schema.md',
       'steps/09-rereview.md',
-      'steps/04-flow-model.md',
       'steps/04-finders.md',
       'steps/05-verify.md',
       'gates/bugs.md',
@@ -203,19 +201,15 @@ describe('numstat', () => {
     ])
     expect(counted).toEqual({ lines: 160, counted: 1, excluded: { test: 2, fixture: 1, markdown: 1, lockfile: 2 } })
   })
-
-  it('maps added lines from a -U0 patch', () => {
-    const patch = ['diff --git a/x.ts b/x.ts', '--- a/x.ts', '+++ b/x.ts', '@@ -1,0 +2,2 @@', '+a', '+b', '@@ -9 +11 @@', '-c', '+d'].join('\n')
-    expect([...(addedLines(patch).get('x.ts') ?? [])]).toEqual([2, 3, 11])
-  })
 })
 
 describe('project config', () => {
-  it('reports a bad angle and tier with their paths, and lets a removed angle number pass without effect', () => {
+  it('reports a bad angle and tier with their paths, and lets a removed angle number or tier key pass without effect', () => {
     expect(() => parseProjectConfig('{ "angles": { "18": {} }, "tiers": { "behavior": { "tier": "huge", "effort": "high" } } }', '.jig/review.jsonc')).toThrow(
       '.jig/review.jsonc: $.angles["18"]: expected an angle number of 1, 2, 3, 4, 5, 8, 12, 14, 15 or a project angle name; $.tiers.behavior.tier: expected one of deep, standard, fast',
     )
     expect(parseProjectConfig('{ "angles": { "16": { "enabled": false }, "13": { "severityCeiling": "Nit" } } }', '.jig/review.jsonc').angles).toEqual({})
+    expect(parseProjectConfig('{ "tiers": { "flow": { "tier": "deep", "effort": "high" } } }', '.jig/review.jsonc').grades).toEqual({})
   })
 })
 
@@ -261,11 +255,9 @@ describe('buildReport on a repository', () => {
     expect(scoped.diff).toBe(`git diff ${scoped.base.mergeBase} -- src/a.ts`)
     expect(() => buildReport(root, { base: 'main', spec: false, agent: 'claude', paths: ['lib/a.ts'] })).toThrow('nothing changed against main under lib/a.ts')
     expect(report.plan.partitions.map((partition) => partition.files)).toEqual([['src/a.ts'], ['src/b.test.ts', 'src/b.ts']])
-    expect(report.flowModel?.path).toBe(`${report.diffFiles?.dir}/model-${report.run}.md`)
     expect(report.diffFiles?.dir.startsWith(tmpdir().replaceAll('\\', '/'))).toBe(true)
     expect(buildReport(root, { base: 'main', spec: false, agent: 'claude' }).run).not.toBe(report.run)
-    expect(report.reads['flow-model']?.diff).toEqual([])
-    expect(readFileSync(report.flowModel?.index ?? '', 'utf8')).toMatch(/== src\/b\.ts \[p2\] changed \+1-200/)
+    expect(Object.keys(report.reads)).toEqual(['p1-behavior', 'p2-behavior'])
   })
 
   it('writes the diff for subagents once, compact, in parts that keep each file whole and an index of line ranges', () => {
@@ -359,7 +351,7 @@ describe('buildReport on a repository', () => {
     expect(partsOf(`${store?.name}-behavior`, bugsOnly)).toEqual([`${store?.name}-code-01.diff`])
   })
 
-  it('prints the cost estimate, the flow model before any finder, and one finder per partition with every angle', () => {
+  it('prints the finders-only cost estimate and one finder per partition with every angle', () => {
     const root = mkdtempSync(join(tmpdir(), 'jig-review-plan-'))
     dirs.push(root)
     vi.stubEnv('JIG_USER_CONFIG', join(root, 'absent.jsonc'))
@@ -386,11 +378,7 @@ describe('buildReport on a repository', () => {
     expect(finders).toHaveLength(4)
     expect(finders.every((line) => line.endsWith('· fresh, never a fork'))).toBe(true)
     expect(finders[0]).toMatch(/^finder p1-behavior: partition p1 \(2 files, 200 lines, under src\/a, src\/b\) · behavior: angles 1\+2\+3\+4\+5\+8\+12\+14 · deep\/high opus/)
-    expect(printed.findIndex((line) => line.startsWith('flow model: first'))).toBeLessThan(printed.findIndex((line) => line.startsWith('finder ')))
-    expect(printed.find((line) => line.startsWith('cost estimate: '))).toMatch(/^cost estimate: ~\$\d+(\.\d)? \(flow model .* finders 4 × up to \d+k × \d+ turns · list prices of opus;/)
-    const steps = printed.filter((line) => line.startsWith('  ') && line.includes('/steps/'))
-    expect(steps.findIndex((line) => line.includes('04-flow-model.md'))).toBeLessThan(steps.findIndex((line) => line.includes('04-finders.md')))
-  })
+    expect(printed.find((line) => line.startsWith('cost estimate: '))).toMatch(/^cost estimate: ~\$\d+(\.\d)? · finders 4 × up to \d+k context × \d+ turns · list prices of opus;/)  })
 
   it('routes the standards an AGENTS.md links under docs/ to every conventions finder whose partition they cover', () => {
     const root = mkdtempSync(join(tmpdir(), 'jig-review-plan-'))

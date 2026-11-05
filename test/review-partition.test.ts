@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { estimateLine, estimateReview, finderReader, modelerReader } from '../src/review/estimate'
+import { estimateLine, estimateReview, finderReader } from '../src/review/estimate'
 import { importSpecifiers, partitionFiles, resolveEdges, type PartitionFile } from '../src/review/partition'
 import { DEFAULT_PRICES } from '../src/review/prices'
 
@@ -72,28 +72,21 @@ describe('import edges', () => {
 
 describe('cost estimate', () => {
   it('a partitioned run costs less than the same diff read whole by as many finders', () => {
-    const partitioned = estimateReview(modelerReader(200_000, 10_000, 'opus'), Array.from({ length: 5 }, () => finderReader(2000, 'opus')), DEFAULT_PRICES)
-    const whole = estimateReview(modelerReader(0, 0, 'opus'), Array.from({ length: 5 }, () => finderReader(10_000, 'opus')), DEFAULT_PRICES)
+    const partitioned = estimateReview(Array.from({ length: 5 }, () => finderReader(2000, 'opus')), DEFAULT_PRICES)
+    const whole = estimateReview(Array.from({ length: 5 }, () => finderReader(10_000, 'opus')), DEFAULT_PRICES)
     expect(partitioned.dollars).toBeLessThan(whole.dollars / 2)
   })
 
-  it('prices the modeler by its index, not by the whole diff a finder would read', () => {
-    expect(estimateReview(modelerReader(200_000, 10_000, 'opus'), [], DEFAULT_PRICES).modeler.dollars).toBeLessThan(estimateReview(finderReader(10_000, 'opus'), [], DEFAULT_PRICES).modeler.dollars / 2)
-  })
-
   it('names the model it has no price for instead of printing $0', () => {
-    expect(estimateLine(estimateReview(modelerReader(1000, 500, 'gpt-x'), [finderReader(500, 'gpt-x')], DEFAULT_PRICES))).toMatch(/^cost estimate: no price for gpt-x/)
+    expect(estimateLine(estimateReview([finderReader(500, 'gpt-x')], DEFAULT_PRICES))).toMatch(/^cost estimate: no price for gpt-x/)
   })
 
-  it('lands near the measured run on a large merge request: the model $14 over ~110 turns, an Opus finder of ~2000 lines $11-20 over ~100 turns', () => {
-    const run = estimateReview(modelerReader(172_873, 10_263, 'opus'), [finderReader(2050, 'opus')], DEFAULT_PRICES)
-    expect(run.modeler.dollars).toBeGreaterThan(10)
-    expect(run.modeler.dollars).toBeLessThan(18)
-    expect(run.modeler.turns).toBeGreaterThan(95)
+  it('lands near the measured run on a large merge request: an Opus finder of ~2000 lines $11-20 over ~100 turns', () => {
+    const run = estimateReview([finderReader(2050, 'opus')], DEFAULT_PRICES)
     expect(run.finders[0]?.dollars).toBeGreaterThan(10)
     expect(run.finders[0]?.dollars).toBeLessThan(20)
     expect(run.finders[0]?.turns).toBeGreaterThan(90)
-    const sizes = estimateReview(modelerReader(0, 0, 'opus'), [finderReader(777, 'opus'), finderReader(3075, 'opus')], DEFAULT_PRICES).finders
+    const sizes = estimateReview([finderReader(777, 'opus'), finderReader(3075, 'opus')], DEFAULT_PRICES).finders
     expect(sizes.map((finder) => finder.turns).every((turns) => turns >= 85 && turns <= 120)).toBe(true)
     expect(sizes.map((finder) => finder.context).every((context) => context >= 240_000 && context <= 420_000)).toBe(true)
   })

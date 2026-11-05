@@ -13,8 +13,7 @@ Two modes:
 
 ```text
 jig review-plan     code: counts the diff, picks the angles and the layout, partitions the files, splits the diff into parts, estimates the cost
-   flow model       a model: reads the flow index code wrote, writes the states, transitions and cross-module links
-   finders          models: one per partition, every angle, reads only its partition's parts and the flow model
+   finders          models: one per partition, every angle, reads only its partition's parts, traces links into the rest
    dedup            one defect raised by several finders becomes one candidate
    judges           another model: CONFIRMED or REFUTED, each with a quoted line
    gates            severity, shape and rare gates cut what does not block a merge
@@ -23,9 +22,7 @@ jig review-plan     code: counts the diff, picks the angles and the layout, part
 
 **The plan is deterministic.** `jig review-plan` decides from the diff alone: how many lines count, which angles run, how the files split into partitions, inline or with finders, which model and effort each finder gets, which judge, what the run should cost, and which step files the agent reads. Same diff, same plan ([commands](commands.md)).
 
-**Every review starts with a flow model.** `jig review-plan` writes a flow index by code: the changed files and their direct importers, with imports, exports and the flow sites by `file:line` (stores, watchers and lifecycle hooks, events, IPC, requests, timers, routes; patterns for TypeScript, JavaScript and Vue, imports only for other extensions). One subagent builds from it, opening code only at the sites it needs, and writes, as text, the states and events of the features it touches, each transition with the `file:line` of its handler, every link across modules and processes (stores, watchers, events, requests, IPC) and, when a spec was found, its rules as checkable sentences. Every finder and judge reads it; the output names its file, so a UI verification or a bug bash can start from it ([flow model](../skills/jig-review/steps/04-flow-model.md)).
-
-**Finders split the files, not the questions.** The diff's files go into `N` partitions: files that import each other or share a directory stay together. Each finder takes one partition with every selected angle and reads only its part of the diff; for behavior on the other side of a partition it reads the flow model, and a candidate that crosses partitions names the model's link so the judge checks both sides. When finders split by angle, each re-read the whole diff: on a 10,263-line merge request seven of them cost about $90, mostly re-reading the same context.
+**Finders split the files, not the questions.** The diff's files go into `N` partitions: files that import each other or share a directory stay together. Each finder takes one partition with every selected angle and reads only its part of the diff; behavior on the other side of a partition it reads in the code itself, and a candidate that crosses partitions names the link and the other side's `file:line` so the judge checks both sides. When finders split by angle, each re-read the whole diff: on a 10,263-line merge request seven of them cost about $90, mostly re-reading the same context.
 
 **Angles, not topics.** An angle is one concrete question with a procedure and a condition for evidence. There are 9: bugs (line by line, removed behavior, call tracing, language traps, wrappers, guards without siblings, security), efficiency (leaks, CPU load the user feels, work on a proven hot path) and spec conformance ([angles](../skills/jig-review/angles/00-index.md)).
 
@@ -52,9 +49,9 @@ Counted lines leave out tests, fixtures, documents, lock files and unedited rena
 | any size (`auto`) | lean | per partition a fresh `behavior` finder (bugs, state, contracts, efficiency, spec; deep/high), plus a `conventions` finder (standard/high) only for the project's own angles of that kind | the session; one judge on another model for the `Important` ones |
 | any, by `--layout solo` | solo | the same finders | each finder proves its own candidates; no judge |
 
-Every layout starts with the flow model. Without state the run's files (diff parts, flow index, flow model) go to the OS temp dir; each plan prints a new `run:` id, and a flow model is reused only by a retry of the same run. `jig review-plan` prints a one-line cost estimate: the flow model and each finder, by the context its share of the diff grows and the turns it takes (calibrated on a measured 10,263-line run: the model about 110 turns, a finder about 100 turns at 250-400k tokens), at the list prices of each finder's tier model (`prices` in the [user config](configuration.md#user-config) override them); the runner and the judges are not in it.
+Without state the run's diff parts go to the OS temp dir; each plan prints a new `run:` id, and finder checkpoints are reused only by a retry of the same run. `jig review-plan` prints a one-line cost estimate: each finder, by the context its share of the diff grows and the turns it takes (calibrated on a measured 10,263-line run: a finder about 100 turns at 250-400k tokens), at the list prices of each finder's tier model (`prices` in the [user config](configuration.md#user-config) override them); the runner and the judges are not in it.
 
-A re-review under 600 new lines is one partition with its finders, after a flow model rebuilt on the new range and its links to unchanged code. A selector narrows a run: `quick` keeps only what blocks a merge, `full` runs every angle, `auto` picks by the diff shape, tokens like `bugs,security` pick by hand ([selector](../skills/jig-review/references/selector.md)).
+A re-review under 600 new lines is one partition with its finders. A selector narrows a run: `quick` keeps only what blocks a merge, `full` runs every angle, `auto` picks by the diff shape, tokens like `bugs,security` pick by hand ([selector](../skills/jig-review/references/selector.md)).
 
 ## Re-review and outcomes
 

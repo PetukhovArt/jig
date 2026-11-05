@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto'
-import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { isAbsolute, join, relative, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
@@ -14,8 +14,7 @@ import { isLockfile } from '../catalog'
 import { fileSource, isTestFile } from '../catalog/languages'
 import { detectAgent, loadUserConfig, resolveTiers, type TierMap } from '../tiers/tiers'
 import { DIFF_PART_MAX_LINES, isUnreviewed, writeDiffFiles, type Audience, type DiffFiles } from './diff-files'
-import { estimateLine, estimateReview, finderReader, modelerReader, type Estimate } from './estimate'
-import { changedFile, findImporters, flowIndex } from './flow-index'
+import { estimateLine, estimateReview, finderReader, type Estimate } from './estimate'
 import { importEdges, type Partition, type PartitionFile } from './partition'
 import { DEFAULT_PRICES } from './prices'
 import { PROJECT_CONFIG, projectConfigFile, ruleDocuments, rulesFor } from './rule-docs'
@@ -33,6 +32,7 @@ import {
   FINDER_KINDS,
   PROJECT_ANGLE_NAME,
   REMOVED_ANGLES,
+  REMOVED_GRADE_KEYS,
   angleNumber,
   isLayout,
   isTier,
@@ -120,26 +120,6 @@ export const countLines = (stats: readonly FileStat[], root?: string): { lines: 
   return { lines, counted, excluded }
 }
 
-export const addedLines = (patch: string): Map<string, Set<number>> => {
-  const files = new Map<string, Set<number>>()
-  let current: Set<number> | undefined
-  for (const line of patch.split('\n')) {
-    const file = /^\+\+\+ (?:b\/)?(.*)$/.exec(line)
-    if (file !== null) {
-      const path = file[1] ?? ''
-      current = path === '/dev/null' ? undefined : new Set()
-      if (current !== undefined) files.set(path, current)
-      continue
-    }
-    const hunk = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/.exec(line)
-    if (hunk === null || current === undefined) continue
-    const start = Number(hunk[1])
-    const length = hunk[2] === undefined ? 1 : Number(hunk[2])
-    for (let offset = 0; offset < length; offset++) current.add(start + offset)
-  }
-  return files
-}
-
 export interface ProjectReviewConfig {
   layout: Layout | undefined
   angles: Partial<Record<Angle, AngleSettings>>
@@ -200,10 +180,11 @@ const readAngles = (validator: Validator, value: unknown): Pick<ProjectReviewCon
 }
 
 const readGrades = (validator: Validator, value: unknown): Record<string, Grade> => {
-  const object = validator.object(value, '$.tiers', GRADE_KEYS)
+  const object = validator.object(value, '$.tiers', [...GRADE_KEYS, ...REMOVED_GRADE_KEYS])
   if (object === undefined) return {}
   const grades: Record<string, Grade> = {}
   for (const [key, entry] of Object.entries(object)) {
+    if (REMOVED_GRADE_KEYS.includes(key)) continue
     const path = childPath('$.tiers', key)
     const grade = validator.object(entry, path, ['tier', 'effort'])
     if (grade === undefined) continue
@@ -327,14 +308,10 @@ export interface ReviewPlanReport {
   models: TierMap | undefined
   finderModels: Record<string, string | undefined>
   judge: JudgeModel[]
-  flowModel: { path: string; index: string; model: string | undefined } | null
   estimate: Estimate | null
   run: string
 }
 
-export const FLOW_READER = 'flow-model'
-export const FLOW_ATOMS = ['change-impact', 'domain-model', 'system-edges']
-export const STATE_MODEL_PATH = '<state file without .json>.model.md'
 export const LAYOUT_ENV = 'JIG_REVIEW_LAYOUT'
 export const DEFAULT_LAYOUT: Layout = 'auto'
 
@@ -422,26 +399,16 @@ const partitionText = (partition: Partition | undefined): string => {
   return `${partition.files.length} file${partition.files.length === 1 ? '' : 's'}, ${partition.lines} lines, under ${dirs}`
 }
 
-const flowModelLines = (report: ReviewPlanReport): string[] => {
-  const { plan } = report
-  if (plan.flow === undefined || report.flowModel === null) return []
-  return [
-    `flow model: first, before any finder: one subagent, role flow-modeler, ${gradeText(plan.flow, report.models)} · writes ${report.flowModel.path} · every finder and judge gets it`,
-    `  index: ${report.flowModel.index} (the changed files and their direct importers: imports, exports and flow sites by line; the modeler opens code only at the sites it needs)`,
-    ...(report.reads[FLOW_READER]?.atoms.length ? [`  atoms: ${report.reads[FLOW_READER]?.atoms.join(' ')}`] : []),
-  ]
-}
-
 const KIND_TEXT: Readonly<Record<FinderKind, string>> = {
-  behavior: 'bugs, state, wire contracts, spec; reads the flow model',
-  conventions: 'the project angles of kind conventions; reads its rules, the flow model only for names across partitions',
+  behavior: 'bugs, state, wire contracts, spec',
+  conventions: 'the project angles of kind conventions; reads its rules',
 }
 
 const finderLines = (report: ReviewPlanReport): string[] => {
   const { plan } = report
   const byName = new Map(plan.partitions.map((partition) => [partition.name, partition]))
   const lines: string[] = []
-  if (plan.finders.length > 0) lines.push(`partitions: ${plan.partitions.length}, by imports between files and shared directories; a link that crosses partitions is in the flow model`)
+  if (plan.finders.length > 0) lines.push(`partitions: ${plan.partitions.length}, by imports between files and shared directories; a finder traces a link into another partition in the code itself`)
   for (const finder of plan.finders) {
     lines.push(
       `finder ${finder.name}: partition ${finder.partition} (${partitionText(byName.get(finder.partition))}) · ${finder.kind}: angles ${angleList([...finder.angles, ...finder.projectAngles])} · ${gradeText(finder, report.models)} · fresh, never a fork`,
@@ -469,7 +436,7 @@ export const formatReport = (report: ReviewPlanReport): string => {
       : [
           `diff files: ${report.diffFiles.index} · ${report.diffFiles.parts.length} part${report.diffFiles.parts.length === 1 ? '' : 's'} of at most ${DIFF_PART_MAX_LINES} lines, each file whole, split by partition, then into code, tests and docs; each reader reads only the parts under its \`diff:\`, never the diff command`,
         ]),
-    `run: ${report.run} (the flow model and checkpoints of this run carry it; another run never reuses them)`,
+    `run: ${report.run} (the checkpoints of this run carry it; another run never reuses them)`,
     `partitions: ${report.formula}`,
     layoutLine(report),
     `shape: new source files ${report.shape.newSourceFiles} · spec ${report.shape.spec ? 'yes' : 'no'}`,
@@ -482,7 +449,6 @@ export const formatReport = (report: ReviewPlanReport): string => {
   ]
   if (plan.path === 'none') lines.push('finders: none (nothing to review)')
   if (plan.path === 'subagents') lines.push(RUNNER_LINE)
-  lines.push(...flowModelLines(report))
   lines.push(...finderLines(report))
   if (plan.deepening !== undefined) lines.push(`deepening: ${gradeText(plan.deepening, models)}`)
   if (plan.judging === 'self') {
@@ -555,31 +521,9 @@ const partitionInput = (stats: readonly FileStat[], root: string, testPaths: rea
       return { path: stat.path, kind, countedLines: kind === 'code' ? stat.added + stat.deleted : 0 }
     })
 
-const flowModelPath = (statePath: string | undefined, state: boolean, diffFiles: DiffFiles | null, run: string): string => {
-  if (statePath !== undefined) return toSlash(statePath.replace(/\.json$/, '.model.md'))
-  if (state) return STATE_MODEL_PATH
-  return diffFiles === null ? '' : `${diffFiles.dir}/model-${run}.md`
-}
-
 export const newRunId = (): string => `${Date.now().toString(36)}-${randomBytes(3).toString('hex')}`
 
 const reviewDirOf = (root: string, state: boolean): string => (state ? join(ensureJigDir(listWorktrees(root)[0]?.path ?? root).runs, 'review') : join(tmpdir(), 'jig-review'))
-
-const writeFlowIndex = (
-  root: string,
-  diffBase: string,
-  diffPaths: readonly string[],
-  partitions: readonly Partition[],
-  isCode: (path: string) => boolean,
-  path: string,
-): string => {
-  const patch = git(['diff', '-U0', '-M', '--no-color', '--no-ext-diff', diffBase, ...pathspec(diffPaths)], root)
-  const added = patch.ok ? addedLines(patch.stdout) : new Map<string, Set<number>>()
-  const code = partitions.flatMap((partition) => partition.files.filter(isCode).map((file) => changedFile(root, file, partition.name, added.get(file) ?? new Set())))
-  const text = flowIndex(code, findImporters(root, code.map((file) => file.path), isCode))
-  writeFileSync(path, text)
-  return text
-}
 
 export const buildReport = (root: string, options: ReportOptions): ReviewPlanReport => {
   const base = resolveBase(root, options.base, 'review-plan', options.paths ?? [])
@@ -638,15 +582,6 @@ export const buildReport = (root: string, options: ReportOptions): ReviewPlanRep
     rules: kind === 'conventions' ? rulesFor(ruleInputs, filesOf(partition)) : [],
   })
   const readers: [string, Reads][] = plan.finders.map((finder) => [finder.name, readsOf(finder.partition, finder.kind, finder.angles)])
-  const flowReads: Reads = {
-    angles: [],
-    rules: [],
-    atoms: FLOW_ATOMS.map((name) => join(pluginRoot, 'atoms', `${name}.md`)).filter((path) => existsSync(path)).map(toSlash),
-    diff: [],
-  }
-  const flowIndexPath = diffFiles === null ? '' : `${diffFiles.dir}/index-flow.txt`
-  const flowIndexText = diffFiles === null ? '' : writeFlowIndex(root, diffBase, diffPaths, plan.partitions, (path) => audienceOf(path, root, testPaths) === 'code', flowIndexPath)
-  const deepModel = plan.flow === undefined ? undefined : models?.[plan.flow.tier]?.[0]
   const byPartition = new Map(plan.partitions.map((partition) => [partition.name, partition.lines]))
   const finderReaders = plan.finders.map((finder) => finderReader(byPartition.get(finder.partition) ?? 0, finderModels[finder.name]))
   return {
@@ -664,16 +599,15 @@ export const buildReport = (root: string, options: ReportOptions): ReviewPlanRep
     rereview,
     skill: toSlash(join(pluginRoot, 'skills', 'jig-review')),
     steps: stepsFor(plan, mode, state),
-    reads: Object.fromEntries([...readers, ...(plan.flow === undefined ? [] : [[FLOW_READER, flowReads] as [string, Reads]])]),
+    reads: Object.fromEntries(readers),
     maxParallel: project?.config.maxParallel ?? MAX_PARALLEL,
     config: project?.label ?? null,
     agent,
     models,
     finderModels,
     judge: plan.judging === 'self' ? [] : judgeModels(usedModels, verifyModels),
-    flowModel: plan.flow === undefined ? null : { path: flowModelPath(options.statePath, state, diffFiles, run), index: flowIndexPath, model: deepModel },
     run,
-    estimate: plan.flow === undefined ? null : estimateReview(modelerReader(flowIndexText.length, plan.lines, deepModel), finderReaders, { ...DEFAULT_PRICES, ...loaded.config.prices }),
+    estimate: plan.path === 'none' ? null : estimateReview(finderReaders, { ...DEFAULT_PRICES, ...loaded.config.prices }),
   }
 }
 

@@ -43,7 +43,7 @@ Mode `review`. Always printed, in this order.
    With `suppressed_rare`, then the line `known risks: <file> · <defect>; …` ([rare gate](../gates/bugs.md#rare-gate)).
    **The `spec` tail is always printed**, in one of three forms: `spec: N findings` ([angle 15](../angles/15.spec.md) ran and found something), `spec: matches` (ran and found nothing), `spec: not found` (did not run, with the reason when a named task could not be read). Without it a matching spec is indistinguishable from an unchecked one. The first two end with the source and the file the finder read ([prepare](01-prepare.md#spec)): `spec: 2 findings (PROJ-46 · <path>)`.
    A learnings file exists: the line ends with `· learnings: N active`.
-2. **Cost line:** `agents: 1 flow model + 5 finders + 4 verify + 1 composer · 0.9M tokens · 4m12s (flow model 1m10s, finders 1m50s, verify 1m30s)` (inline: `agents: 1 flow model + inline + 1 verify`), then the finder plan with partitions, tiers and models, then `judge: <finder model> → <judge model>` pairs, then `· rules: <path>` or `rules: not found`, then `· selector: <tokens>` or `selector: full` (for `auto` with the expansion: `auto → important,deepening`). Below it, on its own line, `model: <absolute path of the flow model>` ([flow model](04-flow-model.md)): a caller hands it to a UI verification or a bug bash.
+2. **Cost line:** `agents: 5 finders + 4 verify + 1 composer · 0.9M tokens · 4m12s (finders 3m00s, verify 1m12s)` (inline: `agents: inline + 1 verify`), then the finder plan with partitions, tiers and models, then `judge: <finder model> → <judge model>` pairs, then `· rules: <path>` or `rules: not found`, then `· selector: <tokens>` or `selector: full` (for `auto` with the expansion: `auto → important,deepening`).
 3. **Machine line** on its own line; consumers (a review cycle, CI gates) parse it and do not read the prose:
 
 ```json
@@ -89,7 +89,6 @@ Print, in this order:
 > <one paragraph: what the change is for, from the task, the commits and the code>
 
 ### Reviewers
-- flow model: <path>
 - finder <name>: partition <pN>, angles <list>, <tier/effort> <model>, <N> candidates   (inline: `inline: angles <list>, <your model>, <N> candidates`)
 - judges: <finder model> → <judge model>, <M> clusters   (inline: `judge: <model>, <K> Important candidates` or `judge: inline only`)
 

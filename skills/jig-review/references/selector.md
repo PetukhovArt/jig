@@ -51,14 +51,13 @@ A finder's grade comes from its kind, not from its angles ([finders](../steps/04
 | `verify` (role `verifier`) | deep / medium |
 | `outcome` (role `outcome-checker`) | deep / medium |
 | `composer` (role `composer`) | standard / medium |
-| `flow` (role `flow-modeler`) | deep / high |
 | `deepening` (role `deepener`) | deep / high |
 
 The verify judge takes another model of its tier than the finder whose candidates it judges ([verify](../steps/05-verify.md#judges)).
 
 ## Deepening
 
-Not an angle and not a thread: a proposal, not a defect; verify does not judge it. One agent, role `deepener`, gets the diff, the [flow model](../steps/04-flow-model.md) and atom `module-depth`, looks at new and heavily changed modules and returns one deepening, the one with the largest effect: the most leverage for callers and locality for maintainers (how many callers stop knowing what the interface would hide). The brief names the comment language: the text fields and the diagram labels are written in it. Format: module, what to deepen, effect, blast radius (how many callers change, with paths), and `diagram`: a before and an after Mermaid `flowchart` (modules as nodes, the leaking ones in red, the deep one dark, edges only from imports the deepener read). The blast radius is reported but does not decide. Printed as its own section after the findings ([output](../steps/08-output.md#output)); in mode `pre-mr` it goes to Consider. With state on it is written to state as `deepening` ([schema](state-schema.md)) and posting puts it in the FYI note as its own section, one labelled line per field and the diagram as `mermaid` blocks ([posting](posting.md#8-the-fyi-note-one-per-merge-request)): never a thread, never in the tally, never under the outcome check.
+Not an angle and not a thread: a proposal, not a defect; verify does not judge it. One agent, role `deepener`, gets the diff and atom `module-depth`, looks at new and heavily changed modules and returns one deepening, the one with the largest effect: the most leverage for callers and locality for maintainers (how many callers stop knowing what the interface would hide). The brief names the comment language: the text fields and the diagram labels are written in it. Format: module, what to deepen, effect, blast radius (how many callers change, with paths), and `diagram`: a before and an after Mermaid `flowchart` (modules as nodes, the leaking ones in red, the deep one dark, edges only from imports the deepener read). The blast radius is reported but does not decide. Printed as its own section after the findings ([output](../steps/08-output.md#output)); in mode `pre-mr` it goes to Consider. With state on it is written to state as `deepening` ([schema](state-schema.md)) and posting puts it in the FYI note as its own section, one labelled line per field and the diagram as `mermaid` blocks ([posting](posting.md#8-the-fyi-note-one-per-merge-request)): never a thread, never in the tally, never under the outcome check.
 
 ## Re-review
 

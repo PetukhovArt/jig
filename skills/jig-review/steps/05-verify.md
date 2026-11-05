@@ -14,7 +14,7 @@ Two finders on both ends of one cross-partition chain raise it from their own pa
 
 ## Cross-partition candidates
 
-A candidate with `cross: L<n>` ([finder output](04-finders.md#what-a-finder-returns)) is judged on both sides: whoever judges it (a judge subagent, or you under `lean`) reads the link `L<n>` in the flow model, then the code on the other side at the `file:line` it names, before the verdict. The model says where to look; the verdict quotes the code on both sides. The model and the code disagree (the link is not there): the code wins, and the summary names the gap in the model.
+A candidate with `cross:` ([finder output](04-finders.md#what-a-finder-returns)) is judged on both sides: whoever judges it (a judge subagent, or you under `lean`) reads the code on the other side at the `file:line` it names before the verdict, and the verdict quotes the code on both sides. The link is not there: `REFUTED`, with the line that shows it.
 
 ## Head before verify
 
@@ -39,11 +39,10 @@ No `CONFIRMED` `Important` after your own gates: no subagent; the output says `j
 One or more: spawn **one** judge subagent for all of them, role `verifier`, fresh, in the foreground, on the model and grade `jig review-plan` printed (`candidates from <model A> → judge <model B>`; a tier with one model: the summary says `judge: same model as the finder`). Brief, in this order:
 
 1. the diff index `jig review-plan` printed under `diff files:` (the judge reads its candidates' files by their line ranges in the parts);
-2. the flow model path ([flow model](04-flow-model.md));
-3. the Important candidates with your evidence;
-4. the project's severity sections verbatim ([source](02-rules.md#severity-source)); no project section: the path `<skill>/gates/severity.md` instead;
-5. the angle ceilings from the config when set, facts and decisions ([prepare](01-prepare.md#facts-and-decisions)), on a re-review the **fix-hunk map** ([re-review](09-rereview.md));
-6. paths only: the gate files of these candidates' classes (`<skill>/gates/bugs.md` for bug angles, `<skill>/gates/shape.md` for the rest, `<skill>/gates/severity.md` always) and the role template `<root>/skills/jig/references/roles/verifier.md`. Never paste the gate text.
+2. the Important candidates with your evidence;
+3. the project's severity sections verbatim ([source](02-rules.md#severity-source)); no project section: the path `<skill>/gates/severity.md` instead;
+4. the angle ceilings from the config when set, facts and decisions ([prepare](01-prepare.md#facts-and-decisions)), on a re-review the **fix-hunk map** ([re-review](09-rereview.md));
+5. paths only: the gate files of these candidates' classes (`<skill>/gates/bugs.md` for bug angles, `<skill>/gates/shape.md` for the rest, `<skill>/gates/severity.md` always) and the role template `<root>/skills/jig/references/roles/verifier.md`. Never paste the gate text.
 
 Never `sleep` and never poll its output.
 
