@@ -16,6 +16,7 @@ Every role template names a tier and an effort in its frontmatter: `metadata.tie
 ## Mapping
 
 - `jig tiers` prints, per tier, an ordered list of models: the built-in defaults for the agent, overridden by the `tiers` key in `~/.jig/config.jsonc`.
-- Built-in defaults: Claude Code: `deep` → opus, sonnet; `standard` → sonnet; `fast` → haiku. Other agents have no built-in mapping.
+- Built-in defaults: Claude Code: `deep` → opus, sonnet; `standard` → sonnet; `fast` → haiku. Codex: `deep` → gpt-6-luna, gpt-5.6-terra; `standard` → gpt-6-luna; `fast` → gpt-5.6-luna. Other agents have no built-in mapping.
+- The agent is `--agent`, else `JIG_AGENT`, else the one whose environment variables are set.
 - A single subagent takes the first model of its tier. Parallel candidates take the models in order (`references/coliseum.md`).
 - No mapping for this agent: choose the model that fits the tier description above.

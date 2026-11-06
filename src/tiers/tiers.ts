@@ -32,6 +32,7 @@ export interface LoadedUserConfig {
 export const UNKNOWN_AGENT = 'unknown'
 
 const USER_CONFIG_ENV = 'JIG_USER_CONFIG'
+const AGENT_OVERRIDE_ENV = 'JIG_AGENT'
 const DEFAULT_LABEL = '~/.jig/config.jsonc'
 const AGENT_ID = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/
 const NO_MAPPING =
@@ -39,12 +40,13 @@ const NO_MAPPING =
 
 const DEFAULT_TIERS: Readonly<Record<string, TierMap>> = {
   claude: { deep: ['opus', 'sonnet'], standard: ['sonnet'], fast: ['haiku'] },
+  codex: { deep: ['gpt-6-luna', 'gpt-5.6-terra'], standard: ['gpt-6-luna'], fast: ['gpt-5.6-luna'] },
 }
 
 const AGENT_ENV: readonly { agent: string; vars: readonly string[] }[] = [
   { agent: 'claude', vars: ['CLAUDECODE', 'CLAUDE_CODE_ENTRYPOINT'] },
   { agent: 'cursor', vars: ['CURSOR_AGENT', 'CURSOR_VERSION'] },
-  { agent: 'codex', vars: ['CODEX_SANDBOX', 'CODEX_SANDBOX_NETWORK_DISABLED'] },
+  { agent: 'codex', vars: ['CODEX_THREAD_ID', 'CODEX_SANDBOX', 'CODEX_SANDBOX_NETWORK_DISABLED'] },
 ]
 
 const emptyUserConfig = (): UserConfig => ({ tiers: {}, prices: {} })
@@ -146,6 +148,8 @@ export const loadUserConfig = (env: NodeJS.ProcessEnv = process.env): LoadedUser
 
 export const detectAgent = (flag: string | undefined, env: NodeJS.ProcessEnv = process.env): string => {
   if (flag) return flag
+  const override = env[AGENT_OVERRIDE_ENV]?.trim()
+  if (override) return override
   const match = AGENT_ENV.find(({ vars }) => vars.some((name) => Boolean(env[name])))
   return match?.agent ?? UNKNOWN_AGENT
 }
