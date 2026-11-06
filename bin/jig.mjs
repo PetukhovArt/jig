@@ -5714,8 +5714,8 @@ var keysOf = (path2) => {
   return bare.endsWith("/index") ? [bare, bare.slice(0, -"/index".length)] : [bare];
 };
 var aliasTail = (spec2) => {
-  const tail2 = stripExtension(spec2.replace(/^[@~#]\//, ""));
-  return tail2.includes("/") ? tail2 : void 0;
+  const tail = stripExtension(spec2.replace(/^[@~#]\//, ""));
+  return tail.includes("/") ? tail : void 0;
 };
 var makeResolver = (targets) => {
   const byKey = /* @__PURE__ */ new Map();
@@ -5723,8 +5723,8 @@ var makeResolver = (targets) => {
   const keys = [...byKey.keys()];
   return (from, spec2) => {
     if (spec2.startsWith(".")) return byKey.get(stripExtension(posix5.normalize(posix5.join(posix5.dirname(from), spec2))));
-    const tail2 = aliasTail(spec2);
-    const key = tail2 === void 0 ? void 0 : keys.find((candidate) => candidate === tail2 || candidate.endsWith(`/${tail2}`));
+    const tail = aliasTail(spec2);
+    const key = tail === void 0 ? void 0 : keys.find((candidate) => candidate === tail || candidate.endsWith(`/${tail}`));
     return key === void 0 ? void 0 : byKey.get(key);
   };
 };
@@ -9195,157 +9195,15 @@ var runSlot = (args) => {
   return subcommand(rest);
 };
 
-// src/spawn/spawn.ts
-import { existsSync as existsSync22, readFileSync as readFileSync36, rmSync as rmSync11, statSync as statSync14, writeFileSync as writeFileSync14 } from "node:fs";
-import { basename as basename8, dirname as dirname17, extname as extname5, join as join38, resolve as resolve15 } from "node:path";
-import { parseArgs as parseArgs8 } from "node:util";
-var EFFORTS3 = ["low", "medium", "high"];
-var DEFAULT_MAX_PARALLEL = 4;
-var RUN_TIMEOUT_MS = 30 * 60 * 1e3;
-var LOGIN_TIMEOUT_MS = 60 * 1e3;
-var STDERR_TAIL = 600;
-var LAUNCHERS = {
-  codex: {
-    login: ["login", "status"],
-    loginHint: "codex login",
-    isLoggedIn: (result) => result.code === 0,
-    argv: ({ model, effort, cwd, report }) => [
-      "exec",
-      "-m",
-      model,
-      "-c",
-      `model_reasoning_effort=${effort}`,
-      ...process.platform === "win32" ? ["-c", 'windows.sandbox="unelevated"'] : [],
-      "-s",
-      "read-only",
-      "--skip-git-repo-check",
-      "-C",
-      cwd,
-      "-o",
-      report,
-      "-"
-    ],
-    reportFromStdout: false
-  },
-  claude: {
-    login: ["auth", "status"],
-    loginHint: "claude auth login",
-    isLoggedIn: (result) => result.code === 0 && /"loggedIn"\s*:\s*true/.test(result.stdout),
-    argv: ({ model, effort }) => [
-      "-p",
-      "--model",
-      model,
-      "--effort",
-      effort,
-      "--permission-mode",
-      "dontAsk",
-      "--no-session-persistence",
-      "--disallowedTools",
-      "Edit",
-      "Write",
-      "NotebookEdit"
-    ],
-    reportFromStdout: true
-  }
-};
-var oneOf = (value, allowed, flag) => {
-  if (value !== void 0 && allowed.includes(value)) return value;
-  throw new Error(`--${flag} expects one of: ${allowed.join(", ")}`);
-};
-var positiveInteger = (value, flag, fallback) => {
-  if (value === void 0) return fallback;
-  const number = Number(value);
-  if (!Number.isInteger(number) || number < 1) throw new Error(`--${flag} expects a positive integer, got ${value}`);
-  return number;
-};
-var isFile4 = (path2) => existsSync22(path2) && statSync14(path2).isFile();
-var reportPathOf = (brief) => join38(dirname17(brief), `${basename8(brief, extname5(brief))}.report.md`);
-var tail = (text3) => text3.trim().slice(-STDERR_TAIL);
-var inPool = async (items, limit, work) => {
-  const results = [];
-  let next = 0;
-  const worker = async () => {
-    while (next < items.length) {
-      const index = next++;
-      results[index] = await work(items[index]);
-    }
-  };
-  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
-  return results;
-};
-var launch = async (bin, launcher, job) => {
-  rmSync11(job.report, { force: true });
-  const result = await run([...bin, ...launcher.argv(job)], {
-    cwd: job.cwd,
-    timeoutMs: RUN_TIMEOUT_MS,
-    input: readFileSync36(job.brief, "utf8"),
-    env: { ...process.env, JIG_AGENT: job.agent }
-  });
-  if (result.error !== void 0) return result.error;
-  if (result.timedOut) return `timed out after ${RUN_TIMEOUT_MS / 6e4} min`;
-  if (result.code !== 0) return `exit ${result.code}: ${tail(result.stderr)}`;
-  if (launcher.reportFromStdout) writeFileSync14(job.report, result.stdout);
-  const report = isFile4(job.report) ? readFileSync36(job.report, "utf8") : "";
-  return report.trim() === "" ? `empty report: ${tail(result.stderr)}` : void 0;
-};
-var checkLogin = async (agent, bin, launcher, cwd) => {
-  const result = await run([...bin, ...launcher.login], { cwd, timeoutMs: LOGIN_TIMEOUT_MS });
-  if (result.error !== void 0) throw new Error(`${agent} CLI did not start: ${result.error}`);
-  if (!launcher.isLoggedIn(result)) throw new Error(`${agent} is not logged in: run \`${launcher.loginHint}\``);
-};
-var runSpawn = async (args) => {
-  const { values } = parseArgs8({
-    args,
-    options: {
-      agent: { type: "string" },
-      tier: { type: "string" },
-      effort: { type: "string" },
-      brief: { type: "string", multiple: true },
-      "max-parallel": { type: "string" }
-    },
-    strict: true
-  });
-  const agent = detectAgent(values.agent);
-  const launcher = Object.hasOwn(LAUNCHERS, agent) ? LAUNCHERS[agent] : void 0;
-  if (launcher === void 0) throw new Error(`spawn launches ${Object.keys(LAUNCHERS).join(" or ")}, got agent ${agent}: pass --agent`);
-  const tier = oneOf(values.tier, TIERS2, "tier");
-  const effort = oneOf(values.effort, EFFORTS3, "effort");
-  const maxParallel = positiveInteger(values["max-parallel"], "max-parallel", DEFAULT_MAX_PARALLEL);
-  const briefs = (values.brief ?? []).map((brief) => resolve15(brief));
-  if (briefs.length === 0) throw new Error("--brief <file> is required, once per subagent");
-  const missing = briefs.filter((brief) => !isFile4(brief));
-  if (missing.length > 0) throw new Error(`brief not found: ${missing.join(", ")}`);
-  const loaded = loadUserConfig();
-  if (loaded.error !== void 0) throw new Error(`${loaded.label}: ${loaded.error}`);
-  const model = resolveTiers(agent, loaded.config)?.[tier]?.[0];
-  if (model === void 0) throw new Error(`no ${tier} model for ${agent}: set tiers.${agent}.${tier} in ${loaded.label}`);
-  const cwd = process.cwd();
-  const jobs = briefs.map((brief) => ({ agent, model, effort, cwd, brief, report: reportPathOf(brief) }));
-  const clash = jobs.find((job, index) => jobs.findIndex((other) => other.report === job.report) !== index);
-  if (clash !== void 0) throw new Error(`two briefs write one report ${clash.report}: rename one`);
-  const bin = resolveBin(cwd, [], agent);
-  if (bin === void 0) throw new Error(`${agent} CLI not found on PATH`);
-  await checkLogin(agent, bin, launcher, cwd);
-  const failures = await inPool(jobs, maxParallel, (job) => launch(bin, launcher, job));
-  jobs.forEach((job, index) => {
-    const failure = failures[index];
-    if (failure === void 0) process.stdout.write(`${job.report}
-`);
-    else process.stderr.write(`jig: ${job.brief}: ${failure}
-`);
-  });
-  return failures.some((failure) => failure !== void 0) ? 1 : 0;
-};
-
 // src/worktree/worktree.ts
-import { existsSync as existsSync23 } from "node:fs";
-import { basename as basename10, resolve as resolve17 } from "node:path";
+import { existsSync as existsSync22 } from "node:fs";
+import { basename as basename9, resolve as resolve16 } from "node:path";
 import { createInterface } from "node:readline/promises";
-import { parseArgs as parseArgs9 } from "node:util";
+import { parseArgs as parseArgs8 } from "node:util";
 
 // src/worktree/sweep.ts
 import { spawnSync as spawnSync9 } from "node:child_process";
-import { basename as basename9, resolve as resolve16 } from "node:path";
+import { basename as basename8, resolve as resolve15 } from "node:path";
 var KEPT_BUCKETS = /* @__PURE__ */ new Set(["hold-current", "hold-locked", "hold-wip"]);
 var RECENT_MS = 24 * 60 * 60 * 1e3;
 var MS_PER_SECOND = 1e3;
@@ -9387,7 +9245,7 @@ var bucketOf = (worktree, scope) => {
 };
 var auditWorktrees = (worktrees, scope) => worktrees.filter((worktree) => !samePath(worktree.path, scope.mainRoot)).map((worktree) => ({
   bucket: bucketOf(worktree, scope),
-  slot: slotNumber(basename9(worktree.path), scope.repo) ?? null,
+  slot: slotNumber(basename8(worktree.path), scope.repo) ?? null,
   path: toSlash(worktree.path),
   branch: worktree.branch ?? null
 }));
@@ -9398,7 +9256,7 @@ var matchItems = (rows, items, cwd) => {
   for (const item of items) {
     const slot = SLOT_ITEM.exec(item)?.[1];
     const row = rows.find(
-      (candidate) => slot === void 0 ? samePath(candidate.path, resolve16(cwd, item)) : candidate.slot === Number(slot)
+      (candidate) => slot === void 0 ? samePath(candidate.path, resolve15(cwd, item)) : candidate.slot === Number(slot)
     );
     if (row === void 0) {
       unknown.push(item);
@@ -9433,8 +9291,8 @@ var mainCheckout = (cwd) => {
 var checkoutTarget = (positionals, usage2) => {
   const [target] = positionals;
   if (positionals.length !== 1 || target === void 0) return fail4(`usage: ${usage2}`, 2);
-  const dir = resolve17(target);
-  if (!existsSync23(dir)) return fail4(`no such dir ${toSlash(dir)}`, 1);
+  const dir = resolve16(target);
+  if (!existsSync22(dir)) return fail4(`no such dir ${toSlash(dir)}`, 1);
   const toplevel = gitToplevel(dir);
   if (toplevel === void 0 || !samePath(toplevel, dir)) return fail4(`${toSlash(dir)} is not the root of a git worktree`, 1);
   const main = mainCheckout(dir);
@@ -9443,7 +9301,7 @@ var checkoutTarget = (positionals, usage2) => {
   return { dir, main, config };
 };
 var worktreeSeed = (args) => {
-  const { positionals } = parseArgs9({ args, options: {}, allowPositionals: true, strict: true });
+  const { positionals } = parseArgs8({ args, options: {}, allowPositionals: true, strict: true });
   const target = checkoutTarget(positionals, "worktree seed <dir>");
   if (typeof target === "number") return target;
   if (samePath(target.main, target.dir)) return fail4(`${toSlash(target.dir)} is the main checkout, seed fills another worktree from it`, 1);
@@ -9455,7 +9313,7 @@ var worktreeSeed = (args) => {
 };
 var DEPS_USAGE = "worktree deps <dir> [--save [--force]] | worktree deps --prune [--dry-run]";
 var worktreeDeps = (args) => {
-  const { values, positionals } = parseArgs9({
+  const { values, positionals } = parseArgs8({
     args,
     options: { save: { type: "boolean" }, force: { type: "boolean" }, prune: { type: "boolean" }, "dry-run": { type: "boolean" } },
     allowPositionals: true,
@@ -9478,11 +9336,11 @@ var worktreeDeps = (args) => {
   return outcome.kind === "failed" ? 1 : 0;
 };
 var worktreeRemove = (args) => {
-  const { positionals } = parseArgs9({ args, options: {}, allowPositionals: true, strict: true });
+  const { positionals } = parseArgs8({ args, options: {}, allowPositionals: true, strict: true });
   const [target] = positionals;
   if (positionals.length !== 1 || target === void 0) return fail4("usage: worktree remove <dir>", 2);
-  const dir = resolve17(target);
-  const worktrees = listWorktrees(existsSync23(dir) ? dir : process.cwd());
+  const dir = resolve16(target);
+  const worktrees = listWorktrees(existsSync22(dir) ? dir : process.cwd());
   const main = worktrees[0]?.path;
   if (main === void 0) return fail4(`no git worktrees found from ${toSlash(dir)}`, 1);
   if (samePath(main, dir)) return fail4(`${toSlash(dir)} is the main checkout, remove takes a linked worktree`, 1);
@@ -9520,7 +9378,7 @@ var removeRows = (rows, mainRoot) => {
   return code;
 };
 var worktreeSweep = async (args, confirm = terminalConfirm()) => {
-  const { values } = parseArgs9({
+  const { values } = parseArgs8({
     args,
     options: { json: { type: "boolean" }, ask: { type: "boolean" }, yes: { type: "string", multiple: true } },
     strict: true
@@ -9530,7 +9388,7 @@ var worktreeSweep = async (args, confirm = terminalConfirm()) => {
   const mainRoot = worktrees[0]?.path ?? projectRoot;
   const rows = auditWorktrees(worktrees, {
     mainRoot,
-    repo: basename10(mainRoot),
+    repo: basename9(mainRoot),
     current: currentWorktree(process.cwd()),
     openBranches: openMrBranches(projectRoot),
     now: Date.now()
@@ -9585,7 +9443,6 @@ var commands = /* @__PURE__ */ new Map([
   ["init", runInit],
   ["doctor", runDoctor],
   ["tiers", runTiers],
-  ["spawn", runSpawn],
   ["review", runReview],
   ["review-plan", runReviewPlan],
   ["review-cycle", runReviewCycle],

@@ -10,7 +10,6 @@ import { runReview } from '../review/review'
 import { runReviewPlan } from '../review/review-plan'
 import { runReviewCycle } from '../review-cycle/review-cycle'
 import { runSlot } from '../slot/slot'
-import { runSpawn } from '../spawn/spawn'
 import { runTaskStatus } from '../task-status/task-status'
 import { runTiers } from '../tiers/tiers'
 import { runWorktree } from '../worktree/worktree'
@@ -37,7 +36,6 @@ const commands = new Map<string, Command>([
   ['init', runInit],
   ['doctor', runDoctor],
   ['tiers', runTiers],
-  ['spawn', runSpawn],
   ['review', runReview],
   ['review-plan', runReviewPlan],
   ['review-cycle', runReviewCycle],
