@@ -84,7 +84,7 @@ It repeats the task back with a done check, picks a flow and puts the flow's ste
 
 <!-- flows:start -->
 
-<details><summary><b>All 17 flows</b></summary>
+<details><summary><b>All 18 flows</b></summary>
 
 | flow | for |
 | --- | --- |
@@ -92,6 +92,7 @@ It repeats the task back with a done check, picks a flow and puts the flow's ste
 | [bug-bash](skills/jig/flows/bug-bash.md) | attack a feature in the running app and report reproduced bugs. |
 | [bug-fix](skills/jig/flows/bug-fix.md) | reproduce, find the root cause, fix, prove. |
 | [custom-flow](skills/jig/flows/custom-flow.md) | no flow fits, or the work is large and cross-cutting: frame it, design its workflow, run each unit as an experiment, leave a decision trail. |
+| [deepening](skills/jig/flows/deepening.md) | find module deepenings in a scope (paths, a merge request, a branch, a scan card), show them as an HTML report, then design and refactor the one the user picks. |
 | [diagnose](skills/jig/flows/diagnose.md) | find the cause of a symptom without fixing it, from a live process or a captured artifact; the fix is bug-fix. |
 | [eval](skills/jig/flows/eval.md) | measure how a change to an atom, flow or skill changes agent behavior before you keep it. |
 | [feature](skills/jig/flows/feature.md) | build new behavior with the right data shape and prove it on the running product. |
@@ -219,7 +220,7 @@ Atoms are those short rules, indexed in [`skills/jig/SKILL.md`](skills/jig/SKILL
 | --- | --- | --- |
 | [comment-pruner](skills/jig/references/roles/comment-pruner.md) | fast/low | Use in jig-prune-comments, one per batch of files, to delete comments the comments atom does not allow. Edits only inside one function; hands everything else back. |
 | [composer](skills/jig/references/roles/composer.md) | standard/medium | Use in jig-review, one per architectural Important finding, to write its expanded thread text from the judge's evidence. Writes text only; the verdict is given. |
-| [deepener](skills/jig/references/roles/deepener.md) | deep/high | Use in jig-review when the selector asks for deepening, to propose the one module deepening with the largest effect on the diff's new or changed modules. A proposal, not a finding. |
+| [deepener](skills/jig/references/roles/deepener.md) | deep/high | Use in jig-review to propose the one module deepening with the most effect on the diff's new modules, or in the deepening flow (mode scan) to list the candidates of a scope. A proposal, not a finding. |
 | [explainer](skills/jig/references/roles/explainer.md) | deep/medium | Use in investigation (How step) to merge the explorer maps into one explanation of how the code works. Spot-checks their file:line claims; synthesizer answers Why instead. |
 | [explorer](skills/jig/references/roles/explorer.md) | standard/medium | Use in investigation (How step), 2 to 4 in parallel, to map one angle of the code with file:line. Read only, gathers without concluding; investigator searches history instead. |
 | [finder](skills/jig/references/roles/finder.md) | deep/high | Use in jig-review, per partition as jig review-plan prints (behavior, and conventions when the project adds such angles), to hunt candidates for its angles in its part of a diff. |

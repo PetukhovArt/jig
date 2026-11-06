@@ -79,6 +79,7 @@ These hold for the whole task, in every flow.
 - `bug-bash`: attack a feature in the running app and report reproduced bugs.
 - `bug-fix`: reproduce, find the root cause, fix, prove.
 - `custom-flow`: no flow fits, or the work is large and cross-cutting: frame it, design its workflow, run each unit as an experiment, leave a decision trail.
+- `deepening`: find module deepenings in a scope (paths, a merge request, a branch, a scan card), show them as an HTML report, then design and refactor the one the user picks.
 - `diagnose`: find the cause of a symptom without fixing it, from a live process or a captured artifact; the fix is bug-fix.
 - `eval`: measure how a change to an atom, flow or skill changes agent behavior before you keep it.
 - `feature`: build new behavior with the right data shape and prove it on the running product.

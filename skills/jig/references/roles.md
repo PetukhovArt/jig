@@ -2,7 +2,7 @@
 
 - `comment-pruner` (`skills/jig/references/roles/comment-pruner.md`, fast/low): Use in jig-prune-comments, one per batch of files, to delete comments the comments atom does not allow. Edits only inside one function; hands everything else back.
 - `composer` (`skills/jig/references/roles/composer.md`, standard/medium): Use in jig-review, one per architectural Important finding, to write its expanded thread text from the judge's evidence. Writes text only; the verdict is given.
-- `deepener` (`skills/jig/references/roles/deepener.md`, deep/high): Use in jig-review when the selector asks for deepening, to propose the one module deepening with the largest effect on the diff's new or changed modules. A proposal, not a finding.
+- `deepener` (`skills/jig/references/roles/deepener.md`, deep/high): Use in jig-review to propose the one module deepening with the most effect on the diff's new modules, or in the deepening flow (mode scan) to list the candidates of a scope. A proposal, not a finding.
 - `explainer` (`skills/jig/references/roles/explainer.md`, deep/medium): Use in investigation (How step) to merge the explorer maps into one explanation of how the code works. Spot-checks their file:line claims; synthesizer answers Why instead.
 - `explorer` (`skills/jig/references/roles/explorer.md`, standard/medium): Use in investigation (How step), 2 to 4 in parallel, to map one angle of the code with file:line. Read only, gathers without concluding; investigator searches history instead.
 - `finder` (`skills/jig/references/roles/finder.md`, deep/high): Use in jig-review, per partition as jig review-plan prints (behavior, and conventions when the project adds such angles), to hunt candidates for its angles in its part of a diff.
