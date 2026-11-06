@@ -3286,7 +3286,7 @@ var AGENT_ID = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/;
 var NO_MAPPING = "no mapping: choose a model that fits the tier (deep = strongest reasoning, standard = balanced, fast = cheap mechanical work)";
 var DEFAULT_TIERS = {
   claude: { deep: ["opus", "sonnet"], standard: ["sonnet"], fast: ["haiku"] },
-  codex: { deep: ["gpt-6-luna", "gpt-5.6-terra"], standard: ["gpt-6-luna"], fast: ["gpt-5.6-luna"] }
+  codex: { deep: ["gpt-6.1-sol", "gpt-6.1-terra"], standard: ["gpt-6.1-terra"], fast: ["gpt-6-luna"] }
 };
 var AGENT_ENV = [
   { agent: "claude", vars: ["CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT"] },

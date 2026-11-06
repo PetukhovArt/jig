@@ -40,7 +40,7 @@ const NO_MAPPING =
 
 const DEFAULT_TIERS: Readonly<Record<string, TierMap>> = {
   claude: { deep: ['opus', 'sonnet'], standard: ['sonnet'], fast: ['haiku'] },
-  codex: { deep: ['gpt-6-luna', 'gpt-5.6-terra'], standard: ['gpt-6-luna'], fast: ['gpt-5.6-luna'] },
+  codex: { deep: ['gpt-6.1-sol', 'gpt-6.1-terra'], standard: ['gpt-6.1-terra'], fast: ['gpt-6-luna'] },
 }
 
 const AGENT_ENV: readonly { agent: string; vars: readonly string[] }[] = [
