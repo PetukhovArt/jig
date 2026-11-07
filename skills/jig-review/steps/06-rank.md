@@ -9,3 +9,7 @@ Two filters, both before the comment texts:
 
 - **Verify gates** ([step 05](05-verify.md)): a candidate is proven or refuted and does not exist.
 - **Selector** ([selector](../references/selector.md)): a proven finding that matches no output token (a Nit of an angle run only for `important`) is not printed, written to state or posted; it counts in `tally.suppressed_selector`. `jig review-plan` prints the output filter.
+
+## Merge per file
+
+After the filters, findings of angle 16 (tests) in one file merge into one: `line` of the first instance, id `<file>:<line>:tests`, one finding in the tally. Wrong ones (`Important`) merge apart from the redundant ones (`Nit`): one Important and one Nit per file at most. A single instance in a file stays a normal finding. Text form: [comment texts](07-comments.md#which-form).

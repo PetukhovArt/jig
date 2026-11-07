@@ -32,7 +32,8 @@ A repository-level file: `<main checkout>/.jig/runs/review/learnings.json` (no K
 Each entry is one skip or demote rule derived from a dispute the developer won ([re-review](09-rereview.md)). File exists → the active entries go into every finder and judge brief as a block **below the project's review document and above the skill's defaults**.
 
 **Applied differently by angle class:**
-- efficiency 8, spec 15 and project angles of kind `conventions` → a matching candidate is dropped;
+- efficiency 8, spec 15, a redundant test of 16 and project angles of kind `conventions` → a matching candidate is dropped;
+- a wrong test of 16 → at most demoted to `Nit`, like a bug;
 - bugs 1–5, 12, 14 → **never dropped**, at most demoted to `Nit`. A stale learning must not silently mute a real bug.
 
 A learning matches only when both the mechanism and the context match. "retry without backoff in polling" does not cover a retry elsewhere.

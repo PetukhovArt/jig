@@ -24,6 +24,7 @@ Each token is a predicate over a finding. **A finding is printed when it matches
 | `security` | 14 | all |
 | `efficiency` | 8 | all |
 | `spec` | 15 | all |
+| `tests` | 16 | all |
 | `deepening` | the [deepening](#deepening) proposal, not an angle | outside threads |
 | `auto` | chosen by the diff shape (below) | by the chosen tokens |
 
@@ -38,6 +39,7 @@ The ceiling is the highest severity an angle gives at [verify](../gates/severity
 Tokens chosen by the diff shape; the summary prints the expansion first: `selector: auto → important,deepening`.
 
 - always `important`;
+- the diff adds or changes tests → `tests`;
 - the diff adds source files → `deepening`.
 
 ## Tiers
@@ -48,6 +50,7 @@ A finder's grade comes from its kind, not from its angles ([finders](../steps/04
 |---|---|
 | `behavior` (angles 1–5, 8, 12, 14, 15, and project angles of kind `behavior`) | deep / high |
 | `conventions` (project angles of kind `conventions` only) | standard / high |
+| `tests` (angle 16, role `test-reviewer`) | standard / medium |
 | `verify` (role `verifier`) | deep / medium |
 | `outcome` (role `outcome-checker`) | deep / medium |
 | `composer` (role `composer`) | standard / medium |

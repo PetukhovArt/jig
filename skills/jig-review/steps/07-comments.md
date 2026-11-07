@@ -12,6 +12,7 @@ You write short comments yourself from the judge's evidence, without a subagent 
 - **Important, an ordinary bug** (null, race, off-by-one, missing `await`) → short.
 - **Important by a named pattern** from the project's review vocabulary (usually a project angle) → expanded.
 - **Spec (angle 15)** → every spec finding of the run is an item of one thread, the [spec form](#spec-form).
+- **A merged finding of angle 16** ([merge per file](06-rank.md#merge-per-file)) → the chip and one sentence with the number of instances, then a list: one line per instance (the test name in backticks) and the criterion item. The list is outside the limit, no suggestion. One defect, several instances, so "one defect per comment" holds.
 
 ## Short form
 

@@ -25,21 +25,23 @@ export const ANGLE_TOKENS = {
   12: 'bugs',
   14: 'security',
   15: 'spec',
+  16: 'tests',
 } as const satisfies Record<number, string>
 
 export type Angle = keyof typeof ANGLE_TOKENS
 const isAngle = (value: number): value is Angle => Object.hasOwn(ANGLE_TOKENS, value)
 export const ANGLES: readonly Angle[] = Object.keys(ANGLE_TOKENS).map(Number).filter(isAngle)
 
-export const REMOVED_ANGLES: readonly number[] = [6, 7, 9, 10, 11, 13, 16, 17]
+export const REMOVED_ANGLES: readonly number[] = [6, 7, 9, 10, 11, 13, 17]
 
-const IMPORTANT_ANGLES: readonly Angle[] = [1, 2, 3, 4, 5, 8, 12, 14, 15]
+const IMPORTANT_ANGLES: readonly Angle[] = [1, 2, 3, 4, 5, 8, 12, 14, 15, 16]
 
 const TOKEN_ANGLES: Readonly<Record<string, readonly Angle[]>> = {
   bugs: [1, 2, 3, 4, 5, 12],
   security: [14],
   efficiency: [8],
   spec: [15],
+  tests: [16],
 }
 const SPECIAL_TOKENS = ['important', 'deepening'] as const
 export const SELECTOR_TOKENS = [...SPECIAL_TOKENS, ...Object.keys(TOKEN_ANGLES), 'auto']
@@ -48,6 +50,7 @@ const PRESETS: Readonly<Record<string, string | undefined>> = { full: undefined,
 export const DEFAULT_GRADES: Readonly<Record<string, Grade>> = {
   behavior: { tier: 'deep', effort: 'high' },
   conventions: { tier: 'standard', effort: 'high' },
+  tests: { tier: 'standard', effort: 'medium' },
   verify: { tier: 'deep', effort: 'medium' },
   outcome: { tier: 'deep', effort: 'medium' },
   composer: { tier: 'standard', effort: 'medium' },
@@ -57,6 +60,7 @@ export const GRADE_KEYS = Object.keys(DEFAULT_GRADES)
 export const REMOVED_GRADE_KEYS: readonly string[] = ['flow']
 
 export interface Shape {
+  tests: boolean
   newSourceFiles: number
   spec: boolean
 }
@@ -75,10 +79,13 @@ export const resolveAuto = (layout: Layout): ConcreteLayout => (layout === 'auto
 
 export type Judging = 'important' | 'self'
 
+export const PROJECT_ANGLE_KINDS = ['behavior', 'conventions'] as const
+export type ProjectAngleKind = (typeof PROJECT_ANGLE_KINDS)[number]
+
 export interface ProjectAngle extends AngleSettings {
   name: string
   file: string
-  kind: FinderKind
+  kind: ProjectAngleKind
 }
 
 export const PROJECT_ANGLE_NAME = /^[a-z][a-z0-9-]*$/
@@ -100,13 +107,16 @@ export interface PlanInput {
 
 export type Grouping = 'lines' | 'groups' | 'pending'
 
-export const FINDER_KINDS = ['behavior', 'conventions'] as const
+export const FINDER_KINDS = ['behavior', 'conventions', 'tests'] as const
 export type FinderKind = (typeof FINDER_KINDS)[number]
 
 export const KIND_ANGLES: Readonly<Record<FinderKind, readonly Angle[]>> = {
   behavior: [1, 2, 3, 4, 5, 8, 12, 14, 15],
   conventions: [],
+  tests: [16],
 }
+
+export const KIND_ROLES: Readonly<Record<FinderKind, string>> = { behavior: 'finder', conventions: 'finder', tests: 'test-reviewer' }
 
 export const REREVIEW_FULL_LAYOUT_LINES = 600
 
@@ -115,6 +125,7 @@ export const isLightRereview = (rereview: boolean | undefined, lines: number): b
 export interface Finder extends Grade {
   name: string
   kind: FinderKind
+  role: string
   angles: Angle[]
   projectAngles: string[]
   partition: string
@@ -160,7 +171,7 @@ export const finderCount = (lines: number): number => Math.min(MAX_FINDERS, Math
 const ceilingOf = (angle: Angle, settings: PlanInput['angles']): Ceiling =>
   settings?.[angle]?.severityCeiling ?? (IMPORTANT_ANGLES.includes(angle) ? 'Important' : 'Nit')
 
-export const autoTokens = (shape: Shape): string[] => (shape.newSourceFiles > 0 ? ['important', 'deepening'] : ['important'])
+export const autoTokens = (shape: Shape): string[] => ['important', ...(shape.tests ? ['tests'] : []), ...(shape.newSourceFiles > 0 ? ['deepening'] : [])]
 
 export const parseSelector = (input: string | undefined, shape: Shape): Selection => {
   const given = input !== undefined && input !== ''
@@ -189,7 +200,11 @@ const selectedAngles = (tokens: readonly string[], settings: PlanInput['angles']
   return angles
 }
 
-const inapplicable = (angle: Angle, shape: Shape): string | undefined => (angle === 15 && !shape.spec ? 'no spec found' : undefined)
+const inapplicable = (angle: Angle, shape: Shape): string | undefined => {
+  if (angle === 15 && !shape.spec) return 'no spec found'
+  if (angle === 16 && !shape.tests) return 'no tests in the diff'
+  return undefined
+}
 
 const roleGrade = (key: string, grades: Readonly<Record<string, Grade>>): Grade =>
   grades[key] ?? { tier: 'deep', effort: 'medium' }
@@ -199,12 +214,14 @@ const partitionFinders = (
   angles: readonly Angle[],
   projectAngles: readonly ProjectAngle[],
   grades: Readonly<Record<string, Grade>>,
+  hasTests: (partition: Partition) => boolean,
 ): Finder[] =>
   partitions.flatMap((partition) =>
     FINDER_KINDS.map((kind) => ({
       name: `${partition.name}-${kind}`,
       kind,
-      angles: angles.filter((angle) => KIND_ANGLES[kind].includes(angle)),
+      role: KIND_ROLES[kind],
+      angles: angles.filter((angle) => KIND_ANGLES[kind].includes(angle) && (angle !== 16 || hasTests(partition))),
       projectAngles: projectAngles.filter((angle) => angle.kind === kind).map((angle) => angle.name),
       partition: partition.name,
       ...roleGrade(kind, grades),
@@ -241,7 +258,7 @@ export const planReview = (input: PlanInput): Plan => {
     if (reason !== undefined) skipped.push({ angle, reason })
     return reason === undefined
   })
-  const usedForCode = n === 0 ? angles.filter((angle) => angle === 15) : angles
+  const usedForCode = n === 0 ? angles.filter((angle) => angle === 15 || angle === 16) : angles
   ANGLES.filter((angle) => angles.includes(angle) && !usedForCode.includes(angle)).forEach((angle) =>
     skipped.push({ angle, reason: 'no counted code lines' }),
   )
@@ -255,6 +272,7 @@ export const planReview = (input: PlanInput): Plan => {
   const wantsDeepening = !light && (selection.tokens.length === 0 ? input.shape.newSourceFiles > 0 : selection.tokens.includes('deepening'))
   const path: ReviewPath = usedForCode.length + projectAngles.length === 0 ? 'none' : 'subagents'
   const codeFiles = (input.files ?? []).filter((file) => file.kind === 'code').length
+  const testFiles = new Set((input.files ?? []).filter((file) => file.kind === 'tests').map((file) => file.path))
   const grouping: Grouping = path === 'none' ? 'lines' : input.groups !== undefined ? 'groups' : input.policy === true && !light && codeFiles > 1 ? 'pending' : 'lines'
   const partitions =
     path === 'none' || grouping === 'pending' ? [] : input.groups !== undefined ? groupFiles(input.files ?? [], input.edges ?? [], input.groups) : partitionsOf(input, light ? 1 : Math.max(1, n))
@@ -271,7 +289,7 @@ export const planReview = (input: PlanInput): Plan => {
     skipped: skipped.sort(bySkipOrder),
     grouping,
     partitions,
-    finders: partitionFinders(partitions, usedForCode, projectAngles, grades),
+    finders: partitionFinders(partitions, usedForCode, projectAngles, grades, (partition) => input.files === undefined || partition.files.some((path) => testFiles.has(path))),
     deepening: wantsDeepening && n > 0 ? roleGrade('deepening', grades) : undefined,
     verify: roleGrade('verify', grades),
     outcome: roleGrade('outcome', grades),

@@ -12,6 +12,7 @@ Every judge reads this file. Two parts with different owners:
 `Important`: the merge waits for the fix, because the user meets the defect. The classes are closed; the class code in brackets:
 
 - **Behavior:** broken behavior (`broken`), data loss (`data-loss`), crash (`crash`).
+- **False guarantee** (`false-guarantee`, [angle 16](../angles/16.tests.md)): a test that cannot fail when the behavior it names breaks. Nothing breaks now; the next edit is made on a guarantee that does not exist. A redundant test stays `Nit`.
 
 `Nit` (`nit`): worth fixing, does not block the merge. Everything outside the classes above.
 
@@ -39,4 +40,4 @@ A class outside the taxonomy in force, or a severity below the class level witho
 
 ## Category
 
-`category` is the slug of the angle that raised the candidate, one of five: `correctness` (bug angles and project angles of kind `behavior`), `security`, `efficiency`, `spec`, `conventions` (project angles of kind `conventions`). `docs`, `design`, `style`, `test-coverage` are not categories. An angle that does not map means the candidate belongs to no angle: drop it.
+`category` is the slug of the angle that raised the candidate, one of five: `correctness` (bug angles, a wrong test of angle 16 and project angles of kind `behavior`), `security`, `efficiency`, `spec`, `conventions` (a redundant test of angle 16 and project angles of kind `conventions`). `docs`, `design`, `style`, `test-coverage` are not categories. An angle that does not map means the candidate belongs to no angle: drop it.

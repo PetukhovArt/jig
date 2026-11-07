@@ -30,6 +30,7 @@ import {
   MAX_PARALLEL,
   MODES,
   FINDER_KINDS,
+  PROJECT_ANGLE_KINDS,
   PROJECT_ANGLE_NAME,
   REMOVED_ANGLES,
   REMOVED_GRADE_KEYS,
@@ -85,7 +86,16 @@ export const audienceOf = (path: string, root?: string, testPaths: readonly stri
   return 'code'
 }
 
-export const audiencesFor = (angles: readonly Angle[]): Audience[] => ['code', ...(angles.includes(15) ? (['docs'] as const) : [])]
+const isTestStat = (path: string, root: string, testPaths: readonly string[]): boolean => {
+  const exclusion = exclusionOf(path, root)
+  return exclusion === 'test' || (exclusion === undefined && audienceOf(path, root, testPaths) === 'tests')
+}
+
+export const audiencesFor =(angles: readonly Angle[]): Audience[] => [
+  'code',
+  ...(angles.includes(16) ? (['tests'] as const) : []),
+  ...(angles.includes(15) ? (['docs'] as const) : []),
+]
 
 export const parseNumstat = (output: string): FileStat[] => {
   const tokens = output.split('\0')
@@ -159,7 +169,7 @@ const readProjectAngle = (validator: Validator, name: string, entry: unknown, pa
   const settings = validator.object(entry, path, PROJECT_ANGLE_KEYS)
   if (settings === undefined) return undefined
   const file = validator.string(settings['file'], childPath(path, 'file'))
-  const kind = validator.oneOf(settings['kind'], childPath(path, 'kind'), FINDER_KINDS)
+  const kind = validator.oneOf(settings['kind'], childPath(path, 'kind'), PROJECT_ANGLE_KINDS)
   const parsed = readSettings(validator, settings, path)
   return file === undefined || kind === undefined ? undefined : { name, file, kind, ...parsed }
 }
@@ -379,8 +389,8 @@ const SELECTOR_NOTES: Readonly<Record<SelectorSource, string>> = {
 const LAYOUT_SOURCE_TEXT: Readonly<Record<LayoutSource, string>> = { argument: '--layout', env: LAYOUT_ENV, config: `.jig/${PROJECT_CONFIG}`, default: 'default' }
 
 const LAYOUT_TEXT: Readonly<Record<ConcreteLayout, string>> = {
-  lean: 'a fresh behavior finder per partition (and a conventions finder when the project adds convention angles); you judge, a deep judge only for Important',
-  solo: 'a fresh behavior finder per partition (and a conventions finder when the project adds convention angles) proves its own candidates; no judge subagents',
+  lean: 'a fresh behavior finder per partition (plus a test-reviewer when the partition has changed tests, a conventions finder when the project adds convention angles); you judge, a deep judge only for Important',
+  solo: 'a fresh behavior finder per partition (plus a test-reviewer when the partition has changed tests, a conventions finder when the project adds convention angles) proves its own candidates; no judge subagents',
 }
 
 const layoutLine = (report: ReviewPlanReport): string => {
@@ -418,6 +428,7 @@ const partitionText = (partition: Partition | undefined): string => {
 const KIND_TEXT: Readonly<Record<FinderKind, string>> = {
   behavior: 'bugs, state, wire contracts, spec',
   conventions: 'the project angles of kind conventions; reads its rules',
+  tests: 'wrong and redundant tests by atom tests; role test-reviewer, reports only, never deletes',
 }
 
 const policyText = (policy: string): string => policy.split('\n').join('\n  ')
@@ -443,7 +454,7 @@ const finderLines = (report: ReviewPlanReport): string[] => {
   if (plan.finders.length > 0 && report.policy !== null) lines.push(`partition policy (to every finder, brief item 7): ${policyText(report.policy)}`)
   for (const finder of plan.finders) {
     lines.push(
-      `finder ${finder.name}: partition ${finder.partition} (${partitionText(byName.get(finder.partition))}) · ${finder.kind}: angles ${angleList([...finder.angles, ...finder.projectAngles])} · ${gradeText(finder, report.models)} · fresh, never a fork`,
+      `finder ${finder.name}: partition ${finder.partition} (${partitionText(byName.get(finder.partition))}) · ${finder.kind}${finder.role === 'finder' ? '' : ` (role ${finder.role})`}: angles ${angleList([...finder.angles, ...finder.projectAngles])} · ${gradeText(finder, report.models)} · fresh, never a fork`,
     )
     lines.push(...diffLine(report.reads[finder.name]), ...rulesLine(report.reads[finder.name]))
   }
@@ -471,7 +482,7 @@ export const formatReport = (report: ReviewPlanReport): string => {
     `run: ${report.run} (the checkpoints of this run carry it; another run never reuses them)`,
     `partitions: ${report.formula}`,
     layoutLine(report),
-    `shape: new source files ${report.shape.newSourceFiles} · spec ${report.shape.spec ? 'yes' : 'no'}`,
+    `shape: tests ${report.shape.tests ? 'yes' : 'no'} · new source files ${report.shape.newSourceFiles} · spec ${report.shape.spec ? 'yes' : 'no'}`,
     `selector: ${plan.selection.input}${plan.selection.tokens.length > 0 && plan.selection.input !== plan.selection.tokens.join(',') ? ` → ${plan.selection.tokens.join(',')}` : ''}${SELECTOR_NOTES[plan.selection.source]}`,
     `config: ${report.config ?? 'default'} · agent: ${report.agent} · max parallel subagents: ${report.maxParallel}`,
     `mode: ${report.mode} · state: ${stateText(report)}`,
@@ -572,12 +583,13 @@ export const buildReport = (root: string, options: ReportOptions): ReviewPlanRep
   const untracked = isEmpty ? 0 : untrackedCount(root, paths)
   if (rereview === null) requireScopedChanges(paths, stats.length + untracked, base.ref)
   const { lines, counted, excluded } = countLines(stats, root)
+  const project = loadProjectConfig(root)
+  const testPaths = project?.config.testPaths ?? []
   const shape: Shape = {
+    tests: stats.some((stat) => stat.added > 0 && isTestStat(stat.path, root, testPaths)),
     newSourceFiles: isEmpty ? 0 : addedNewSourceFiles(root, diffBase, diffPaths),
     spec: options.spec,
   }
-  const project = loadProjectConfig(root)
-  const testPaths = project?.config.testPaths ?? []
   const layout = resolveLayout(options.layout, options.layoutEnv, project?.config.layout)
   const files = partitionInput(stats, root, testPaths)
   const edges = importEdges(

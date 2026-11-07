@@ -6077,17 +6077,19 @@ var ANGLE_TOKENS = {
   8: "efficiency",
   12: "bugs",
   14: "security",
-  15: "spec"
+  15: "spec",
+  16: "tests"
 };
 var isAngle = (value) => Object.hasOwn(ANGLE_TOKENS, value);
 var ANGLES = Object.keys(ANGLE_TOKENS).map(Number).filter(isAngle);
-var REMOVED_ANGLES = [6, 7, 9, 10, 11, 13, 16, 17];
-var IMPORTANT_ANGLES = [1, 2, 3, 4, 5, 8, 12, 14, 15];
+var REMOVED_ANGLES = [6, 7, 9, 10, 11, 13, 17];
+var IMPORTANT_ANGLES = [1, 2, 3, 4, 5, 8, 12, 14, 15, 16];
 var TOKEN_ANGLES = {
   bugs: [1, 2, 3, 4, 5, 12],
   security: [14],
   efficiency: [8],
-  spec: [15]
+  spec: [15],
+  tests: [16]
 };
 var SPECIAL_TOKENS = ["important", "deepening"];
 var SELECTOR_TOKENS = [...SPECIAL_TOKENS, ...Object.keys(TOKEN_ANGLES), "auto"];
@@ -6095,6 +6097,7 @@ var PRESETS = { full: void 0, quick: "important" };
 var DEFAULT_GRADES = {
   behavior: { tier: "deep", effort: "high" },
   conventions: { tier: "standard", effort: "high" },
+  tests: { tier: "standard", effort: "medium" },
   verify: { tier: "deep", effort: "medium" },
   outcome: { tier: "deep", effort: "medium" },
   composer: { tier: "standard", effort: "medium" },
@@ -6105,17 +6108,20 @@ var REMOVED_GRADE_KEYS = ["flow"];
 var LAYOUTS = ["auto", "lean", "solo"];
 var isLayout = (value) => LAYOUTS.includes(value);
 var resolveAuto = (layout) => layout === "auto" ? "lean" : layout;
+var PROJECT_ANGLE_KINDS = ["behavior", "conventions"];
 var PROJECT_ANGLE_NAME = /^[a-z][a-z0-9-]*$/;
-var FINDER_KINDS = ["behavior", "conventions"];
+var FINDER_KINDS = ["behavior", "conventions", "tests"];
 var KIND_ANGLES = {
   behavior: [1, 2, 3, 4, 5, 8, 12, 14, 15],
-  conventions: []
+  conventions: [],
+  tests: [16]
 };
+var KIND_ROLES = { behavior: "finder", conventions: "finder", tests: "test-reviewer" };
 var REREVIEW_FULL_LAYOUT_LINES = 600;
 var isLightRereview = (rereview, lines2) => rereview === true && lines2 < REREVIEW_FULL_LAYOUT_LINES;
 var finderCount = (lines2) => Math.min(MAX_FINDERS, Math.ceil(Math.max(0, lines2) / LINES_PER_FINDER));
 var ceilingOf = (angle, settings) => settings?.[angle]?.severityCeiling ?? (IMPORTANT_ANGLES.includes(angle) ? "Important" : "Nit");
-var autoTokens = (shape) => shape.newSourceFiles > 0 ? ["important", "deepening"] : ["important"];
+var autoTokens = (shape) => ["important", ...shape.tests ? ["tests"] : [], ...shape.newSourceFiles > 0 ? ["deepening"] : []];
 var parseSelector = (input, shape) => {
   const given = input !== void 0 && input !== "";
   const source = given ? "argument" : "default";
@@ -6141,13 +6147,18 @@ var selectedAngles = (tokens, settings) => {
   }
   return angles;
 };
-var inapplicable = (angle, shape) => angle === 15 && !shape.spec ? "no spec found" : void 0;
+var inapplicable = (angle, shape) => {
+  if (angle === 15 && !shape.spec) return "no spec found";
+  if (angle === 16 && !shape.tests) return "no tests in the diff";
+  return void 0;
+};
 var roleGrade = (key, grades) => grades[key] ?? { tier: "deep", effort: "medium" };
-var partitionFinders = (partitions, angles, projectAngles, grades) => partitions.flatMap(
+var partitionFinders = (partitions, angles, projectAngles, grades, hasTests) => partitions.flatMap(
   (partition) => FINDER_KINDS.map((kind) => ({
     name: `${partition.name}-${kind}`,
     kind,
-    angles: angles.filter((angle) => KIND_ANGLES[kind].includes(angle)),
+    role: KIND_ROLES[kind],
+    angles: angles.filter((angle) => KIND_ANGLES[kind].includes(angle) && (angle !== 16 || hasTests(partition))),
     projectAngles: projectAngles.filter((angle) => angle.kind === kind).map((angle) => angle.name),
     partition: partition.name,
     ...roleGrade(kind, grades)
@@ -6175,7 +6186,7 @@ var planReview = (input) => {
     if (reason !== void 0) skipped.push({ angle, reason });
     return reason === void 0;
   });
-  const usedForCode = n === 0 ? angles.filter((angle) => angle === 15) : angles;
+  const usedForCode = n === 0 ? angles.filter((angle) => angle === 15 || angle === 16) : angles;
   ANGLES.filter((angle) => angles.includes(angle) && !usedForCode.includes(angle)).forEach(
     (angle) => skipped.push({ angle, reason: "no counted code lines" })
   );
@@ -6189,6 +6200,7 @@ var planReview = (input) => {
   const wantsDeepening = !light && (selection.tokens.length === 0 ? input.shape.newSourceFiles > 0 : selection.tokens.includes("deepening"));
   const path2 = usedForCode.length + projectAngles.length === 0 ? "none" : "subagents";
   const codeFiles = (input.files ?? []).filter((file) => file.kind === "code").length;
+  const testFiles = new Set((input.files ?? []).filter((file) => file.kind === "tests").map((file) => file.path));
   const grouping = path2 === "none" ? "lines" : input.groups !== void 0 ? "groups" : input.policy === true && !light && codeFiles > 1 ? "pending" : "lines";
   const partitions = path2 === "none" || grouping === "pending" ? [] : input.groups !== void 0 ? groupFiles(input.files ?? [], input.edges ?? [], input.groups) : partitionsOf(input, light ? 1 : Math.max(1, n));
   return {
@@ -6204,7 +6216,7 @@ var planReview = (input) => {
     skipped: skipped.sort(bySkipOrder),
     grouping,
     partitions,
-    finders: partitionFinders(partitions, usedForCode, projectAngles, grades),
+    finders: partitionFinders(partitions, usedForCode, projectAngles, grades, (partition) => input.files === void 0 || partition.files.some((path3) => testFiles.has(path3))),
     deepening: wantsDeepening && n > 0 ? roleGrade("deepening", grades) : void 0,
     verify: roleGrade("verify", grades),
     outcome: roleGrade("outcome", grades),
@@ -6267,7 +6279,15 @@ var audienceOf = (path2, root, testPaths = []) => {
   if (exclusion !== void 0 || testPaths.length > 0 && createMatcher([...testPaths])(path2)) return "tests";
   return "code";
 };
-var audiencesFor = (angles) => ["code", ...angles.includes(15) ? ["docs"] : []];
+var isTestStat = (path2, root, testPaths) => {
+  const exclusion = exclusionOf(path2, root);
+  return exclusion === "test" || exclusion === void 0 && audienceOf(path2, root, testPaths) === "tests";
+};
+var audiencesFor = (angles) => [
+  "code",
+  ...angles.includes(16) ? ["tests"] : [],
+  ...angles.includes(15) ? ["docs"] : []
+];
 var parseNumstat = (output) => {
   const tokens = output.split("\0");
   const stats = [];
@@ -6324,7 +6344,7 @@ var readProjectAngle = (validator, name, entry, path2) => {
   const settings = validator.object(entry, path2, PROJECT_ANGLE_KEYS);
   if (settings === void 0) return void 0;
   const file = validator.string(settings["file"], childPath(path2, "file"));
-  const kind = validator.oneOf(settings["kind"], childPath(path2, "kind"), FINDER_KINDS);
+  const kind = validator.oneOf(settings["kind"], childPath(path2, "kind"), PROJECT_ANGLE_KINDS);
   const parsed = readSettings(validator, settings, path2);
   return file === void 0 || kind === void 0 ? void 0 : { name, file, kind, ...parsed };
 };
@@ -6467,8 +6487,8 @@ var SELECTOR_NOTES = {
 };
 var LAYOUT_SOURCE_TEXT = { argument: "--layout", env: LAYOUT_ENV, config: `.jig/${PROJECT_CONFIG}`, default: "default" };
 var LAYOUT_TEXT = {
-  lean: "a fresh behavior finder per partition (and a conventions finder when the project adds convention angles); you judge, a deep judge only for Important",
-  solo: "a fresh behavior finder per partition (and a conventions finder when the project adds convention angles) proves its own candidates; no judge subagents"
+  lean: "a fresh behavior finder per partition (plus a test-reviewer when the partition has changed tests, a conventions finder when the project adds convention angles); you judge, a deep judge only for Important",
+  solo: "a fresh behavior finder per partition (plus a test-reviewer when the partition has changed tests, a conventions finder when the project adds convention angles) proves its own candidates; no judge subagents"
 };
 var layoutLine = (report) => {
   const { name, source } = report.layout;
@@ -6494,7 +6514,8 @@ var partitionText = (partition) => {
 };
 var KIND_TEXT = {
   behavior: "bugs, state, wire contracts, spec",
-  conventions: "the project angles of kind conventions; reads its rules"
+  conventions: "the project angles of kind conventions; reads its rules",
+  tests: "wrong and redundant tests by atom tests; role test-reviewer, reports only, never deletes"
 };
 var policyText = (policy) => policy.split("\n").join("\n  ");
 var groupingLines = (report) => {
@@ -6517,7 +6538,7 @@ var finderLines = (report) => {
   if (plan.finders.length > 0 && report.policy !== null) lines2.push(`partition policy (to every finder, brief item 7): ${policyText(report.policy)}`);
   for (const finder of plan.finders) {
     lines2.push(
-      `finder ${finder.name}: partition ${finder.partition} (${partitionText(byName.get(finder.partition))}) \xB7 ${finder.kind}: angles ${angleList([...finder.angles, ...finder.projectAngles])} \xB7 ${gradeText(finder, report.models)} \xB7 fresh, never a fork`
+      `finder ${finder.name}: partition ${finder.partition} (${partitionText(byName.get(finder.partition))}) \xB7 ${finder.kind}${finder.role === "finder" ? "" : ` (role ${finder.role})`}: angles ${angleList([...finder.angles, ...finder.projectAngles])} \xB7 ${gradeText(finder, report.models)} \xB7 fresh, never a fork`
     );
     lines2.push(...diffLine(report.reads[finder.name]), ...rulesLine(report.reads[finder.name]));
   }
@@ -6540,7 +6561,7 @@ var formatReport = (report) => {
     `run: ${report.run} (the checkpoints of this run carry it; another run never reuses them)`,
     `partitions: ${report.formula}`,
     layoutLine(report),
-    `shape: new source files ${report.shape.newSourceFiles} \xB7 spec ${report.shape.spec ? "yes" : "no"}`,
+    `shape: tests ${report.shape.tests ? "yes" : "no"} \xB7 new source files ${report.shape.newSourceFiles} \xB7 spec ${report.shape.spec ? "yes" : "no"}`,
     `selector: ${plan.selection.input}${plan.selection.tokens.length > 0 && plan.selection.input !== plan.selection.tokens.join(",") ? ` \u2192 ${plan.selection.tokens.join(",")}` : ""}${SELECTOR_NOTES[plan.selection.source]}`,
     `config: ${report.config ?? "default"} \xB7 agent: ${report.agent} \xB7 max parallel subagents: ${report.maxParallel}`,
     `mode: ${report.mode} \xB7 state: ${stateText(report)}`,
@@ -6606,12 +6627,13 @@ var buildReport = (root, options) => {
   const untracked = isEmpty ? 0 : untrackedCount(root, paths);
   if (rereview === null) requireScopedChanges(paths, stats.length + untracked, base.ref);
   const { lines: lines2, counted, excluded } = countLines(stats, root);
+  const project = loadProjectConfig(root);
+  const testPaths = project?.config.testPaths ?? [];
   const shape = {
+    tests: stats.some((stat) => stat.added > 0 && isTestStat(stat.path, root, testPaths)),
     newSourceFiles: isEmpty ? 0 : addedNewSourceFiles(root, diffBase, diffPaths),
     spec: options.spec
   };
-  const project = loadProjectConfig(root);
-  const testPaths = project?.config.testPaths ?? [];
   const layout = resolveLayout(options.layout, options.layoutEnv, project?.config.layout);
   const files = partitionInput(stats, root, testPaths);
   const edges = importEdges(

@@ -26,7 +26,7 @@ jig review-plan     code: counts the diff, picks the angles and the layout, part
 
 **Angles, not topics.** An angle is one concrete question with a procedure and a condition for evidence. There are 9: bugs (line by line, removed behavior, call tracing, language traps, wrappers, guards without siblings, security), efficiency (leaks, CPU load the user feels, work on a proven hot path) and spec conformance ([angles](../skills/jig-review/angles/00-index.md)).
 
-**The review hunts what the user meets, not the shape of code.** Duplication, naming, style, layers and imports, comments, tests and documents are left to the project's checks: a linter, a type checker or an architecture check proves them for free and blocks the merge, while a reviewer turns them into nitpicks. A project that still wants one reviewed adds its own angle of kind `conventions` in `.jig/review.jsonc`; the old numbers (6, 7, 9, 10, 11, 13, 16, 17) stay accepted there and change nothing.
+**The review hunts what the user meets, not the shape of code.** Duplication, naming, style, layers and imports, comments and documents are left to the project's checks: a linter, a type checker or an architecture check proves them for free and blocks the merge, while a reviewer turns them into nitpicks. A project that still wants one reviewed adds its own angle of kind `conventions` in `.jig/review.jsonc`; the old numbers (6, 7, 9, 10, 11, 13, 17) stay accepted there and change nothing. Tests stay reviewed: angle 16, run by role `test-reviewer` on an economical tier, finds a test that cannot fail when the behavior it names breaks (`Important`) and a redundant one (`Nit`); `angles.16.enabled: false` turns it off. It reports; the author deletes.
 
 **A finder is aggressive, a judge is strict.** Finders look for everything their angles ask. Judges run on a different model than the finder whose candidates they judge, so one model's blind spot does not confirm itself. A defect two models found independently is the strongest signal of a run.
 
@@ -46,7 +46,7 @@ Counted lines leave out tests, fixtures, documents, lock files and unedited rena
 
 | diff | layout | who hunts | who judges |
 | --- | --- | --- | --- |
-| any size (`auto`) | lean | per partition a fresh `behavior` finder (bugs, state, contracts, efficiency, spec; deep/high), plus a `conventions` finder (standard/high) only for the project's own angles of that kind | the session; one judge on another model for the `Important` ones |
+| any size (`auto`) | lean | per partition a fresh `behavior` finder (bugs, state, contracts, efficiency, spec; deep/high), plus a `test-reviewer` (standard/medium) for wrong and redundant tests (angle 16) when the partition has changed tests, and a `conventions` finder (standard/high) only for the project's own angles of that kind | the session; one judge on another model for the `Important` ones |
 | any, by `--layout solo` | solo | the same finders | each finder proves its own candidates; no judge |
 
 Without state the run's diff parts go to the OS temp dir; each plan prints a new `run:` id, and finder checkpoints are reused only by a retry of the same run. `jig review-plan` prints a one-line cost estimate: each finder, by the context its share of the diff grows and the turns it takes (calibrated on a measured 10,263-line run: a finder about 100 turns at 250-400k tokens), at the list prices of each finder's tier model (`prices` in the [user config](configuration.md#user-config) override them); the runner and the judges are not in it.
