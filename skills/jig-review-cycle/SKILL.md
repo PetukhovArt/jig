@@ -14,6 +14,15 @@ Discover → filter → review → post → verdict. You are the orchestrator: y
 
 The user-facing text of a pass is the [summary](#4-summary) (when everything was skipped, its one-line form), plus the reason when discovery aborts. Per-merge-request progress is not narrated: under a loop each restated line stays in the main context for every later pass.
 
+**While the pass runs**: each turn that ends after a merge request finishes (its review returned and was acted on) prints only the list of merge requests finished so far, one per line, and no other text:
+
+```
+- <web_url> | <status>
+- <web_url> | <status>
+```
+
+The link is the full URL, the status is the [summary](#4-summary) status. No line for a merge request still in review or waiting, no explanation, no plan of the next step.
+
 ## Arguments
 
 - **focus text**: everything that is not a flag: sets the standing focus note ([focus note](#focus-note)).
