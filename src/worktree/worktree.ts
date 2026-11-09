@@ -70,30 +70,31 @@ const worktreeSeed = (args: string[]): number => {
   return items.some((item) => item.action === 'failed') ? 1 : 0
 }
 
-const DEPS_USAGE = 'worktree deps <dir> [--save [--force]] | worktree deps --prune [--dry-run]'
+const DEPS_USAGE = 'worktree deps <dir> [--save [--force] | --refresh] | worktree deps --prune [--dry-run]'
 
 const worktreeDeps = (args: string[]): number => {
   const { values, positionals } = parseArgs({
     args,
-    options: { save: { type: 'boolean' }, force: { type: 'boolean' }, prune: { type: 'boolean' }, 'dry-run': { type: 'boolean' } },
+    options: { save: { type: 'boolean' }, force: { type: 'boolean' }, refresh: { type: 'boolean' }, prune: { type: 'boolean' }, 'dry-run': { type: 'boolean' } },
     allowPositionals: true,
     strict: true,
   })
   const isSave = values.save === true
+  const refresh = values.refresh === true
   if (values.prune === true) {
-    if (positionals.length > 0 || isSave || values.force === true) return fail(`usage: ${DEPS_USAGE}`, 2)
+    if (positionals.length > 0 || isSave || refresh || values.force === true) return fail(`usage: ${DEPS_USAGE}`, 2)
     const pruned = prunePool(mainCheckout(process.cwd()), values['dry-run'] === true)
     formatPrune(pruned).forEach((line) => print(line))
     return pruned.kind === 'failed' ? 1 : 0
   }
-  if (values['dry-run'] === true || (values.force === true && !isSave)) return fail(`usage: ${DEPS_USAGE}`, 2)
+  if (values['dry-run'] === true || (values.force === true && !isSave) || (refresh && isSave)) return fail(`usage: ${DEPS_USAGE}`, 2)
   const target = checkoutTarget(positionals, DEPS_USAGE)
   if (typeof target === 'number') return target
   const { dir, main, config } = target
   const install = config.slots?.install
   const outcome = isSave
     ? saveDeps(dir, { main, install, force: values.force })
-    : provideDeps(dir, { main, install, after: config.worktree?.depsPool?.after })
+    : provideDeps(dir, { main, install, after: config.worktree?.depsPool?.after, refresh })
   formatDeps(outcome).forEach((line) => print(line))
   return outcome.kind === 'failed' ? 1 : 0
 }

@@ -4833,7 +4833,7 @@ var reuse = (worktree, pool, entry, keyed, after, from) => {
   }
   const { files, transfer } = copier;
   const { key } = keyed;
-  return { kind: "reused", from, lockfile: manifest.lockfile, key, version: entry.version, files, transfer, after, footprint: manifest.footprint };
+  return { kind: "reused", from, published: manifest.published, lockfile: manifest.lockfile, key, version: entry.version, files, transfer, after, footprint: manifest.footprint };
 };
 var installedCheckout = (main, keyed, configured, accepts) => {
   for (const checkout of listWorktrees(main)) {
@@ -4891,11 +4891,13 @@ var reuseOrInstall = (checkout, pool, keyed, options, accepts, stored) => {
   return installAndPool(checkout, pool, keyed, options.after);
 };
 var provideTracked = (checkout, pool, keyed, options) => {
+  if (options.refresh === true) return { kind: "failed", detail: `--refresh is for a gitignored lock file; ${keyed.lockfile.file} is tracked, so its entry already holds what it pins` };
   const entry = entryOf(keyed, void 0);
   if (existsSync8(join23(pool, entry.name))) return reuse(checkout, pool, entry, keyed, options.after, void 0);
   return reuseOrInstall(checkout, pool, keyed, options, (path2) => !samePath(path2, checkout), void 0);
 };
 var provideIgnored = (checkout, pool, keyed, options) => {
+  if (options.refresh === true) return installAndPool(checkout, pool, keyed, options.after);
   const versions = versionsOf(pool, keyed.key);
   const newest = versions[0]?.published ?? -Infinity;
   const known = new Set(versions.map((entry) => entry.version));
@@ -4986,13 +4988,23 @@ var pooledLines = (outcome) => {
 var ranAfter = (after) => after === void 0 ? "" : `, ran ${after}`;
 var entryLabel = (outcome) => outcome.version === void 0 ? `pool entry ${outcome.key}` : `pool entry ${outcome.key} version ${outcome.version}`;
 var restoredLock = (outcome) => outcome.version === void 0 ? "" : `, restored its ${outcome.lockfile}`;
+var MS_PER_HOUR = 60 * 60 * 1e3;
+var HOURS_PER_DAY = 24;
+var ageOf = (published) => {
+  if (published === void 0 || published === 0) return "at an unknown time";
+  const hours = Math.max(0, Math.floor((Date.now() - published) / MS_PER_HOUR));
+  return hours < HOURS_PER_DAY ? `${hours} h ago` : `${Math.floor(hours / HOURS_PER_DAY)} days ago`;
+};
+var staleResolution = (outcome) => outcome.version === void 0 ? [] : [
+  `deps: ${outcome.lockfile} is gitignored, so this entry holds what an install resolved ${ageOf(outcome.published)}; a dist-tag or range that moved on the registry since is not in it: commit ${outcome.lockfile}, or run jig worktree deps <dir> --refresh`
+];
 var storedLock = (outcome) => outcome.version === void 0 ? "" : ` along with ${outcome.lockfile}`;
 var formatDeps = (outcome) => {
   switch (outcome.kind) {
     case "reused": {
       const counts = `(${outcome.files} files${restoredLock(outcome)})${ranAfter(outcome.after)}`;
       const head = outcome.from === void 0 ? `deps: reused ${entryLabel(outcome)} for ${outcome.lockfile} ${counts}` : `deps: pooled the installed ${outcome.lockfile} dependencies of ${outcome.from} as ${entryLabel(outcome)}, reused them ${counts}`;
-      return [head, ...pooledLines(outcome)];
+      return [head, ...staleResolution(outcome), ...pooledLines(outcome)];
     }
     case "installed":
       if (!outcome.pooled) return [`deps: installed for ${outcome.lockfile} with ${outcome.install}, not pooled: ${outcome.reason}`];
@@ -9393,27 +9405,28 @@ var worktreeSeed = (args) => {
   }
   return items.some((item) => item.action === "failed") ? 1 : 0;
 };
-var DEPS_USAGE = "worktree deps <dir> [--save [--force]] | worktree deps --prune [--dry-run]";
+var DEPS_USAGE = "worktree deps <dir> [--save [--force] | --refresh] | worktree deps --prune [--dry-run]";
 var worktreeDeps = (args) => {
   const { values, positionals } = parseArgs8({
     args,
-    options: { save: { type: "boolean" }, force: { type: "boolean" }, prune: { type: "boolean" }, "dry-run": { type: "boolean" } },
+    options: { save: { type: "boolean" }, force: { type: "boolean" }, refresh: { type: "boolean" }, prune: { type: "boolean" }, "dry-run": { type: "boolean" } },
     allowPositionals: true,
     strict: true
   });
   const isSave = values.save === true;
+  const refresh = values.refresh === true;
   if (values.prune === true) {
-    if (positionals.length > 0 || isSave || values.force === true) return fail4(`usage: ${DEPS_USAGE}`, 2);
+    if (positionals.length > 0 || isSave || refresh || values.force === true) return fail4(`usage: ${DEPS_USAGE}`, 2);
     const pruned = prunePool(mainCheckout(process.cwd()), values["dry-run"] === true);
     formatPrune(pruned).forEach((line) => print2(line));
     return pruned.kind === "failed" ? 1 : 0;
   }
-  if (values["dry-run"] === true || values.force === true && !isSave) return fail4(`usage: ${DEPS_USAGE}`, 2);
+  if (values["dry-run"] === true || values.force === true && !isSave || refresh && isSave) return fail4(`usage: ${DEPS_USAGE}`, 2);
   const target = checkoutTarget(positionals, DEPS_USAGE);
   if (typeof target === "number") return target;
   const { dir, main, config } = target;
   const install = config.slots?.install;
-  const outcome = isSave ? saveDeps(dir, { main, install, force: values.force }) : provideDeps(dir, { main, install, after: config.worktree?.depsPool?.after });
+  const outcome = isSave ? saveDeps(dir, { main, install, force: values.force }) : provideDeps(dir, { main, install, after: config.worktree?.depsPool?.after, refresh });
   formatDeps(outcome).forEach((line) => print2(line));
   return outcome.kind === "failed" ? 1 : 0;
 };

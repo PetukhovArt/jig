@@ -328,7 +328,7 @@ const RESOLVE = [
   "const path = require('path')",
   "const name = JSON.parse(fs.readFileSync('package.json', 'utf8')).name",
   "fs.writeFileSync('install.marker', '')",
-  "fs.writeFileSync('package-lock.json', JSON.stringify({ name, extra: process.argv[2] ?? null }))",
+  "fs.writeFileSync('package-lock.json', JSON.stringify({ name, extra: process.argv[2] ?? process.env.JIG_TEST_REGISTRY ?? null }))",
   "fs.mkdirSync(path.join('node_modules', 'pkg'), { recursive: true })",
   "fs.writeFileSync(path.join('node_modules', 'pkg', 'index.js'), name)",
   "fs.writeFileSync(path.join('node_modules', '.package-lock.json'), '{}')",
@@ -442,5 +442,23 @@ describe('dependency pool with a gitignored lock file', () => {
     expect(saved).toMatchObject({ kind: 'saved', key: releaseKey })
     expect(versionOf(saved)).not.toBe(newestVersion)
     expect(saveDeps(dir, resolveOptions(main))).toEqual({ kind: 'kept', lockfile: 'package-lock.json', key: releaseKey, version: versionOf(saved) })
+  })
+
+  it('warns on a reuse that it serves an old resolution, and refresh re-resolves after the registry moved, so later worktrees get the new version', () => {
+    const stale = provideDeps(seededWorktree('release-6', 'release'), resolveOptions(main))
+    expect(formatDeps(stale).join('\n')).toMatch(/package-lock\.json is gitignored.*--refresh/)
+
+    vi.stubEnv('JIG_TEST_REGISTRY', 'moved')
+    try {
+      const dir = seededWorktree('release-7', 'release')
+      const refreshed = provideDeps(dir, { ...resolveOptions(main), refresh: true })
+      expect(refreshed).toMatchObject({ kind: 'installed', pooled: true, key: releaseKey })
+      expect(JSON.parse(lockIn(dir))).toEqual({ name: 'release', extra: 'moved' })
+    } finally {
+      vi.unstubAllEnvs()
+    }
+    const later = seededWorktree('release-8', 'release')
+    expect(provideDeps(later, resolveOptions(main))).toMatchObject({ kind: 'reused', key: releaseKey })
+    expect(JSON.parse(lockIn(later))).toEqual({ name: 'release', extra: 'moved' })
   })
 })

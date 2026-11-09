@@ -29,6 +29,7 @@ export interface DepsOptions {
   main: string
   install?: string | undefined
   after?: string | undefined
+  refresh?: boolean | undefined
 }
 
 export interface SaveOptions {
@@ -50,7 +51,7 @@ interface Pooled {
 }
 
 export type DepsOutcome =
-  | ({ kind: 'reused'; from: string | undefined } & Pooled)
+  | ({ kind: 'reused'; from: string | undefined; published: number | undefined } & Pooled)
   | ({ kind: 'installed'; pooled: true; install: string } & Pooled)
   | { kind: 'installed'; pooled: false; install: string; lockfile: string; key: string; reason: string }
   | { kind: 'skipped'; reason: string }
@@ -403,7 +404,7 @@ const reuse = (worktree: string, pool: string, entry: Entry, keyed: Keyed, after
   }
   const { files, transfer } = copier
   const { key } = keyed
-  return { kind: 'reused', from, lockfile: manifest.lockfile, key, version: entry.version, files, transfer, after, footprint: manifest.footprint }
+  return { kind: 'reused', from, published: manifest.published, lockfile: manifest.lockfile, key, version: entry.version, files, transfer, after, footprint: manifest.footprint }
 }
 
 const installedCheckout = (main: string, keyed: Keyed, configured: string | undefined, accepts: (path: string) => boolean): Source | undefined => {
@@ -472,12 +473,14 @@ const reuseOrInstall = (
 }
 
 const provideTracked = (checkout: string, pool: string, keyed: Keyed, options: DepsOptions): DepsOutcome => {
+  if (options.refresh === true) return { kind: 'failed', detail: `--refresh is for a gitignored lock file; ${keyed.lockfile.file} is tracked, so its entry already holds what it pins` }
   const entry = entryOf(keyed, undefined)
   if (existsSync(join(pool, entry.name))) return reuse(checkout, pool, entry, keyed, options.after, undefined)
   return reuseOrInstall(checkout, pool, keyed, options, (path) => !samePath(path, checkout), undefined)
 }
 
 const provideIgnored = (checkout: string, pool: string, keyed: Keyed, options: DepsOptions): DepsOutcome => {
+  if (options.refresh === true) return installAndPool(checkout, pool, keyed, options.after)
   const versions = versionsOf(pool, keyed.key)
   const newest = versions[0]?.published ?? -Infinity
   const known = new Set(versions.map((entry) => entry.version))
@@ -505,7 +508,9 @@ const provideIgnored = (checkout: string, pool: string, keyed: Keyed, options: D
  * stores the lock file, which a reuse writes into `checkout`. One key holds versions, one per stored
  * lock file (`version`); a reuse takes the newest. A checkout with the same key, a fresh install and
  * a lock file newer than the newest version and unlike every version (`checkout` itself included)
- * first becomes a new version, the one reused.
+ * first becomes a new version, the one reused. Nothing else re-resolves a dist-tag or range that moved
+ * on the registry: `refresh` skips the reuse and runs the resolving install, whose lock file becomes
+ * the newest version when it differs from every stored one.
  *
  * A failed install, reuse copy or `after` comes back as `failed`; a failed pooling after a good
  * install comes back as `installed` with `pooled: false`, the checkout still usable.
@@ -635,6 +640,22 @@ const entryLabel = (outcome: { key: string; version: string | undefined }): stri
 
 const restoredLock = (outcome: Pooled): string => (outcome.version === undefined ? '' : `, restored its ${outcome.lockfile}`)
 
+const MS_PER_HOUR = 60 * 60 * 1000
+const HOURS_PER_DAY = 24
+
+const ageOf = (published: number | undefined): string => {
+  if (published === undefined || published === 0) return 'at an unknown time'
+  const hours = Math.max(0, Math.floor((Date.now() - published) / MS_PER_HOUR))
+  return hours < HOURS_PER_DAY ? `${hours} h ago` : `${Math.floor(hours / HOURS_PER_DAY)} days ago`
+}
+
+const staleResolution = (outcome: Pooled & { published: number | undefined }): string[] =>
+  outcome.version === undefined
+    ? []
+    : [
+        `deps: ${outcome.lockfile} is gitignored, so this entry holds what an install resolved ${ageOf(outcome.published)}; a dist-tag or range that moved on the registry since is not in it: commit ${outcome.lockfile}, or run jig worktree deps <dir> --refresh`,
+      ]
+
 const storedLock = (outcome: Pooled): string => (outcome.version === undefined ? '' : ` along with ${outcome.lockfile}`)
 
 export const formatDeps = (outcome: DepsOutcome | SaveOutcome): string[] => {
@@ -645,7 +666,7 @@ export const formatDeps = (outcome: DepsOutcome | SaveOutcome): string[] => {
         outcome.from === undefined
           ? `deps: reused ${entryLabel(outcome)} for ${outcome.lockfile} ${counts}`
           : `deps: pooled the installed ${outcome.lockfile} dependencies of ${outcome.from} as ${entryLabel(outcome)}, reused them ${counts}`
-      return [head, ...pooledLines(outcome)]
+      return [head, ...staleResolution(outcome), ...pooledLines(outcome)]
     }
     case 'installed':
       if (!outcome.pooled) return [`deps: installed for ${outcome.lockfile} with ${outcome.install}, not pooled: ${outcome.reason}`]
