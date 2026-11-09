@@ -3489,7 +3489,9 @@ var checkCatalogEntry = (entry, config, tools, discovery) => {
   return warn(`${entry.name}: on in config, binary not installed, tool not used`);
 };
 var hasUiFiles = (projectRoot) => projectFiles(projectRoot).some(createMatcher(agentViewCheck.files));
-var checkAgentViewSetup = (projectRoot, discovery) => {
+var checkAgentViewSetup = (projectRoot, config, discovery) => {
+  const setting = config.proofs[agentViewCheck.name];
+  if (setting === false || setting?.level === "off") return void 0;
   const agentView = discovery.found.find((item) => item.name === agentViewCheck.name);
   if (agentView?.status === "ready" || !hasUiFiles(projectRoot)) return void 0;
   const setup = agentViewCheck.setup?.join(", then ") ?? "agent-view init";
@@ -3545,7 +3547,7 @@ var doctorChecks = (projectRoot, pluginRoot) => {
   const config = loadConfig(projectRoot);
   const { tools } = resolveTools(projectRoot, config);
   const discovery = discover(projectRoot);
-  const agentViewSetup = checkAgentViewSetup(projectRoot, discovery);
+  const agentViewSetup = checkAgentViewSetup(projectRoot, config, discovery);
   const nodeOnPath = checkNodeOnPath(process.env);
   return [
     checkNode(),

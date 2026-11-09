@@ -107,7 +107,9 @@ const checkCatalogEntry = (entry: CatalogEntry, config: LoadedConfig, tools: Pla
 
 const hasUiFiles = (projectRoot: string): boolean => projectFiles(projectRoot).some(createMatcher(agentViewCheck.files))
 
-const checkAgentViewSetup = (projectRoot: string, discovery: Discovery): Check | undefined => {
+const checkAgentViewSetup = (projectRoot: string, config: LoadedConfig, discovery: Discovery): Check | undefined => {
+  const setting = config.proofs[agentViewCheck.name]
+  if (setting === false || setting?.level === 'off') return undefined
   const agentView = discovery.found.find((item) => item.name === agentViewCheck.name)
   if (agentView?.status === 'ready' || !hasUiFiles(projectRoot)) return undefined
   const setup = agentViewCheck.setup?.join(', then ') ?? 'agent-view init'
@@ -172,7 +174,7 @@ export const doctorChecks = (projectRoot: string, pluginRoot: string): Check[] =
   const config = loadConfig(projectRoot)
   const { tools } = resolveTools(projectRoot, config)
   const discovery = discover(projectRoot)
-  const agentViewSetup = checkAgentViewSetup(projectRoot, discovery)
+  const agentViewSetup = checkAgentViewSetup(projectRoot, config, discovery)
   const nodeOnPath = checkNodeOnPath(process.env)
   return [
     checkNode(),

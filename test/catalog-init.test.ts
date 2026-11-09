@@ -275,6 +275,13 @@ describe('jig doctor', () => {
     expect(doctorChecks(root, root).map((check) => check.text)).not.toContainEqual(expect.stringMatching(/no agent-view\.config\.json/))
   })
 
+  it.each([false, { level: 'off' }])('keeps the agent-view setup hint quiet when the config turns agent-view off (%o)', (setting) => {
+    write('src/App.tsx', 'export {}\n')
+    write('.jig/config.jsonc', JSON.stringify({ tsc: {}, 'agent-view': setting }))
+    const texts = doctorChecks(root, root).map((check) => `${check.status} ${check.text}`).filter((text) => text.startsWith('ok agent-view') || text.startsWith('warn agent-view'))
+    expect(texts).toEqual(['ok agent-view: off in config'])
+  })
+
   it('warns when the hooks would find no node on PATH', () => {
     const nodeTexts = () => doctorChecks(root, root).map((check) => check.text).filter((text) => text.includes('not on PATH'))
     expect(nodeTexts()).toEqual([])
