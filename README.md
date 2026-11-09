@@ -188,7 +188,7 @@ Atoms are those short rules, indexed in [`skills/jig/SKILL.md`](skills/jig/SKILL
 | [writing-for-agents](atoms/writing-for-agents.md) | process | when you write or edit text an agent runs on: a skill, a flow, an atom, a role, AGENTS.md or CLAUDE.md |
 | [design-it-twice](atoms/design-it-twice.md) | design | when facing a novel module interface, data shape or architectural decision with no precedent in the codebase, or when a new requirement lands in an existing design |
 | [do-less](atoms/do-less.md) | design | when sizing a change, adding an option or abstraction, or sequencing an addition |
-| [domain-model](atoms/domain-model.md) | design | when writing stateful logic, designing types, or when code branches a lot on the same shape |
+| [domain-model](atoms/domain-model.md) | design | when writing stateful logic, designing types, naming a new field or term, or when code branches a lot on the same shape |
 | [module-depth](atoms/module-depth.md) | design | before you write code that crosses a function boundary: a new or changed signature, exported type or module surface |
 | [one-way](atoms/one-way.md) | design | when introducing a new API, abstraction or way of doing a task while old ones exist |
 | [patterns](atoms/patterns.md) | design | when designing a module interface with two or more variants, or when untangling complex code: a switch on type, an instanceof chain, duplicated conditional creation, an import cycle |

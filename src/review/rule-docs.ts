@@ -93,12 +93,12 @@ const standardScopes = (root: string, indexes: readonly string[], standards: rea
 
 const linksOf = (root: string, path: string): string[] => linkedDocuments(path, readFileSync(join(root, path), 'utf8')).filter((target) => existsSync(join(root, target)))
 
-const glossariesOf = (root: string, indexes: readonly string[], documents: readonly string[]): string[] => {
+const glossariesOf = (root: string, indexes: readonly string[], documents: readonly string[], dirs: ReadonlySet<string>): string[] => {
   const fromIndexes = indexes.flatMap((index) => linksOf(root, index))
   const maps = [...documents.filter((path) => !path.includes('/') && GLOSSARY_MAP.test(path)), ...fromIndexes.filter((path) => GLOSSARY_MAP.test(path))]
   const listed = [...new Set(maps)].flatMap((map) => linksOf(root, map))
-  const rootGlossary = documents.filter((path) => !path.includes('/') && GLOSSARY.test(path) && !GLOSSARY_MAP.test(path))
-  return sorted([...rootGlossary, ...fromIndexes, ...listed].filter((path) => GLOSSARY.test(path) && !GLOSSARY_MAP.test(path)))
+  const onWalkUp = documents.filter((path) => dirs.has(dirOf(path)) && GLOSSARY.test(path) && !GLOSSARY_MAP.test(path))
+  return sorted([...onWalkUp, ...fromIndexes, ...listed].filter((path) => GLOSSARY.test(path) && !GLOSSARY_MAP.test(path)))
 }
 
 export const ruleDocuments = (root: string, changed: readonly string[], env: NodeJS.ProcessEnv): ReviewInputs => {
@@ -116,7 +116,7 @@ export const ruleDocuments = (root: string, changed: readonly string[], env: Nod
   const standards = sorted(
     documents.filter((path) => path.toLowerCase().endsWith('.md') && !isIndex(path) && (isStandard(path) || isNamedStandard(path)) && !isExcluded(path)),
   )
-  const glossaries = glossariesOf(root, indexes, documents)
+  const glossaries = glossariesOf(root, indexes, documents, dirs)
   const scopes = {
     ...Object.fromEntries([...indexes, ...glossaries].map((path) => [path, dirOf(path)])),
     ...standardScopes(root, indexes, standards),

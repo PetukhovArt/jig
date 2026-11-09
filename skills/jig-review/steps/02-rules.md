@@ -12,7 +12,7 @@ Take the directories the diff touches and walk from each up to the root, collect
 node "<root>/bin/jig.mjs" review rules <base> [-- <path>...]
 ```
 
-It prints `index <path>` (with `· scope <dir>/` below the root) for each rules index on the walk up from every changed file's directory to the repository root, root included, by the names of `discover.rules` (default `AGENTS.md`, `CLAUDE.md`, `CLAUDE.local.md`, `REVIEW.md`); `standard <path>` for the standard documents of step 2, with the scope of the index that links it. It reads `discover` from `.jig/review.jsonc` itself.
+It prints `index <path>` (with `· scope <dir>/` below the root) for each rules index on the walk up from every changed file's directory to the repository root, root included, by the names of `discover.rules` (default `AGENTS.md`, `CLAUDE.md`, `CLAUDE.local.md`, `REVIEW.md`); `standard <path>` for the standard documents of step 2, with the scope of the index that links it; `glossary <path>` for each glossary ([routing](#3-filter)); `avoid <file>:<line> <word> · <glossary>:<line> <quoted line>` for each name an added line of the diff takes from the `_Avoid_` / `Avoid:` line of a glossary whose scope holds that file ([avoid hits](#5-glossary-avoid-hits)). It reads `discover` from `.jig/review.jsonc` itself.
 
 **A file's scope is its directory.** A rule from `src/payments/AGENTS.md` applies only to files under `src/payments/`. A finding by it outside that directory is invalid.
 
@@ -32,7 +32,7 @@ Drop what is not a rule: meeting notes, release checklists, documents about the 
 
 **What is read as input, and nothing else:** the rules indexes of step 1 (`AGENTS.md`, `CLAUDE.md` and the other `discover.rules` names closest to the changed files), the task's spec or PRD ([prepare](01-prepare.md#spec)), and the standard bodies of step 2. A README, a directory overview, an ADR index or a glossary map is not read whole; a document an index links is opened only when a candidate needs the rule it holds.
 
-**ADRs do not go into the shared block.** Glossaries go to every `conventions` finder by path, under its `rules:` line: the root `GLOSSARY.md` to all, a context glossary that the glossary map (`GLOSSARY-MAP.md` at the root or linked from an index) lists to the partitions under its directory. A finder greps them, never reads them whole.
+**ADRs do not go into the shared block.** Glossaries go to every `conventions` finder by path, under its `rules:` line: the root `GLOSSARY.md` to all, a module's own glossary (on the walk up from a changed file) and a context glossary that the glossary map (`GLOSSARY-MAP.md` at the root or linked from an index) lists to the partitions under its directory. A finder greps them, never reads them whole.
 
 **Priority in a conflict:** the document closest to the code beats the farther one; `REVIEW.md` beats `AGENTS.md` at the same level.
 
@@ -70,3 +70,7 @@ dropped: docs/standards/tracker.md, 5 GLOSSARY.md
 ```
 
 or `rules: none (no conventions angle)`.
+
+## 5. Glossary avoid hits
+
+The `avoid` lines run in every review, with or without a `conventions` angle: each is a candidate `{file, line, angle: "glossary", root: <the name>, summary, mechanism, rule: <the quoted glossary line>}` that joins the finders' candidates at [dedup](05-verify.md#dedup) and goes to verify like them. The grep matches words, not concepts: the judge keeps it only when the name holds the concept the glossary entry is about (an `_Avoid_: disabled` for a design-time lock does not hit the HTML `disabled` attribute). A kept one is a naming finding at the project's naming severity, `Nit` when the project names none. `(N lines)` on the line: one candidate, the other lines are its evidence.

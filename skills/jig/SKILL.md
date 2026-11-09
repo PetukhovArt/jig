@@ -46,7 +46,7 @@ These hold for the whole task, in every flow.
 **Design**
 - `design-it-twice`: Apply when facing a novel module interface, data shape or architectural decision with no precedent in the codebase, or when a new requirement lands in an existing design
 - `do-less`: Apply when sizing a change, adding an option or abstraction, or sequencing an addition
-- `domain-model`: Apply when writing stateful logic, designing types, or when code branches a lot on the same shape
+- `domain-model`: Apply when writing stateful logic, designing types, naming a new field or term, or when code branches a lot on the same shape
 - `module-depth`: Apply before you write code that crosses a function boundary: a new or changed signature, exported type or module surface
 - `one-way`: Apply when introducing a new API, abstraction or way of doing a task while old ones exist
 - `patterns`: Apply when designing a module interface with two or more variants, or when untangling complex code: a switch on type, an instanceof chain, duplicated conditional creation, an import cycle

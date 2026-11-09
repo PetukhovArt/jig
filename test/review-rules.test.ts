@@ -43,6 +43,7 @@ describe('review inputs', () => {
       standards: ['notes/code-style.md', 'standards/naming.md'],
       glossaries: [],
       scopes: { 'AGENTS.md': '', 'src/payments/AGENTS.md': 'src/payments', 'src/payments/deep/REVIEW.md': 'src/payments/deep', 'notes/code-style.md': '', 'standards/naming.md': '' },
+      avoid: [],
     })
   })
 
@@ -55,6 +56,18 @@ describe('review inputs', () => {
     const inputs = reviewInputs(root, 'main', [], {})
     expect(inputs.glossaries).toEqual(['GLOSSARY.md', 'src/payments/GLOSSARY.md'])
     expect([inputs.scopes['GLOSSARY.md'], inputs.scopes['src/payments/GLOSSARY.md']]).toEqual(['', 'src/payments'])
+  })
+
+  it('reports added names that the _Avoid_ line of a glossary on the walk up lists, within its scope only, with no index or map linking it', () => {
+    write('src/payments/deep/GLOSSARY.md', '**Enabled**: the operator can open the tab at runtime\n_Avoid_: disabled, blocked (use **Locked** for design time)\n')
+    write('src/other/GLOSSARY.md', '_Avoid_: pay\n')
+    write('src/payments/deep/pay.ts', 'changed\nexport const isDisabled = props.enabled\nconst label = "Blocked"\nconst disabledTabs = []\n')
+    const { glossaries, avoid } = reviewInputs(root, 'main', [], {})
+    expect(glossaries).toEqual(['src/payments/deep/GLOSSARY.md'])
+    expect(avoid.map((hit) => `${hit.file}:${hit.line} ${hit.word} ${hit.lines} ${hit.glossary}:${hit.glossaryLine}`)).toEqual([
+      'src/payments/deep/pay.ts:2 disabled 2 src/payments/deep/GLOSSARY.md:2',
+      'src/payments/deep/pay.ts:3 blocked 1 src/payments/deep/GLOSSARY.md:2',
+    ])
   })
 
   it('lists the standards under docs/ that an index links, scoped to the directory of the shallowest index linking them', () => {
