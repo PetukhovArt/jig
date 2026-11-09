@@ -26,7 +26,7 @@
       "status": "open"
     }
   ],
-  "deepening": { "module": "…", "what": "…", "effect": "…", "blast_radius": "…", "diagram": { "before": "flowchart LR …", "after": "flowchart LR …" }, "sha": "…" }
+  "deepening": { "module": "…", "what": "…", "places": ["…"], "effect": "…", "blast_radius": "N modules, M tests", "blast_paths": ["…"], "diagram": { "before": "flowchart TB …", "after": "flowchart TB …" }, "sha": "…" }
 }
 ```
 

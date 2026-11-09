@@ -75,7 +75,33 @@ One unresolvable general note, rebuilt whole on every pass, sections without ite
 
 - `**Outside the merge request scope**`: noticed during review, fix when the change is small; no resolve needed. One item per out-of-diff `Nit` or `Pre-existing` finding: `` `file:line` `` and the first line of its `mrComment` without the chip;
 - `**[🟡 Nit] Improvements: optional, not blocking the merge.**`: one item per `optional` finding an earlier run wrote, naming the file; no such finding, no section: `- [x]` when it is `done` in state, `- [ ]` otherwise;
-- `**Deepening: a proposal, not a finding.**`: the state's `deepening`, one labelled line per field, in this order (labels in the comment language): module, what to deepen, effect, blast radius, each label in bold, the value after it, code names in backticks; then the diagram: a line `before:` and the state's `diagram.before` in a fenced ```` ```mermaid ```` block, a line `after:` and `diagram.after` in a second one. A `deepening` without `diagram` (written by an earlier run) posts the four lines only. The texts are as the deepener wrote them: do not join the fields into one line and do not cut one.
+- `**Deepening: a proposal, not a finding.**`: the state's `deepening` as a list, labels in bold and in the comment language, code names in backticks:
+
+  ````
+  - **module:** `<module>`
+  - **what to deepen:** <what>
+    - `<place>` (one per `places` entry)
+  - **effect:** <effect>
+  - **blast radius:** <blast_radius>
+
+  <details><summary>paths and diagram</summary>
+
+  - `<path>` (one per `blast_paths` entry)
+
+  before:
+  ```mermaid
+  <diagram.before>
+  ```
+
+  after:
+  ```mermaid
+  <diagram.after>
+  ```
+
+  </details>
+  ````
+
+  A field the state lacks (an earlier run wrote no `places`, `blast_paths` or `diagram`) is left out with its lines; no `blast_paths` and no `diagram`, no `<details>`. **Check the format before the confirmation** ([deepener](../../jig/references/roles/deepener.md)): the text above `<details>` under about 600 characters, `what` one sentence without signatures or helper names, `effect` at most two sentences, `blast_radius` counts only, each diagram `flowchart TB` with at most 7 nodes and one short line per label. A deepening that fails it (the deepener missed the format, or an earlier run wrote it) is rewritten to the format: move paths out of the prose into `places` or `blast_paths`, cut signatures and helper names, turn `LR` into `TB`, drop the nodes of modules that do not change; keep every path. The confirmation shows the rewritten text, and state gets it.
 
 The heading lines are in the comment language. Find your earlier note by the invisible marker `<!-- review-fyi -->` at its end and update it ("Post or update a general note"); create one only when none exists. Keep the marker: without it every pass leaves another note.
 
