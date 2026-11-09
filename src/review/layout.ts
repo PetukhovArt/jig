@@ -1,4 +1,5 @@
 import { TIERS, type Tier } from '../tiers/tiers'
+import { isUiFile } from '../catalog/proofs/agent-view'
 import { groupFiles, partitionFiles, type Edge, type Group, type Partition, type PartitionFile } from './partition'
 
 export const EFFORTS = ['low', 'medium', 'high'] as const
@@ -26,6 +27,7 @@ export const ANGLE_TOKENS = {
   14: 'security',
   15: 'spec',
   16: 'tests',
+  18: 'ux',
 } as const satisfies Record<number, string>
 
 export type Angle = keyof typeof ANGLE_TOKENS
@@ -34,7 +36,7 @@ export const ANGLES: readonly Angle[] = Object.keys(ANGLE_TOKENS).map(Number).fi
 
 export const REMOVED_ANGLES: readonly number[] = [6, 7, 9, 10, 11, 13, 17]
 
-const IMPORTANT_ANGLES: readonly Angle[] = [1, 2, 3, 4, 5, 8, 12, 14, 15, 16]
+const IMPORTANT_ANGLES: readonly Angle[] = [1, 2, 3, 4, 5, 8, 12, 14, 15, 16, 18]
 
 const TOKEN_ANGLES: Readonly<Record<string, readonly Angle[]>> = {
   bugs: [1, 2, 3, 4, 5, 12],
@@ -42,6 +44,7 @@ const TOKEN_ANGLES: Readonly<Record<string, readonly Angle[]>> = {
   efficiency: [8],
   spec: [15],
   tests: [16],
+  ux: [18],
 }
 const SPECIAL_TOKENS = ['important', 'deepening'] as const
 export const SELECTOR_TOKENS = [...SPECIAL_TOKENS, ...Object.keys(TOKEN_ANGLES), 'auto']
@@ -51,6 +54,7 @@ export const DEFAULT_GRADES: Readonly<Record<string, Grade>> = {
   behavior: { tier: 'deep', effort: 'high' },
   conventions: { tier: 'standard', effort: 'high' },
   tests: { tier: 'standard', effort: 'medium' },
+  ux: { tier: 'standard', effort: 'high' },
   verify: { tier: 'deep', effort: 'medium' },
   outcome: { tier: 'deep', effort: 'medium' },
   composer: { tier: 'standard', effort: 'medium' },
@@ -61,6 +65,7 @@ export const REMOVED_GRADE_KEYS: readonly string[] = ['flow']
 
 export interface Shape {
   tests: boolean
+  ui: boolean
   newSourceFiles: number
   spec: boolean
 }
@@ -107,16 +112,17 @@ export interface PlanInput {
 
 export type Grouping = 'lines' | 'groups' | 'pending'
 
-export const FINDER_KINDS = ['behavior', 'conventions', 'tests'] as const
+export const FINDER_KINDS = ['behavior', 'conventions', 'tests', 'ux'] as const
 export type FinderKind = (typeof FINDER_KINDS)[number]
 
 export const KIND_ANGLES: Readonly<Record<FinderKind, readonly Angle[]>> = {
   behavior: [1, 2, 3, 4, 5, 8, 12, 14, 15],
   conventions: [],
   tests: [16],
+  ux: [18],
 }
 
-export const KIND_ROLES: Readonly<Record<FinderKind, string>> = { behavior: 'finder', conventions: 'finder', tests: 'test-reviewer' }
+export const KIND_ROLES: Readonly<Record<FinderKind, string>> = { behavior: 'finder', conventions: 'finder', tests: 'test-reviewer', ux: 'finder' }
 
 export const REREVIEW_FULL_LAYOUT_LINES = 600
 
@@ -203,6 +209,7 @@ const selectedAngles = (tokens: readonly string[], settings: PlanInput['angles']
 const inapplicable = (angle: Angle, shape: Shape): string | undefined => {
   if (angle === 15 && !shape.spec) return 'no spec found'
   if (angle === 16 && !shape.tests) return 'no tests in the diff'
+  if (angle === 18 && !shape.ui) return 'no UI files in the diff'
   return undefined
 }
 
@@ -215,13 +222,14 @@ const partitionFinders = (
   projectAngles: readonly ProjectAngle[],
   grades: Readonly<Record<string, Grade>>,
   hasTests: (partition: Partition) => boolean,
+  hasUi: (partition: Partition) => boolean,
 ): Finder[] =>
   partitions.flatMap((partition) =>
     FINDER_KINDS.map((kind) => ({
       name: `${partition.name}-${kind}`,
       kind,
       role: KIND_ROLES[kind],
-      angles: angles.filter((angle) => KIND_ANGLES[kind].includes(angle) && (angle !== 16 || hasTests(partition))),
+      angles: angles.filter((angle) => KIND_ANGLES[kind].includes(angle) && (angle !== 16 || hasTests(partition)) && (angle !== 18 || hasUi(partition))),
       projectAngles: projectAngles.filter((angle) => angle.kind === kind).map((angle) => angle.name),
       partition: partition.name,
       ...roleGrade(kind, grades),
@@ -289,7 +297,14 @@ export const planReview = (input: PlanInput): Plan => {
     skipped: skipped.sort(bySkipOrder),
     grouping,
     partitions,
-    finders: partitionFinders(partitions, usedForCode, projectAngles, grades, (partition) => input.files === undefined || partition.files.some((path) => testFiles.has(path))),
+    finders: partitionFinders(
+      partitions,
+      usedForCode,
+      projectAngles,
+      grades,
+      (partition) => input.files === undefined || partition.files.some((path) => testFiles.has(path)),
+      (partition) => input.files === undefined || partition.files.some(isUiFile),
+    ),
     deepening: wantsDeepening && n > 0 ? roleGrade('deepening', grades) : undefined,
     verify: roleGrade('verify', grades),
     outcome: roleGrade('outcome', grades),
@@ -300,7 +315,7 @@ export const planReview = (input: PlanInput): Plan => {
 export const MODES = ['review', 'pre-mr'] as const
 export type Mode = (typeof MODES)[number]
 
-const BUG_ANGLES: readonly Angle[] = [1, 2, 3, 4, 5, 12, 14]
+const BUG_ANGLES: readonly Angle[] = [1, 2, 3, 4, 5, 12, 14, 18]
 
 /** A file under the skill directory the main session reads for this run, with the part of it that applies. */
 export interface StepRef {

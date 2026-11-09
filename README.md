@@ -175,7 +175,7 @@ Atoms are those short rules, indexed in [`skills/jig/SKILL.md`](skills/jig/SKILL
 
 <!-- atoms:start -->
 
-<details><summary><b>All 28 atoms</b></summary>
+<details><summary><b>All 29 atoms</b></summary>
 
 | atom | group | apply |
 | --- | --- | --- |
@@ -194,6 +194,7 @@ Atoms are those short rules, indexed in [`skills/jig/SKILL.md`](skills/jig/SKILL
 | [patterns](atoms/patterns.md) | design | when designing a module interface with two or more variants, or when untangling complex code: a switch on type, an instanceof chain, duplicated conditional creation, an import cycle |
 | [shared-state](atoms/shared-state.md) | design | when concurrent actors, modules or runs might write the same file, key, branch or state object, or when a command must survive crashes and retries |
 | [system-edges](atoms/system-edges.md) | design | when wiring validation, error handling, adapters or imports across modules |
+| [ux](atoms/ux.md) | design | when you build, review or attack UI: components, markup, styles, screens |
 | [comments](atoms/comments.md) | code | when you add, keep or review a code comment |
 | [dead-code](atoms/dead-code.md) | code | when deleting code believed unused, or reviewing a diff that leaves an export, file or branch nothing reaches |
 | [docs](atoms/docs.md) | code | when writing, editing or reviewing a Markdown document (README, docs, ADR, glossary) |

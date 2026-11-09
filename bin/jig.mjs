@@ -946,6 +946,7 @@ var MARKUP_FILES = ["**/*.{vue,tsx,jsx,svelte,html}"];
 var STYLE_FILES = ["**/*.{css,scss,less}"];
 var isMarkup = createMatcher(MARKUP_FILES);
 var isStyle = createMatcher(STYLE_FILES);
+var isUiFile = (file) => isMarkup(file) || isStyle(file);
 var PROOFS = [
   ["behavior", /(?:^|[\s;&|])(?:npx\s+)?agent-view\s+act\s+replay\b/],
   ["look", /(?:^|[\s;&|])(?:npx\s+)?agent-view\s+(?:screenshot|snap)\b/]
@@ -6092,18 +6093,20 @@ var ANGLE_TOKENS = {
   12: "bugs",
   14: "security",
   15: "spec",
-  16: "tests"
+  16: "tests",
+  18: "ux"
 };
 var isAngle = (value) => Object.hasOwn(ANGLE_TOKENS, value);
 var ANGLES = Object.keys(ANGLE_TOKENS).map(Number).filter(isAngle);
 var REMOVED_ANGLES = [6, 7, 9, 10, 11, 13, 17];
-var IMPORTANT_ANGLES = [1, 2, 3, 4, 5, 8, 12, 14, 15, 16];
+var IMPORTANT_ANGLES = [1, 2, 3, 4, 5, 8, 12, 14, 15, 16, 18];
 var TOKEN_ANGLES = {
   bugs: [1, 2, 3, 4, 5, 12],
   security: [14],
   efficiency: [8],
   spec: [15],
-  tests: [16]
+  tests: [16],
+  ux: [18]
 };
 var SPECIAL_TOKENS = ["important", "deepening"];
 var SELECTOR_TOKENS = [...SPECIAL_TOKENS, ...Object.keys(TOKEN_ANGLES), "auto"];
@@ -6112,6 +6115,7 @@ var DEFAULT_GRADES = {
   behavior: { tier: "deep", effort: "high" },
   conventions: { tier: "standard", effort: "high" },
   tests: { tier: "standard", effort: "medium" },
+  ux: { tier: "standard", effort: "high" },
   verify: { tier: "deep", effort: "medium" },
   outcome: { tier: "deep", effort: "medium" },
   composer: { tier: "standard", effort: "medium" },
@@ -6124,13 +6128,14 @@ var isLayout = (value) => LAYOUTS.includes(value);
 var resolveAuto = (layout) => layout === "auto" ? "lean" : layout;
 var PROJECT_ANGLE_KINDS = ["behavior", "conventions"];
 var PROJECT_ANGLE_NAME = /^[a-z][a-z0-9-]*$/;
-var FINDER_KINDS = ["behavior", "conventions", "tests"];
+var FINDER_KINDS = ["behavior", "conventions", "tests", "ux"];
 var KIND_ANGLES = {
   behavior: [1, 2, 3, 4, 5, 8, 12, 14, 15],
   conventions: [],
-  tests: [16]
+  tests: [16],
+  ux: [18]
 };
-var KIND_ROLES = { behavior: "finder", conventions: "finder", tests: "test-reviewer" };
+var KIND_ROLES = { behavior: "finder", conventions: "finder", tests: "test-reviewer", ux: "finder" };
 var REREVIEW_FULL_LAYOUT_LINES = 600;
 var isLightRereview = (rereview, lines2) => rereview === true && lines2 < REREVIEW_FULL_LAYOUT_LINES;
 var finderCount = (lines2) => Math.min(MAX_FINDERS, Math.ceil(Math.max(0, lines2) / LINES_PER_FINDER));
@@ -6164,15 +6169,16 @@ var selectedAngles = (tokens, settings) => {
 var inapplicable = (angle, shape) => {
   if (angle === 15 && !shape.spec) return "no spec found";
   if (angle === 16 && !shape.tests) return "no tests in the diff";
+  if (angle === 18 && !shape.ui) return "no UI files in the diff";
   return void 0;
 };
 var roleGrade = (key, grades) => grades[key] ?? { tier: "deep", effort: "medium" };
-var partitionFinders = (partitions, angles, projectAngles, grades, hasTests) => partitions.flatMap(
+var partitionFinders = (partitions, angles, projectAngles, grades, hasTests, hasUi) => partitions.flatMap(
   (partition) => FINDER_KINDS.map((kind) => ({
     name: `${partition.name}-${kind}`,
     kind,
     role: KIND_ROLES[kind],
-    angles: angles.filter((angle) => KIND_ANGLES[kind].includes(angle) && (angle !== 16 || hasTests(partition))),
+    angles: angles.filter((angle) => KIND_ANGLES[kind].includes(angle) && (angle !== 16 || hasTests(partition)) && (angle !== 18 || hasUi(partition))),
     projectAngles: projectAngles.filter((angle) => angle.kind === kind).map((angle) => angle.name),
     partition: partition.name,
     ...roleGrade(kind, grades)
@@ -6230,7 +6236,14 @@ var planReview = (input) => {
     skipped: skipped.sort(bySkipOrder),
     grouping,
     partitions,
-    finders: partitionFinders(partitions, usedForCode, projectAngles, grades, (partition) => input.files === void 0 || partition.files.some((path3) => testFiles.has(path3))),
+    finders: partitionFinders(
+      partitions,
+      usedForCode,
+      projectAngles,
+      grades,
+      (partition) => input.files === void 0 || partition.files.some((path3) => testFiles.has(path3)),
+      (partition) => input.files === void 0 || partition.files.some(isUiFile)
+    ),
     deepening: wantsDeepening && n > 0 ? roleGrade("deepening", grades) : void 0,
     verify: roleGrade("verify", grades),
     outcome: roleGrade("outcome", grades),
@@ -6238,7 +6251,7 @@ var planReview = (input) => {
   };
 };
 var MODES = ["review", "pre-mr"];
-var BUG_ANGLES = [1, 2, 3, 4, 5, 12, 14];
+var BUG_ANGLES = [1, 2, 3, 4, 5, 12, 14, 18];
 var gateFiles = (angles, projectAngles = []) => [
   ...angles.some((angle) => BUG_ANGLES.includes(angle)) || projectAngles.some((angle) => angle.kind === "behavior") ? ["gates/bugs.md"] : [],
   ...angles.some((angle) => !BUG_ANGLES.includes(angle)) || projectAngles.some((angle) => angle.kind === "conventions") ? ["gates/shape.md"] : [],
@@ -6501,8 +6514,8 @@ var SELECTOR_NOTES = {
 };
 var LAYOUT_SOURCE_TEXT = { argument: "--layout", env: LAYOUT_ENV, config: `.jig/${PROJECT_CONFIG}`, default: "default" };
 var LAYOUT_TEXT = {
-  lean: "a fresh behavior finder per partition (plus a test-reviewer when the partition has changed tests, a conventions finder when the project adds convention angles); you judge, a deep judge only for Important",
-  solo: "a fresh behavior finder per partition (plus a test-reviewer when the partition has changed tests, a conventions finder when the project adds convention angles) proves its own candidates; no judge subagents"
+  lean: "a fresh behavior finder per partition (plus a test-reviewer when the partition has changed tests, a ux finder when it has changed UI files, a conventions finder when the project adds convention angles); you judge, a deep judge only for Important",
+  solo: "a fresh behavior finder per partition (plus a test-reviewer when the partition has changed tests, a ux finder when it has changed UI files, a conventions finder when the project adds convention angles) proves its own candidates; no judge subagents"
 };
 var layoutLine = (report) => {
   const { name, source } = report.layout;
@@ -6529,7 +6542,8 @@ var partitionText = (partition) => {
 var KIND_TEXT = {
   behavior: "bugs, state, wire contracts, spec",
   conventions: "the project angles of kind conventions; reads its rules",
-  tests: "wrong and redundant tests by atom tests; role test-reviewer, reports only, never deletes"
+  tests: "wrong and redundant tests by atom tests; role test-reviewer, reports only, never deletes",
+  ux: "what the user of the changed UI meets with realistic data, by atom ux; traces each value to its box owner, wrappers included"
 };
 var policyText = (policy) => policy.split("\n").join("\n  ");
 var groupingLines = (report) => {
@@ -6575,7 +6589,7 @@ var formatReport = (report) => {
     `run: ${report.run} (the checkpoints of this run carry it; another run never reuses them)`,
     `partitions: ${report.formula}`,
     layoutLine(report),
-    `shape: tests ${report.shape.tests ? "yes" : "no"} \xB7 new source files ${report.shape.newSourceFiles} \xB7 spec ${report.shape.spec ? "yes" : "no"}`,
+    `shape: tests ${report.shape.tests ? "yes" : "no"} \xB7 ui ${report.shape.ui ? "yes" : "no"} \xB7 new source files ${report.shape.newSourceFiles} \xB7 spec ${report.shape.spec ? "yes" : "no"}`,
     `selector: ${plan.selection.input}${plan.selection.tokens.length > 0 && plan.selection.input !== plan.selection.tokens.join(",") ? ` \u2192 ${plan.selection.tokens.join(",")}` : ""}${SELECTOR_NOTES[plan.selection.source]}`,
     `config: ${report.config ?? "default"} \xB7 agent: ${report.agent} \xB7 max parallel subagents: ${report.maxParallel}`,
     `mode: ${report.mode} \xB7 state: ${stateText(report)}`,
@@ -6645,6 +6659,7 @@ var buildReport = (root, options) => {
   const testPaths = project?.config.testPaths ?? [];
   const shape = {
     tests: stats.some((stat) => stat.added > 0 && isTestStat(stat.path, root, testPaths)),
+    ui: stats.some((stat) => !isTestStat(stat.path, root, testPaths) && isUiFile(stat.path)),
     newSourceFiles: isEmpty ? 0 : addedNewSourceFiles(root, diffBase, diffPaths),
     spec: options.spec
   };

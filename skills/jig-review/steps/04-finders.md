@@ -8,6 +8,7 @@
 
 - **`behavior`** (`pN-behavior`): angles 1–5, 8, 12, 14, 15 and the project angles of kind `behavior`: bugs, state, wire contracts, efficiency and leaks, the spec. Deep tier, high effort. It traces a link out of its partition into the code on the other side itself.
 - **`conventions`** (`pN-conventions`): only when the project adds angles of kind `conventions`, and only those. Standard tier, high effort. It reads the indexes, standards and glossaries under its `rules:` line.
+- **`ux`** (`pN-ux`): angle 18, only when the partition has UI files the diff changes (markup, components, styles). Role `finder`, standard tier, high effort. It reads atom `ux` and traces each rendered value up to the box owner, wrappers included.
 - **`tests`** (`pN-tests`): angle 16, only when the partition has tests the diff adds or changes. Role `test-reviewer`, standard tier, medium effort: the criterion is mechanical (atom `tests`), so it needs no deep model. It reads the partition's code and tests parts and reports wrong and redundant tests; it never deletes one.
 
 Each reads only its kind's angle files and atoms, printed once per kind (`behavior finders … read:`, `conventions finders … read:`). A finder reads only its partition's diff parts; behavior outside it, it reads in the code, changed or not.

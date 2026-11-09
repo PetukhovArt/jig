@@ -6,10 +6,10 @@ description: "make UI match a reference: a design (Figma, an image) or an existi
 
 **You own matching the UI to a reference. The reference is the spec. You do not touch it.**
 
-Atoms: prove-shippable, small-steps, shared-state, questions.
+Atoms: prove-shippable, small-steps, shared-state, questions, ux.
 
 1. Name the reference and its tolerance. A design (Figma or another design tool, an image, a mockup): match within the project's tokens; a difference is allowed only when it is listed. An existing implementation (a migration, a port, another app): pixel-exact, a nonzero diff fails. No reference you can capture: ask the user for one in your reply, and work from the closest screen meanwhile.
-2. Capture the reference before any change, at fixed viewport sizes and every state the reference shows (hover, active, disabled, empty, loading, error). A design: pull its structure (layout, typography, colors, variants, spacing) and an image of each node through the design tool's agent integration; no integration: ask the user for exports. An implementation: screenshots from a script you can rerun.
+2. Capture the reference before any change, at fixed viewport sizes and every state the reference shows (hover, active, disabled, empty, loading, error). A state or a data size the reference does not show is built and checked by atom `ux`, not guessed. A design: pull its structure (layout, typography, colors, variants, spacing) and an image of each node through the design tool's agent integration; no integration: ask the user for exports. An implementation: screenshots from a script you can rerun.
 3. Never edit the reference, its captures or the capture script to make a comparison pass. The reference looks wrong: say so in your reply and keep working on the parts it does not touch.
 4. Translate to the project before writing: map design tokens to project tokens, reuse existing components, use the assets from the reference instead of new icon packages or placeholders. A design value with no project token: the closest token, and list the difference.
 5. One component at a time, shared primitives first. Components done in parallel each get one owner and its own worktree, and run the app where SKILL.md says (Where the app runs); two owners never write the same file, token or shared primitive (atom shared-state).

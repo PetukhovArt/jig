@@ -40,4 +40,4 @@ A class outside the taxonomy in force, or a severity below the class level witho
 
 ## Category
 
-`category` is the slug of the angle that raised the candidate, one of five: `correctness` (bug angles, a wrong test of angle 16 and project angles of kind `behavior`), `security`, `efficiency`, `spec`, `conventions` (a redundant test of angle 16 and project angles of kind `conventions`). `docs`, `design`, `style`, `test-coverage` are not categories. An angle that does not map means the candidate belongs to no angle: drop it.
+`category` is the slug of the angle that raised the candidate, one of six: `correctness` (bug angles, a wrong test of angle 16 and project angles of kind `behavior`), `security`, `efficiency`, `spec`, `ux` (angle 18), `conventions` (a redundant test of angle 16 and project angles of kind `conventions`). `docs`, `design`, `style`, `test-coverage` are not categories. An angle that does not map means the candidate belongs to no angle: drop it.

@@ -6,8 +6,8 @@ import { git } from '../src/core/git'
 import { finderCount, gateFiles, judgeModels, planReview, stepsFor, type Layout, type Mode, type ProjectAngle, type Shape } from '../src/review/layout'
 import { buildReport, countLines, formatReport, parseNumstat, parseProjectConfig, readsFor, resolveLayout } from '../src/review/review-plan'
 
-const CODE_ONLY: Shape = { tests: false, newSourceFiles: 0, spec: false }
-const EVERY_SHAPE: Shape = { tests: true, newSourceFiles: 1, spec: true }
+const CODE_ONLY: Shape = { tests: false, ui: false, newSourceFiles: 0, spec: false }
+const EVERY_SHAPE: Shape = { tests: true, ui: true, newSourceFiles: 1, spec: true }
 const NAMING: ProjectAngle = { name: 'naming', file: '.jig/angles/naming.md', kind: 'conventions' }
 
 const layout = (lines: number, shape: Shape = EVERY_SHAPE, selector?: string) =>
@@ -31,7 +31,7 @@ describe('layout', () => {
   it('reviews a small diff like a large one: a behavior finder and a test-reviewer on full by default', () => {
     const plan = planReview({ lines: 40, shape: EVERY_SHAPE })
     expect([plan.path, plan.selection.input, plan.selection.source]).toEqual(['subagents', 'full', 'default'])
-    expect(layout(40)).toEqual(['p1-behavior:1+2+3+4+5+8+12+14+15:deep/high', 'p1-tests:16:standard/medium'])
+    expect(layout(40)).toEqual(['p1-behavior:1+2+3+4+5+8+12+14+15:deep/high', 'p1-tests:16:standard/medium', 'p1-ux:18:standard/high'])
     expect(layout(40, CODE_ONLY)).toEqual(['p1-behavior:1+2+3+4+5+8+12+14:deep/high'])
   })
 
@@ -51,7 +51,7 @@ describe('layout', () => {
 
   it('leaves out angles the diff shape does not call for, and a finder left without angles', () => {
     const plan = planReview({ lines: 400, shape: CODE_ONLY })
-    expect(plan.skipped.map((skip) => skip.angle)).toEqual([15, 16])
+    expect(plan.skipped.map((skip) => skip.angle)).toEqual([15, 16, 18])
     expect(layout(0)).toEqual(['p1-behavior:15:deep/high', 'p1-tests:16:standard/medium'])
     expect(layout(400, CODE_ONLY, 'bugs').every((finder) => finder.includes('-behavior:'))).toBe(true)
   })
@@ -144,7 +144,7 @@ describe('reads', () => {
 describe('selector', () => {
   it('quick runs only the angles whose ceiling is Important, without deepening', () => {
     const plan = planReview({ lines: 400, shape: EVERY_SHAPE, selector: 'quick', angles: { 8: { severityCeiling: 'Nit' } } })
-    expect(plan.angles).toEqual([1, 2, 3, 4, 5, 12, 14, 15, 16])
+    expect(plan.angles).toEqual([1, 2, 3, 4, 5, 12, 14, 15, 16, 18])
     expect(plan.deepening).toBeUndefined()
     expect(plan.outputTokens).toEqual(['important'])
   })
@@ -206,8 +206,8 @@ describe('numstat', () => {
 
 describe('project config', () => {
   it('reports a bad angle and tier with their paths, and lets a removed angle number or tier key pass without effect', () => {
-    expect(() => parseProjectConfig('{ "angles": { "18": {} }, "tiers": { "behavior": { "tier": "huge", "effort": "high" } } }', '.jig/review.jsonc')).toThrow(
-      '.jig/review.jsonc: $.angles["18"]: expected an angle number of 1, 2, 3, 4, 5, 8, 12, 14, 15, 16 or a project angle name; $.tiers.behavior.tier: expected one of deep, standard, fast',
+    expect(() => parseProjectConfig('{ "angles": { "19": {} }, "tiers": { "behavior": { "tier": "huge", "effort": "high" } } }', '.jig/review.jsonc')).toThrow(
+      '.jig/review.jsonc: $.angles["19"]: expected an angle number of 1, 2, 3, 4, 5, 8, 12, 14, 15, 16, 18 or a project angle name; $.tiers.behavior.tier: expected one of deep, standard, fast',
     )
     expect(parseProjectConfig('{ "angles": { "17": { "enabled": false }, "13": { "severityCeiling": "Nit" } } }', '.jig/review.jsonc').angles).toEqual({})
     expect(parseProjectConfig('{ "angles": { "16": { "enabled": false } } }', '.jig/review.jsonc').angles).toEqual({ 16: { enabled: false } })
@@ -254,13 +254,13 @@ describe('buildReport on a repository', () => {
 
     expect(report.plan.lines).toBe(201)
     expect(report.plan.n).toBe(2)
-    expect(report.shape).toEqual({ tests: true, newSourceFiles: 1, spec: false })
+    expect(report.shape).toEqual({ tests: true, ui: false, newSourceFiles: 1, spec: false })
     expect(report.judge).toContainEqual({ finderModel: 'opus', judgeModel: 'sonnet', same: false })
 
     const scoped = buildReport(root, { base: 'main', spec: false, agent: 'claude', paths: ['src/a.ts'] })
 
     expect(scoped.plan.lines).toBe(1)
-    expect(scoped.shape).toEqual({ tests: false, newSourceFiles: 0, spec: false })
+    expect(scoped.shape).toEqual({ tests: false, ui: false, newSourceFiles: 0, spec: false })
     expect(scoped.diff).toBe(`git diff ${scoped.base.mergeBase} -- src/a.ts`)
     expect(() => buildReport(root, { base: 'main', spec: false, agent: 'claude', paths: ['lib/a.ts'] })).toThrow('nothing changed against main under lib/a.ts')
     expect(report.plan.partitions.map((partition) => partition.files)).toEqual([['src/a.ts'], ['src/b.test.ts', 'src/b.ts']])

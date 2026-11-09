@@ -30,6 +30,10 @@ Every finder gets the whole diff. The questions are split, not the material.
 
 - [16](16.tests.md) · wrong and redundant tests, by atom `tests`
 
+## UX: survives ONLY as `CONFIRMED` with initiator, path, effect, when the diff changes UI files
+
+- [18](18.ux.md) · what the user of the changed UI meets with realistic data, by atom `ux`
+
 The numbers keep the gaps of removed angles: state files and project configs name angles by number, and a number never changes its meaning.
 
 Which angles a run starts and each ceiling: [selector](../references/selector.md). Layout over agents: [`../steps/04-finders.md`](../steps/04-finders.md). Turning an angle off: `angles.<n>.enabled: false` in the [project config](../references/project-config.md).

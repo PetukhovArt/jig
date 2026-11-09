@@ -52,6 +52,7 @@ These hold for the whole task, in every flow.
 - `patterns`: Apply when designing a module interface with two or more variants, or when untangling complex code: a switch on type, an instanceof chain, duplicated conditional creation, an import cycle
 - `shared-state`: Apply when concurrent actors, modules or runs might write the same file, key, branch or state object, or when a command must survive crashes and retries
 - `system-edges`: Apply when wiring validation, error handling, adapters or imports across modules
+- `ux`: Apply when you build, review or attack UI: components, markup, styles, screens
 
 **Code**
 - `comments`: Apply when you add, keep or review a code comment

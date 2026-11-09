@@ -20,6 +20,8 @@ export const STYLE_FILES = ['**/*.{css,scss,less}'] as const
 const isMarkup = createMatcher(MARKUP_FILES)
 const isStyle = createMatcher(STYLE_FILES)
 
+export const isUiFile = (file: string): boolean => isMarkup(file) || isStyle(file)
+
 const PROOFS: ReadonlyArray<readonly [ProofKind, RegExp]> = [
   ['behavior', /(?:^|[\s;&|])(?:npx\s+)?agent-view\s+act\s+replay\b/],
   ['look', /(?:^|[\s;&|])(?:npx\s+)?agent-view\s+(?:screenshot|snap)\b/],

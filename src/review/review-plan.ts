@@ -12,6 +12,7 @@ import { listWorktrees } from '../worktree/list'
 import { realPath } from '../core/proc'
 import { isLockfile } from '../catalog'
 import { fileSource, isTestFile } from '../catalog/languages'
+import { isUiFile } from '../catalog/proofs/agent-view'
 import { detectAgent, loadUserConfig, resolveTiers, type TierMap } from '../tiers/tiers'
 import { DIFF_PART_MAX_LINES, isUnreviewed, writeDiffFiles, type Audience, type DiffFiles } from './diff-files'
 import { estimateLine, estimateReview, finderReader, type Estimate } from './estimate'
@@ -389,8 +390,8 @@ const SELECTOR_NOTES: Readonly<Record<SelectorSource, string>> = {
 const LAYOUT_SOURCE_TEXT: Readonly<Record<LayoutSource, string>> = { argument: '--layout', env: LAYOUT_ENV, config: `.jig/${PROJECT_CONFIG}`, default: 'default' }
 
 const LAYOUT_TEXT: Readonly<Record<ConcreteLayout, string>> = {
-  lean: 'a fresh behavior finder per partition (plus a test-reviewer when the partition has changed tests, a conventions finder when the project adds convention angles); you judge, a deep judge only for Important',
-  solo: 'a fresh behavior finder per partition (plus a test-reviewer when the partition has changed tests, a conventions finder when the project adds convention angles) proves its own candidates; no judge subagents',
+  lean: 'a fresh behavior finder per partition (plus a test-reviewer when the partition has changed tests, a ux finder when it has changed UI files, a conventions finder when the project adds convention angles); you judge, a deep judge only for Important',
+  solo: 'a fresh behavior finder per partition (plus a test-reviewer when the partition has changed tests, a ux finder when it has changed UI files, a conventions finder when the project adds convention angles) proves its own candidates; no judge subagents',
 }
 
 const layoutLine = (report: ReviewPlanReport): string => {
@@ -429,6 +430,7 @@ const KIND_TEXT: Readonly<Record<FinderKind, string>> = {
   behavior: 'bugs, state, wire contracts, spec',
   conventions: 'the project angles of kind conventions; reads its rules',
   tests: 'wrong and redundant tests by atom tests; role test-reviewer, reports only, never deletes',
+  ux: 'what the user of the changed UI meets with realistic data, by atom ux; traces each value to its box owner, wrappers included',
 }
 
 const policyText = (policy: string): string => policy.split('\n').join('\n  ')
@@ -482,7 +484,7 @@ export const formatReport = (report: ReviewPlanReport): string => {
     `run: ${report.run} (the checkpoints of this run carry it; another run never reuses them)`,
     `partitions: ${report.formula}`,
     layoutLine(report),
-    `shape: tests ${report.shape.tests ? 'yes' : 'no'} · new source files ${report.shape.newSourceFiles} · spec ${report.shape.spec ? 'yes' : 'no'}`,
+    `shape: tests ${report.shape.tests ? 'yes' : 'no'} · ui ${report.shape.ui ? 'yes' : 'no'} · new source files ${report.shape.newSourceFiles} · spec ${report.shape.spec ? 'yes' : 'no'}`,
     `selector: ${plan.selection.input}${plan.selection.tokens.length > 0 && plan.selection.input !== plan.selection.tokens.join(',') ? ` → ${plan.selection.tokens.join(',')}` : ''}${SELECTOR_NOTES[plan.selection.source]}`,
     `config: ${report.config ?? 'default'} · agent: ${report.agent} · max parallel subagents: ${report.maxParallel}`,
     `mode: ${report.mode} · state: ${stateText(report)}`,
@@ -587,6 +589,7 @@ export const buildReport = (root: string, options: ReportOptions): ReviewPlanRep
   const testPaths = project?.config.testPaths ?? []
   const shape: Shape = {
     tests: stats.some((stat) => stat.added > 0 && isTestStat(stat.path, root, testPaths)),
+    ui: stats.some((stat) => !isTestStat(stat.path, root, testPaths) && isUiFile(stat.path)),
     newSourceFiles: isEmpty ? 0 : addedNewSourceFiles(root, diffBase, diffPaths),
     spec: options.spec,
   }
