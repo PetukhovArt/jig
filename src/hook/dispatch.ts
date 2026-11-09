@@ -1,5 +1,5 @@
-import { existsSync, readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { appendFileSync, existsSync, readFileSync } from 'node:fs'
+import { basename, join, resolve } from 'node:path'
 import { resolveAdapter, type AgentAdapter } from '../adapters'
 import { loadConfig } from '../core/config'
 import { activeRunContext } from '../task-status/task-status'
@@ -20,13 +20,15 @@ import {
   type SessionState,
 } from '../core/state'
 import { gateEdit, pruneGateClaims, resetGateAtoms } from '../rules/gate'
+import { deliver, markTold, resetTold } from '../context/deliver'
+import { RULE_FILES } from '../context/chain'
 import type { Edit } from '../rules/rule'
 import { checkEdit } from '../gates/edit'
 import { stopGate } from '../gates/stop'
 import { collapseFindings, limitLines, POST_EDIT_LINE_LIMIT, type Finding } from '../tools/finding'
 import { missingDepsOf, unprovisionedWorktrees, type Unprovisioned } from '../worktree/deps-pool'
 import { linkedWorktreeRoot, listWorktrees, samePath } from '../worktree/list'
-import type { EventBase, JigEvent, Outcome } from './types'
+import type { EventBase, FileEdit, JigEvent, Outcome } from './types'
 
 type Command = (args: string[]) => number | Promise<number>
 
@@ -131,6 +133,19 @@ const noteOf = (ctx: HookContext, note: () => string | undefined): string[] => {
   }
 }
 
+const launchDirOf = (ctx: HookContext, state: SessionState): string => state.launchDir ?? ctx.projectRoot
+
+const rulesSession = (ctx: HookContext): SessionState => {
+  const state = openSession(ctx)
+  if (state.toldRules?.[ctx.agent] === undefined) markTold(state, ctx.agent, ctx.native?.atStart(launchDirOf(ctx, state)) ?? [])
+  return state
+}
+
+const rulesFor = (ctx: HookContext, state: SessionState, targets: readonly string[]): string[] =>
+  noteOf(ctx, () => deliver(state, ctx.agent, targets)?.text)
+
+const absoluteIn = (ctx: HookContext, file: string): string => resolve(ctx.projectRoot, file)
+
 const sessionStart = (event: EventOf<'session-start'>, ctx: HookContext): Outcome => {
   const now = Date.now()
   ensureJigDir(ctx.projectRoot)
@@ -142,8 +157,10 @@ const sessionStart = (event: EventOf<'session-start'>, ctx: HookContext): Outcom
   const state = readState(ctx.projectRoot, ctx.sessionId) ?? createSessionState(ctx.sessionId, snapshot)
   resetSnapshot(state, snapshot)
   trackTurn(ctx, state)
+  if (event.source !== 'compact' && ctx.agent === MAIN_AGENT) state.launchDir = ctx.cwd
   const parts: string[] = []
   if (event.source === 'compact') {
+    resetTold(state, ctx.agent)
     resetGateAtoms(ctx.projectRoot, ctx.sessionId, ctx.agent)
     const runLine = compactRunLine(ctx, now)
     if (runLine !== undefined) {
@@ -157,6 +174,51 @@ const sessionStart = (event: EventOf<'session-start'>, ctx: HookContext): Outcom
     parts.push(driftLine)
   }
   return contextOf(parts)
+}
+
+const compact = (ctx: HookContext): Outcome => {
+  const state = openSession(ctx)
+  resetTold(state, ctx.agent)
+  resetGateAtoms(ctx.projectRoot, ctx.sessionId, ctx.agent)
+  writeState(ctx.projectRoot, state)
+  return NONE
+}
+
+const isRuleFile = (path: string): boolean => RULE_FILES.includes(basename(path))
+
+const markReadRules = (ctx: HookContext, state: SessionState, paths: readonly string[]): void => {
+  markTold(state, ctx.agent, paths.filter(isRuleFile))
+}
+
+const touch = (event: EventOf<'touch'>, ctx: HookContext): Outcome => {
+  const state = rulesSession(ctx)
+  if (event.read) {
+    markReadRules(ctx, state, event.paths)
+    const native = ctx.native
+    if (native !== undefined) {
+      for (const path of event.paths) markTold(state, ctx.agent, native.onRead(path, launchDirOf(ctx, state)))
+    }
+  }
+  const parts = rulesFor(ctx, state, event.paths)
+  writeState(ctx.projectRoot, state)
+  return contextOf(parts)
+}
+
+const instructionsLoaded = (event: EventOf<'instructions-loaded'>, ctx: HookContext): Outcome => {
+  const state = rulesSession(ctx)
+  markTold(state, ctx.agent, [event.file])
+  writeState(ctx.projectRoot, state)
+  return NONE
+}
+
+const RETRY = 'jig: repeat the same edit after you have taken these instructions into account; it will pass.'
+
+const rulesBackstop = (ctx: HookContext, files: readonly string[]): string | undefined => {
+  const state = rulesSession(ctx)
+  const delivery = deliver(state, ctx.agent, files.map((file) => absoluteIn(ctx, file)), { requireRules: true })
+  if (delivery === undefined) return undefined
+  writeState(ctx.projectRoot, state)
+  return `${delivery.text}\n\n${RETRY}`
 }
 
 const prompt = (ctx: HookContext): Outcome => {
@@ -176,7 +238,7 @@ const readCurrent = (path: string): string => {
   }
 }
 
-const locateEdits = (event: EventOf<'pre-edit'>, projectRoot: string): Edit[] => {
+const locateEdits = (event: FileEdit, projectRoot: string): Edit[] => {
   if (event.wholeFile !== undefined) return event.edits.map((edit) => ({ ...edit, line: 1, prefix: '' }))
   const current = readCurrent(join(projectRoot, event.file))
   return event.edits.map((edit) => {
@@ -187,7 +249,7 @@ const locateEdits = (event: EventOf<'pre-edit'>, projectRoot: string): Edit[] =>
   })
 }
 
-const preEdit = (event: EventOf<'pre-edit'>, ctx: HookContext): Outcome => {
+const gateFile = (event: FileEdit, ctx: HookContext): Outcome => {
   const verdict = gateEdit({
     projectRoot: ctx.projectRoot,
     pluginRoot: ctx.pluginRoot,
@@ -201,6 +263,18 @@ const preEdit = (event: EventOf<'pre-edit'>, ctx: HookContext): Outcome => {
     journal(ctx, { kind: 'deny', tool: 'jig', rule: hit.rule, file: event.file, ...(hit.line === undefined ? {} : { line: hit.line }), message: hit.message })
   }
   return verdict.reason === undefined ? NONE : { type: 'deny', reason: verdict.reason }
+}
+
+const preEdit = (event: FileEdit, ctx: HookContext): Outcome => {
+  const rules = rulesBackstop(ctx, [event.file])
+  return rules === undefined ? gateFile(event, ctx) : { type: 'deny', reason: rules }
+}
+
+const prePatch = (event: EventOf<'pre-patch'>, ctx: HookContext): Outcome => {
+  const rules = rulesBackstop(ctx, event.files.map((file) => file.file))
+  if (rules !== undefined) return { type: 'deny', reason: rules }
+  const reasons = event.files.map((file) => gateFile(file, ctx)).flatMap((outcome) => (outcome.type === 'deny' ? [outcome.reason] : []))
+  return reasons.length === 0 ? NONE : { type: 'deny', reason: reasons.join('\n\n') }
 }
 
 const editToolFindings = async (ctx: HookContext, file: string): Promise<Finding[]> => {
@@ -222,15 +296,19 @@ const editToolFindings = async (ctx: HookContext, file: string): Promise<Finding
   return runs.flatMap((toolRun) => toolRun.findings)
 }
 
-const postEdit = async (event: EventOf<'post-edit'>, ctx: HookContext): Promise<Outcome> => {
+const postEdit = async (files: readonly string[], ctx: HookContext): Promise<Outcome> => {
   const now = Date.now()
-  const state = openSession(ctx)
-  state.edits.push({ path: event.file, at: now, agent: ctx.agent })
-  const toolFindings = await editToolFindings(ctx, event.file)
+  const state = rulesSession(ctx)
+  const toolFindings: Finding[] = []
+  for (const file of files) {
+    state.edits.push({ path: file, at: now, agent: ctx.agent })
+    toolFindings.push(...(await editToolFindings(ctx, file)))
+  }
   const findingLines = collapseFindings(toolFindings)
   const worktreeNote = noteOf(ctx, () => cwdWorktreeNote(ctx, state))
+  const rules = rulesFor(ctx, state, files.map((file) => absoluteIn(ctx, file)))
   writeState(ctx.projectRoot, state)
-  return contextOf([...limitLines(findingLines, POST_EDIT_LINE_LIMIT, ctx.pluginRoot), ...worktreeNote])
+  return contextOf([...rules, ...limitLines(findingLines, POST_EDIT_LINE_LIMIT, ctx.pluginRoot), ...worktreeNote])
 }
 
 const preShell = (event: EventOf<'pre-shell'>, ctx: HookContext): Outcome => {
@@ -249,15 +327,17 @@ const attributeShellChanges = (ctx: HookContext, state: SessionState, before: Sn
 }
 
 const postShell = (event: EventOf<'post-shell'>, ctx: HookContext): Outcome => {
-  if (event.isBackground) return NONE
-  const call = closeShellCall(ctx.projectRoot, ctx.sessionId, event.callId)
-  if (call === undefined) return NONE
-  const state = openSession(ctx)
-  attributeShellChanges(ctx, state, call.snapshot)
-  const before = call.worktrees
+  const call = event.isBackground ? undefined : closeShellCall(ctx.projectRoot, ctx.sessionId, event.callId)
+  const paths = event.paths ?? []
+  if (call === undefined && paths.length === 0) return NONE
+  const state = rulesSession(ctx)
+  markReadRules(ctx, state, paths)
+  const rules = rulesFor(ctx, state, paths)
+  if (call !== undefined) attributeShellChanges(ctx, state, call.snapshot)
+  const before = call?.worktrees
   const worktreeNote = before === undefined ? [] : noteOf(ctx, () => newWorktreesNote(ctx, state, before))
   writeState(ctx.projectRoot, state)
-  return contextOf(worktreeNote)
+  return contextOf([...rules, ...worktreeNote])
 }
 
 const ROLE_PATH = /\S*[\\/]roles[\\/]([\w-]+)\.md\b/g
@@ -265,6 +345,9 @@ const ROLE_PATH = /\S*[\\/]roles[\\/]([\w-]+)\.md\b/g
 const subagentStart = (event: EventOf<'subagent-start'>, ctx: HookContext): Outcome => {
   const prompt = event.prompt?.replace(ROLE_PATH, 'role $1')
   journal(ctx, { kind: 'subagent-start', tool: 'jig', rule: event.agentType, ...(prompt === undefined ? {} : { message: prompt }) })
+  const state = openSession(ctx)
+  resetTold(state, ctx.agent)
+  writeState(ctx.projectRoot, state)
   return NONE
 }
 
@@ -289,12 +372,22 @@ const route = (event: JigEvent, ctx: HookContext): Outcome | Promise<Outcome> =>
   switch (event.kind) {
     case 'session-start':
       return sessionStart(event, ctx)
+    case 'compact':
+      return compact(ctx)
     case 'prompt':
       return prompt(ctx)
     case 'pre-edit':
       return preEdit(event, ctx)
+    case 'pre-patch':
+      return prePatch(event, ctx)
     case 'post-edit':
-      return postEdit(event, ctx)
+      return postEdit([event.file], ctx)
+    case 'post-patch':
+      return postEdit(event.files, ctx)
+    case 'touch':
+      return touch(event, ctx)
+    case 'instructions-loaded':
+      return instructionsLoaded(event, ctx)
     case 'pre-shell':
       return preShell(event, ctx)
     case 'post-shell':
@@ -329,7 +422,7 @@ export const handleHook = async (
     return ''
   }
   if (parsed === undefined) return ''
-  const outcome = await dispatch(parsed.event, { ...parsed.base, attributesShell: adapter.attributesShell }, resolvePluginRoot(env))
+  const outcome = await dispatch(parsed.event, { ...parsed.base, attributesShell: adapter.attributesShell, native: adapter.native }, resolvePluginRoot(env))
   return adapter.formatOutcome(parsed.event.kind, outcome)
 }
 
@@ -350,10 +443,22 @@ const readStdin = async (): Promise<string> => {
   return Buffer.concat(chunks).toString('utf8')
 }
 
+const traceHook = (name: string, adapter: AgentAdapter, raw: string, output: string): void => {
+  const log = process.env['JIG_HOOK_LOG']
+  if (log === undefined || log === '') return
+  try {
+    appendFileSync(log, `${JSON.stringify({ at: new Date().toISOString(), name, agent: adapter.name, input: raw, output })}\n`)
+  } catch {
+    return
+  }
+}
+
 export const runHook: Command = async (args) => {
   const { name, adapter } = parseHookArgs(args)
   try {
-    const output = await handleHook(name, await readStdin(), process.env, adapter)
+    const raw = await readStdin()
+    const output = await handleHook(name, raw, process.env, adapter)
+    traceHook(name, adapter, raw, output)
     if (output !== '') {
       process.stdout.write(output)
     }

@@ -2,6 +2,16 @@
 
 Rule fixtures run with the unit tests: `npm test`.
 
+## Project instructions matrix
+
+`evals/context-matrix/matrix.mjs` checks that an agent gets the `AGENTS.md`/`CLAUDE.md` chain of the file it edits before the edit, in each agent and layout. It builds a git repository under `~/.jig-context-matrix/` (outside the shared temp directory, where Grok loads no project hooks) whose rule files at three levels each demand an exported constant with a random value in an edited file, plus a glossary that names the expected field, and a linked worktree next to it. Each agent gets the same task, "add a boolean field to `Tab` in `src/a/b/tab.ts`", in four layouts: `main` (the file in the checkout the agent started in), `worktree` (the file in the sibling worktree, by absolute path), `worktree-session` (the agent started in the worktree) and `subagent` (the task delegated to a subagent, the file in the worktree). The judge reads the edited file: a run passes when it holds all three values; the field name shows whether the glossary was read.
+
+```text
+node evals/context-matrix/matrix.mjs [--harness claude,codex,grok] [--layout main,worktree,worktree-session,subagent] [--out results.json]
+```
+
+It runs `claude -p`, `codex exec` and `grok -p` with the user's own setup and accounts (the jig hooks must be installed for each, [agents](agents.md)), so a run costs real usage; each run writes `transcript.log` and, through `JIG_HOOK_LOG`, every hook input and output to `hooks.log` in its directory.
+
 ## Agent evals
 
 Agent evals are five mini-projects in `evals/agent/` (`bug-fix`, `feature-ui`, `refactor`, `tests`, `review`), run through `claude plugin eval` with and without the plugin. `evals/agent-flow/` holds the same cases prompted with `/jig`.

@@ -27,6 +27,8 @@ export interface SessionState {
   edits: EditRecord[]
   stop: StopState
   toldWorktrees?: Record<string, string[]>
+  toldRules?: Record<string, string[]>
+  launchDir?: string
 }
 
 export const MAIN_AGENT = 'main'

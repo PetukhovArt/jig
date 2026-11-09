@@ -1,4 +1,4 @@
-import type { EventBase, JigEvent, Outcome } from '../hook/types'
+import type { EventBase, JigEvent, NativeRules, Outcome } from '../hook/types'
 
 export interface ParsedHook {
   event: JigEvent
@@ -8,6 +8,7 @@ export interface ParsedHook {
 export interface AgentAdapter {
   name: string
   attributesShell: boolean
+  native: NativeRules
   parseHookInput: (name: string, raw: string, env?: NodeJS.ProcessEnv) => ParsedHook | undefined
   formatOutcome: (kind: JigEvent['kind'], outcome: Outcome) => string
 }

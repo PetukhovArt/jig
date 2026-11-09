@@ -1,5 +1,7 @@
 import { version } from '../../package.json'
+import { runHooks } from '../adapters/install'
 import { runAtom, runBuild } from '../atoms/atoms'
+import { runContext } from '../context/command'
 import { runDoctor } from '../doctor'
 import { runCheck } from '../gates/stop'
 import { runHook } from '../hook/dispatch'
@@ -26,9 +28,11 @@ const runVersion: Command = () => {
 
 const commands = new Map<string, Command>([
   ['hook', runHook],
+  ['hooks', runHooks],
   ['check', runCheck],
   ['build', runBuild],
   ['atom', runAtom],
+  ['context', runContext],
   ['slot', runSlot],
   ['worktree', runWorktree],
   ['task-status', runTaskStatus],

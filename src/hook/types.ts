@@ -5,15 +5,31 @@ export interface EditPair {
   after: string
 }
 
+export interface FileEdit {
+  file: string
+  edits: EditPair[]
+  wholeFile?: string
+}
+
 export type JigEvent =
   | { kind: 'session-start'; source: SessionSource }
+  | { kind: 'compact' }
   | { kind: 'prompt' }
-  | { kind: 'pre-edit'; file: string; edits: EditPair[]; wholeFile?: string }
+  | ({ kind: 'pre-edit' } & FileEdit)
+  | { kind: 'pre-patch'; files: FileEdit[] }
   | { kind: 'post-edit'; file: string }
+  | { kind: 'post-patch'; files: string[] }
+  | { kind: 'touch'; paths: string[]; read: boolean }
+  | { kind: 'instructions-loaded'; file: string }
   | { kind: 'pre-shell'; callId: string }
-  | { kind: 'post-shell'; callId: string; isBackground: boolean }
+  | { kind: 'post-shell'; callId: string; isBackground: boolean; paths?: string[] }
   | { kind: 'subagent-start'; agentId: string; agentType: string; prompt?: string }
   | { kind: 'stop'; stopHookActive: boolean }
+
+export interface NativeRules {
+  atStart: (launchDir: string) => string[]
+  onRead: (file: string, launchDir: string) => string[]
+}
 
 export interface EventBase {
   sessionId: string
@@ -21,6 +37,7 @@ export interface EventBase {
   projectRoot: string
   cwd: string
   attributesShell?: boolean
+  native?: NativeRules
 }
 
 export type Outcome =

@@ -36,7 +36,7 @@ The core doesn't care which agent, language or framework you use: it deals in ev
 
 | | works today | needs an extension |
 | --- | --- | --- |
-| agent | Claude Code | Cursor and Codex need an adapter ([agents](docs/agents.md)) |
+| agent | Claude Code, Codex CLI, Grok Build | Cursor needs an adapter ([agents](docs/agents.md)) |
 | language | TypeScript, JavaScript, Vue; C# for the comment, test and suppression gates | anything, through a `checks` entry ([configuration](docs/configuration.md)) |
 | project | web, Electron and Tauri apps, monorepos | backends, CLIs, libraries: everything except UI proof |
 | platform | Windows, macOS, Linux; GitLab and GitHub | |
@@ -247,7 +247,7 @@ Atoms are those short rules, indexed in [`skills/jig/SKILL.md`](skills/jig/SKILL
 
 ## Agents
 
-Only the Claude Code adapter exists for now. The core doesn't depend on the agent, so Cursor and Codex adapters can be added ([what each agent lets a plugin do](docs/agents.md)).
+Adapters exist for Claude Code (the plugin's hooks), Grok Build (it reads the same plugin hooks) and Codex CLI (`jig hooks codex --install`). The core doesn't depend on the agent, so a Cursor adapter can be added ([what each agent lets a plugin do](docs/agents.md)).
 
 ## Docs
 

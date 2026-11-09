@@ -30,7 +30,7 @@ describe('adapter selection', () => {
   })
 
   it('rejects an unknown agent name and a missing one', () => {
-    expect(() => parseHookArgs(['stop', '--agent', 'toString'])).toThrow('unknown agent toString, expected one of: claude')
+    expect(() => parseHookArgs(['stop', '--agent', 'toString'])).toThrow('unknown agent toString, expected one of: claude, codex, grok')
     expect(() => parseHookArgs(['stop', '--agent'])).toThrow('--agent needs an agent name')
   })
 
@@ -38,6 +38,6 @@ describe('adapter selection', () => {
     const result = spawnSync(process.execPath, [bin, 'hook', 'stop', '--agent', 'nope'], { input: '{}', encoding: 'utf8' })
     expect(result.status).toBe(2)
     expect(result.stdout).toBe('')
-    expect(result.stderr).toBe('jig: unknown agent nope, expected one of: claude\n')
+    expect(result.stderr).toBe('jig: unknown agent nope, expected one of: claude, codex, grok\n')
   })
 })

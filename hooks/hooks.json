@@ -7,12 +7,19 @@
       { "hooks": [ { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/bin/jig.mjs", "hook", "user-prompt-submit"], "timeout": 10 } ] }
     ],
     "PreToolUse": [
-      { "matcher": "Edit|Write|MultiEdit|NotebookEdit", "hooks": [ { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/bin/jig.mjs", "hook", "pre-edit"], "timeout": 10, "onFailure": "block" } ] },
+      { "matcher": "Edit|Write|MultiEdit|NotebookEdit|apply_patch", "hooks": [ { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/bin/jig.mjs", "hook", "pre-edit"], "timeout": 10, "onFailure": "block" } ] },
       { "matcher": "Bash|PowerShell", "hooks": [ { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/bin/jig.mjs", "hook", "pre-shell"], "timeout": 10 } ] }
     ],
     "PostToolUse": [
-      { "matcher": "Edit|Write|MultiEdit|NotebookEdit", "hooks": [ { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/bin/jig.mjs", "hook", "post-edit"], "timeout": 30 } ] },
+      { "matcher": "Edit|Write|MultiEdit|NotebookEdit|apply_patch", "hooks": [ { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/bin/jig.mjs", "hook", "post-edit"], "timeout": 30 } ] },
+      { "matcher": "Read|Grep|Glob", "hooks": [ { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/bin/jig.mjs", "hook", "touch"], "timeout": 10 } ] },
       { "matcher": "Bash|PowerShell", "hooks": [ { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/bin/jig.mjs", "hook", "post-shell"], "timeout": 10 } ] }
+    ],
+    "InstructionsLoaded": [
+      { "hooks": [ { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/bin/jig.mjs", "hook", "instructions-loaded"], "timeout": 10 } ] }
+    ],
+    "PostCompact": [
+      { "hooks": [ { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/bin/jig.mjs", "hook", "compact"], "timeout": 10 } ] }
     ],
     "SubagentStart": [
       { "hooks": [ { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/bin/jig.mjs", "hook", "subagent-start"], "timeout": 10 } ] }
