@@ -27,6 +27,36 @@
         }
       ],
       "source": "evals/agent/review"
+    },
+    {
+      "id": "jig-evals-review-ux",
+      "repo": {
+        "scaffold": "evals/agent/review-ux/scaffold.sh",
+        "plugin": true
+      },
+      "range": "main..feature",
+      "mode": "review",
+      "description": "evals/agent/review-ux/fixture/REVIEW_TARGET.md",
+      "mustFind": [
+        {
+          "where": "src/features/operators/OperatorRow.vue:12",
+          "mechanism": "the email span has no overflow guard in a fixed 280px flex row: a long unbreakable email overflows and pushes the operator actions button out of reach",
+          "severity": "Important"
+        },
+        {
+          "where": "src/features/operators/OperatorsPanel.vue:15",
+          "mechanism": "the header builds the plural by hand, so one operator reads \"1 operators\"",
+          "severity": "Important"
+        }
+      ],
+      "mustNotPost": [
+        {
+          "where": "src/features/operators/OperatorRow.vue:11",
+          "mechanism": "the operator name overflows or is truncated without a way to read it",
+          "why": "it renders inside AppCell, which already sets min-width 0, ellipsis and a title"
+        }
+      ],
+      "source": "evals/agent/review-ux"
     }
   ]
 }
