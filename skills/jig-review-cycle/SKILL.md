@@ -21,7 +21,7 @@ The user-facing text of a pass is the [summary](#4-summary) (when everything was
 - <web_url> | <status>
 ```
 
-The link is the full URL, the status is the [summary](#4-summary) status. No line for a merge request still in review or waiting, no explanation, no plan of the next step.
+The link is the full URL, the status is the [summary](#4-summary) status. No line for a merge request still in review or waiting, no explanation, no plan of the next step. A turn in which no merge request finished (a review returned and its poster is still running, a runner or poster was spawned) prints nothing: the list is repeated only when it gained a line or a line's status changed.
 
 ## Arguments
 
