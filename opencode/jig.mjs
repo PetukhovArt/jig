@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process'
-import { dirname, join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)))
@@ -61,13 +61,15 @@ const parse = (stdout) => {
   }
 }
 
-const runJig = (hook, payload, projectDir) =>
+const NODE = /^node(\.exe)?$/i.test(basename(process.execPath)) ? process.execPath : 'node'
+
+const runJig = (hook, payload, cwd) =>
   new Promise((resolve) => {
     let stdout = ''
     let child
     try {
-      child = spawn(process.execPath.includes('node') ? process.execPath : 'node', [BIN, 'hook', hook, '--agent', 'opencode'], {
-        env: { ...process.env, JIG_PROJECT_DIR: projectDir },
+      child = spawn(NODE, [BIN, 'hook', hook, '--agent', 'opencode'], {
+        cwd,
         stdio: ['pipe', 'pipe', 'ignore'],
         windowsHide: true,
       })
@@ -97,7 +99,7 @@ const denialOf = (result) =>
 
 export const JigPlugin = async ({ client, directory, worktree }) => {
   const projectDir = worktree && worktree !== '/' ? worktree : directory
-  const base = (sessionID) => ({ session_id: sessionID, cwd: directory })
+  const base = (sessionID) => ({ session_id: sessionID, cwd: projectDir })
   const jig = (hook, payload) => runJig(hook, payload, projectDir).catch(() => undefined)
   const systemContext = new Map()
   const stopActive = new Set()
