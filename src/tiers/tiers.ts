@@ -47,6 +47,7 @@ const AGENT_ENV: readonly { agent: string; vars: readonly string[] }[] = [
   { agent: 'claude', vars: ['CLAUDECODE', 'CLAUDE_CODE_ENTRYPOINT'] },
   { agent: 'cursor', vars: ['CURSOR_AGENT', 'CURSOR_VERSION'] },
   { agent: 'codex', vars: ['CODEX_THREAD_ID', 'CODEX_SANDBOX', 'CODEX_SANDBOX_NETWORK_DISABLED'] },
+  { agent: 'opencode', vars: ['OPENCODE'] },
 ]
 
 const emptyUserConfig = (): UserConfig => ({ tiers: {}, prices: {} })

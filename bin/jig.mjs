@@ -137,7 +137,9 @@ var CODEX_HOOKS = [
 ];
 var MARKER = "_jigManaged";
 var USAGE = "usage: jig hooks codex|opencode [--install | --uninstall]";
-var OPENCODE_EXPORT = "export { JigPlugin } from ";
+var LEGACY_OPENCODE_EXPORT = "export { JigPlugin } from ";
+var OPENCODE_PINNED = "const PINNED_ROOT = ";
+var OPENCODE_EXPORT = "export const JigPlugin = ";
 var codexHome = () => process.env["CODEX_HOME"] ?? join2(homedir(), ".codex");
 var commandFor = (pluginRoot, hook) => `node "${toSlash(join2(pluginRoot, "bin", "jig.mjs"))}" hook ${hook} --agent codex`;
 var entriesFor = (pluginRoot) => {
@@ -162,10 +164,16 @@ var withoutJig = (hooks) => Object.fromEntries(
   Object.entries(hooks).map(([event, entries]) => [event, entries.filter((entry) => entry[MARKER] !== true)]).filter(([, entries]) => entries.length > 0)
 );
 var opencodeHome = () => process.env["OPENCODE_CONFIG_DIR"] ?? join2(homedir(), ".config", "opencode");
-var opencodeShim = (pluginRoot) => `${OPENCODE_EXPORT}${JSON.stringify(`file:///${toSlash(join2(pluginRoot, "opencode", "jig.mjs")).replace(/^\/+/, "")}`)}
+var opencodeLoader = (pluginRoot) => {
+  const body = readFileSync2(join2(pluginRoot, "opencode", "loader.mjs"), "utf8").replace(/^export /gm, "");
+  return `${OPENCODE_PINNED}${JSON.stringify(toSlash(pluginRoot))}
+${body}
+${OPENCODE_EXPORT}await loadJig(PINNED_ROOT)
 `;
+};
+var isJigFile = (text3) => text3.startsWith(OPENCODE_PINNED) || text3.startsWith(LEGACY_OPENCODE_EXPORT);
 var runOpencode = (action) => {
-  const shim = opencodeShim(resolvePluginRoot());
+  const shim = opencodeLoader(resolvePluginRoot());
   if (action === void 0) {
     process.stdout.write(shim);
     return 0;
@@ -175,7 +183,7 @@ var runOpencode = (action) => {
   if (action === "--install") {
     mkdirSync2(dirname2(path2), { recursive: true });
     writeFileSync2(path2, shim);
-  } else if (existsSync2(path2) && readFileSync2(path2, "utf8").startsWith(OPENCODE_EXPORT)) {
+  } else if (existsSync2(path2) && isJigFile(readFileSync2(path2, "utf8"))) {
     rmSync(path2);
   }
   process.stdout.write(`${action === "--install" ? "installed the jig plugin in" : "removed the jig plugin from"} ${toSlash(path2)}
@@ -3660,7 +3668,8 @@ var DEFAULT_TIERS = {
 var AGENT_ENV = [
   { agent: "claude", vars: ["CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT"] },
   { agent: "cursor", vars: ["CURSOR_AGENT", "CURSOR_VERSION"] },
-  { agent: "codex", vars: ["CODEX_THREAD_ID", "CODEX_SANDBOX", "CODEX_SANDBOX_NETWORK_DISABLED"] }
+  { agent: "codex", vars: ["CODEX_THREAD_ID", "CODEX_SANDBOX", "CODEX_SANDBOX_NETWORK_DISABLED"] },
+  { agent: "opencode", vars: ["OPENCODE"] }
 ];
 var emptyUserConfig = () => ({ tiers: {}, prices: {} });
 var readModels = (validator, value, path2) => {

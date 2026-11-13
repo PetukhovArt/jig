@@ -16,7 +16,7 @@ Every role template names a tier and an effort in its frontmatter: `metadata.tie
 ## Mapping
 
 - `jig tiers` prints, per tier, an ordered list of models: the built-in defaults for the agent, overridden by the `tiers` key in `~/.jig/config.jsonc`.
-- Built-in defaults: Claude Code: `deep` → opus, sonnet; `standard` → sonnet; `fast` → haiku. Codex (OpenAI's recommended Codex models, developers.openai.com/codex/models): `deep` → gpt-6.1-sol, gpt-6.1-terra; `standard` → gpt-6.1-terra; `fast` → gpt-6-luna. An account that lists other models (`codex debug models`, for example a free plan) sets them in `~/.jig/config.jsonc`. Other agents have no built-in mapping.
+- Built-in defaults: Claude Code: `deep` → opus, sonnet; `standard` → sonnet; `fast` → haiku. Codex (OpenAI's recommended Codex models, developers.openai.com/codex/models): `deep` → gpt-6.1-sol, gpt-6.1-terra; `standard` → gpt-6.1-terra; `fast` → gpt-6-luna. An account that lists other models (`codex debug models`, for example a free plan) sets them in `~/.jig/config.jsonc`. Other agents have no built-in mapping. OpenCode (`tiers.opencode`, models as `provider/model`): its plugin registers the subagents `jig-deep`, `jig-standard` and `jig-fast` on the first model of each tier; an unmapped tier runs on the session's model.
 - The agent is `--agent`, else `JIG_AGENT`, else the one whose environment variables are set.
 - A single subagent takes the first model of its tier. Parallel candidates take the models in order (`references/coliseum.md`).
 - No mapping for this agent: choose the model that fits the tier description above.

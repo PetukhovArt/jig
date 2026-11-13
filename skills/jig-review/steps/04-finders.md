@@ -30,7 +30,7 @@ What every finder needs is read **once**, by you, before the first spawn. Tool o
 
 Spawn every finder of the plan **in one batch**, in parallel, within the [subagent cap](../SKILL.md#rules-for-the-whole-run); past the cap the rest [queue](#refused-spawn). Brief each with the role its plan line names (role `finder`, or role `test-reviewer` for kind `tests`): pass the path of its template, `<root>/skills/jig/references/roles/<role>.md`, and let the subagent read it.
 
-**Every call carries the model and effort the plan printed for that finder**, not the session's model. Before spawning print the plan; it goes into the [cost line](08-output.md#output): `finders: p1-behavior deep/high <deep model> · p2-behavior deep/high <deep model> · …`.
+**Every call carries the model and effort the plan printed for that finder**, not the session's model (OpenCode: `subagent_type: jig-<tier>`, whose model is the tier's). Before spawning print the plan; it goes into the [cost line](08-output.md#output): `finders: p1-behavior deep/high <deep model> · p2-behavior deep/high <deep model> · …`.
 
 **The brief order is fixed**: the shared prefix first, the personal tail last, so the shared part hits the prompt cache of the batch:
 1. the diff index `jig review-plan` printed under `diff files:`;

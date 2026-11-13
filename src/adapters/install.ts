@@ -26,7 +26,9 @@ const CODEX_HOOKS: readonly HookSpec[] = [
 
 const MARKER = '_jigManaged'
 const USAGE = 'usage: jig hooks codex|opencode [--install | --uninstall]'
-const OPENCODE_EXPORT = 'export { JigPlugin } from '
+const LEGACY_OPENCODE_EXPORT = 'export { JigPlugin } from '
+const OPENCODE_PINNED = 'const PINNED_ROOT = '
+const OPENCODE_EXPORT = 'export const JigPlugin = '
 
 type Entry = Record<string, unknown>
 type HooksFile = { hooks?: Record<string, Entry[]> } & Record<string, unknown>
@@ -64,11 +66,15 @@ const withoutJig = (hooks: Record<string, Entry[]>): Record<string, Entry[]> =>
 
 const opencodeHome = (): string => process.env['OPENCODE_CONFIG_DIR'] ?? join(homedir(), '.config', 'opencode')
 
-const opencodeShim = (pluginRoot: string): string =>
-  `${OPENCODE_EXPORT}${JSON.stringify(`file:///${toSlash(join(pluginRoot, 'opencode', 'jig.mjs')).replace(/^\/+/, '')}`)}\n`
+const opencodeLoader = (pluginRoot: string): string => {
+  const body = readFileSync(join(pluginRoot, 'opencode', 'loader.mjs'), 'utf8').replace(/^export /gm, '')
+  return `${OPENCODE_PINNED}${JSON.stringify(toSlash(pluginRoot))}\n${body}\n${OPENCODE_EXPORT}await loadJig(PINNED_ROOT)\n`
+}
+
+const isJigFile = (text: string): boolean => text.startsWith(OPENCODE_PINNED) || text.startsWith(LEGACY_OPENCODE_EXPORT)
 
 const runOpencode = (action: string | undefined): number => {
-  const shim = opencodeShim(resolvePluginRoot())
+  const shim = opencodeLoader(resolvePluginRoot())
   if (action === undefined) {
     process.stdout.write(shim)
     return 0
@@ -78,7 +84,7 @@ const runOpencode = (action: string | undefined): number => {
   if (action === '--install') {
     mkdirSync(dirname(path), { recursive: true })
     writeFileSync(path, shim)
-  } else if (existsSync(path) && readFileSync(path, 'utf8').startsWith(OPENCODE_EXPORT)) {
+  } else if (existsSync(path) && isJigFile(readFileSync(path, 'utf8'))) {
     rmSync(path)
   }
   process.stdout.write(`${action === '--install' ? 'installed the jig plugin in' : 'removed the jig plugin from'} ${toSlash(path)}\n`)

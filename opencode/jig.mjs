@@ -1,4 +1,6 @@
-import { spawn } from 'node:child_process'
+import { execFile, spawn } from 'node:child_process'
+import { appendFileSync, readFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -63,35 +65,106 @@ const parse = (stdout) => {
 
 const NODE = /^node(\.exe)?$/i.test(basename(process.execPath)) ? process.execPath : 'node'
 
+const STDERR_TAIL = 2000
+
+const debugLog = () => {
+  const value = process.env.JIG_DEBUG
+  if (!value) return undefined
+  return value === '1' ? join(tmpdir(), 'jig-opencode.log') : value
+}
+
+const logRun = (entry) => {
+  const path = debugLog()
+  if (path === undefined) return
+  try {
+    appendFileSync(path, `${JSON.stringify({ time: new Date().toISOString(), ...entry })}\n`)
+  } catch {}
+}
+
 const runJig = (hook, payload, cwd) =>
   new Promise((resolve) => {
+    const started = Date.now()
     let stdout = ''
+    let stderr = ''
+    let timedOut = false
     let child
+    const finish = (result, entry) => {
+      logRun({ hook, ms: Date.now() - started, timeout: timedOut, ...entry })
+      resolve(result)
+    }
     try {
       child = spawn(NODE, [BIN, 'hook', hook, '--agent', 'opencode'], {
         cwd,
-        stdio: ['pipe', 'pipe', 'ignore'],
+        stdio: ['pipe', 'pipe', 'pipe'],
         windowsHide: true,
       })
-    } catch {
-      resolve(undefined)
+    } catch (error) {
+      finish(undefined, { spawnError: String(error) })
       return
     }
-    const timer = setTimeout(() => child.kill(), (TIMEOUTS[hook] ?? 10) * 1000)
+    const timer = setTimeout(() => {
+      timedOut = true
+      child.kill()
+    }, (TIMEOUTS[hook] ?? 10) * 1000)
     child.stdout.on('data', (chunk) => {
       stdout += chunk
     })
-    child.on('error', () => {
-      clearTimeout(timer)
-      resolve(undefined)
+    child.stderr.on('data', (chunk) => {
+      stderr = `${stderr}${chunk}`.slice(-STDERR_TAIL)
     })
-    child.on('close', () => {
+    child.on('error', (error) => {
       clearTimeout(timer)
-      resolve(parse(stdout))
+      finish(undefined, { spawnError: String(error), stderr })
+    })
+    child.on('close', (code, signal) => {
+      clearTimeout(timer)
+      const result = parse(stdout)
+      const parseFailed = result === undefined && stdout.trim() !== ''
+      finish(result, { code, signal, stderr, ...(parseFailed ? { parseError: stdout.slice(0, STDERR_TAIL) } : {}) })
     })
     child.stdin.on('error', () => {})
     child.stdin.end(JSON.stringify({ ...payload, hook_event_name: EVENT_NAMES[hook] }))
   })
+
+const TIER_AGENTS = {
+  deep: 'strongest reasoning: synthesis, judging, design, root cause',
+  standard: 'balanced reasoning and cost: exploring, finding, fixing',
+  fast: 'cheapest capable model: mechanical work',
+}
+const REVIEW_DEPTH = 2
+
+const skillPaths = (root = ROOT) => {
+  try {
+    const manifest = JSON.parse(readFileSync(join(root, '.claude-plugin', 'plugin.json'), 'utf8'))
+    return (manifest.skills ?? []).map((path) => join(root, path))
+  } catch {
+    return [join(root, 'skills')]
+  }
+}
+
+const tierModels = () =>
+  new Promise((resolve) => {
+    execFile(NODE, [BIN, 'tiers', '--agent', 'opencode', '--json'], { timeout: 10_000, windowsHide: true }, (error, stdout) => {
+      if (error) logRun({ hook: 'tiers', spawnError: String(error) })
+      resolve(error ? undefined : parse(stdout)?.tiers ?? undefined)
+    })
+  })
+
+const tierAgents = (tiers) =>
+  Object.fromEntries(
+    Object.entries(TIER_AGENTS).map(([tier, description]) => {
+      const model = tiers?.[tier]?.[0]
+      return [`jig-${tier}`, { description: `jig ${tier} tier: ${description}`, mode: 'subagent', permission: { task: 'allow' }, ...(model ? { model } : {}) }]
+    }),
+  )
+
+const registerJig = (config, tiers, root = ROOT) => {
+  config.skills = { ...config.skills, paths: [...new Set([...(config.skills?.paths ?? []), ...skillPaths(root)])] }
+  const agents = tierAgents(tiers)
+  config.agent = { ...config.agent }
+  for (const [name, agent] of Object.entries(agents)) config.agent[name] = { ...agent, ...config.agent[name] }
+  config.subagent_depth ??= REVIEW_DEPTH
+}
 
 const contextOf = (result) => result?.hookSpecificOutput?.additionalContext
 const denialOf = (result) =>
@@ -126,6 +199,9 @@ export const JigPlugin = async ({ client, directory, worktree }) => {
   }
 
   return {
+    config: async (config) => {
+      registerJig(config, await tierModels())
+    },
     'tool.execute.before': async (input, output) => {
       const hook = hooksFor(input.tool).before
       const call = toClaudeCall(input.tool, output.args)
