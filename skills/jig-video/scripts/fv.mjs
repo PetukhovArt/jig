@@ -9,6 +9,8 @@
 import { spawn, spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
+import { attachVideo } from './attach.mjs'
+import { audioFiles, edgeTtsCommand, loadProjectSettings, synthesize, voiceKey } from './tts.mjs'
 import { captureInput, pinWindow, placeWindows, platformRequirements, windowClientArea } from './window.mjs'
 
 const [cmd, dirArg, ...rest] = process.argv.slice(2)
@@ -23,48 +25,46 @@ if (cmd === 'window') {
   console.log(await windowAction(process.argv.slice(3)))
   process.exit(0)
 }
-if (!cmd || !dirArg) fail('usage: fv.mjs <narrate|rehearse|record|assemble> <workdir> [--case caseId] [--window "title"] [--region x,y,w,h] [--from stepId]\n       fv.mjs check\n       fv.mjs window <place|pin> [flags]\n       fv.mjs cdp <click|fill|wait|eval|drag|screenshot> [agent-view flags]')
+if (cmd === 'say') {
+  const [text, out] = process.argv.slice(3)
+  if (!text || !out) fail('usage: fv.mjs say "<text>" <out path without extension>')
+  console.log(await synthesize(text, path.resolve(out), loadProjectSettings()))
+  process.exit(0)
+}
+if (!cmd || !dirArg) fail('usage: fv.mjs <narrate|rehearse|record|assemble> <workdir> [--case caseId] [--window "title"] [--region x,y,w,h] [--from stepId]\n       fv.mjs attach <workdir> [--to <PR/MR number or url>] [--file video-fast.mp4] [--dry-run]\n       fv.mjs say "<text>" <out>\n       fv.mjs check\n       fv.mjs window <place|pin> [flags]\n       fv.mjs cdp <click|fill|wait|eval|drag|screenshot> [agent-view flags]')
 const dir = path.resolve(dirArg)
 const flags = {}
-for (let i = 0; i < rest.length; i += 2) flags[rest[i].replace(/^--/, '')] = rest[i + 1]
+for (let i = 0; i < rest.length; i++) {
+  const hasValue = rest[i + 1] !== undefined && !rest[i + 1].startsWith('--')
+  flags[rest[i].replace(/^--/, '')] = hasValue ? rest[++i] : true
+}
 
 const TITLE_SEC = 3
 const GAP_SEC = 0.6
-// The free Edge TTS endpoint drops single requests, and after a burst throttles for minutes (NoAudioReceived).
-const TTS_RETRY_PAUSES_SEC = [3, 90, 90]
 const FFMPEG = findTool('ffmpeg')
 const FFPROBE = findTool('ffprobe')
 
-const scenario = readJson('scenario.json')
+const scenario = { ...loadProjectSettings(), ...readJson('scenario.json') }
 // Each use case is recorded into its own clip, so a failed case is re-recorded alone; assemble joins them.
 const cases = scenario.cases ?? fail('scenario.json: no "cases". Steps live in cases: "cases": [{ "id": "…", "setup": […], "steps": […] }]')
 const steps = cases.flatMap((c) => c.steps)
 const duplicate = steps.find((s, i) => steps.findIndex((t) => t.id === s.id) !== i)
 if (duplicate) fail(`scenario.json: step id ${duplicate.id} is used twice`)
 const capturePath = (caseId) => path.join(dir, 'cases', `${caseId}.mkv`)
-const commands = { narrate, rehearse: () => drive(false), record: () => drive(true), assemble }
+const commands = { narrate, rehearse: () => drive(false), record: () => drive(true), assemble, attach }
 await (commands[cmd] ?? (() => fail(`unknown command ${cmd}`)))()
 
 async function narrate() {
   mkdirSync(path.join(dir, 'audio'), { recursive: true })
   const durations = {}
-  const [tts, ...ttsPrefix] = edgeTtsCommand() ?? fail('edge-tts not found: pipx install edge-tts (or pip install edge-tts)')
   for (const step of steps) {
-    const { id, say } = step
-    const out = path.join(dir, 'audio', `${id}.mp3`)
-    // A step's rate, pitch or volume overrides the scenario's.
-    const voice = (key, neutral) => ['--' + key, step[key] ?? scenario[key] ?? neutral]
-    const args = [...ttsPrefix, '--voice', scenario.voice ?? fail('scenario.json: set "voice"'),
-      ...voice('rate', '+0%'), ...voice('pitch', '+0Hz'), ...voice('volume', '+0%'), '--text', say, '--write-media', out]
-    let isSynthesised = false
-    for (const pause of TTS_RETRY_PAUSES_SEC) {
-      isSynthesised = spawnSync(tts, args, { cwd: dir }).status === 0
-      if (isSynthesised) break
-      console.log(`edge-tts failed on ${id}, retrying in ${pause}s`)
-      await sleep(pause * 1000)
-    }
-    if (!isSynthesised) run(tts, args)
-    durations[id] = probeDuration(out)
+    const outBase = path.join(dir, 'audio', step.id)
+    const voicedWith = voiceKey(step.say, scenario, step)
+    const keyFile = `${outBase}.key`
+    const cached = existsSync(keyFile) && readFileSync(keyFile, 'utf8') === voicedWith ? audioFiles(outBase)[0] : undefined
+    const file = cached ?? await synthesize(step.say, outBase, scenario, step).catch((error) => fail(`${step.id}: ${error.message}`))
+    writeFileSync(keyFile, voicedWith)
+    durations[step.id] = probeDuration(file)
   }
   writeJson('durations.json', durations)
   console.log(durations)
@@ -362,7 +362,7 @@ function assemble() {
     `${i + 1}\n${srtTime(start(step))} --> ${srtTime(start(step) + durations[step.id])}\n${step.say}\n`).join('\n'))
 
   const captureInputs = cases.flatMap(({ id }) => ['-i', capturePath(id)])
-  const audioInputs = steps.flatMap(({ id }) => ['-i', `audio/${id}.mp3`])
+  const audioInputs = steps.flatMap(({ id }) => ['-i', audioFiles(path.join(dir, 'audio', id))[0] ?? fail(`no audio for ${id}: run narrate`)])
   const fitted = cases.map((_, i) =>
     `[${i + 1}:v]scale=${W}:${CH}:force_original_aspect_ratio=decrease,pad=${W}:${CH}:(ow-iw)/2:(oh-ih)/2:color=0x1e2430,fps=30,setsar=1[c${i}]`)
   const delays = steps.map((step, i) => {
@@ -411,6 +411,13 @@ async function startCapture(out) {
     '-vf', `${regionCrop}crop=trunc(iw/2)*2:trunc(ih/2)*2`, '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '18', '-pix_fmt', 'yuv420p', out], { stdio: ['pipe', 'ignore', 'pipe'] })
 }
 
+async function attach() {
+  const file = path.resolve(dir, typeof flags.file === 'string' ? flags.file : 'video.mp4')
+  if (!existsSync(file)) fail(`no ${file}: run assemble first`)
+  const body = [`**${scenario.title}**`, scenario.subtitle].filter(Boolean).join('\n\n')
+  console.log(await attachVideo({ file, target: typeof flags.to === 'string' ? flags.to : undefined, body, settings: scenario, isDryRun: flags['dry-run'] === true }))
+}
+
 async function readInnerSize(title) {
   return JSON.parse(await agentView(['eval', '--json', '--window', title, '[innerWidth, innerHeight]']))
 }
@@ -435,11 +442,6 @@ function checkRequirements() {
   process.exit(required.every(([isMet]) => isMet) ? 0 : 1)
 }
 
-function edgeTtsCommand() {
-  const pythons = process.platform === 'win32' ? ['python', 'py', 'python3'] : ['python3', 'python']
-  const candidates = [['edge-tts'], ...pythons.map((python) => [python, '-m', 'edge_tts'])]
-  return candidates.find(([bin, ...prefix]) => spawnSync(bin, [...prefix, '--help']).status === 0)
-}
 
 function platformFont() {
   if (process.platform === 'win32') return { file: 'C\\:/Windows/Fonts/segoeui.ttf', family: 'Segoe UI' }
