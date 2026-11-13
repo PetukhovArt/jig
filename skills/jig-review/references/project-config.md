@@ -16,6 +16,7 @@ Merge at the top level: a declared key replaces the default one whole; the other
     "exclude": ["**/{tracker,packages,adr,adrs,doc}/**", "docs/*.md"]
   },
   "review": { "language": null },
+  "mr": { "standard": null },
   "severity": { "source": null },
   "route": {},
   "angles": {},
@@ -33,7 +34,8 @@ Merge at the top level: a declared key replaces the default one whole; the other
 - **`discover.spec`**: whether to look for the task's spec ([prepare](../steps/01-prepare.md#spec): a task the merge request names is read in its tracker whenever this is on).
 - **`discover.rules`**: index file names. Searched at any depth by walking up from the diff's directories; `@file` inside is expanded ([step 02](../steps/02-rules.md)).
 - **`discover.standards` / `.exclude`**: globs of standard documents and what to drop from the found. The default drops the top-level pages of `docs/` (documentation, not rules) and keeps `docs/standards/**`. A standard an index links is scoped to that index's directory; an unlinked one covers the whole repository. Only the finders of project angles of kind `conventions` read them.
-- **`review.language`**: the language of comment texts ([comment texts](../steps/07-comments.md)). `null`: the language of the merge request description and its threads.
+- **`review.language`**: the language of comment texts ([comment texts](../steps/07-comments.md)) and of the merge request descriptions jig writes ([template](../../jig/references/mr-template.md)), for example `"Russian"`. `null`: the language of the merge request description and its threads; for a new description, of the repository's recent merge requests.
+- **`mr.standard`**: the repository's merge request standard, a path from the repository root (a format document or a PR/MR template such as `.gitlab/merge_request_templates/Default.md`): the description jig writes ends with the blocks it requires ([template](../../jig/references/mr-template.md)). `null`: the description is jig's template alone.
 - **`severity.source`**: the path of the file whose severity sections replace the skill's taxonomy whole ([severity source](../steps/02-rules.md#severity-source)). `null`: searched among the `discover.rules` indexes. Needed when the file is not on the walk-up path.
 - **`route`**: `glob → angle numbers or project angle names`. A document goes into the personal tail of the finders that carry such an angle. Matched nothing: the default of [step 02](../steps/02-rules.md): indexes and standard bodies to every conventions finder whose partition they cover, as `jig review-plan` prints under `rules:`.
 - **`angles.<n>`**: one of the skill's angles, 1–5, 8, 12, 14, 15, 16, 18 ([index](../angles/00-index.md)). `enabled: false` turns the angle off before any spawn; `severityCeiling` (`Important` or `Nit`) sets the ceiling of its findings ([severity](../gates/severity.md)). Every angle is on by default, with the ceiling `Important`; a ceiling of `Nit` takes the angle out of the `important` selector token. A number of a removed angle (6, 7, 9, 10, 11, 13, 17) is accepted and changes nothing, so an older config still loads.
