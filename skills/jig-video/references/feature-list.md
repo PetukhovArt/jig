@@ -7,7 +7,7 @@ The feature list is the contract of the video: every item is shown or narrated, 
 The project may already define how a change is told to its readers. Look, in order:
 
 1. The pointers in `AGENTS.md` / `CLAUDE.md` (a line naming a changelog, release-notes or MR-description standard).
-2. A search of the repo docs: `rg -il "changelog|release notes" --glob "*.md"` over `.ai/`, `docs/`, `CONTRIBUTING.md`, `.github/`, `.gitlab/`.
+2. A search of the repo docs: `git grep -il -E "changelog|release notes" -- "*.md"` over `docs/`, `CONTRIBUTING.md`, `.github/`, `.gitlab/`.
 
 Found: its format, item types and writing rules govern the list. Not found: use the default format below.
 

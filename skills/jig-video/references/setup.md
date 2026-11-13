@@ -28,11 +28,11 @@ Run it when the app checkout has no `.jig/video.json`, or the user asks to chang
 
 1. **Voice engine**: Edge TTS (online, free, no key; recommended), the OS voice (macOS `say -o {out}.aiff {text}`, Linux `espeak-ng -w {out}.wav {text}`, Windows SAPI through a script the project ships), or a paid service through its CLI (ElevenLabs, OpenAI) with the key in an environment variable.
 2. **Voice and language**: for Edge TTS, a voice for the narration language (`en-US-AndrewNeural`, `ru-RU-DmitryNeural`, …) and a `rate`.
-3. **Handover**: post on the PR/MR (`github` or `gitlab`, from the `origin` remote), or copy to a folder (`local`), or hand over the path only (no `attach`).
+3. **Handover**: post on the MR/PR (`github` or `gitlab`, from the `origin` remote), or copy to a folder (`local`), or hand over the path only (no `attach`).
 
 Then test each choice:
 
 - Voice: `fv.mjs say "<one sentence in the narration language>" <tmp>/sample`, and give the user the file to hear.
-- Handover: `fv.mjs attach <dir> --to <PR/MR> --dry-run` on any video prints what would be posted.
+- Handover: `fv.mjs attach <dir> --to <MR/PR> --dry-run` on any video prints what would be posted.
 
 Write `.jig/video.json` with the values as tested, and tell the user to commit it.
