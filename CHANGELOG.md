@@ -1,5 +1,11 @@
 # jig
 
+## 0.5.1
+
+### Patch Changes
+
+- [`58468a4`](https://github.com/PetukhovArt/jig/commit/58468a49752a60299a4cad7db8fdb8ff6a57bce9) Thanks [@PetukhovArt](https://github.com/PetukhovArt)! - OpenCode: the plugin runs jig with Node instead of the OpenCode binary, whose install path contains `node_modules`, so its hooks take effect; it passes the project directory as the hook's working directory instead of an environment variable.
+
 ## 0.5.0
 
 ### Minor Changes
