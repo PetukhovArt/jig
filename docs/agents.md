@@ -19,7 +19,7 @@ The bottom layers (execution, safety, verification) are durable and get the inve
 | Layer | jig part |
 | --- | --- |
 | Verification | checks after an edit and at the end of a turn over the tools named in `.jig/config.jsonc` (tsc, ESLint, oxlint, stratum, the project's own `checks`); UI proof before the merge request (`jig pre-mr`, agent-view for now) |
-| Safety | deny before an edit: suppressions always, new comments and new test cases once with their rules |
+| Safety | deny before an edit: suppressions and new or reworded comments always, new test cases once with their rules |
 | Execution | feature worktrees (`jig worktree`) and slots with a warm dev server (`jig slot`) |
 | Context | atoms (`atoms/*.md`), indexed in `skills/jig/SKILL.md`; the project's `AGENTS.md`/`CLAUDE.md` chain for each path the agent touches ([hooks](hooks.md)) |
 | Orchestration | `/jig`, flows, review (`jig-review`, `jig review-plan`), the decision trail (`jig task-status`) |

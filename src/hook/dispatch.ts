@@ -1,4 +1,4 @@
-import { appendFileSync, existsSync, readFileSync } from 'node:fs'
+import { appendFileSync, existsSync } from 'node:fs'
 import { basename, join, resolve } from 'node:path'
 import { resolveAdapter, type AgentAdapter } from '../adapters'
 import { loadConfig } from '../core/config'
@@ -22,7 +22,6 @@ import {
 import { gateEdit, pruneGateClaims, resetGateAtoms } from '../rules/gate'
 import { deliver, markTold, resetTold } from '../context/deliver'
 import { RULE_FILES } from '../context/chain'
-import type { Edit } from '../rules/rule'
 import { checkEdit } from '../gates/edit'
 import { stopGate } from '../gates/stop'
 import { collapseFindings, limitLines, POST_EDIT_LINE_LIMIT, type Finding } from '../tools/finding'
@@ -230,25 +229,6 @@ const prompt = (ctx: HookContext): Outcome => {
   return NONE
 }
 
-const readCurrent = (path: string): string => {
-  try {
-    return readFileSync(path, 'utf8')
-  } catch {
-    return ''
-  }
-}
-
-const locateEdits = (event: FileEdit, projectRoot: string): Edit[] => {
-  if (event.wholeFile !== undefined) return event.edits.map((edit) => ({ ...edit, line: 1, prefix: '' }))
-  const current = readCurrent(join(projectRoot, event.file))
-  return event.edits.map((edit) => {
-    const at = edit.before === '' ? -1 : current.indexOf(edit.before)
-    if (at === -1) return edit
-    const prefix = current.slice(0, at)
-    return { ...edit, line: prefix.split('\n').length, prefix }
-  })
-}
-
 const gateFile = (event: FileEdit, ctx: HookContext): Outcome => {
   const verdict = gateEdit({
     projectRoot: ctx.projectRoot,
@@ -256,7 +236,7 @@ const gateFile = (event: FileEdit, ctx: HookContext): Outcome => {
     sessionId: ctx.sessionId,
     agent: ctx.agent,
     file: event.file,
-    edits: locateEdits(event, ctx.projectRoot),
+    edits: event.edits,
     config: loadConfig(ctx.projectRoot),
   })
   for (const hit of verdict.hits) {

@@ -1,1 +1,2 @@
-/* stylesheets are out of scope */
+.logo { background: url(//cdn.example.com/logo.png); }
+.hint::after { content: "/* not a comment */ // either"; }

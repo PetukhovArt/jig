@@ -8,7 +8,6 @@ export interface EditPair {
 export interface FileEdit {
   file: string
   edits: EditPair[]
-  wholeFile?: string
 }
 
 export type JigEvent =

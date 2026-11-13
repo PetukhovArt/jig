@@ -6,12 +6,12 @@ import type { JigConfig, JigRuleId, RuleId } from '../core/config'
 import { parseFrontmatter } from '../core/frontmatter'
 import { jigPaths, toSlash } from '../core/paths'
 import { STATE_MAX_AGE_MS } from '../core/state'
-import { addedComments, type AddedComment } from './comments'
+import { addedComments, isConfigFile, type AddedComment } from './comments'
 import type { Edit } from './rule'
 import { findSuppression, isToolDirective } from './suppressions'
 import { addedTestCases } from './tests'
 
-export const GATE_ATOMS = ['comments', 'tests'] as const
+export const GATE_ATOMS = ['tests'] as const
 type GateAtom = (typeof GATE_ATOMS)[number]
 
 export interface GateInput {
@@ -73,26 +73,34 @@ const rulesText = (input: GateInput, atom: GateAtom, reminder: string): string =
   }
 }
 
+const where = (file: string, comment: AddedComment): string =>
+  comment.lineIn === 'file' ? `${file}:${comment.line}` : `${file}, line ${comment.line} of the new text`
+
+const fileLineOf = (comment: AddedComment): { line?: number } => (comment.lineIn === 'file' ? { line: comment.line } : {})
+
 const suppressionHits = (file: string, comments: readonly AddedComment[]): GateHit[] =>
   comments.flatMap((comment) => {
     const directive = findSuppression(comment.text)
     if (directive === undefined) return []
-    const message = `jig/comments: "${directive}" at ${file}:${comment.line} silences a check. Fix the cause instead; only a human adds suppressions.`
-    return [{ rule: 'jig/comments', line: comment.line, message }]
+    const message = `jig/comments: "${directive}" at ${where(file, comment)} silences a check. Fix the cause instead; only a human adds suppressions.`
+    return [{ rule: 'jig/comments', ...fileLineOf(comment), message }]
   })
 
-const COMMENT_REMINDER = 'Keep a comment only if it is a license header, a TODO with a ticket, public-API JSDoc beyond the signature, or an external constraint with a link.'
+const MAX_KEY_LENGTH = 80
 
-const commentSection = (input: GateInput, comments: readonly AddedComment[]): { text: string; hit: GateHit } | undefined => {
+const COMMENT_ADVICE =
+  'Remove it and put the reason into a name, a type, the structure or the commit message; removing a comment or part of its text passes, config files are not checked, and a comment that must exist (license header, tool directive) is added by a human, or the project turns the gate off with "rules": { "jig/comments": "off" } in .jig/config.jsonc.'
+
+const shortKey = (key: string): string => (key.length > MAX_KEY_LENGTH ? `${key.slice(0, MAX_KEY_LENGTH)}...` : key)
+
+const commentSection = (file: string, comments: readonly AddedComment[]): { text: string; hit: GateHit } | undefined => {
   const gated = comments.filter((comment) => findSuppression(comment.text) === undefined && !isToolDirective(comment.text))
-  const unseen = gated.filter((comment) => claimFirst(input, `comment\n${input.file}\n${comment.key}`))
-  const [first] = unseen
+  const [first] = gated
   if (first === undefined) return undefined
-  const list = unseen.map((comment) => `  ${input.file}:${comment.line} ${comment.key}`)
-  const head = `jig/comments: the edit adds ${unseen.length} comment(s):\n${list.join('\n')}\n${RETRY} Keep only the comments the rules allow.`
+  const list = gated.map((comment) => `  ${where(file, comment)} ${shortKey(comment.key)}`)
   return {
-    text: `${head}\n\n${rulesText(input, 'comments', COMMENT_REMINDER)}`,
-    hit: { rule: 'jig/comments', line: first.line, message: `new comment at ${input.file}:${first.line}` },
+    text: `jig/comments: the edit adds or rewords ${gated.length} comment(s):\n${list.join('\n')}\n${COMMENT_ADVICE}`,
+    hit: { rule: 'jig/comments', ...fileLineOf(first), message: `new comment at ${where(file, first)}` },
   }
 }
 
@@ -114,10 +122,10 @@ const testSection = (input: GateInput): { text: string; hit: GateHit } | undefin
 }
 
 export const gateEdit = (input: GateInput): GateVerdict => {
-  const comments = addedComments(input.file, input.edits) ?? []
+  const comments = addedComments(input.file, input.edits, fileSource(input.projectRoot, input.file)()) ?? []
   const suppressions = suppressionHits(input.file, comments)
   const sections = [
-    isOn(input.config, 'jig/comments') ? commentSection(input, comments) : undefined,
+    isOn(input.config, 'jig/comments') && !isConfigFile(input.file) ? commentSection(input.file, comments) : undefined,
     isOn(input.config, 'jig/tests') ? testSection(input) : undefined,
   ].filter((section) => section !== undefined)
   const hits = [...suppressions, ...sections.map((section) => section.hit)]

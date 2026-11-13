@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { lexComments } from '../src/catalog/languages'
 import { lexCSharp } from '../src/catalog/languages/csharp-lexer'
-import { lexJs, lexVue } from '../src/catalog/languages/js-lexer'
+import { lexJs } from '../src/catalog/languages/js-lexer'
+import { lexVue } from '../src/catalog/languages/markup-lexer'
 
 const texts = (source: string): string[] => lexJs(source).map((comment) => comment.text)
 
@@ -55,15 +56,16 @@ describe('vue lexer', () => {
     '// two',
     '</script>',
     '<style>',
-    '/* skipped */',
-    '<!-- skipped -->',
+    '/* three */',
+    '<!-- not css -->',
     '</style>',
   ].join('\n')
 
-  it('reads template html comments and script comments with file line numbers', () => {
+  it('reads template html comments, script and style comments with file line numbers', () => {
     expect(lexVue(source).map(({ text, line }) => ({ text, line }))).toEqual([
       { text: '<!-- one -->', line: 3 },
       { text: '// two', line: 8 },
+      { text: '/* three */', line: 11 },
     ])
   })
 
@@ -92,7 +94,7 @@ describe('csharp lexer', () => {
     ['raw string with a longer delimiter', 'var a = """"\n    """ // x\n    """";'],
     ['interpolated raw string', 'var a = $"""\n    {F(""" // x """)} {c switch { _ => "/* y */" }}\n    """;'],
     ['double-dollar raw string', 'var a = $$"""\n    { // x } {{F(""" /* y */ """)}}\n    """;'],
-    ['preprocessor directives', '#region Helpers // x\n#if DEBUG\nvar a = 1;\n#endif\n#endregion'],
+    ['preprocessor directives', '#if DEBUG\nvar a = 1;\n#error stop // y\n#endif'],
     ['verbatim identifier', 'var @class = 1;'],
   ])('finds no comment in a %s', (_, source) => {
     expect(csharpTexts(source)).toEqual([])
@@ -116,13 +118,15 @@ describe('csharp lexer', () => {
     ])
   })
 
-  it('reads compiler check directives apart from their trailing comment', () => {
-    const source = '#pragma warning disable CS0618 // vendor API\r\n#nullable enable\n#if DEBUG // local only\n#endif'
+  it('reads compiler check directives apart from their trailing comment, and regions whole', () => {
+    const source = '#pragma warning disable CS0618 // vendor API\r\n#nullable enable\n#if DEBUG // local only\n#endif\n#region Helpers // x\r\n#endregion'
     expect(lexCSharp(source).map(({ text, line, kind }) => ({ text, line, kind }))).toEqual([
       { text: '#pragma warning disable CS0618', line: 1, kind: 'directive' },
       { text: '// vendor API', line: 1, kind: 'line' },
       { text: '#nullable enable', line: 2, kind: 'directive' },
       { text: '// local only', line: 3, kind: 'line' },
+      { text: '#region Helpers // x', line: 5, kind: 'directive' },
+      { text: '#endregion', line: 6, kind: 'directive' },
     ])
   })
 
@@ -133,11 +137,18 @@ describe('csharp lexer', () => {
 })
 
 describe('scope', () => {
-  it.each(['a.ts', 'a.tsx', 'a.mts', 'a.cts', 'a.js', 'a.jsx', 'a.mjs', 'a.cjs', 'a.vue', 'A.cs'])('lexes %s', (file) => {
-    expect(lexComments(file, '// x')).toHaveLength(1)
+  it.each([
+    ...['a.ts', 'a.tsx', 'a.mts', 'a.cts', 'a.js', 'a.jsx', 'a.mjs', 'a.cjs', 'a.vue', 'A.cs', 'a.scss', 'a.rs', 'a.go'].map((file) => [file, '// x']),
+    ['a.css', '/* x */'],
+    ['a.html', '<!-- x -->'],
+    ['a.svelte', '<!-- x -->'],
+    ['a.py', '# x'],
+    ['a.sh', '# x'],
+  ])('lexes %s', (file, source) => {
+    expect(lexComments(file, source)).toHaveLength(1)
   })
 
-  it.each(['a.css', 'a.md', 'a.json', 'a.yml', 'a.html', 'a.ipynb'])('skips %s', (file) => {
+  it.each(['a.md', 'a.json', 'a.yml', 'a.ipynb'])('skips %s', (file) => {
     expect(lexComments(file, '// x')).toBeUndefined()
   })
 })

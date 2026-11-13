@@ -221,7 +221,7 @@ export const tscTool = defineTool({
   ],
   files: TYPED_FILES,
   parse: (stdout, projectRoot, cwd) => parseTscOutput(stdout, 'tsc', projectRoot, cwd),
-  comments: { suppressions: [/@ts-(?:ignore|expect-error|nocheck)\b/], allowed: [/^\/\/\/\s*<reference\b/] },
+  comments: { suppressions: [/@ts-(?:ignore|expect-error|nocheck)\b/] },
   stop: async (tools, input) => {
     const { groups, skipped } = groupByTsconfig(input.projectRoot, input.files)
     for (const file of skipped) {

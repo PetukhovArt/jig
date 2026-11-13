@@ -74,7 +74,7 @@ export const oxlintTool = defineTool({
   binaries: [{ key: 'oxlint', label: 'oxlint', command: 'oxlint', packages: ['oxlint'], configs: OXLINT_CONFIGS, requiresConfig: true }],
   files: SCRIPT_FILES,
   parse: parseOxlint,
-  comments: { suppressions: [/\boxlint-disable(?:-next-line|-line)?\b/], allowed: [/\boxlint-enable\b/] },
+  comments: { suppressions: [/\boxlint-disable(?:-next-line|-line)?\b/] },
   edit: async (tools, projectRoot, file, timeoutMs) => {
     const entry = withMarker(tools.oxlint, nearestMarker(projectRoot, file, OXLINT_CONFIGS))
     if (entry === undefined) return undefined

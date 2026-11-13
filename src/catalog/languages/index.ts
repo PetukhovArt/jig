@@ -1,10 +1,15 @@
 import { readFileSync } from 'node:fs'
 import { extname, join } from 'node:path'
 import { createMatcher, type PathMatcher } from '../../core/glob'
+import { lexGo, lexRust } from './c-style-lexer'
 import { lexCSharp } from './csharp-lexer'
-import { lexJs, lexVue, type Comment } from './js-lexer'
+import { lexCss, lexScss } from './css-lexer'
+import { lexPython, lexShell } from './hash-lexers'
+import { lexJs, lexTs } from './js-lexer'
+import type { Comment } from './lexer'
+import { lexMarkup, lexVue } from './markup-lexer'
 
-export type { Comment, CommentKind } from './js-lexer'
+export type { Comment, CommentKind } from './lexer'
 
 export type SourceReader = () => string | undefined
 
@@ -16,8 +21,6 @@ export interface Language {
   testCase?: RegExp
   testFile?: RegExp
 }
-
-const SCRIPT_EXTENSIONS = ['.ts', '.tsx', '.mts', '.cts', '.js', '.jsx', '.mjs', '.cjs'] as const
 
 const isScriptTestPath = createMatcher(['**/*.{test,spec}.{ts,tsx,js,jsx,mts,cts,mjs,cjs}', '**/__tests__/**'])
 
@@ -33,16 +36,23 @@ const isTestSegmentPath = (file: string): boolean => {
 const CSHARP_TEST_ATTRIBUTE = String.raw`\[\s*(?:\w+\.)*(?:Fact|Theory|Test|TestCase|TestCaseSource|TestMethod|DataTestMethod)(?:Attribute)?(?=\s*[(\],])`
 const CSHARP_TEST_CASE = String.raw`(?<![\w)]\s*)(?<!${CSHARP_TEST_ATTRIBUTE}[^\n]*\]\s*)${CSHARP_TEST_ATTRIBUTE}`
 
+const SCRIPT_TESTS = {
+  isTestPath: isScriptTestPath,
+  testCase: /(?<![\w$.])(?:it|test)(?:\.\w+)*\s*\(/g,
+  testFile: /^\s*(?:describe|it|test)(?:\.\w+)*\s*(?:\([^\n]*?\)\s*)?\(\s*['"`]/m,
+}
+
 export const LANGUAGES: readonly Language[] = [
-  {
-    name: 'javascript',
-    extensions: SCRIPT_EXTENSIONS,
-    lexComments: lexJs,
-    isTestPath: isScriptTestPath,
-    testCase: /(?<![\w$.])(?:it|test)(?:\.\w+)*\s*\(/g,
-    testFile: /^\s*(?:describe|it|test)(?:\.\w+)*\s*(?:\([^\n]*?\)\s*)?\(\s*['"`]/m,
-  },
+  { name: 'javascript', extensions: ['.ts', '.mts', '.cts'], lexComments: lexTs, ...SCRIPT_TESTS },
+  { name: 'javascript', extensions: ['.tsx', '.js', '.jsx', '.mjs', '.cjs'], lexComments: lexJs, ...SCRIPT_TESTS },
   { name: 'vue', extensions: ['.vue'], lexComments: lexVue },
+  { name: 'html', extensions: ['.html', '.htm', '.svelte'], lexComments: lexMarkup },
+  { name: 'css', extensions: ['.css'], lexComments: lexCss },
+  { name: 'scss', extensions: ['.scss', '.less'], lexComments: lexScss },
+  { name: 'python', extensions: ['.py', '.pyi'], lexComments: lexPython },
+  { name: 'shell', extensions: ['.sh', '.bash', '.zsh'], lexComments: lexShell },
+  { name: 'rust', extensions: ['.rs'], lexComments: lexRust },
+  { name: 'go', extensions: ['.go'], lexComments: lexGo },
   {
     name: 'csharp',
     extensions: ['.cs'],

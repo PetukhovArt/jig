@@ -73,14 +73,14 @@ describe('hooks through bin/jig.mjs', () => {
     expect(denialOf(preWrite('src/b.ts', content))).toBe('deny')
   })
 
-  it('denies the first narrating comment once the comment gate is on, then lets the same call pass', () => {
+  it('denies a narrating comment every time the comment gate is on', () => {
     write('.jig/config.jsonc', '{ "rules": { "jig/comments": "error" }, "tsc": {} }\n')
     const content = 'let i = 0\n// increments i\ni++\n'
     expect(denialOf(preWrite('src/b.ts', content))).toBe('deny')
-    expect(preWrite('src/b.ts', content)).toBe('')
+    expect(denialOf(preWrite('src/b.ts', content))).toBe('deny')
   })
 
-  it('denies a C# edit that adds an XML doc once and a #pragma warning disable every time', () => {
+  it('denies a C# edit that adds an XML doc or a #pragma warning disable every time', () => {
     write('.jig/config.jsonc', '{ "rules": { "jig/comments": "error" }, "tsc": {} }\n')
     const file = 'Server/Controllers/StreamController.cs'
     const method = '    public IActionResult Get(string id) => Ok(_frames.Get(id));\n'
@@ -93,7 +93,7 @@ describe('hooks through bin/jig.mjs', () => {
       })
     const summary = '    /// <summary>Returns the frame of the stream.</summary>\n'
     expect(denialOf(edit(summary))).toBe('deny')
-    expect(edit(summary)).toBe('')
+    expect(denialOf(edit(summary))).toBe('deny')
     const pragma = '#pragma warning disable CS0618\n'
     expect(denialOf(edit(pragma))).toBe('deny')
     expect(denialOf(edit(pragma))).toBe('deny')

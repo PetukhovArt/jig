@@ -184,7 +184,7 @@ var runHooks = (args) => {
 
 // src/atoms/atoms.ts
 import { readdirSync as readdirSync8, readFileSync as readFileSync15 } from "node:fs";
-import { basename as basename3, join as join15 } from "node:path";
+import { basename as basename4, join as join15 } from "node:path";
 
 // src/core/frontmatter.ts
 var FrontmatterError = class extends Error {
@@ -502,18 +502,8 @@ var lockfiles_default = [
 import { readFileSync as readFileSync3 } from "node:fs";
 import { extname, join as join3 } from "node:path";
 
-// src/catalog/languages/js-lexer.ts
-var REGEX_KEYWORDS = /* @__PURE__ */ new Set(["return", "typeof", "case", "do", "else"]);
-var DIVISION_AFTER = /* @__PURE__ */ new Set([")", "]"]);
-var IDENTIFIER_START = /[A-Za-z_$\u0080-￿]/;
-var IDENTIFIER_PART = /[\w$\u0080-￿]/;
-var DIGIT = /\d/;
-var NUMBER_PART = /[\w.]/;
-var WHITESPACE = /\s/;
-var SCRIPT_BLOCK = /(<script\b[^>]*>)([\s\S]*?)<\/script\s*>/gi;
-var STYLE_BLOCK = /<style\b[^>]*>[\s\S]*?<\/style\s*>/gi;
-var HTML_COMMENT = /<!--[\s\S]*?-->/g;
-var SFC_TAG = /<(?:script|template|style)\b/i;
+// src/catalog/languages/lexer.ts
+var WORD = /[\p{L}\p{N}_$]/u;
 var countNewlines = (text3, from, to) => {
   let count = 0;
   for (let index = from; index < to; index++) {
@@ -523,236 +513,96 @@ var countNewlines = (text3, from, to) => {
   }
   return count;
 };
-var JsLexer = class {
-  constructor(source, end, start, firstLine5) {
-    this.source = source;
-    this.end = end;
-    this.index = start;
-    this.line = firstLine5;
-  }
-  source;
-  end;
-  index = 0;
-  line;
-  isRegexAllowed = true;
-  isInTemplate = false;
-  templateDepths = [];
-  comments = [];
-  run() {
-    while (this.index < this.end) {
-      if (this.isInTemplate) {
-        this.scanTemplate();
-        continue;
-      }
-      this.scanCode();
-    }
-    return this.comments;
-  }
-  at(offset = 0) {
-    const position = this.index + offset;
-    return position < this.end ? this.source[position] ?? "" : "";
-  }
-  advance() {
-    if (this.source[this.index] === "\n") {
-      this.line++;
-    }
-    this.index++;
-  }
-  scanCode() {
-    const char = this.at();
-    if (WHITESPACE.test(char)) {
-      this.advance();
-      return;
-    }
-    if (char === "/") {
-      this.scanSlash();
-      return;
-    }
-    if (char === '"' || char === "'") {
-      this.scanString(char);
-      return;
-    }
-    if (char === "`") {
-      this.index++;
-      this.isInTemplate = true;
-      return;
-    }
-    if (IDENTIFIER_START.test(char)) {
-      this.scanWord();
-      return;
-    }
-    if (DIGIT.test(char)) {
-      this.scanNumber();
-      return;
-    }
-    this.scanPunctuator(char);
-  }
-  scanPunctuator(char) {
-    this.index++;
-    this.isRegexAllowed = !DIVISION_AFTER.has(char);
-    this.updateTemplateDepth(char);
-  }
-  updateTemplateDepth(char) {
-    const top = this.templateDepths.length - 1;
-    const depth = this.templateDepths[top];
-    if (depth === void 0) return;
-    if (char === "{") {
-      this.templateDepths[top] = depth + 1;
-      return;
-    }
-    if (char !== "}") return;
-    if (depth > 0) {
-      this.templateDepths[top] = depth - 1;
-      return;
-    }
-    this.templateDepths.pop();
-    this.isInTemplate = true;
-  }
-  scanWord() {
-    const start = this.index;
-    while (this.index < this.end && IDENTIFIER_PART.test(this.at())) {
-      this.index++;
-    }
-    this.isRegexAllowed = REGEX_KEYWORDS.has(this.source.slice(start, this.index));
-  }
-  scanNumber() {
-    while (this.index < this.end && NUMBER_PART.test(this.at())) {
-      this.index++;
-    }
-    this.isRegexAllowed = false;
-  }
-  scanString(quote) {
-    this.index++;
-    while (this.index < this.end) {
-      const char = this.at();
-      if (char === "\\") {
-        this.index++;
-        this.advance();
-        continue;
-      }
-      if (char === quote || char === "\n") break;
-      this.index++;
-    }
-    if (this.at() === quote) {
-      this.index++;
-    }
-    this.isRegexAllowed = false;
-  }
-  scanTemplate() {
-    while (this.index < this.end) {
-      const char = this.at();
-      if (char === "\\") {
-        this.index++;
-        this.advance();
-        continue;
-      }
-      if (char === "`") {
-        this.index++;
-        this.isInTemplate = false;
-        this.isRegexAllowed = false;
-        return;
-      }
-      if (char === "$" && this.at(1) === "{") {
-        this.index += 2;
-        this.templateDepths.push(0);
-        this.isInTemplate = false;
-        this.isRegexAllowed = true;
-        return;
-      }
-      this.advance();
-    }
-  }
-  scanSlash() {
-    const next = this.at(1);
-    if (next === "/") {
-      this.scanLineComment();
-      return;
-    }
-    if (next === "*") {
-      this.scanBlockComment();
-      return;
-    }
-    if (this.isRegexAllowed && this.scanRegex()) return;
-    this.index++;
-    this.isRegexAllowed = true;
-  }
-  scanLineComment() {
-    const start = this.index;
-    while (this.index < this.end && this.at() !== "\n") {
-      this.index++;
-    }
-    const text3 = this.source.slice(start, this.index).replace(/\r$/, "");
-    this.comments.push({ text: text3, line: this.line, kind: "line", start, end: this.index });
-  }
-  scanBlockComment() {
-    const start = this.index;
-    const line = this.line;
-    const close = this.source.indexOf("*/", start + 2);
-    const stop2 = close === -1 || close + 2 > this.end ? this.end : close + 2;
-    this.line += countNewlines(this.source, start, stop2);
-    this.index = stop2;
-    const text3 = this.source.slice(start, stop2);
-    this.comments.push({ text: text3, line, kind: "block", start, end: stop2 });
-  }
-  scanRegex() {
-    let position = this.index + 1;
-    let isInClass = false;
-    while (position < this.end) {
-      const char = this.source[position];
-      if (char === "\n") return false;
-      if (char === "\\") {
-        position += 2;
-        continue;
-      }
-      if (char === "[") {
-        isInClass = true;
-      } else if (char === "]") {
-        isInClass = false;
-      } else if (char === "/" && !isInClass) {
-        break;
-      }
-      position++;
-    }
-    if (position >= this.end) return false;
-    position++;
-    while (position < this.end && IDENTIFIER_PART.test(this.source[position] ?? "")) {
-      position++;
-    }
-    this.index = position;
-    this.isRegexAllowed = false;
-    return true;
-  }
+var lineEnd = (text3, index) => {
+  const end = text3.indexOf("\n", index);
+  return end === -1 ? text3.length : end;
 };
-var skipShebang = (source) => {
-  if (!source.startsWith("#!")) return 0;
-  const newline = source.indexOf("\n");
-  return newline === -1 ? source.length : newline;
+var blockEnd = (text3, index) => {
+  const end = text3.indexOf("*/", index + 2);
+  return end === -1 ? text3.length : end + 2;
 };
-var lexJs = (source) => new JsLexer(source, source.length, skipShebang(source), 1).run();
-var lineAt = (source, offset) => countNewlines(source, 0, offset) + 1;
-var isInside = (offset, ranges) => ranges.some((range) => offset >= range.start && offset < range.end);
-var lexVue = (source) => {
-  const comments = SFC_TAG.test(source) ? [] : lexJs(source);
-  const skipped = [];
-  for (const match of source.matchAll(SCRIPT_BLOCK)) {
-    const start = match.index + (match[1]?.length ?? 0);
-    const end = start + (match[2]?.length ?? 0);
-    comments.push(...new JsLexer(source, end, start, lineAt(source, start)).run());
-    skipped.push({ start: match.index, end: match.index + match[0].length });
+var skipQuoted = (text3, from, quote, escapes = true, multiline = false) => {
+  let index = from + 1;
+  while (index < text3.length && text3[index] !== quote) {
+    if (text3[index] === "\n" && !multiline) return index;
+    index += escapes && text3[index] === "\\" ? 2 : 1;
   }
-  for (const match of source.matchAll(STYLE_BLOCK)) {
-    skipped.push({ start: match.index, end: match.index + match[0].length });
-  }
-  for (const match of source.matchAll(HTML_COMMENT)) {
-    if (isInside(match.index, skipped)) continue;
-    const end = match.index + match[0].length;
-    comments.push({ text: match[0], line: lineAt(source, match.index), kind: "block", start: match.index, end });
-  }
-  return comments.sort((left, right) => left.end - right.end);
+  return index + 1;
+};
+var blankShebang = (source) => {
+  if (!source.startsWith("#!")) return source;
+  const end = lineEnd(source, 0);
+  return " ".repeat(end) + source.slice(end);
+};
+var kindOf = (text3) => text3.startsWith("/*") || text3.startsWith("<!--") ? "block" : "line";
+var commentLexer = (lex) => (source) => {
+  const code = blankShebang(source);
+  const ranges = lex(code).sort((left, right) => left.start - right.start);
+  let line = 1;
+  let counted = 0;
+  return ranges.map(({ start, end }) => {
+    line += countNewlines(code, counted, start);
+    counted = start;
+    const text3 = code.slice(start, end).replace(/\r$/, "");
+    return { text: text3, line, kind: kindOf(text3) };
+  });
 };
 
+// src/catalog/languages/c-style-lexer.ts
+var RUST_RAW_STRING = /^b?r(#*)"/;
+var RUST_CHAR = /^'(?:\\(?:u\{[0-9a-fA-F]+\}|x[0-9a-fA-F]{2}|.)|[^\\'])'/u;
+var nestedBlockEnd = (text3, from) => {
+  let depth = 0;
+  let i = from;
+  while (i < text3.length) {
+    const pair = text3.slice(i, i + 2);
+    if (pair === "/*") depth++;
+    else if (pair === "*/") depth--;
+    i += pair === "/*" || pair === "*/" ? 2 : 1;
+    if (depth === 0) return i;
+  }
+  return text3.length;
+};
+var cStyleRanges = (nested, literalEnd) => (text3) => {
+  const found = [];
+  let i = 0;
+  while (i < text3.length) {
+    const c = text3[i];
+    const d = text3[i + 1];
+    if (c === "/" && (d === "/" || d === "*")) {
+      const end = d === "/" ? lineEnd(text3, i) : nested ? nestedBlockEnd(text3, i) : blockEnd(text3, i);
+      found.push({ start: i, end });
+      i = end;
+    } else i = literalEnd(text3, i) ?? i + 1;
+  }
+  return found;
+};
+var goLiteralEnd = (text3, i) => {
+  const c = text3[i];
+  if (c === '"' || c === "'") return skipQuoted(text3, i, c);
+  if (c === "`") return skipQuoted(text3, i, "`", false, true);
+  return void 0;
+};
+var rustLiteralEnd = (text3, i) => {
+  const c = text3[i];
+  if ((c === "r" || c === "b") && !WORD.test(text3[i - 1] ?? "")) {
+    const raw = RUST_RAW_STRING.exec(text3.slice(i, i + 260));
+    if (raw !== null) {
+      const hashes = raw[1] ?? "";
+      const close = text3.indexOf(`"${hashes}`, i + raw[0].length);
+      return close === -1 ? text3.length : close + 1 + hashes.length;
+    }
+  }
+  if (c === '"') return skipQuoted(text3, i, '"', true, true);
+  if (c === "'") return i + (RUST_CHAR.exec(text3.slice(i, i + 12))?.[0].length ?? 1);
+  return void 0;
+};
+var lexRust = commentLexer(cStyleRanges(true, rustLiteralEnd));
+var lexGo = commentLexer(cStyleRanges(false, goLiteralEnd));
+
 // src/catalog/languages/csharp-lexer.ts
-var MESSAGE_DIRECTIVE = /^#\s*(?:region|endregion|error|warning)\b/;
+var MESSAGE_DIRECTIVE = /^#\s*(?:error|warning)\b/;
+var REGION_DIRECTIVE = /^#\s*(?:region|endregion)\b/;
 var CHECK_DIRECTIVE = /^#\s*(?:pragma|nullable)\b/;
 var TRAILING_COMMENT = /\s*\/\/.*$/;
 var CSharpLexer = class {
@@ -912,7 +762,7 @@ var CSharpLexer = class {
     const start = this.index;
     this.index = this.lineEnd();
     const text3 = this.source.slice(start, this.index).replace(/\r$/, "");
-    this.comments.push({ text: text3, line: this.line, kind: "line", start, end: this.index });
+    this.comments.push({ text: text3, line: this.line, kind: "line" });
   }
   scanBlockComment() {
     const start = this.index;
@@ -921,25 +771,327 @@ var CSharpLexer = class {
     const stop2 = close === -1 ? this.source.length : close + 2;
     this.line += countNewlines(this.source, start, stop2);
     this.index = stop2;
-    this.comments.push({ text: this.source.slice(start, stop2), line, kind: "block", start, end: stop2 });
+    this.comments.push({ text: this.source.slice(start, stop2), line, kind: "block" });
   }
   scanDirective() {
-    const start = this.index;
-    const lineText = this.source.slice(start, this.lineEnd()).replace(/\r$/, "");
+    const lineText = this.source.slice(this.index, this.lineEnd()).replace(/\r$/, "");
     if (MESSAGE_DIRECTIVE.test(lineText)) {
       this.index = this.lineEnd();
+      return;
+    }
+    if (REGION_DIRECTIVE.test(lineText)) {
+      this.index = this.lineEnd();
+      this.comments.push({ text: lineText, line: this.line, kind: "directive" });
       return;
     }
     this.index++;
     if (!CHECK_DIRECTIVE.test(lineText)) return;
     const text3 = lineText.replace(TRAILING_COMMENT, "");
-    this.comments.push({ text: text3, line: this.line, kind: "directive", start, end: start + text3.length });
+    this.comments.push({ text: text3, line: this.line, kind: "directive" });
   }
 };
 var lexCSharp = (source) => new CSharpLexer(source).run();
 
+// src/catalog/languages/css-lexer.ts
+var URL_START = /^url\(/i;
+var NAME_PART = /[\w-]/;
+var cssRanges = (lineComments) => (text3) => {
+  const found = [];
+  const n = text3.length;
+  let i = 0;
+  while (i < n) {
+    const c = text3[i] ?? "";
+    const d = text3[i + 1];
+    if (c === "/" && (d === "*" || d === "/" && lineComments)) {
+      const end = d === "*" ? blockEnd(text3, i) : lineEnd(text3, i);
+      found.push({ start: i, end });
+      i = end;
+    } else if (c === '"' || c === "'") i = skipQuoted(text3, i, c);
+    else if ((c === "u" || c === "U") && URL_START.test(text3.slice(i, i + 4)) && !NAME_PART.test(text3[i - 1] ?? "")) {
+      i += 4;
+      while (i < n && text3[i] !== ")") {
+        const quote = text3[i] ?? "";
+        i = quote === '"' || quote === "'" ? skipQuoted(text3, i, quote) : i + 1;
+      }
+    } else i++;
+  }
+  return found;
+};
+var lexCss = commentLexer(cssRanges(false));
+var lexScss = commentLexer(cssRanges(true));
+
+// src/catalog/languages/hash-lexers.ts
+var HEREDOC = /^<<(-?)[ \t]*(['"]?)([A-Za-z_][\w.-]*)\2/;
+var SHELL_COMMENT_AFTER = /[\s;&|()]/;
+var pythonRanges = (text3) => {
+  const found = [];
+  const n = text3.length;
+  let i = 0;
+  while (i < n) {
+    const c = text3[i] ?? "";
+    if (c === "#") {
+      const end = lineEnd(text3, i);
+      found.push({ start: i, end });
+      i = end;
+    } else if (c === '"' || c === "'") {
+      const triple = c.repeat(3);
+      if (!text3.startsWith(triple, i)) {
+        i = skipQuoted(text3, i, c);
+        continue;
+      }
+      i += 3;
+      while (i < n && !text3.startsWith(triple, i)) i += text3[i] === "\\" ? 2 : 1;
+      i += 3;
+    } else i++;
+  }
+  return found;
+};
+var skipHeredoc = (text3, from, { tag, strip }) => {
+  let i = from;
+  while (i < text3.length) {
+    const end = lineEnd(text3, i);
+    const line = text3.slice(i, end).replace(/\r$/, "");
+    if ((strip ? line.replace(/^\t+/, "") : line) === tag) return end + 1;
+    i = end + 1;
+  }
+  return text3.length;
+};
+var shellRanges = (text3) => {
+  const found = [];
+  const pending = [];
+  const n = text3.length;
+  let arithmetic = 0;
+  let i = 0;
+  while (i < n) {
+    const c = text3[i];
+    if (c === "\n") {
+      i++;
+      for (let heredoc = pending.shift(); heredoc !== void 0; heredoc = pending.shift()) i = skipHeredoc(text3, i, heredoc);
+    } else if (c === "#" && (i === 0 || SHELL_COMMENT_AFTER.test(text3[i - 1] ?? ""))) {
+      const end = lineEnd(text3, i);
+      found.push({ start: i, end });
+      i = end;
+    } else if (c === "\\") i += 2;
+    else if (c === "'") i = skipQuoted(text3, i, "'", text3[i - 1] === "$", true);
+    else if (c === '"') i = skipQuoted(text3, i, '"', true, true);
+    else if (c === "(" && text3[i + 1] === "(") {
+      arithmetic++;
+      i += 2;
+    } else if (c === ")" && text3[i + 1] === ")" && arithmetic > 0) {
+      arithmetic--;
+      i += 2;
+    } else if (c === "<" && text3[i + 1] === "<" && text3[i + 2] !== "<" && arithmetic === 0) {
+      const heredoc = HEREDOC.exec(text3.slice(i, i + 200));
+      if (heredoc !== null) pending.push({ tag: heredoc[3] ?? "", strip: heredoc[1] === "-" });
+      i += heredoc === null ? 2 : heredoc[0].length;
+    } else i++;
+  }
+  return found;
+};
+var lexPython = commentLexer(pythonRanges);
+var lexShell = commentLexer(shellRanges);
+
+// src/catalog/languages/js-lexer.ts
+var REGEX_AFTER = /* @__PURE__ */ new Set(["return", "typeof", "instanceof", "in", "of", "new", "delete", "void", "throw", "case", "do", "else", "yield", "await"]);
+var TYPE_PARAMETERS = /^<\s*(?:const\s+)?[\p{L}_$][\p{L}\p{N}_$]*\s*(?:extends\b|[,=])/u;
+var JSX_START = /[\p{L}_$>]/u;
+var jsRanges = (jsx2) => (text3) => {
+  const found = [];
+  const n = text3.length;
+  let i = 0;
+  const comment = (end) => {
+    found.push({ start: i, end });
+    i = end;
+  };
+  const regex = () => {
+    let inClass = false;
+    i++;
+    while (i < n && text3[i] !== "\n") {
+      const c = text3[i];
+      if (c === "\\") {
+        i += 2;
+        continue;
+      }
+      i++;
+      if (c === "[") inClass = true;
+      else if (c === "]") inClass = false;
+      else if (c === "/" && !inClass) break;
+    }
+    while (i < n && /[a-z]/i.test(text3[i] ?? "")) i++;
+  };
+  const hole = () => {
+    i++;
+    code(true);
+    i++;
+  };
+  const template = () => {
+    i++;
+    while (i < n) {
+      const c = text3[i];
+      if (c === "\\") i += 2;
+      else if (c === "`") {
+        i++;
+        return;
+      } else if (c === "$" && text3[i + 1] === "{") {
+        i++;
+        hole();
+      } else i++;
+    }
+  };
+  const tag = () => {
+    while (i < n) {
+      const c = text3[i];
+      const d = text3[i + 1];
+      if (c === "/" && d === ">") {
+        i += 2;
+        return true;
+      }
+      if (c === ">") {
+        i++;
+        return false;
+      }
+      if (c === "/" && d === "/") comment(lineEnd(text3, i));
+      else if (c === "/" && d === "*") comment(blockEnd(text3, i));
+      else if (c === '"' || c === "'") i = skipQuoted(text3, i, c, false, true);
+      else if (c === "{") hole();
+      else i++;
+    }
+    return false;
+  };
+  const element = () => {
+    let depth = 0;
+    while (i < n) {
+      i++;
+      const closing = text3[i] === "/";
+      const selfClosing = tag();
+      depth += closing ? -1 : selfClosing ? 0 : 1;
+      if (depth <= 0) return;
+      while (i < n && text3[i] !== "<") {
+        if (text3[i] === "{") hole();
+        else i++;
+      }
+    }
+  };
+  const code = (braced) => {
+    let depth = 0;
+    let operand = true;
+    while (i < n) {
+      const c = text3[i] ?? "";
+      const d = text3[i + 1] ?? "";
+      if (c === "/" && d === "/") comment(lineEnd(text3, i));
+      else if (c === "/" && d === "*") comment(blockEnd(text3, i));
+      else if (c === " " || c === "	" || c === "\n" || c === "\r") i++;
+      else if (c === '"' || c === "'") {
+        i = skipQuoted(text3, i, c);
+        operand = false;
+      } else if (c === "`") {
+        template();
+        operand = false;
+      } else if (c === "/") {
+        if (operand) regex();
+        else i++;
+        operand = !operand;
+      } else if (c === "<" && jsx2 && operand && JSX_START.test(d) && !TYPE_PARAMETERS.test(text3.slice(i, i + 64))) {
+        element();
+        operand = false;
+      } else if (c === "{") {
+        depth++;
+        i++;
+        operand = true;
+      } else if (c === "}") {
+        if (braced && depth === 0) return;
+        depth--;
+        i++;
+        operand = true;
+      } else if (WORD.test(c)) {
+        const start = i;
+        while (i < n && WORD.test(text3[i] ?? "")) i++;
+        operand = REGEX_AFTER.has(text3.slice(start, i));
+      } else {
+        i++;
+        operand = c !== ")" && c !== "]";
+      }
+    }
+  };
+  code(false);
+  return found;
+};
+var lexJs = commentLexer(jsRanges(true));
+var lexTs = commentLexer(jsRanges(false));
+
+// src/catalog/languages/markup-lexer.ts
+var jsx = jsRanges(true);
+var ts = jsRanges(false);
+var scss = cssRanges(true);
+var EMBEDDED = {
+  js: jsx,
+  jsx,
+  mjs: jsx,
+  cjs: jsx,
+  tsx: jsx,
+  ts,
+  mts: ts,
+  cts: ts,
+  css: cssRanges(false),
+  scss,
+  less: scss
+};
+var TAG_START = /[a-zA-Z/!]/;
+var EMBEDDED_BLOCK = /^<(script|style)[\s>]/;
+var LANG = /\blang\s*=\s*["']?(\w+)/;
+var SFC_TAG = /<(?:script|template|style)\b/i;
+var tagEnd = (text3, from) => {
+  let i = from;
+  while (i < text3.length && text3[i] !== ">") {
+    const c = text3[i] ?? "";
+    i = c === '"' || c === "'" ? skipQuoted(text3, i, c, false, true) : i + 1;
+  }
+  return i + 1;
+};
+var markupRanges = (text3) => {
+  const found = [];
+  const lower = text3.toLowerCase();
+  const n = text3.length;
+  let i = 0;
+  while (i < n) {
+    if (text3.startsWith("<!--", i)) {
+      const close2 = text3.indexOf("-->", i + 4);
+      const end = close2 === -1 ? n : close2 + 3;
+      found.push({ start: i, end });
+      i = end;
+      continue;
+    }
+    if (text3[i] !== "<" || !TAG_START.test(text3[i + 1] ?? "")) {
+      i++;
+      continue;
+    }
+    const bodyStart = tagEnd(text3, i);
+    const block = EMBEDDED_BLOCK.exec(lower.slice(i, i + 8))?.[1];
+    if (block === void 0) {
+      i = bodyStart;
+      continue;
+    }
+    const close = lower.indexOf(`</${block}`, bodyStart);
+    const bodyEnd = close === -1 ? n : close;
+    const lang = LANG.exec(lower.slice(i, bodyStart))?.[1] ?? (block === "script" ? "js" : "css");
+    const lex = EMBEDDED[lang];
+    for (const { start, end } of lex === void 0 ? [] : lex(text3.slice(bodyStart, bodyEnd))) {
+      found.push({ start: start + bodyStart, end: end + bodyStart });
+    }
+    i = bodyEnd;
+  }
+  return found;
+};
+var overlaps = (range, others) => others.some((other) => range.start < other.end && other.start < range.end);
+var vueRanges = (text3) => {
+  const markup = markupRanges(text3);
+  if (SFC_TAG.test(text3)) return markup;
+  return [...markup, ...jsx(text3).filter((range) => !overlaps(range, markup))];
+};
+var lexMarkup = commentLexer(markupRanges);
+var lexVue = commentLexer(vueRanges);
+
 // src/catalog/languages/index.ts
-var SCRIPT_EXTENSIONS = [".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs"];
 var isScriptTestPath = createMatcher(["**/*.{test,spec}.{ts,tsx,js,jsx,mts,cts,mjs,cjs}", "**/__tests__/**"]);
 var TEST_SEGMENT = /^(?:tests?|__tests__|_tests_|spec)$/i;
 var TEST_AFFIX = /^[Tt]ests?(?![a-z])|(?:^|[^A-Za-z])[Tt]ests?$|[a-z\d]Tests?$/;
@@ -950,16 +1102,22 @@ var isTestSegmentPath = (file) => {
 };
 var CSHARP_TEST_ATTRIBUTE = String.raw`\[\s*(?:\w+\.)*(?:Fact|Theory|Test|TestCase|TestCaseSource|TestMethod|DataTestMethod)(?:Attribute)?(?=\s*[(\],])`;
 var CSHARP_TEST_CASE = String.raw`(?<![\w)]\s*)(?<!${CSHARP_TEST_ATTRIBUTE}[^\n]*\]\s*)${CSHARP_TEST_ATTRIBUTE}`;
+var SCRIPT_TESTS = {
+  isTestPath: isScriptTestPath,
+  testCase: /(?<![\w$.])(?:it|test)(?:\.\w+)*\s*\(/g,
+  testFile: /^\s*(?:describe|it|test)(?:\.\w+)*\s*(?:\([^\n]*?\)\s*)?\(\s*['"`]/m
+};
 var LANGUAGES = [
-  {
-    name: "javascript",
-    extensions: SCRIPT_EXTENSIONS,
-    lexComments: lexJs,
-    isTestPath: isScriptTestPath,
-    testCase: /(?<![\w$.])(?:it|test)(?:\.\w+)*\s*\(/g,
-    testFile: /^\s*(?:describe|it|test)(?:\.\w+)*\s*(?:\([^\n]*?\)\s*)?\(\s*['"`]/m
-  },
+  { name: "javascript", extensions: [".ts", ".mts", ".cts"], lexComments: lexTs, ...SCRIPT_TESTS },
+  { name: "javascript", extensions: [".tsx", ".js", ".jsx", ".mjs", ".cjs"], lexComments: lexJs, ...SCRIPT_TESTS },
   { name: "vue", extensions: [".vue"], lexComments: lexVue },
+  { name: "html", extensions: [".html", ".htm", ".svelte"], lexComments: lexMarkup },
+  { name: "css", extensions: [".css"], lexComments: lexCss },
+  { name: "scss", extensions: [".scss", ".less"], lexComments: lexScss },
+  { name: "python", extensions: [".py", ".pyi"], lexComments: lexPython },
+  { name: "shell", extensions: [".sh", ".bash", ".zsh"], lexComments: lexShell },
+  { name: "rust", extensions: [".rs"], lexComments: lexRust },
+  { name: "go", extensions: [".go"], lexComments: lexGo },
   {
     name: "csharp",
     extensions: [".cs"],
@@ -1039,18 +1197,15 @@ var PROOFS2 = [agentViewCheck];
 
 // src/catalog/tools/directives.ts
 var DIRECTIVE_ONLY_TOOLS = [
-  { name: "biome", comments: { suppressions: [/\bbiome-ignore\b/], allowed: [] } },
-  { name: "vite", comments: { suppressions: [], allowed: [/@vite-ignore/] } },
-  { name: "webpack", comments: { suppressions: [], allowed: [/webpack[A-Z]\w*\s*:/] } },
-  { name: "minifiers", comments: { suppressions: [], allowed: [/[@#]__(?:PURE|NO_SIDE_EFFECTS)__/] } },
+  { name: "biome", comments: { suppressions: [/\bbiome-ignore\b/] } },
   {
     name: "roslyn",
     comments: {
       suppressions: [/^#\s*pragma\s+warning\s+disable\b/, /^#\s*nullable\s+disable\b/],
-      allowed: [/^#\s*(?:pragma|nullable)\b/, /^\/\/\s*<\/?auto-?generated\b/]
+      allowed: [/^#\s*nullable\b/]
     }
   },
-  { name: "resharper", comments: { suppressions: [/\bReSharper\s+disable\b/], allowed: [/\bReSharper\s+restore\b/] } }
+  { name: "resharper", comments: { suppressions: [/\bReSharper\s+disable\b/] } }
 ];
 
 // src/catalog/tools/eslint.ts
@@ -1140,7 +1295,7 @@ var findInPath = (name, env = process.env) => {
   return void 0;
 };
 var SHIM_EXTENSIONS = /* @__PURE__ */ new Set([".cmd", ".bat"]);
-var SCRIPT_EXTENSIONS2 = /* @__PURE__ */ new Set([".js", ".mjs", ".cjs"]);
+var SCRIPT_EXTENSIONS = /* @__PURE__ */ new Set([".js", ".mjs", ".cjs"]);
 var SHIM_TARGET = /"%(?:~dp0|dp0%)\\([^"%]+)"/gi;
 var SHIM_VARIABLE = /^\s*SET\s+"(\w+)=%~dp0\\([^"%]+)"/gim;
 var SHIM_VARIABLE_USE = /"%NODE_EXE%"\s+"%(\w+)%"/gi;
@@ -1167,7 +1322,7 @@ var resolveShimTarget = (shimPath) => {
   const absolute = resolve2(dirname3(shimPath), target);
   if (!isFile(absolute)) return void 0;
   const extension = extname2(absolute).toLowerCase();
-  if (SCRIPT_EXTENSIONS2.has(extension)) return [process.execPath, absolute];
+  if (SCRIPT_EXTENSIONS.has(extension)) return [process.execPath, absolute];
   return extension === ".exe" ? [absolute] : void 0;
 };
 var isPathCommand = (command) => isAbsolute2(command) || /[\\/]/.test(command);
@@ -1175,7 +1330,7 @@ var resolvePathCommand = (projectRoot, command) => {
   const path2 = resolve2(projectRoot, command);
   if (!isFile(path2)) return void 0;
   if (isShim(path2)) return resolveShimTarget(path2);
-  return SCRIPT_EXTENSIONS2.has(extname2(path2).toLowerCase()) ? [process.execPath, path2] : [path2];
+  return SCRIPT_EXTENSIONS.has(extname2(path2).toLowerCase()) ? [process.execPath, path2] : [path2];
 };
 var resolveBin = (projectRoot, pkgs, command) => {
   if (isPathCommand(command)) return resolvePathCommand(projectRoot, command);
@@ -1496,8 +1651,7 @@ var eslintTool = defineTool({
   files: SCRIPT_FILES,
   parse: parseEslint,
   comments: {
-    suppressions: [/\beslint-disable(?:-next-line|-line)?\b/, /^\/\*\s*eslint\s+[\w@/-]+\s*:/],
-    allowed: [/\beslint-enable\b/]
+    suppressions: [/\beslint-disable(?:-next-line|-line)?\b/, /^\/\*\s*eslint\s+[\w@/-]+\s*:/]
   },
   stop: async (tools, input) => {
     const entry = tools.eslint;
@@ -1566,7 +1720,7 @@ var oxlintTool = defineTool({
   binaries: [{ key: "oxlint", label: "oxlint", command: "oxlint", packages: ["oxlint"], configs: OXLINT_CONFIGS, requiresConfig: true }],
   files: SCRIPT_FILES,
   parse: parseOxlint,
-  comments: { suppressions: [/\boxlint-disable(?:-next-line|-line)?\b/], allowed: [/\boxlint-enable\b/] },
+  comments: { suppressions: [/\boxlint-disable(?:-next-line|-line)?\b/] },
   edit: async (tools, projectRoot, file, timeoutMs) => {
     const entry = withMarker(tools.oxlint, nearestMarker(projectRoot, file, OXLINT_CONFIGS));
     if (entry === void 0) return void 0;
@@ -1622,7 +1776,7 @@ var stratumTool = defineTool({
   files: SCRIPT_FILES,
   setup: ["stratum-lint init", "stratum-lint baseline"],
   parse: (stdout) => parseStratum(stdout),
-  comments: { suppressions: [/\bstratum-ignore\b/], allowed: [/@stratum-purity\s+\d/] },
+  comments: { suppressions: [/\bstratum-ignore\b/] },
   edit: async (tools, projectRoot, file, timeoutMs) => {
     const entry = withMarker(tools.stratum, nearestMarker(projectRoot, file, [STRATUM_CONFIG]));
     if (entry === void 0) return void 0;
@@ -1955,7 +2109,7 @@ var tscTool = defineTool({
   ],
   files: TYPED_FILES,
   parse: (stdout, projectRoot, cwd) => parseTscOutput(stdout, "tsc", projectRoot, cwd),
-  comments: { suppressions: [/@ts-(?:ignore|expect-error|nocheck)\b/], allowed: [/^\/\/\/\s*<reference\b/] },
+  comments: { suppressions: [/@ts-(?:ignore|expect-error|nocheck)\b/] },
   stop: async (tools, input) => {
     const { groups, skipped } = groupByTsconfig(input.projectRoot, input.files);
     for (const file of skipped) {
@@ -2749,44 +2903,61 @@ import { createHash as createHash3 } from "node:crypto";
 import { mkdirSync as mkdirSync8, readdirSync as readdirSync4, readFileSync as readFileSync13, rmSync as rmSync3, statSync as statSync6, writeFileSync as writeFileSync6 } from "node:fs";
 import { join as join11 } from "node:path";
 
-// src/rules/rule.ts
-var fileLine = (edit, fragmentLine) => fragmentLine + (edit.line ?? 1) - 1;
-
 // src/rules/comments.ts
+import { basename as basename2 } from "node:path";
+var CONFIG_FILE = [/^\./, /\.(?:config|conf)\./];
+var lf = (text3) => text3.replace(/\r\n/g, "\n");
 var normalize = (text3) => text3.replace(/\s+/g, " ").trim();
-var countExisting = (file, edits) => {
-  const counts = /* @__PURE__ */ new Map();
+var isConfigFile = (file) => CONFIG_FILE.some((pattern) => pattern.test(basename2(file)));
+var commentsIn = (file, text3) => (lexComments(file, text3) ?? []).map((comment) => ({ text: comment.text, key: normalize(comment.text), line: comment.line }));
+var isSubsequence = (short2, long) => {
+  const wanted = [...short2];
+  let found = 0;
+  for (const char of long) {
+    if (char === wanted[found]) found++;
+  }
+  return found === wanted.length;
+};
+var unmatched = (file, before, after) => {
+  const left = /* @__PURE__ */ new Map();
+  for (const text3 of before) {
+    for (const { key } of commentsIn(file, text3)) left.set(key, (left.get(key) ?? 0) + 1);
+  }
+  const fresh = after.flatMap((text3) => commentsIn(file, text3)).filter(({ key }) => {
+    const count = left.get(key) ?? 0;
+    if (count > 0) left.set(key, count - 1);
+    return count === 0;
+  });
+  const shortenable = [...left].flatMap(([key, count]) => Array.from({ length: count }, () => key));
+  return fresh.filter(({ key }) => {
+    const source = shortenable.findIndex((old) => isSubsequence(key, old));
+    if (source !== -1) shortenable.splice(source, 1);
+    return source === -1;
+  });
+};
+var applyEdits = (current, edits) => {
+  let text3 = current;
   for (const edit of edits) {
-    for (const comment of lexComments(file, edit.before) ?? []) {
-      const key = normalize(comment.text);
-      counts.set(key, (counts.get(key) ?? 0) + 1);
+    const before = lf(edit.before);
+    const after = lf(edit.after);
+    if (before === "" && text3 === "") {
+      text3 = after;
+      continue;
     }
+    const at = before === "" ? -1 : text3.indexOf(before);
+    if (at === -1) return void 0;
+    text3 = text3.slice(0, at) + after + text3.slice(at + before.length);
   }
-  return counts;
+  return text3;
 };
-var commentsOf = (file, edit) => {
-  if (edit.prefix === void 0) {
-    return (lexComments(file, edit.after) ?? []).map((comment) => ({ comment, line: fileLine(edit, comment.line) }));
-  }
-  const { prefix } = edit;
-  return (lexComments(file, prefix + edit.after) ?? []).filter((comment) => comment.start >= prefix.length).map((comment) => ({ comment, line: comment.line }));
-};
-var addedComments = (file, edits) => {
+var addedComments = (file, edits, current) => {
   if (lexComments(file, "") === void 0) return void 0;
-  const existing = countExisting(file, edits);
-  const added = [];
-  for (const edit of edits) {
-    for (const { comment, line } of commentsOf(file, edit)) {
-      const key = normalize(comment.text);
-      const remaining = existing.get(key) ?? 0;
-      if (remaining > 0) {
-        existing.set(key, remaining - 1);
-        continue;
-      }
-      added.push({ text: comment.text, key, line });
-    }
-  }
-  return added;
+  const original = lf(current ?? "");
+  const result = applyEdits(original, edits);
+  if (result !== void 0) return unmatched(file, [original], [result]).map((comment) => ({ ...comment, lineIn: "file" }));
+  const befores = edits.map((edit) => lf(edit.before));
+  const afters = edits.map((edit) => lf(edit.after));
+  return unmatched(file, befores, afters).map((comment) => ({ ...comment, lineIn: "new-text" }));
 };
 
 // src/rules/suppressions.ts
@@ -2810,7 +2981,7 @@ var addedTestCases = (file, edits, source) => {
 };
 
 // src/rules/gate.ts
-var GATE_ATOMS = ["comments", "tests"];
+var GATE_ATOMS = ["tests"];
 var RETRY = "Read the rules first, then repeat the same call \u2014 it will pass.";
 var LEADING_HEADING = /^#[^\n]*\n+/;
 var isOn = (config, rule) => (config.rules[rule] ?? "off") !== "off";
@@ -2842,29 +3013,27 @@ var rulesText = (input, atom, reminder) => {
     return `Rules: ${path2}.`;
   }
 };
+var where = (file, comment) => comment.lineIn === "file" ? `${file}:${comment.line}` : `${file}, line ${comment.line} of the new text`;
+var fileLineOf = (comment) => comment.lineIn === "file" ? { line: comment.line } : {};
 var suppressionHits = (file, comments) => comments.flatMap((comment) => {
   const directive = findSuppression(comment.text);
   if (directive === void 0) return [];
-  const message = `jig/comments: "${directive}" at ${file}:${comment.line} silences a check. Fix the cause instead; only a human adds suppressions.`;
-  return [{ rule: "jig/comments", line: comment.line, message }];
+  const message = `jig/comments: "${directive}" at ${where(file, comment)} silences a check. Fix the cause instead; only a human adds suppressions.`;
+  return [{ rule: "jig/comments", ...fileLineOf(comment), message }];
 });
-var COMMENT_REMINDER = "Keep a comment only if it is a license header, a TODO with a ticket, public-API JSDoc beyond the signature, or an external constraint with a link.";
-var commentSection = (input, comments) => {
+var MAX_KEY_LENGTH = 80;
+var COMMENT_ADVICE = 'Remove it and put the reason into a name, a type, the structure or the commit message; removing a comment or part of its text passes, config files are not checked, and a comment that must exist (license header, tool directive) is added by a human, or the project turns the gate off with "rules": { "jig/comments": "off" } in .jig/config.jsonc.';
+var shortKey = (key) => key.length > MAX_KEY_LENGTH ? `${key.slice(0, MAX_KEY_LENGTH)}...` : key;
+var commentSection = (file, comments) => {
   const gated = comments.filter((comment) => findSuppression(comment.text) === void 0 && !isToolDirective(comment.text));
-  const unseen = gated.filter((comment) => claimFirst(input, `comment
-${input.file}
-${comment.key}`));
-  const [first] = unseen;
+  const [first] = gated;
   if (first === void 0) return void 0;
-  const list = unseen.map((comment) => `  ${input.file}:${comment.line} ${comment.key}`);
-  const head = `jig/comments: the edit adds ${unseen.length} comment(s):
-${list.join("\n")}
-${RETRY} Keep only the comments the rules allow.`;
+  const list = gated.map((comment) => `  ${where(file, comment)} ${shortKey(comment.key)}`);
   return {
-    text: `${head}
-
-${rulesText(input, "comments", COMMENT_REMINDER)}`,
-    hit: { rule: "jig/comments", line: first.line, message: `new comment at ${input.file}:${first.line}` }
+    text: `jig/comments: the edit adds or rewords ${gated.length} comment(s):
+${list.join("\n")}
+${COMMENT_ADVICE}`,
+    hit: { rule: "jig/comments", ...fileLineOf(first), message: `new comment at ${where(file, first)}` }
   };
 };
 var TEST_REMINDER = 'Finish "this test fails when a developer <edit>, which breaks <behavior>" with a realistic edit, or drop the test.';
@@ -2882,10 +3051,10 @@ ${rulesText(input, "tests", TEST_REMINDER)}`,
   };
 };
 var gateEdit = (input) => {
-  const comments = addedComments(input.file, input.edits) ?? [];
+  const comments = addedComments(input.file, input.edits, fileSource(input.projectRoot, input.file)()) ?? [];
   const suppressions = suppressionHits(input.file, comments);
   const sections = [
-    isOn(input.config, "jig/comments") ? commentSection(input, comments) : void 0,
+    isOn(input.config, "jig/comments") && !isConfigFile(input.file) ? commentSection(input.file, comments) : void 0,
     isOn(input.config, "jig/tests") ? testSection(input) : void 0
   ].filter((section) => section !== void 0);
   const hits = [...suppressions, ...sections.map((section) => section.hit)];
@@ -2971,18 +3140,18 @@ var listNested = (pluginRoot, dir2) => {
   }
 };
 var exists = (pluginRoot, path2) => existsSync6(join13(pluginRoot, path2));
-var lineAt2 = (text3, index) => text3.slice(0, index).split("\n").length;
+var lineAt = (text3, index) => text3.slice(0, index).split("\n").length;
 var skillOf = (command) => {
   const [plugin, skill] = command.split(":");
   return skill ?? plugin ?? "";
 };
 var skillRoot = (file) => /^skills\/[^/]+/.exec(file)?.[0];
-var checkSlashCommands = ({ file, text: text3 }, skills) => [...text3.matchAll(SLASH)].filter((match) => !skills.has(skillOf(match[1] ?? ""))).map((match) => `${file}:${lineAt2(text3, match.index)}: /${match[1]} names no skill in skills/`);
+var checkSlashCommands = ({ file, text: text3 }, skills) => [...text3.matchAll(SLASH)].filter((match) => !skills.has(skillOf(match[1] ?? ""))).map((match) => `${file}:${lineAt(text3, match.index)}: /${match[1]} names no skill in skills/`);
 var checkLinks = ({ file, text: text3 }, pluginRoot) => [...text3.matchAll(LINK)].flatMap((match) => {
   const target = (match[1] ?? "").split("#")[0] ?? "";
   if (target === "" || URL_SCHEME.test(target)) return [];
   const path2 = posix3.normalize(posix3.join(posix3.dirname(file), decodeURI(target)));
-  return exists(pluginRoot, path2) ? [] : [`${file}:${lineAt2(text3, match.index)}: link ${target} points at no file`];
+  return exists(pluginRoot, path2) ? [] : [`${file}:${lineAt(text3, match.index)}: link ${target} points at no file`];
 });
 var checkBacktickedPaths = ({ file, text: text3 }, pluginRoot) => [...text3.matchAll(BACKTICKED_PATH)].flatMap((match) => {
   const path2 = match[1] ?? "";
@@ -2990,14 +3159,14 @@ var checkBacktickedPaths = ({ file, text: text3 }, pluginRoot) => [...text3.matc
   const root = SKILL_RELATIVE.test(path2) ? skillRoot(file) : "";
   if (root === void 0) return [];
   const resolved = root === "" ? path2 : `${root}/${path2}`;
-  return exists(pluginRoot, resolved) ? [] : [`${file}:${lineAt2(text3, match.index)}: \`${path2}\` points at no file`];
+  return exists(pluginRoot, resolved) ? [] : [`${file}:${lineAt(text3, match.index)}: \`${path2}\` points at no file`];
 });
 var checkFlowTable = ({ file, text: text3 }, pluginRoot) => {
   const rows = file === "README.md" ? [...text3.matchAll(FLOW_ROW)] : [];
   const [first] = rows;
   if (first === void 0) return [];
   const listed = new Set(rows.map((row) => row[1] ?? ""));
-  const line = lineAt2(text3, first.index);
+  const line = lineAt(text3, first.index);
   return listMarkdown(join13(pluginRoot, FLOWS_DIR)).map((name) => name.slice(0, -".md".length)).filter((name) => name !== SHARED_FLOW && !listed.has(name)).map((name) => `${file}:${line}: flow ${name} is missing from the flow table`);
 };
 var validateDocRefs = (pluginRoot) => {
@@ -3017,7 +3186,7 @@ var validateDocRefs = (pluginRoot) => {
 
 // src/atoms/skill-docs.ts
 import { readdirSync as readdirSync7 } from "node:fs";
-import { basename as basename2, join as join14 } from "node:path";
+import { basename as basename3, join as join14 } from "node:path";
 var ROLES_DIR = "skills/jig/references/roles";
 var FLOWS_DIR2 = "skills/jig/flows";
 var ROLE_KEYS = /* @__PURE__ */ new Set(["name", "description", "metadata"]);
@@ -3029,12 +3198,12 @@ var MAX_SKILL_NAME_LENGTH = 64;
 var ROLE_MENTION = /\b[Rr]oles? `[^`]+`(?:(?:, |,? and |,? or )`[^`]+`)*/g;
 var BACKTICKED = /`([^`]+)`/g;
 var FLOW_MENTION = /\bflows\/([A-Za-z0-9_-]+)\.md/g;
-var lineAt3 = (text3, index) => text3.slice(0, index).split("\n").length;
+var lineAt2 = (text3, index) => text3.slice(0, index).split("\n").length;
 var findMentions = (file, text3) => {
   const roles = [...text3.matchAll(ROLE_MENTION)].flatMap(
-    (match) => [...match[0].matchAll(BACKTICKED)].map((name) => ({ name: name[1] ?? "", file, line: lineAt3(text3, match.index) }))
+    (match) => [...match[0].matchAll(BACKTICKED)].map((name) => ({ name: name[1] ?? "", file, line: lineAt2(text3, match.index) }))
   );
-  const flows = [...text3.matchAll(FLOW_MENTION)].map((match) => ({ name: match[1] ?? "", file, line: lineAt3(text3, match.index) }));
+  const flows = [...text3.matchAll(FLOW_MENTION)].map((match) => ({ name: match[1] ?? "", file, line: lineAt2(text3, match.index) }));
   return { roles, flows };
 };
 var listSkillMarkdown = (pluginRoot) => {
@@ -3070,7 +3239,7 @@ var checkDoc = (pluginRoot, path2, isRole) => {
   const parsed = parseMarkdownFile(readText2(join14(pluginRoot, path2)));
   if (typeof parsed === "string") return [parsed];
   const { data } = parsed;
-  const problems = [...checkName(data["name"], basename2(path2, ".md")), ...checkDescription(data["description"])];
+  const problems = [...checkName(data["name"], basename3(path2, ".md")), ...checkDescription(data["description"])];
   if (!isRole) return problems;
   const unknownKeys = Object.keys(data).filter((key) => !ROLE_KEYS.has(key));
   return [...unknownKeys.map((key) => `unknown frontmatter key "${key}"`), ...problems, ...checkMetadata(data["metadata"])];
@@ -3084,8 +3253,8 @@ var checkSkill = (pluginRoot, folder) => {
   return problems.map((problem) => `skills/${folder}/SKILL.md: ${problem}`);
 };
 var validateSkillDocs = (pluginRoot) => {
-  const roles = listMarkdown(join14(pluginRoot, ROLES_DIR)).map((name) => basename2(name, ".md"));
-  const flows = new Set(listMarkdown(join14(pluginRoot, FLOWS_DIR2)).map((name) => basename2(name, ".md")));
+  const roles = listMarkdown(join14(pluginRoot, ROLES_DIR)).map((name) => basename3(name, ".md"));
+  const flows = new Set(listMarkdown(join14(pluginRoot, FLOWS_DIR2)).map((name) => basename3(name, ".md")));
   const mentions = listSkillMarkdown(pluginRoot).map((file) => findMentions(file, readText2(join14(pluginRoot, file)).replace(/\r\n/g, "\n")));
   const roleMentions = mentions.flatMap((found) => found.roles);
   const referenced = new Set(roleMentions.filter((mention) => !mention.file.startsWith(`${ROLES_DIR}/`)).map((mention) => mention.name));
@@ -3178,7 +3347,7 @@ var checkDescription2 = (description) => {
   return problems;
 };
 var checkAtom = (path2, seen, reachable) => {
-  const fileName = basename3(path2, ".md");
+  const fileName = basename4(path2, ".md");
   const parsed = parseMarkdownFile(readText2(path2));
   if (typeof parsed === "string") return [parsed];
   const { data, body } = parsed;
@@ -3866,8 +4035,8 @@ var journalLocation = (projectRoot) => {
 var cleanCell = (value) => value.replace(/\r\n|[\t\n\r]/g, " ").trim();
 var formatRow = (row) => COLUMNS.map((column) => cleanCell(row[column])).join("	");
 var parseLine = (line) => {
-  const [ts = "", phase = "", decision = "", why = "", evidence = "", ...result] = line.split("	");
-  return { ts, phase, decision, why, evidence, result: result.join(" ") };
+  const [ts2 = "", phase = "", decision = "", why = "", evidence = "", ...result] = line.split("	");
+  return { ts: ts2, phase, decision, why, evidence, result: result.join(" ") };
 };
 var parseJournal = (text3) => text3.split("\n").map((line) => line.replace(/\r$/, "")).filter((line) => line.trim() !== "" && line !== HEADER).map(parseLine);
 var readText4 = (path2) => {
@@ -4431,8 +4600,8 @@ var runCheck = (args) => {
 };
 
 // src/hook/dispatch.ts
-import { appendFileSync as appendFileSync4, existsSync as existsSync11, readFileSync as readFileSync26 } from "node:fs";
-import { basename as basename5, join as join28, resolve as resolve14 } from "node:path";
+import { appendFileSync as appendFileSync4, existsSync as existsSync11 } from "node:fs";
+import { basename as basename6, join as join28, resolve as resolve14 } from "node:path";
 
 // src/adapters/claude.ts
 import { readFileSync as readFileSync23 } from "node:fs";
@@ -4440,7 +4609,7 @@ import { isAbsolute as isAbsolute6, resolve as resolve12 } from "node:path";
 
 // src/context/touched.ts
 import { existsSync as existsSync9 } from "node:fs";
-import { basename as basename4, isAbsolute as isAbsolute4, resolve as resolve10 } from "node:path";
+import { basename as basename5, isAbsolute as isAbsolute4, resolve as resolve10 } from "node:path";
 var MAX_TOKENS = 200;
 var MAX_PATHS = 20;
 var SEGMENTS = /[;|&\n]+/;
@@ -4465,7 +4634,7 @@ var argumentsOf = (segment) => {
   const program = tokens[0];
   if (program === void 0) return [];
   const rest = tokens.slice(1);
-  if (!INTERPRETER.test(basename4(program))) return rest;
+  if (!INTERPRETER.test(basename5(program))) return rest;
   const script = rest.findIndex((token) => !token.startsWith("-"));
   return script === -1 ? rest : rest.filter((_, index) => index !== script);
 };
@@ -4648,7 +4817,7 @@ var preEditEvent = (toolName, input, paths) => {
   }
   const content = text(input, "content");
   if (content !== void 0) {
-    return { kind: "pre-edit", file, edits: [{ before: readCurrent(absolute), after: content }], wholeFile: content };
+    return { kind: "pre-edit", file, edits: [{ before: readCurrent(absolute), after: content }] };
   }
   const before = text(input, "old_string");
   const after = text(input, "new_string");
@@ -5596,7 +5765,7 @@ var compact = (ctx) => {
   writeState(ctx.projectRoot, state);
   return NONE2;
 };
-var isRuleFile = (path2) => RULE_FILES.includes(basename5(path2));
+var isRuleFile = (path2) => RULE_FILES.includes(basename6(path2));
 var markReadRules = (ctx, state, paths) => {
   markTold(state, ctx.agent, paths.filter(isRuleFile));
 };
@@ -5637,23 +5806,6 @@ var prompt = (ctx) => {
   writeState(ctx.projectRoot, state);
   return NONE2;
 };
-var readCurrent2 = (path2) => {
-  try {
-    return readFileSync26(path2, "utf8");
-  } catch {
-    return "";
-  }
-};
-var locateEdits = (event, projectRoot) => {
-  if (event.wholeFile !== void 0) return event.edits.map((edit) => ({ ...edit, line: 1, prefix: "" }));
-  const current = readCurrent2(join28(projectRoot, event.file));
-  return event.edits.map((edit) => {
-    const at = edit.before === "" ? -1 : current.indexOf(edit.before);
-    if (at === -1) return edit;
-    const prefix = current.slice(0, at);
-    return { ...edit, line: prefix.split("\n").length, prefix };
-  });
-};
 var gateFile = (event, ctx) => {
   const verdict2 = gateEdit({
     projectRoot: ctx.projectRoot,
@@ -5661,7 +5813,7 @@ var gateFile = (event, ctx) => {
     sessionId: ctx.sessionId,
     agent: ctx.agent,
     file: event.file,
-    edits: locateEdits(event, ctx.projectRoot),
+    edits: event.edits,
     config: loadConfig(ctx.projectRoot)
   });
   for (const hit of verdict2.hits) {
@@ -5853,7 +6005,7 @@ var runHook = async (args) => {
 };
 
 // src/init/init.ts
-import { existsSync as existsSync12, readFileSync as readFileSync27 } from "node:fs";
+import { existsSync as existsSync12, readFileSync as readFileSync26 } from "node:fs";
 var SCHEMA_URL = "https://raw.githubusercontent.com/PetukhovArt/jig/main/schema/config.schema.json";
 var BOUNDARIES_PLUGIN = "eslint-plugin-boundaries";
 var BOUNDARIES_IGNORE = "boundaries/*";
@@ -5865,7 +6017,7 @@ var readSharedConfig = (projectRoot) => {
   const path2 = jigPaths(projectRoot).config;
   if (!existsSync12(path2)) return {};
   try {
-    const value = parseJsonc(readFileSync27(path2, "utf8"));
+    const value = parseJsonc(readFileSync26(path2, "utf8"));
     return isObject3(value) ? value : {};
   } catch {
     return {};
@@ -6089,7 +6241,7 @@ import { parseArgs as parseArgs3 } from "node:util";
 
 // src/review/review-plan.ts
 import { randomBytes as randomBytes2 } from "node:crypto";
-import { existsSync as existsSync16, readFileSync as readFileSync31, readdirSync as readdirSync16 } from "node:fs";
+import { existsSync as existsSync16, readFileSync as readFileSync30, readdirSync as readdirSync16 } from "node:fs";
 import { tmpdir as tmpdir2 } from "node:os";
 import { isAbsolute as isAbsolute7, join as join33, relative as relative7, resolve as resolve15 } from "node:path";
 import { parseArgs as parseArgs2 } from "node:util";
@@ -6249,7 +6401,7 @@ var estimateLine = (estimate) => {
 };
 
 // src/review/partition.ts
-import { existsSync as existsSync13, readFileSync as readFileSync28 } from "node:fs";
+import { existsSync as existsSync13, readFileSync as readFileSync27 } from "node:fs";
 import { join as join31, posix as posix5 } from "node:path";
 var IMPORT_WEIGHT = 4;
 var BALANCE = 1.5;
@@ -6293,7 +6445,7 @@ var importEdges = (root, paths) => {
   for (const path2 of paths) {
     const full = join31(root, path2);
     if (!SOURCE_PATTERN.test(path2) || !existsSync13(full)) continue;
-    specifiers.set(path2, importSpecifiers(readFileSync28(full, "utf8")));
+    specifiers.set(path2, importSpecifiers(readFileSync27(full, "utf8")));
   }
   return resolveEdges(paths, specifiers);
 };
@@ -6456,7 +6608,7 @@ var groupFiles = (files, edges, groups) => {
 };
 
 // src/review/rule-docs.ts
-import { existsSync as existsSync14, readFileSync as readFileSync29 } from "node:fs";
+import { existsSync as existsSync14, readFileSync as readFileSync28 } from "node:fs";
 import { join as join32, posix as posix6 } from "node:path";
 var PROJECT_CONFIG = "review.jsonc";
 var DEFAULT_DISCOVER = {
@@ -6484,7 +6636,7 @@ var projectConfigFile = (root) => {
 var readDiscover = (root) => {
   const path2 = projectConfigFile(root)?.path;
   if (path2 === void 0) return DEFAULT_DISCOVER;
-  const config = parseJsonc(readFileSync29(path2, "utf8"));
+  const config = parseJsonc(readFileSync28(path2, "utf8"));
   const discover2 = config?.discover ?? {};
   const pick = (key) => {
     const value = discover2[key];
@@ -6509,12 +6661,12 @@ var linkedDocuments = (index, text3) => [...text3.matchAll(MARKDOWN_LINK)].map((
 var standardScopes = (root, indexes, standards) => {
   const linkers = /* @__PURE__ */ new Map();
   for (const index of indexes) {
-    for (const target of linkedDocuments(index, readFileSync29(join32(root, index), "utf8"))) linkers.set(target, [...linkers.get(target) ?? [], dirOf2(index)]);
+    for (const target of linkedDocuments(index, readFileSync28(join32(root, index), "utf8"))) linkers.set(target, [...linkers.get(target) ?? [], dirOf2(index)]);
   }
   const shallowest = (dirs) => [...dirs].sort((left, right) => depthOf(left) - depthOf(right) || left.localeCompare(right))[0] ?? "";
   return Object.fromEntries(standards.map((path2) => [path2, shallowest(linkers.get(path2) ?? [""])]));
 };
-var linksOf = (root, path2) => linkedDocuments(path2, readFileSync29(join32(root, path2), "utf8")).filter((target) => existsSync14(join32(root, target)));
+var linksOf = (root, path2) => linkedDocuments(path2, readFileSync28(join32(root, path2), "utf8")).filter((target) => existsSync14(join32(root, target)));
 var glossariesOf = (root, indexes, documents, dirs) => {
   const fromIndexes = indexes.flatMap((index) => linksOf(root, index));
   const maps = [...documents.filter((path2) => !path2.includes("/") && GLOSSARY_MAP2.test(path2)), ...fromIndexes.filter((path2) => GLOSSARY_MAP2.test(path2))];
@@ -6549,7 +6701,7 @@ var covers2 = (scope, file) => scope === "" || file.startsWith(`${scope}/`);
 var rulesFor2 = (inputs, files) => [...inputs.indexes, ...inputs.standards, ...inputs.glossaries].filter((path2) => files.some((file) => covers2(inputs.scopes[path2] ?? "", file)));
 
 // src/review/scope.ts
-import { existsSync as existsSync15, readFileSync as readFileSync30 } from "node:fs";
+import { existsSync as existsSync15, readFileSync as readFileSync29 } from "node:fs";
 var PATCH = ["-c", "core.quotePath=false", "diff", "--no-color", "--no-ext-diff"];
 var gitOut = (root, args, input) => {
   const result = git(args, root, input);
@@ -6566,14 +6718,14 @@ var countOf = (lines2) => {
   return counts;
 };
 var ownChanges = (path2, before, after) => {
-  const unmatched = countOf(changeLines(before));
+  const unmatched2 = countOf(changeLines(before));
   let added = 0;
   for (const line of changeLines(after)) {
-    const left = unmatched.get(line) ?? 0;
-    if (left > 0) unmatched.set(line, left - 1);
+    const left = unmatched2.get(line) ?? 0;
+    if (left > 0) unmatched2.set(line, left - 1);
     else added++;
   }
-  const deleted = [...unmatched.values()].reduce((sum, count) => sum + count, 0);
+  const deleted = [...unmatched2.values()].reduce((sum, count) => sum + count, 0);
   return { path: path2, added, deleted };
 };
 var patchOf2 = (root, range, ...paths) => gitOut(root, [...PATCH, "-M", range, "--", ...paths]);
@@ -6607,7 +6759,7 @@ var rereviewScope = (root, state, base) => {
 };
 var readReviewedState = (path2) => {
   if (!existsSync15(path2)) throw new Error(`no state at ${path2}`);
-  return JSON.parse(readFileSync30(path2, "utf8"));
+  return JSON.parse(readFileSync29(path2, "utf8"));
 };
 
 // src/review/layout.ts
@@ -6962,7 +7114,7 @@ var loadProjectConfig = (root) => {
   const file = projectConfigFile(root);
   if (file === void 0) return void 0;
   const label = file.root === root ? `.jig/${PROJECT_CONFIG}` : `${toSlash(file.root)}/.jig/${PROJECT_CONFIG}`;
-  const config = parseProjectConfig(readFileSync31(file.path, "utf8"), label);
+  const config = parseProjectConfig(readFileSync30(file.path, "utf8"), label);
   const missing = config.projectAngles.filter((angle) => !existsSync16(join33(file.root, angle.file)));
   if (missing.length > 0) {
     throw new Error(`${label}: ${missing.map((angle) => `${childPath(childPath("$.angles", angle.name), "file")}: ${angle.file} not found under the repository root`).join("; ")}`);
@@ -7033,7 +7185,7 @@ var readsFor = (pluginRoot, angles, projectFiles2 = []) => {
     ...angles.flatMap((angle) => names.filter((name) => name.startsWith(`${angle}.`) && name.endsWith(".md")).map((name) => join33(angleDir, name))),
     ...projectFiles2
   ];
-  const atoms = [...new Set(files.flatMap((file) => angleAtoms(readFileSync31(file, "utf8"))))].map((name) => join33(atomDir, `${name}.md`)).filter((path2) => existsSync16(path2));
+  const atoms = [...new Set(files.flatMap((file) => angleAtoms(readFileSync30(file, "utf8"))))].map((name) => join33(atomDir, `${name}.md`)).filter((path2) => existsSync16(path2));
   return { angles: files.map(toSlash), atoms: atoms.map(toSlash), diff: [], rules: [] };
 };
 var angleList = (angles) => angles.join("+");
@@ -7636,9 +7788,9 @@ var runPreMr = (args) => preMr(args, { cwd: process.cwd(), io: processIo, exec: 
 var runSkipVerify = (args) => skipVerify(args, { cwd: process.cwd(), io: processIo });
 
 // src/review/cost.ts
-import { appendFileSync as appendFileSync5, existsSync as existsSync18, mkdirSync as mkdirSync16, readdirSync as readdirSync17, readFileSync as readFileSync32, statSync as statSync14 } from "node:fs";
+import { appendFileSync as appendFileSync5, existsSync as existsSync18, mkdirSync as mkdirSync16, readdirSync as readdirSync17, readFileSync as readFileSync31, statSync as statSync14 } from "node:fs";
 import { homedir as homedir3 } from "node:os";
-import { basename as basename6, dirname as dirname15, join as join35 } from "node:path";
+import { basename as basename7, dirname as dirname15, join as join35 } from "node:path";
 import { parseArgs as parseArgs4 } from "node:util";
 var ROLES = ["runner", "finder", "judge", "deepener", "outcome", "poster", "other"];
 var ROLE_PATTERNS = [
@@ -7795,11 +7947,11 @@ var resolveSessionDir = (given, projectDir, projectsDir) => {
 var readAgents = (sessionDir2, prices) => {
   const subagents = join35(sessionDir2, "subagents");
   const sessionTranscript = `${sessionDir2}.jsonl`;
-  const sessionIds = existsSync18(sessionTranscript) ? messageIds(readFileSync32(sessionTranscript, "utf8")) : /* @__PURE__ */ new Set();
+  const sessionIds = existsSync18(sessionTranscript) ? messageIds(readFileSync31(sessionTranscript, "utf8")) : /* @__PURE__ */ new Set();
   const read = readdirSync17(subagents).filter((name) => name.endsWith(".jsonl")).map((name) => {
     const metaPath = join35(subagents, name.replace(/\.jsonl$/, ".meta.json"));
-    const meta = existsSync18(metaPath) ? JSON.parse(readFileSync32(metaPath, "utf8")) : {};
-    return { id: name.replace(/^agent-/, "").replace(/\.jsonl$/, ""), meta, text: readFileSync32(join35(subagents, name), "utf8") };
+    const meta = existsSync18(metaPath) ? JSON.parse(readFileSync31(metaPath, "utf8")) : {};
+    return { id: name.replace(/^agent-/, "").replace(/\.jsonl$/, ""), meta, text: readFileSync31(join35(subagents, name), "utf8") };
   });
   const idsByAgent = new Map(read.map((agent) => [agent.id, messageIds(agent.text)]));
   return read.map(({ id, meta, text: text3 }) => {
@@ -7849,7 +8001,7 @@ var readStates = (projectRoot) => {
   if (!existsSync18(dir2)) return [];
   return readdirSync17(dir2).filter((name) => /^[0-9a-f]+\.json$/.test(name)).flatMap((name) => {
     try {
-      return [JSON.parse(readFileSync32(join35(dir2, name), "utf8"))];
+      return [JSON.parse(readFileSync31(join35(dir2, name), "utf8"))];
     } catch {
       return [];
     }
@@ -7910,7 +8062,7 @@ var formatSession = (session, agents, groups) => {
   return lines2.join("\n");
 };
 var costLogPath = (env = process.env) => env["JIG_COST_LOG"] ?? join35(homedir3(), ".jig", "review-cost.jsonl");
-var readLog = (path2) => existsSync18(path2) ? readFileSync32(path2, "utf8").split("\n").filter((line) => line.trim() !== "").map((line) => JSON.parse(line)) : [];
+var readLog = (path2) => existsSync18(path2) ? readFileSync31(path2, "utf8").split("\n").filter((line) => line.trim() !== "").map((line) => JSON.parse(line)) : [];
 var toRecords = (session, project, groups) => groups.filter((group) => group.runner !== void 0).map((group) => {
   const usage2 = emptyUsage();
   group.agents.forEach((agent) => addUsage(usage2, agent.usage));
@@ -7967,7 +8119,7 @@ var formatReport2 = (records, by) => {
 var projectName = (root) => {
   const remote = git(["remote", "get-url", "origin"], root);
   const url = remote.ok ? remote.stdout.trim() : "";
-  return url === "" ? basename6(root) : url.replace(/\.git$/, "").replace(/^.*[/:]([^/:]+\/[^/:]+)$/, "$1");
+  return url === "" ? basename7(root) : url.replace(/\.git$/, "").replace(/^.*[/:]([^/:]+\/[^/:]+)$/, "$1");
 };
 var USAGE5 = "usage: jig review cost [<session id or dir>] [--project <dir>] [--record] [--json] | jig review cost --report [--by project|week]";
 var runReviewCost = (args) => {
@@ -7997,10 +8149,10 @@ var runReviewCost = (args) => {
   if (loaded.error !== void 0) throw new Error(`${loaded.label}: ${loaded.error}`);
   const prices = { ...DEFAULT_PRICES, ...loaded.config.prices };
   const sessionDir2 = resolveSessionDir(positionals[0], projectRoot, claudeProjectsDir());
-  const session = basename6(sessionDir2);
+  const session = basename7(sessionDir2);
   const subagents = readAgents(sessionDir2, prices);
   const transcript = `${sessionDir2}.jsonl`;
-  const agents = [...existsSync18(transcript) ? readSessionRuns(readFileSync32(transcript, "utf8"), session, prices, subagents) : [], ...subagents];
+  const agents = [...existsSync18(transcript) ? readSessionRuns(readFileSync31(transcript, "utf8"), session, prices, subagents) : [], ...subagents];
   const groups = groupByLatestRunner(agents);
   attachStates(groups, projectRoot);
   if (values.json === true) {
@@ -8020,7 +8172,7 @@ var runReviewCost = (args) => {
 };
 
 // src/review/route.ts
-import { readFileSync as readFileSync33 } from "node:fs";
+import { readFileSync as readFileSync32 } from "node:fs";
 import { parseArgs as parseArgs5 } from "node:util";
 var FORGE_CONTEXT_LINES = 3;
 var gitOut2 = (root, args) => {
@@ -8108,14 +8260,14 @@ var runReviewRoute = (args) => {
   const { values, positionals } = parseArgs5({ args, options: { hold: { type: "string", multiple: true } }, allowPositionals: true, strict: true });
   const [path2, base, head] = positionals;
   if (path2 === void 0 || base === void 0 || head === void 0 || positionals.length > 3) throw new Error(USAGE6);
-  const state = JSON.parse(readFileSync33(path2, "utf8"));
+  const state = JSON.parse(readFileSync32(path2, "utf8"));
   process.stdout.write(`${formatRoutes(routeFindings(process.cwd(), state, base, head, values.hold ?? [])).join("\n")}
 `);
   return 0;
 };
 
 // src/review/glossary-avoid.ts
-import { readFileSync as readFileSync34 } from "node:fs";
+import { readFileSync as readFileSync33 } from "node:fs";
 import { join as join36 } from "node:path";
 var AVOID_MARKER = /(?:^|[\s(|>*_-])[_*]{0,2}(?:avoid|не\s+использовать|избегать)[_*]{0,2}\s*:\s*[_*]{0,2}/iu;
 var isMarkdown2 = createMatcher(["**/*.md"]);
@@ -8149,7 +8301,7 @@ var addedLines = (root, mergeBase, paths) => {
 };
 var covers3 = (scope, file) => scope === "" || file.startsWith(`${scope}/`);
 var glossaryAvoidHits = (root, mergeBase, paths, inputs) => {
-  const glossaries = inputs.glossaries.map((path2) => ({ path: path2, scope: inputs.scopes[path2] ?? "", terms: avoidTerms(readFileSync34(join36(root, path2), "utf8")) }));
+  const glossaries = inputs.glossaries.map((path2) => ({ path: path2, scope: inputs.scopes[path2] ?? "", terms: avoidTerms(readFileSync33(join36(root, path2), "utf8")) }));
   if (glossaries.every((glossary) => glossary.terms.length === 0)) return [];
   const hits = /* @__PURE__ */ new Map();
   for (const added of addedLines(root, mergeBase, paths)) {
@@ -8197,7 +8349,7 @@ var runReviewRules = (args) => {
 };
 
 // src/review/state-summary.ts
-import { readFileSync as readFileSync35 } from "node:fs";
+import { readFileSync as readFileSync34 } from "node:fs";
 var SUMMARY_WIDTH = 100;
 var SHA_WIDTH = 12;
 var short = (value, width) => {
@@ -8227,7 +8379,7 @@ var summarizeState = (state) => {
 var runReviewState = (args) => {
   const [path2] = args;
   if (path2 === void 0 || args.length > 1) throw new Error("usage: jig review state <state file>");
-  process.stdout.write(`${summarizeState(JSON.parse(readFileSync35(path2, "utf8")))}
+  process.stdout.write(`${summarizeState(JSON.parse(readFileSync34(path2, "utf8")))}
 `);
   return 0;
 };
@@ -8247,8 +8399,8 @@ var runReview = (args) => {
 };
 
 // src/review-cycle/review-cycle.ts
-import { existsSync as existsSync22, readFileSync as readFileSync38 } from "node:fs";
-import { basename as basename8, relative as relative8, resolve as resolve18 } from "node:path";
+import { existsSync as existsSync22, readFileSync as readFileSync37 } from "node:fs";
+import { basename as basename9, relative as relative8, resolve as resolve18 } from "node:path";
 import { parseArgs as parseArgs6 } from "node:util";
 
 // src/review-cycle/adapter.ts
@@ -8672,13 +8824,13 @@ var createForge = (name, exec, cwd) => name === "github" ? githubForge(exec, cwd
 
 // src/review-cycle/import-state.ts
 import { createHash as createHash9 } from "node:crypto";
-import { copyFileSync as copyFileSync5, existsSync as existsSync21, mkdirSync as mkdirSync17, readdirSync as readdirSync18, readFileSync as readFileSync37, statSync as statSync15, writeFileSync as writeFileSync13 } from "node:fs";
+import { copyFileSync as copyFileSync5, existsSync as existsSync21, mkdirSync as mkdirSync17, readdirSync as readdirSync18, readFileSync as readFileSync36, statSync as statSync15, writeFileSync as writeFileSync13 } from "node:fs";
 import { tmpdir as tmpdir5 } from "node:os";
-import { basename as basename7, dirname as dirname17, join as join40 } from "node:path";
+import { basename as basename8, dirname as dirname17, join as join40 } from "node:path";
 
 // src/review-cycle/state.ts
 import { createHash as createHash8 } from "node:crypto";
-import { copyFileSync as copyFileSync4, existsSync as existsSync20, readFileSync as readFileSync36, writeFileSync as writeFileSync12 } from "node:fs";
+import { copyFileSync as copyFileSync4, existsSync as existsSync20, readFileSync as readFileSync35, writeFileSync as writeFileSync12 } from "node:fs";
 import { join as join39 } from "node:path";
 var FINDING_STATUSES = ["open", "fixed", "skipped", "unverified", "no_change_needed", "optional"];
 var reviewStateKey = (remote, target) => {
@@ -8723,7 +8875,7 @@ var readReviewState = (path2) => {
   if (!existsSync20(path2)) return void 0;
   let text3;
   try {
-    text3 = readFileSync36(path2, "utf8");
+    text3 = readFileSync35(path2, "utf8");
   } catch (error) {
     throw new EnvironmentError(`${path2}: ${error instanceof Error ? error.message : String(error)}`);
   }
@@ -8768,7 +8920,7 @@ var specHold = (state, spec2) => {
 };
 var updateFindings = (path2, ids, backup, change, now) => {
   if (ids.length === 0 || !existsSync20(path2)) return 0;
-  const raw = JSON.parse(readFileSync36(path2, "utf8"));
+  const raw = JSON.parse(readFileSync35(path2, "utf8"));
   if (!isObject5(raw) || !Array.isArray(raw["findings"])) throw new EnvironmentError(`${path2}: no findings array`);
   const hits = raw["findings"].filter(
     (finding) => isObject5(finding) && typeof finding["discussion_id"] === "string" && ids.includes(finding["discussion_id"])
@@ -8873,7 +9025,7 @@ var finishedAt = (raw, path2) => {
 };
 var readJson = (path2) => {
   try {
-    return JSON.parse(readFileSync37(path2, "utf8"));
+    return JSON.parse(readFileSync36(path2, "utf8"));
   } catch {
     return void 0;
   }
@@ -8912,7 +9064,7 @@ var importLegacyStates = (options) => {
       continue;
     }
     const destination = reviewStatePath(mainRoot, remote, String(iid));
-    const { state, dropped } = convertLegacyState(raw, basename7(destination, ".json"), iid);
+    const { state, dropped } = convertLegacyState(raw, basename8(destination, ".json"), iid);
     if (existsSync21(destination)) {
       const current = readJson(destination);
       if (sameJson(current, state)) {
@@ -9028,7 +9180,7 @@ var adapterFor = (repo, flag, deps) => {
   if (configured !== void 0) return scriptAdapter(resolveAdapterPath(configured, repo.mainRoot), deps.exec, repo.mainRoot);
   return defaultAdapter(repo.forge, repo.mainRoot);
 };
-var reviewWorktreePath = (repo, iid) => resolve18(repo.mainRoot, repo.worktreesDir, `${basename8(repo.mainRoot)}-review-${iid}`);
+var reviewWorktreePath = (repo, iid) => resolve18(repo.mainRoot, repo.worktreesDir, `${basename9(repo.mainRoot)}-review-${iid}`);
 var fetched = (root, ref) => git(["fetch", "-q", "--no-tags", "origin", ref], root).ok ? git(["rev-parse", "FETCH_HEAD"], root).stdout.trim() : void 0;
 var hasCommit = (root, sha) => git(["cat-file", "-e", `${sha}^{commit}`], root).ok || fetched(root, sha) !== void 0;
 var hasReviewedDiff = (root, head, reviewedHash) => {
@@ -9184,7 +9336,7 @@ var spec = (args, deps) => {
 };
 var readText5 = (path2) => {
   try {
-    return readFileSync38(path2, "utf8");
+    return readFileSync37(path2, "utf8");
   } catch (error) {
     throw new EnvironmentError(`${path2}: ${error instanceof Error ? error.message : String(error)}`);
   }
@@ -9393,13 +9545,13 @@ var runReviewCycle = (args) => runReviewCycleWith(args, { exec: spawnExec, cwd: 
 
 // src/slot/slot.ts
 import { spawnSync as spawnSync8 } from "node:child_process";
-import { existsSync as existsSync23, mkdirSync as mkdirSync19, readFileSync as readFileSync40, rmSync as rmSync11, writeFileSync as writeFileSync15 } from "node:fs";
-import { basename as basename9, dirname as dirname19, isAbsolute as isAbsolute9, join as join42, relative as relative9, resolve as resolve19 } from "node:path";
+import { existsSync as existsSync23, mkdirSync as mkdirSync19, readFileSync as readFileSync39, rmSync as rmSync11, writeFileSync as writeFileSync15 } from "node:fs";
+import { basename as basename10, dirname as dirname19, isAbsolute as isAbsolute9, join as join42, relative as relative9, resolve as resolve19 } from "node:path";
 import { parseArgs as parseArgs7 } from "node:util";
 
 // src/slot/guard.ts
 import { spawnSync as spawnSync7 } from "node:child_process";
-import { mkdirSync as mkdirSync18, readFileSync as readFileSync39, rmSync as rmSync10, writeFileSync as writeFileSync14 } from "node:fs";
+import { mkdirSync as mkdirSync18, readFileSync as readFileSync38, rmSync as rmSync10, writeFileSync as writeFileSync14 } from "node:fs";
 import { dirname as dirname18, join as join41 } from "node:path";
 var HOLD_WINDOW_MS = 2 * 60 * 60 * 1e3;
 var MAX_ANCESTORS = 12;
@@ -9442,7 +9594,7 @@ var ownerMarkerPath = (dir2) => {
 };
 var readOwner = (dir2) => {
   try {
-    const marker = JSON.parse(readFileSync39(ownerMarkerPath(dir2), "utf8"));
+    const marker = JSON.parse(readFileSync38(ownerMarkerPath(dir2), "utf8"));
     return typeof marker.owner === "string" && typeof marker.commit === "string" && typeof marker.at === "number" ? marker : void 0;
   } catch {
     return void 0;
@@ -9518,7 +9670,7 @@ var slotNumber = (dirName, repo) => {
   return slot >= 1 ? slot : void 0;
 };
 var slotWorktrees = (worktrees, repo) => worktrees.flatMap((worktree) => {
-  const slot = slotNumber(basename9(worktree.path), repo);
+  const slot = slotNumber(basename10(worktree.path), repo);
   return slot === void 0 ? [] : [{ ...worktree, slot }];
 });
 var findDuplicates = (slots) => {
@@ -9590,7 +9742,7 @@ var loadContext = () => {
   const config = loadConfig(projectRoot);
   if (config.error !== void 0) throw new Error(`.jig/config.jsonc: ${config.error}`);
   const mainRoot = listWorktrees(projectRoot)[0]?.path ?? projectRoot;
-  const context = { projectRoot, mainRoot, repo: basename9(mainRoot) };
+  const context = { projectRoot, mainRoot, repo: basename10(mainRoot) };
   if (config.slots !== void 0) {
     context.slots = config.slots;
   }
@@ -9617,7 +9769,7 @@ var insideDir = (dir2, file) => {
 };
 var writeEnv = (dir2, target, key, value) => {
   const path2 = insideDir(dir2, target);
-  const text3 = existsSync23(path2) ? readFileSync40(path2, "utf8") : "";
+  const text3 = existsSync23(path2) ? readFileSync39(path2, "utf8") : "";
   writeLocalFile(dir2, target, setEnvValue(text3, key, String(value)));
 };
 var writePorts = (dir2, slots, slot) => {
@@ -9630,7 +9782,7 @@ var writePorts = (dir2, slots, slot) => {
 };
 var readJsonObject = (path2) => {
   if (!existsSync23(path2)) return {};
-  const value = parseJsonc(readFileSync40(path2, "utf8"));
+  const value = parseJsonc(readFileSync39(path2, "utf8"));
   const isObject7 = typeof value === "object" && value !== null && !Array.isArray(value);
   return isObject7 ? value : {};
 };
@@ -9839,13 +9991,13 @@ var runSlot = (args) => {
 
 // src/worktree/worktree.ts
 import { existsSync as existsSync24 } from "node:fs";
-import { basename as basename11, resolve as resolve21 } from "node:path";
+import { basename as basename12, resolve as resolve21 } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { parseArgs as parseArgs8 } from "node:util";
 
 // src/worktree/sweep.ts
 import { spawnSync as spawnSync9 } from "node:child_process";
-import { basename as basename10, resolve as resolve20 } from "node:path";
+import { basename as basename11, resolve as resolve20 } from "node:path";
 var KEPT_BUCKETS = /* @__PURE__ */ new Set(["hold-current", "hold-locked", "hold-wip"]);
 var RECENT_MS = 24 * 60 * 60 * 1e3;
 var MS_PER_SECOND = 1e3;
@@ -9887,7 +10039,7 @@ var bucketOf = (worktree, scope) => {
 };
 var auditWorktrees = (worktrees, scope) => worktrees.filter((worktree) => !samePath(worktree.path, scope.mainRoot)).map((worktree) => ({
   bucket: bucketOf(worktree, scope),
-  slot: slotNumber(basename10(worktree.path), scope.repo) ?? null,
+  slot: slotNumber(basename11(worktree.path), scope.repo) ?? null,
   path: toSlash(worktree.path),
   branch: worktree.branch ?? null
 }));
@@ -10031,7 +10183,7 @@ var worktreeSweep = async (args, confirm = terminalConfirm()) => {
   const mainRoot = worktrees[0]?.path ?? projectRoot;
   const rows = auditWorktrees(worktrees, {
     mainRoot,
-    repo: basename11(mainRoot),
+    repo: basename12(mainRoot),
     current: currentWorktree(process.cwd()),
     openBranches: openMrBranches(projectRoot),
     now: Date.now()

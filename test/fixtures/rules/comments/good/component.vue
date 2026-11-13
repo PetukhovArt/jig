@@ -5,6 +5,5 @@
 const label = '// not a comment'
 </script>
 <style scoped>
-/* styles are skipped */
-<!-- also skipped -->
+a { background: url(//cdn.example.com/a.png); }
 </style>

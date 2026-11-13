@@ -27,8 +27,7 @@
           "before": "export const old = 1\n",
           "after": "export const old = 2\n"
         }
-      ],
-      "wholeFile": "export const old = 2\n"
+      ]
     }
   }
 }

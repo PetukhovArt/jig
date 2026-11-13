@@ -1,286 +1,133 @@
-export type CommentKind = 'line' | 'block' | 'directive'
+import { blockEnd, commentLexer, lineEnd, skipQuoted, WORD, type Range, type RangeLexer } from './lexer'
 
-export interface Comment {
-  text: string
-  line: number
-  kind: CommentKind
-  start: number
-  end: number
-}
+const REGEX_AFTER = new Set(['return', 'typeof', 'instanceof', 'in', 'of', 'new', 'delete', 'void', 'throw', 'case', 'do', 'else', 'yield', 'await'])
+const TYPE_PARAMETERS = /^<\s*(?:const\s+)?[\p{L}_$][\p{L}\p{N}_$]*\s*(?:extends\b|[,=])/u
+const JSX_START = /[\p{L}_$>]/u
 
-const REGEX_KEYWORDS = new Set(['return', 'typeof', 'case', 'do', 'else'])
-const DIVISION_AFTER = new Set([')', ']'])
-const IDENTIFIER_START = /[A-Za-z_$\u0080-￿]/
-const IDENTIFIER_PART = /[\w$\u0080-￿]/
-const DIGIT = /\d/
-const NUMBER_PART = /[\w.]/
-const WHITESPACE = /\s/
-const SCRIPT_BLOCK = /(<script\b[^>]*>)([\s\S]*?)<\/script\s*>/gi
-const STYLE_BLOCK = /<style\b[^>]*>[\s\S]*?<\/style\s*>/gi
-const HTML_COMMENT = /<!--[\s\S]*?-->/g
-const SFC_TAG = /<(?:script|template|style)\b/i
-
-export const countNewlines = (text: string, from: number, to: number): number => {
-  let count = 0
-  for (let index = from; index < to; index++) {
-    if (text[index] === '\n') {
-      count++
+export const jsRanges =
+  (jsx: boolean): RangeLexer =>
+  (text) => {
+    const found: Range[] = []
+    const n = text.length
+    let i = 0
+    const comment = (end: number): void => {
+      found.push({ start: i, end })
+      i = end
     }
-  }
-  return count
-}
-
-class JsLexer {
-  private index = 0
-  private line: number
-  private isRegexAllowed = true
-  private isInTemplate = false
-  private readonly templateDepths: number[] = []
-  readonly comments: Comment[] = []
-
-  constructor(
-    private readonly source: string,
-    private readonly end: number,
-    start: number,
-    firstLine: number,
-  ) {
-    this.index = start
-    this.line = firstLine
-  }
-
-  run(): Comment[] {
-    while (this.index < this.end) {
-      if (this.isInTemplate) {
-        this.scanTemplate()
-        continue
+    const regex = (): void => {
+      let inClass = false
+      i++
+      while (i < n && text[i] !== '\n') {
+        const c = text[i]
+        if (c === '\\') {
+          i += 2
+          continue
+        }
+        i++
+        if (c === '[') inClass = true
+        else if (c === ']') inClass = false
+        else if (c === '/' && !inClass) break
       }
-      this.scanCode()
+      while (i < n && /[a-z]/i.test(text[i] ?? '')) i++
     }
-    return this.comments
-  }
-
-  private at(offset = 0): string {
-    const position = this.index + offset
-    return position < this.end ? (this.source[position] ?? '') : ''
-  }
-
-  private advance(): void {
-    if (this.source[this.index] === '\n') {
-      this.line++
+    const hole = (): void => {
+      i++
+      code(true)
+      i++
     }
-    this.index++
-  }
-
-  private scanCode(): void {
-    const char = this.at()
-    if (WHITESPACE.test(char)) {
-      this.advance()
-      return
-    }
-    if (char === '/') {
-      this.scanSlash()
-      return
-    }
-    if (char === '"' || char === "'") {
-      this.scanString(char)
-      return
-    }
-    if (char === '`') {
-      this.index++
-      this.isInTemplate = true
-      return
-    }
-    if (IDENTIFIER_START.test(char)) {
-      this.scanWord()
-      return
-    }
-    if (DIGIT.test(char)) {
-      this.scanNumber()
-      return
-    }
-    this.scanPunctuator(char)
-  }
-
-  private scanPunctuator(char: string): void {
-    this.index++
-    this.isRegexAllowed = !DIVISION_AFTER.has(char)
-    this.updateTemplateDepth(char)
-  }
-
-  private updateTemplateDepth(char: string): void {
-    const top = this.templateDepths.length - 1
-    const depth = this.templateDepths[top]
-    if (depth === undefined) return
-    if (char === '{') {
-      this.templateDepths[top] = depth + 1
-      return
-    }
-    if (char !== '}') return
-    if (depth > 0) {
-      this.templateDepths[top] = depth - 1
-      return
-    }
-    this.templateDepths.pop()
-    this.isInTemplate = true
-  }
-
-  private scanWord(): void {
-    const start = this.index
-    while (this.index < this.end && IDENTIFIER_PART.test(this.at())) {
-      this.index++
-    }
-    this.isRegexAllowed = REGEX_KEYWORDS.has(this.source.slice(start, this.index))
-  }
-
-  private scanNumber(): void {
-    while (this.index < this.end && NUMBER_PART.test(this.at())) {
-      this.index++
-    }
-    this.isRegexAllowed = false
-  }
-
-  private scanString(quote: string): void {
-    this.index++
-    while (this.index < this.end) {
-      const char = this.at()
-      if (char === '\\') {
-        this.index++
-        this.advance()
-        continue
+    const template = (): void => {
+      i++
+      while (i < n) {
+        const c = text[i]
+        if (c === '\\') i += 2
+        else if (c === '`') {
+          i++
+          return
+        } else if (c === '$' && text[i + 1] === '{') {
+          i++
+          hole()
+        } else i++
       }
-      if (char === quote || char === '\n') break
-      this.index++
     }
-    if (this.at() === quote) {
-      this.index++
-    }
-    this.isRegexAllowed = false
-  }
-
-  private scanTemplate(): void {
-    while (this.index < this.end) {
-      const char = this.at()
-      if (char === '\\') {
-        this.index++
-        this.advance()
-        continue
+    const tag = (): boolean => {
+      while (i < n) {
+        const c = text[i]
+        const d = text[i + 1]
+        if (c === '/' && d === '>') {
+          i += 2
+          return true
+        }
+        if (c === '>') {
+          i++
+          return false
+        }
+        if (c === '/' && d === '/') comment(lineEnd(text, i))
+        else if (c === '/' && d === '*') comment(blockEnd(text, i))
+        else if (c === '"' || c === "'") i = skipQuoted(text, i, c, false, true)
+        else if (c === '{') hole()
+        else i++
       }
-      if (char === '`') {
-        this.index++
-        this.isInTemplate = false
-        this.isRegexAllowed = false
-        return
+      return false
+    }
+    const element = (): void => {
+      let depth = 0
+      while (i < n) {
+        i++
+        const closing = text[i] === '/'
+        const selfClosing = tag()
+        depth += closing ? -1 : selfClosing ? 0 : 1
+        if (depth <= 0) return
+        while (i < n && text[i] !== '<') {
+          if (text[i] === '{') hole()
+          else i++
+        }
       }
-      if (char === '$' && this.at(1) === '{') {
-        this.index += 2
-        this.templateDepths.push(0)
-        this.isInTemplate = false
-        this.isRegexAllowed = true
-        return
+    }
+    const code = (braced: boolean): void => {
+      let depth = 0
+      let operand = true
+      while (i < n) {
+        const c = text[i] ?? ''
+        const d = text[i + 1] ?? ''
+        if (c === '/' && d === '/') comment(lineEnd(text, i))
+        else if (c === '/' && d === '*') comment(blockEnd(text, i))
+        else if (c === ' ' || c === '\t' || c === '\n' || c === '\r') i++
+        else if (c === '"' || c === "'") {
+          i = skipQuoted(text, i, c)
+          operand = false
+        } else if (c === '`') {
+          template()
+          operand = false
+        } else if (c === '/') {
+          if (operand) regex()
+          else i++
+          operand = !operand
+        } else if (c === '<' && jsx && operand && JSX_START.test(d) && !TYPE_PARAMETERS.test(text.slice(i, i + 64))) {
+          element()
+          operand = false
+        } else if (c === '{') {
+          depth++
+          i++
+          operand = true
+        } else if (c === '}') {
+          if (braced && depth === 0) return
+          depth--
+          i++
+          operand = true
+        } else if (WORD.test(c)) {
+          const start = i
+          while (i < n && WORD.test(text[i] ?? '')) i++
+          operand = REGEX_AFTER.has(text.slice(start, i))
+        } else {
+          i++
+          operand = c !== ')' && c !== ']'
+        }
       }
-      this.advance()
     }
+    code(false)
+    return found
   }
 
-  private scanSlash(): void {
-    const next = this.at(1)
-    if (next === '/') {
-      this.scanLineComment()
-      return
-    }
-    if (next === '*') {
-      this.scanBlockComment()
-      return
-    }
-    if (this.isRegexAllowed && this.scanRegex()) return
-    this.index++
-    this.isRegexAllowed = true
-  }
+export const lexJs = commentLexer(jsRanges(true))
 
-  private scanLineComment(): void {
-    const start = this.index
-    while (this.index < this.end && this.at() !== '\n') {
-      this.index++
-    }
-    const text = this.source.slice(start, this.index).replace(/\r$/, '')
-    this.comments.push({ text, line: this.line, kind: 'line', start, end: this.index })
-  }
-
-  private scanBlockComment(): void {
-    const start = this.index
-    const line = this.line
-    const close = this.source.indexOf('*/', start + 2)
-    const stop = close === -1 || close + 2 > this.end ? this.end : close + 2
-    this.line += countNewlines(this.source, start, stop)
-    this.index = stop
-    const text = this.source.slice(start, stop)
-    this.comments.push({ text, line, kind: 'block', start, end: stop })
-  }
-
-  private scanRegex(): boolean {
-    let position = this.index + 1
-    let isInClass = false
-    while (position < this.end) {
-      const char = this.source[position]
-      if (char === '\n') return false
-      if (char === '\\') {
-        position += 2
-        continue
-      }
-      if (char === '[') {
-        isInClass = true
-      } else if (char === ']') {
-        isInClass = false
-      } else if (char === '/' && !isInClass) {
-        break
-      }
-      position++
-    }
-    if (position >= this.end) return false
-    position++
-    while (position < this.end && IDENTIFIER_PART.test(this.source[position] ?? '')) {
-      position++
-    }
-    this.index = position
-    this.isRegexAllowed = false
-    return true
-  }
-}
-
-const skipShebang = (source: string): number => {
-  if (!source.startsWith('#!')) return 0
-  const newline = source.indexOf('\n')
-  return newline === -1 ? source.length : newline
-}
-
-export const lexJs = (source: string): Comment[] => new JsLexer(source, source.length, skipShebang(source), 1).run()
-
-interface Range {
-  start: number
-  end: number
-}
-
-const lineAt = (source: string, offset: number): number => countNewlines(source, 0, offset) + 1
-
-const isInside = (offset: number, ranges: readonly Range[]): boolean =>
-  ranges.some((range) => offset >= range.start && offset < range.end)
-
-export const lexVue = (source: string): Comment[] => {
-  const comments: Comment[] = SFC_TAG.test(source) ? [] : lexJs(source)
-  const skipped: Range[] = []
-  for (const match of source.matchAll(SCRIPT_BLOCK)) {
-    const start = match.index + (match[1]?.length ?? 0)
-    const end = start + (match[2]?.length ?? 0)
-    comments.push(...new JsLexer(source, end, start, lineAt(source, start)).run())
-    skipped.push({ start: match.index, end: match.index + match[0].length })
-  }
-  for (const match of source.matchAll(STYLE_BLOCK)) {
-    skipped.push({ start: match.index, end: match.index + match[0].length })
-  }
-  for (const match of source.matchAll(HTML_COMMENT)) {
-    if (isInside(match.index, skipped)) continue
-    const end = match.index + match[0].length
-    comments.push({ text: match[0], line: lineAt(source, match.index), kind: 'block', start: match.index, end })
-  }
-  return comments.sort((left, right) => left.end - right.end)
-}
+export const lexTs = commentLexer(jsRanges(false))

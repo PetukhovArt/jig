@@ -85,7 +85,6 @@ export const eslintTool = defineTool({
   parse: parseEslint,
   comments: {
     suppressions: [/\beslint-disable(?:-next-line|-line)?\b/, /^\/\*\s*eslint\s+[\w@/-]+\s*:/],
-    allowed: [/\beslint-enable\b/],
   },
   stop: async (tools, input) => {
     const entry = tools.eslint

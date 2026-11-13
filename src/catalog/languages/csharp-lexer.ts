@@ -1,6 +1,7 @@
-import { countNewlines, type Comment } from './js-lexer'
+import { countNewlines, type Comment } from './lexer'
 
-const MESSAGE_DIRECTIVE = /^#\s*(?:region|endregion|error|warning)\b/
+const MESSAGE_DIRECTIVE = /^#\s*(?:error|warning)\b/
+const REGION_DIRECTIVE = /^#\s*(?:region|endregion)\b/
 const CHECK_DIRECTIVE = /^#\s*(?:pragma|nullable)\b/
 const TRAILING_COMMENT = /\s*\/\/.*$/
 
@@ -171,7 +172,7 @@ class CSharpLexer {
     const start = this.index
     this.index = this.lineEnd()
     const text = this.source.slice(start, this.index).replace(/\r$/, '')
-    this.comments.push({ text, line: this.line, kind: 'line', start, end: this.index })
+    this.comments.push({ text, line: this.line, kind: 'line' })
   }
 
   private scanBlockComment(): void {
@@ -181,20 +182,24 @@ class CSharpLexer {
     const stop = close === -1 ? this.source.length : close + 2
     this.line += countNewlines(this.source, start, stop)
     this.index = stop
-    this.comments.push({ text: this.source.slice(start, stop), line, kind: 'block', start, end: stop })
+    this.comments.push({ text: this.source.slice(start, stop), line, kind: 'block' })
   }
 
   private scanDirective(): void {
-    const start = this.index
-    const lineText = this.source.slice(start, this.lineEnd()).replace(/\r$/, '')
+    const lineText = this.source.slice(this.index, this.lineEnd()).replace(/\r$/, '')
     if (MESSAGE_DIRECTIVE.test(lineText)) {
       this.index = this.lineEnd()
+      return
+    }
+    if (REGION_DIRECTIVE.test(lineText)) {
+      this.index = this.lineEnd()
+      this.comments.push({ text: lineText, line: this.line, kind: 'directive' })
       return
     }
     this.index++
     if (!CHECK_DIRECTIVE.test(lineText)) return
     const text = lineText.replace(TRAILING_COMMENT, '')
-    this.comments.push({ text, line: this.line, kind: 'directive', start, end: start + text.length })
+    this.comments.push({ text, line: this.line, kind: 'directive' })
   }
 }
 

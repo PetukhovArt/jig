@@ -24,8 +24,7 @@
           "before": "",
           "after": "export const fresh = 1\n"
         }
-      ],
-      "wholeFile": "export const fresh = 1\n"
+      ]
     }
   }
 }

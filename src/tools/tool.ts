@@ -51,7 +51,7 @@ export interface ToolResult {
 
 export interface CommentDirectives {
   suppressions: readonly RegExp[]
-  allowed: readonly RegExp[]
+  allowed?: readonly RegExp[]
 }
 
 export interface DirectiveSource {

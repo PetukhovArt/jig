@@ -52,7 +52,7 @@ const editCases = (rule: string, kind: Kind, config: JigConfig): Case[] => {
 
 const casesOf = (kind: Kind): Record<string, Case[]> => ({
   'comment gate': editCases('comments', kind, commentGateOn),
-  'suppression ban': editCases('suppressions', kind, defaultConfig()),
+  'suppression ban': editCases('suppressions', kind, withRules({ 'jig/comments': 'off' })),
   'test gate': editCases('tests', kind, defaultConfig()),
 })
 
@@ -74,28 +74,24 @@ describe.each(Object.entries(casesOf('good')))('%s good fixtures', (_, cases) =>
 
 describe('deny once, then let the same call pass', () => {
   const lastLine = (atom: string): string => readFileSync(join(PLUGIN_ROOT, 'atoms', `${atom}.md`), 'utf8').trim().split('\n').at(-1) ?? ''
-  const COMMENT_RULE_LINE = lastLine('comments')
   const TEST_RULE_LINE = lastLine('tests')
   const add = (text: string): Edit[] => [{ before: 'const a = 1\n', after: `const a = 1\n${text}\n` }]
 
-  it('gives the full comments atom first, passes the retry and reminds in one line after that', () => {
+  it('denies a new comment on every call, without the atom', () => {
     sessions++
     const first = gate('src/a.ts', add('// explains a'), commentGateOn).reason
-    expect(first).toContain('// explains a')
-    expect(first).toContain('repeat the same call — it will pass')
-    expect(first).toContain(COMMENT_RULE_LINE)
-    expect(gate('src/a.ts', add('// explains a'), commentGateOn).reason).toBeUndefined()
-    const next = gate('src/a.ts', add('// explains a again'), commentGateOn).reason
-    expect(next).not.toContain(COMMENT_RULE_LINE)
-    expect(next).toMatch(/Rules: .*\/atoms\/comments\.md\.$/)
+    expect(first).toMatch(/^jig\/comments: the edit adds or rewords 1 comment\(s\):\n {2}src\/a\.ts, line 2 of the new text \/\/ explains a\n/)
+    expect(first).not.toContain('repeat the same call')
+    expect(gate('src/a.ts', add('// explains a'), commentGateOn).reason).toBe(first)
   })
 
-  it('counts each agent apart and gives the full atom again after a compaction', () => {
+  it('counts each agent apart and gives the full tests atom again after a compaction', () => {
     sessions++
-    gate('src/a.ts', add('// one'), commentGateOn)
-    expect(gate('src/a.ts', add('// one'), commentGateOn, { agent: 'sub-1' }).reason).toContain(COMMENT_RULE_LINE)
+    const edits = (name: string): Edit[] => [{ before: '', after: `it('${name}', () => {})\n` }]
+    gate('src/sum.test.ts', edits('one'), defaultConfig())
+    expect(gate('src/sum.test.ts', edits('two'), defaultConfig(), { agent: 'sub-1' }).reason).toContain(TEST_RULE_LINE)
     resetGateAtoms(sandbox, `s${sessions}`, 'main')
-    expect(gate('src/a.ts', add('// two'), commentGateOn).reason).toContain(COMMENT_RULE_LINE)
+    expect(gate('src/other.test.ts', edits('three'), defaultConfig()).reason).toContain(TEST_RULE_LINE)
   })
 
   it('never stops a removal', () => {
@@ -106,7 +102,7 @@ describe('deny once, then let the same call pass', () => {
 
   it('gates new comments by default and lets them through once the project turns the gate off', () => {
     sessions++
-    expect(gate('src/a.ts', add('// explains a'), defaultConfig()).reason).toMatch(/^jig\/comments: the edit adds 1 comment/)
+    expect(gate('src/a.ts', add('// explains a'), defaultConfig()).reason).toMatch(/^jig\/comments: the edit adds or rewords 1 comment/)
     sessions++
     expect(gate('src/a.ts', add('// explains a'), withRules({ 'jig/comments': 'off' })).reason).toBeUndefined()
   })
@@ -138,15 +134,15 @@ describe('suppressions', () => {
 })
 
 describe('addedComments', () => {
-  it('reports file lines for an edit fragment that starts at line 10', () => {
-    const edit = { before: 'const a = 1\n', after: '// explains a\nconst a = 1\n', line: 10 }
-    expect(addedComments('src/a.ts', [edit])?.map((comment) => comment.line)).toEqual([10])
+  it('applies the edit to the current file and reports the file line', () => {
+    const current = 'export function run(): number {\r\n  /* in the file */\r\n  const a = 1\r\n  return a\r\n}\r\n'
+    const edit = { before: '  return a\n', after: '  // the result\n  return a\n' }
+    expect(addedComments('src/run.ts', [edit], current)).toEqual([{ text: '// the result', key: '// the result', line: 4, lineIn: 'file' }])
   })
 
-  it('lexes the fragment after the file prefix and reports the file line', () => {
-    const prefix = 'export function run(): number {\n  /* in the prefix */\n  const a = 1\n'
-    const edit = { before: '  return a\n', after: '  // the result\n  return a\n', prefix }
-    expect(addedComments('src/run.ts', [edit])).toEqual([{ text: '// the result', key: '// the result', line: 4 }])
+  it('compares the edit texts when the old text is not in the file', () => {
+    const edit = { before: 'const a = 1\n', after: 'const a = 1\n// explains a\n' }
+    expect(addedComments('src/a.ts', [edit], 'const b = 2\n')).toEqual([{ text: '// explains a', key: '// explains a', line: 2, lineIn: 'new-text' }])
   })
 
   it('does not lex files of other languages', () => {

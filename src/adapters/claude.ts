@@ -118,7 +118,7 @@ const preEditEvent = (toolName: string | undefined, input: Json, paths: PathCont
   }
   const content = text(input, 'content')
   if (content !== undefined) {
-    return { kind: 'pre-edit', file, edits: [{ before: readCurrent(absolute), after: content }], wholeFile: content }
+    return { kind: 'pre-edit', file, edits: [{ before: readCurrent(absolute), after: content }] }
   }
   const before = text(input, 'old_string')
   const after = text(input, 'new_string')

@@ -66,7 +66,7 @@ export const stratumTool = defineTool({
   files: SCRIPT_FILES,
   setup: ['stratum-lint init', 'stratum-lint baseline'],
   parse: (stdout) => parseStratum(stdout),
-  comments: { suppressions: [/\bstratum-ignore\b/], allowed: [/@stratum-purity\s+\d/] },
+  comments: { suppressions: [/\bstratum-ignore\b/] },
   edit: async (tools, projectRoot, file, timeoutMs) => {
     const entry = withMarker(tools.stratum, nearestMarker(projectRoot, file, [STRATUM_CONFIG]))
     if (entry === undefined) return undefined
