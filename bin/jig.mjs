@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 // package.json
-var version = "0.4.0";
+var version = "0.5.0";
 
 // src/adapters/install.ts
 import { existsSync as existsSync2, mkdirSync as mkdirSync2, readFileSync as readFileSync2, rmSync, writeFileSync as writeFileSync2 } from "node:fs";
