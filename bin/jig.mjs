@@ -4,7 +4,7 @@
 var version = "0.4.0";
 
 // src/adapters/install.ts
-import { existsSync as existsSync2, mkdirSync as mkdirSync2, readFileSync as readFileSync2, writeFileSync as writeFileSync2 } from "node:fs";
+import { existsSync as existsSync2, mkdirSync as mkdirSync2, readFileSync as readFileSync2, rmSync, writeFileSync as writeFileSync2 } from "node:fs";
 import { homedir } from "node:os";
 import { dirname as dirname2, join as join2 } from "node:path";
 
@@ -136,7 +136,8 @@ var CODEX_HOOKS = [
   { event: "Stop", hook: "stop", timeout: 120 }
 ];
 var MARKER = "_jigManaged";
-var USAGE = "usage: jig hooks codex [--install | --uninstall]";
+var USAGE = "usage: jig hooks codex|opencode [--install | --uninstall]";
+var OPENCODE_EXPORT = "export { JigPlugin } from ";
 var codexHome = () => process.env["CODEX_HOME"] ?? join2(homedir(), ".codex");
 var commandFor = (pluginRoot, hook) => `node "${toSlash(join2(pluginRoot, "bin", "jig.mjs"))}" hook ${hook} --agent codex`;
 var entriesFor = (pluginRoot) => {
@@ -160,8 +161,30 @@ var readHooks = (path2) => {
 var withoutJig = (hooks) => Object.fromEntries(
   Object.entries(hooks).map(([event, entries]) => [event, entries.filter((entry) => entry[MARKER] !== true)]).filter(([, entries]) => entries.length > 0)
 );
+var opencodeHome = () => process.env["OPENCODE_CONFIG_DIR"] ?? join2(homedir(), ".config", "opencode");
+var opencodeShim = (pluginRoot) => `${OPENCODE_EXPORT}${JSON.stringify(`file:///${toSlash(join2(pluginRoot, "opencode", "jig.mjs")).replace(/^\/+/, "")}`)}
+`;
+var runOpencode = (action) => {
+  const shim = opencodeShim(resolvePluginRoot());
+  if (action === void 0) {
+    process.stdout.write(shim);
+    return 0;
+  }
+  if (action !== "--install" && action !== "--uninstall") throw new Error(USAGE);
+  const path2 = join2(opencodeHome(), "plugin", "jig.js");
+  if (action === "--install") {
+    mkdirSync2(dirname2(path2), { recursive: true });
+    writeFileSync2(path2, shim);
+  } else if (existsSync2(path2) && readFileSync2(path2, "utf8").startsWith(OPENCODE_EXPORT)) {
+    rmSync(path2);
+  }
+  process.stdout.write(`${action === "--install" ? "installed the jig plugin in" : "removed the jig plugin from"} ${toSlash(path2)}
+`);
+  return 0;
+};
 var runHooks = (args) => {
   const [agent, action] = args;
+  if (agent === "opencode") return runOpencode(action);
   if (agent !== "codex") throw new Error(USAGE);
   const entries = entriesFor(resolvePluginRoot());
   if (action === void 0) {
@@ -1217,7 +1240,7 @@ import { dirname as dirname4, join as join5, relative as relative3, resolve as r
 
 // src/core/proc.ts
 import { spawn, spawnSync as spawnSync2 } from "node:child_process";
-import { existsSync as existsSync3, mkdirSync as mkdirSync3, readFileSync as readFileSync4, realpathSync, rmSync, statSync, writeFileSync as writeFileSync3 } from "node:fs";
+import { existsSync as existsSync3, mkdirSync as mkdirSync3, readFileSync as readFileSync4, realpathSync, rmSync as rmSync2, statSync, writeFileSync as writeFileSync3 } from "node:fs";
 import { setPriority } from "node:os";
 import { basename, delimiter, dirname as dirname3, extname as extname2, isAbsolute as isAbsolute2, join as join4, relative as relative2, resolve as resolve2 } from "node:path";
 var LOW_PRIORITY = 10;
@@ -1480,10 +1503,10 @@ var acquireLock = async (path2, waitMs = LOCK_WAIT_MS) => {
   const deadline = Date.now() + waitMs;
   for (; ; ) {
     if (tryCreateLock(path2)) {
-      return { path: path2, release: () => rmSync(path2, { force: true }) };
+      return { path: path2, release: () => rmSync2(path2, { force: true }) };
     }
     if (isLockAbandoned(path2)) {
-      rmSync(path2, { force: true });
+      rmSync2(path2, { force: true });
       continue;
     }
     if (Date.now() >= deadline) return void 0;
@@ -2646,7 +2669,7 @@ var enabledSetting = (settings, name) => {
 };
 
 // src/core/state.ts
-import { mkdirSync as mkdirSync6, readdirSync as readdirSync2, readFileSync as readFileSync11, renameSync, rmSync as rmSync2, statSync as statSync4, writeFileSync as writeFileSync5 } from "node:fs";
+import { mkdirSync as mkdirSync6, readdirSync as readdirSync2, readFileSync as readFileSync11, renameSync, rmSync as rmSync3, statSync as statSync4, writeFileSync as writeFileSync5 } from "node:fs";
 import { join as join9 } from "node:path";
 var MAIN_AGENT = "main";
 var STATE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1e3;
@@ -2671,7 +2694,7 @@ var closeShellCall = (projectRoot, sessionId, callId) => {
   } catch {
     return void 0;
   }
-  rmSync2(path2, { force: true });
+  rmSync3(path2, { force: true });
   try {
     const value = JSON.parse(text3);
     if (typeof value !== "object" || value === null || !("snapshot" in value)) return void 0;
@@ -2738,7 +2761,7 @@ var renameWithRetry = (from, to) => {
       return;
     } catch (error) {
       if (attempt >= RENAME_ATTEMPTS || !isRetryable(error)) {
-        rmSync2(from, { force: true });
+        rmSync3(from, { force: true });
         throw error;
       }
       Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, attempt * 5);
@@ -2770,7 +2793,7 @@ var pruneStates = (projectRoot, now = Date.now(), maxAgeMs = STATE_MAX_AGE_MS) =
     const path2 = join9(dir2, name);
     try {
       if (now - statSync4(path2).mtimeMs <= maxAgeMs) continue;
-      rmSync2(path2, { force: true });
+      rmSync3(path2, { force: true });
       removed.push(name);
     } catch {
       continue;
@@ -2900,7 +2923,7 @@ var loadPlan = (projectRoot, pluginRoot) => {
 
 // src/rules/gate.ts
 import { createHash as createHash3 } from "node:crypto";
-import { mkdirSync as mkdirSync8, readdirSync as readdirSync4, readFileSync as readFileSync13, rmSync as rmSync3, statSync as statSync6, writeFileSync as writeFileSync6 } from "node:fs";
+import { mkdirSync as mkdirSync8, readdirSync as readdirSync4, readFileSync as readFileSync13, rmSync as rmSync4, statSync as statSync6, writeFileSync as writeFileSync6 } from "node:fs";
 import { join as join11 } from "node:path";
 
 // src/rules/comments.ts
@@ -3064,7 +3087,7 @@ var gateEdit = (input) => {
 };
 var resetGateAtoms = (projectRoot, sessionId, agent) => {
   for (const atom of GATE_ATOMS) {
-    rmSync3(claimPath(projectRoot, sessionId, agent, atomKey(atom)), { force: true });
+    rmSync4(claimPath(projectRoot, sessionId, agent, atomKey(atom)), { force: true });
   }
 };
 var pruneGateClaims = (projectRoot, now = Date.now(), maxAgeMs = STATE_MAX_AGE_MS) => {
@@ -3079,7 +3102,7 @@ var pruneGateClaims = (projectRoot, now = Date.now(), maxAgeMs = STATE_MAX_AGE_M
     const path2 = join11(dir2, name);
     try {
       if (now - statSync6(path2).mtimeMs > maxAgeMs) {
-        rmSync3(path2, { recursive: true, force: true });
+        rmSync4(path2, { recursive: true, force: true });
       }
     } catch {
       continue;
@@ -3536,7 +3559,7 @@ import { existsSync as existsSync8, readFileSync as readFileSync19 } from "node:
 import { join as join19 } from "node:path";
 
 // src/core/journal.ts
-import { appendFileSync as appendFileSync2, mkdirSync as mkdirSync9, readdirSync as readdirSync10, readFileSync as readFileSync17, rmSync as rmSync4, statSync as statSync8 } from "node:fs";
+import { appendFileSync as appendFileSync2, mkdirSync as mkdirSync9, readdirSync as readdirSync10, readFileSync as readFileSync17, rmSync as rmSync5, statSync as statSync8 } from "node:fs";
 import { join as join17 } from "node:path";
 var JOURNAL_MAX_AGE_DAYS = 30;
 var JOURNAL_MAX_BYTES = 50 * 1024 * 1024;
@@ -3582,13 +3605,13 @@ var rotateJournal = (projectRoot, now = Date.now()) => {
       kept.push(file);
       continue;
     }
-    rmSync4(file.path, { force: true });
+    rmSync5(file.path, { force: true });
     removed.push(file.name);
   }
   let total = kept.reduce((sum, file) => sum + file.size, 0);
   for (const file of kept) {
     if (total <= JOURNAL_MAX_BYTES) break;
-    rmSync4(file.path, { force: true });
+    rmSync5(file.path, { force: true });
     removed.push(file.name);
     total -= file.size;
   }
@@ -4659,6 +4682,7 @@ var pathsInPatch = (patch, cwd) => {
 import { dirname as dirname13, isAbsolute as isAbsolute5, join as join24, relative as relative6, resolve as resolve11 } from "node:path";
 var CLAUDE_NAMES = ["CLAUDE.md", "CLAUDE.local.md"];
 var CODEX_NAMES = ["AGENTS.override.md", "AGENTS.md"];
+var OPENCODE_NAMES = ["AGENTS.md", "CLAUDE.md", "CONTEXT.md"];
 var within = (root, path2) => {
   const rel = relative6(root, path2);
   return rel !== "" && !rel.startsWith("..") && !isAbsolute5(rel);
@@ -4689,15 +4713,29 @@ var firstPerDir = (launchDir, names) => {
     return name === void 0 ? [] : [join24(dir2, name)];
   });
 };
+var opencodeStart = (launchDir) => {
+  const root = repoRootOf(launchDir) ?? resolve11(launchDir);
+  const dirs = [root, ...dirsBetween(root, launchDir)];
+  for (const name of OPENCODE_NAMES) {
+    const files = dirs.filter((dir2) => hasFile(dir2, name)).map((dir2) => join24(dir2, name));
+    if (files.length > 0) return files;
+  }
+  return [];
+};
+var opencodeOnRead = (file, launchDir) => dirsBetween(launchDir, dirname13(resolve11(file))).flatMap((dir2) => {
+  const name = OPENCODE_NAMES.find((candidate) => hasFile(dir2, candidate));
+  return name === void 0 ? [] : [join24(dir2, name)];
+});
 var NO_READ_LOADS = () => [];
 var NATIVE_RULES = {
   claude: { atStart: claudeStart, onRead: claudeOnRead },
   codex: { atStart: (launchDir) => firstPerDir(launchDir, CODEX_NAMES), onRead: NO_READ_LOADS },
+  opencode: { atStart: opencodeStart, onRead: opencodeOnRead },
   grok: { atStart: (launchDir) => chainFor(launchDir)?.rules ?? [], onRead: NO_READ_LOADS }
 };
 
 // src/adapters/session-root.ts
-import { mkdirSync as mkdirSync11, readdirSync as readdirSync11, readFileSync as readFileSync22, rmSync as rmSync5, statSync as statSync10, writeFileSync as writeFileSync7 } from "node:fs";
+import { mkdirSync as mkdirSync11, readdirSync as readdirSync11, readFileSync as readFileSync22, rmSync as rmSync6, statSync as statSync10, writeFileSync as writeFileSync7 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join as join25 } from "node:path";
 var dir = () => join25(tmpdir(), "jig-session-roots");
@@ -4706,7 +4744,7 @@ var MAX_AGE_MS = 7 * 24 * 60 * 60 * 1e3;
 var prune = (now) => {
   for (const name of readdirSync11(dir())) {
     const path2 = join25(dir(), name);
-    if (now - statSync10(path2).mtimeMs > MAX_AGE_MS) rmSync5(path2, { force: true });
+    if (now - statSync10(path2).mtimeMs > MAX_AGE_MS) rmSync6(path2, { force: true });
   }
 };
 var rememberSessionRoot = (sessionId, root) => {
@@ -4927,15 +4965,17 @@ var compatible = (name, native, projectDirEnvs) => ({
 });
 var claude = compatible("claude", NATIVE_RULES.claude, [JIG_PROJECT_DIR, AGENT_PROJECT_DIRS.claude]);
 var codex = compatible("codex", NATIVE_RULES.codex, [JIG_PROJECT_DIR]);
+var opencode = compatible("opencode", NATIVE_RULES.opencode, [JIG_PROJECT_DIR]);
 var grok = compatible("grok", NATIVE_RULES.grok, [JIG_PROJECT_DIR, AGENT_PROJECT_DIRS.claude]);
 
 // src/adapters/index.ts
-var ADAPTERS = { claude, codex, grok };
+var ADAPTERS = { claude, codex, grok, opencode };
 var DEFAULT_AGENT = "claude";
 var DETECT = [
   { agent: "grok", vars: ["GROK_HOOK_EVENT", "GROK_SESSION_ID"] },
   { agent: "claude", vars: ["CLAUDE_PROJECT_DIR"] },
-  { agent: "codex", vars: ["CODEX_THREAD_ID"] }
+  { agent: "codex", vars: ["CODEX_THREAD_ID"] },
+  { agent: "opencode", vars: ["OPENCODE"] }
 ];
 var detectAgent2 = (env = process.env) => DETECT.find(({ vars }) => vars.some((name) => env[name] !== void 0 && env[name] !== ""))?.agent ?? DEFAULT_AGENT;
 var resolveAdapter = (name = detectAgent2()) => {
@@ -5031,7 +5071,7 @@ import {
   readlinkSync as readlinkSync2,
   realpathSync as realpathSync4,
   renameSync as renameSync2,
-  rmSync as rmSync6,
+  rmSync as rmSync7,
   statSync as statSync12,
   utimesSync,
   writeFileSync as writeFileSync8
@@ -5318,7 +5358,7 @@ var removeTree = (path2) => {
     return;
   }
   unlinkLinks(path2);
-  rmSync6(path2, { recursive: true, force: true });
+  rmSync7(path2, { recursive: true, force: true });
 };
 var placeFile = (source, destination, copier) => {
   copier.files++;
@@ -6234,7 +6274,7 @@ var runLoop = (args) => {
 
 // src/pre-mr/pre-mr.ts
 import { spawnSync as spawnSync5 } from "node:child_process";
-import { copyFileSync as copyFileSync3, existsSync as existsSync17, mkdtempSync, rmSync as rmSync8 } from "node:fs";
+import { copyFileSync as copyFileSync3, existsSync as existsSync17, mkdtempSync, rmSync as rmSync9 } from "node:fs";
 import { tmpdir as tmpdir3 } from "node:os";
 import { join as join34, resolve as resolve16 } from "node:path";
 import { parseArgs as parseArgs3 } from "node:util";
@@ -6248,7 +6288,7 @@ import { parseArgs as parseArgs2 } from "node:util";
 
 // src/review/diff-files.ts
 import { createHash as createHash7 } from "node:crypto";
-import { mkdirSync as mkdirSync15, readdirSync as readdirSync15, rmSync as rmSync7, statSync as statSync13, writeFileSync as writeFileSync10 } from "node:fs";
+import { mkdirSync as mkdirSync15, readdirSync as readdirSync15, rmSync as rmSync8, statSync as statSync13, writeFileSync as writeFileSync10 } from "node:fs";
 import { join as join30 } from "node:path";
 var DIFF_PART_MAX_LINES = 1500;
 var DIFF_FORMAT = "partitions-compact-1";
@@ -6322,7 +6362,7 @@ var pruneOldDiffDirs = (reviewDir, keep, now) => {
   for (const name of readdirSync15(reviewDir)) {
     const dir2 = join30(reviewDir, name);
     if (!name.startsWith(DIFF_DIR_PREFIX) || dir2 === keep) continue;
-    if (now - statSync13(dir2).mtimeMs > DIFF_DIR_MAX_AGE_MS) rmSync7(dir2, { recursive: true, force: true });
+    if (now - statSync13(dir2).mtimeMs > DIFF_DIR_MAX_AGE_MS) rmSync8(dir2, { recursive: true, force: true });
   }
 };
 var byAudience = (parts, pathOf) => Object.fromEntries(AUDIENCES.map((audience) => [audience, parts.filter((part) => part.audience === audience).map((part) => pathOf(part.name))]));
@@ -7539,7 +7579,7 @@ var workingTree = (root) => {
     if (tree.status !== 0 || sha === "") throw new Error(`git write-tree failed: ${String(tree.stderr).trim()}`);
     return sha;
   } finally {
-    rmSync8(dir2, { recursive: true, force: true });
+    rmSync9(dir2, { recursive: true, force: true });
   }
 };
 var snapshot2 = (root) => {
@@ -8622,7 +8662,7 @@ var reviewDecision = (facts2) => {
 };
 
 // src/review-cycle/forge.ts
-import { mkdtempSync as mkdtempSync2, rmSync as rmSync9, writeFileSync as writeFileSync11 } from "node:fs";
+import { mkdtempSync as mkdtempSync2, rmSync as rmSync10, writeFileSync as writeFileSync11 } from "node:fs";
 import { tmpdir as tmpdir4 } from "node:os";
 import { join as join38 } from "node:path";
 var detectForge = (remote) => /github/i.test(remote) ? "github" : "gitlab";
@@ -8733,7 +8773,7 @@ var gitlabForge = (exec, cwd) => {
         writeFileSync11(payload, JSON.stringify({ body }));
         cli.run(["api", "--method", "POST", path2, "-H", "Content-Type: application/json", "--input", payload], `api POST ${path2}`);
       } finally {
-        rmSync9(dir2, { recursive: true, force: true });
+        rmSync10(dir2, { recursive: true, force: true });
       }
     },
     resolve(iid, discussionId) {
@@ -9545,13 +9585,13 @@ var runReviewCycle = (args) => runReviewCycleWith(args, { exec: spawnExec, cwd: 
 
 // src/slot/slot.ts
 import { spawnSync as spawnSync8 } from "node:child_process";
-import { existsSync as existsSync23, mkdirSync as mkdirSync19, readFileSync as readFileSync39, rmSync as rmSync11, writeFileSync as writeFileSync15 } from "node:fs";
+import { existsSync as existsSync23, mkdirSync as mkdirSync19, readFileSync as readFileSync39, rmSync as rmSync12, writeFileSync as writeFileSync15 } from "node:fs";
 import { basename as basename10, dirname as dirname19, isAbsolute as isAbsolute9, join as join42, relative as relative9, resolve as resolve19 } from "node:path";
 import { parseArgs as parseArgs7 } from "node:util";
 
 // src/slot/guard.ts
 import { spawnSync as spawnSync7 } from "node:child_process";
-import { mkdirSync as mkdirSync18, readFileSync as readFileSync38, rmSync as rmSync10, writeFileSync as writeFileSync14 } from "node:fs";
+import { mkdirSync as mkdirSync18, readFileSync as readFileSync38, rmSync as rmSync11, writeFileSync as writeFileSync14 } from "node:fs";
 import { dirname as dirname18, join as join41 } from "node:path";
 var HOLD_WINDOW_MS = 2 * 60 * 60 * 1e3;
 var MAX_ANCESTORS = 12;
@@ -9607,7 +9647,7 @@ var writeOwner = (dir2, { owner, commit, now = Date.now() }) => {
 `);
 };
 var clearOwner = (dir2) => {
-  rmSync10(ownerMarkerPath(dir2), { force: true });
+  rmSync11(ownerMarkerPath(dir2), { force: true });
 };
 var minutesOf = (ms) => Math.max(0, Math.round(ms / 6e4));
 var recentCheckoutEntry = (dir2, now) => {
@@ -9854,7 +9894,7 @@ var slotNew = async (args) => {
     writeAgentView(context.mainRoot, dir2, slots, slot, cdpPort);
   }
   for (const cache of slots.clearCache ?? []) {
-    rmSync11(insideDir(dir2, cache), { recursive: true, force: true });
+    rmSync12(insideDir(dir2, cache), { recursive: true, force: true });
   }
   const deps = poolDeps(context, dir2);
   if (deps?.kind === "failed") return fail3(`install failed in slot ${slot} ${toSlash(dir2)}: ${deps.detail}`, 1);

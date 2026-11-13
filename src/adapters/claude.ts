@@ -240,4 +240,5 @@ const compatible = (name: string, native: NativeRules, projectDirEnvs: readonly 
 
 export const claude: AgentAdapter = compatible('claude', NATIVE_RULES.claude, [JIG_PROJECT_DIR, AGENT_PROJECT_DIRS.claude])
 export const codex: AgentAdapter = compatible('codex', NATIVE_RULES.codex, [JIG_PROJECT_DIR])
+export const opencode: AgentAdapter = compatible('opencode', NATIVE_RULES.opencode, [JIG_PROJECT_DIR])
 export const grok: AgentAdapter = compatible('grok', NATIVE_RULES.grok, [JIG_PROJECT_DIR, AGENT_PROJECT_DIRS.claude])

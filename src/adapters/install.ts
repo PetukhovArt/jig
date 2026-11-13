@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { resolvePluginRoot, toSlash } from '../core/paths'
@@ -25,7 +25,8 @@ const CODEX_HOOKS: readonly HookSpec[] = [
 ]
 
 const MARKER = '_jigManaged'
-const USAGE = 'usage: jig hooks codex [--install | --uninstall]'
+const USAGE = 'usage: jig hooks codex|opencode [--install | --uninstall]'
+const OPENCODE_EXPORT = 'export { JigPlugin } from '
 
 type Entry = Record<string, unknown>
 type HooksFile = { hooks?: Record<string, Entry[]> } & Record<string, unknown>
@@ -61,8 +62,32 @@ const withoutJig = (hooks: Record<string, Entry[]>): Record<string, Entry[]> =>
       .filter(([, entries]) => entries.length > 0),
   )
 
+const opencodeHome = (): string => process.env['OPENCODE_CONFIG_DIR'] ?? join(homedir(), '.config', 'opencode')
+
+const opencodeShim = (pluginRoot: string): string =>
+  `${OPENCODE_EXPORT}${JSON.stringify(`file:///${toSlash(join(pluginRoot, 'opencode', 'jig.mjs')).replace(/^\/+/, '')}`)}\n`
+
+const runOpencode = (action: string | undefined): number => {
+  const shim = opencodeShim(resolvePluginRoot())
+  if (action === undefined) {
+    process.stdout.write(shim)
+    return 0
+  }
+  if (action !== '--install' && action !== '--uninstall') throw new Error(USAGE)
+  const path = join(opencodeHome(), 'plugin', 'jig.js')
+  if (action === '--install') {
+    mkdirSync(dirname(path), { recursive: true })
+    writeFileSync(path, shim)
+  } else if (existsSync(path) && readFileSync(path, 'utf8').startsWith(OPENCODE_EXPORT)) {
+    rmSync(path)
+  }
+  process.stdout.write(`${action === '--install' ? 'installed the jig plugin in' : 'removed the jig plugin from'} ${toSlash(path)}\n`)
+  return 0
+}
+
 export const runHooks: Command = (args) => {
   const [agent, action] = args
+  if (agent === 'opencode') return runOpencode(action)
   if (agent !== 'codex') throw new Error(USAGE)
   const entries = entriesFor(resolvePluginRoot())
   if (action === undefined) {

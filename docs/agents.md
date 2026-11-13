@@ -1,10 +1,11 @@
 # Agents
 
-The core and its event model do not depend on the agent: the CLI `bin/jig.mjs` (Node >= 20, no runtime dependencies) takes hook events through a thin adapter per agent (`hook <name> --agent claude|codex|grok`; without the flag the agent is told by its environment). Adapters exist for Claude Code, Codex CLI and Grok Build; Cursor needs one.
+The core and its event model do not depend on the agent: the CLI `bin/jig.mjs` (Node >= 20, no runtime dependencies) takes hook events through a thin adapter per agent (`hook <name> --agent claude|codex|grok|opencode`; without the flag the agent is told by its environment). Adapters exist for Claude Code, Codex CLI, Grok Build and OpenCode; Cursor needs one.
 
 - **Claude Code**: the plugin's `hooks/hooks.json`.
 - **Grok Build** reads the same plugin hooks from the Claude Code install, from the copy Claude Code keeps in its plugin cache (`installPath` in `~/.claude/plugins/installed_plugins.json`), not from a directory marketplace's source: after changing a local checkout, `claude plugin update jig@<marketplace>` refreshes that copy. A headless run needs `--trust` for the project's instructions and hooks, an interactive one `/hooks-trust` once per project.
 - **Codex CLI** does not run a Claude plugin's hooks: `jig hooks codex --install` writes jig's entries into `$CODEX_HOME/hooks.json` (default `~/.codex`), marked `_jigManaged`, next to the user's own; `--uninstall` removes only them, and the bare command prints them. Codex asks to trust them once in `/hooks` (`codex exec --dangerously-bypass-hook-trust` for automation). Codex sets no project directory variable, so the session's root is the git top level of its directory at session start, kept for later hooks of that session.
+- **OpenCode** runs no command hooks, only JS plugins: `jig hooks opencode --install` writes `$OPENCODE_CONFIG_DIR/plugin/jig.js` (default `~/.config/opencode`), one line that re-exports `JigPlugin` from the checkout's `opencode/jig.mjs`; `--uninstall` deletes that file only when it is jig's, and the bare command prints it. The plugin runs `jig hook <name> --agent opencode` with Claude Code shaped input: `tool.execute.before` for `pre-edit` and `pre-shell` (a deny throws, and the model reads the reason), `tool.execute.after` for `post-edit`, `touch` and `post-shell` (context appended to the tool output), `chat.message` for `user-prompt-submit`, the system prompt for `session-start` and `compact`, `session.idle` of a top-level session for `stop` (a block sends its reason as the next prompt). OpenCode sets `OPENCODE=1` for the commands it runs; the project root is `JIG_PROJECT_DIR`, which the plugin sets to OpenCode's worktree. No `subagent-start` yet. A failing or slow hook never stops OpenCode.
 
 Which instruction files each agent loads by itself, which jig adds per touched path, and the matrix that checks it: [hooks](hooks.md) and [evals](evals.md).
 
@@ -46,11 +47,11 @@ Checked October 16, 2026: Claude Code 2.1.300-2.1.301, Codex `6ae8b8a`; "secondh
 
 Checked November 10, 2026 for project instructions: Claude Code 2.1.321, Codex CLI 0.167.0, Grok Build 1.0.77. A jig Codex plugin installed from a local marketplace ran none of its hooks; the user-level `hooks.json` does.
 
-| Instruction files | Claude Code | Codex CLI | Grok Build |
-| --- | --- | --- | --- |
-| At start | `CLAUDE.md`, `CLAUDE.local.md` from the launch directory up, with `@path` imports; `AGENTS.md` instead when there is none | one `AGENTS.override.md` or `AGENTS.md` per directory, git root to launch directory | `AGENTS.md`, `CLAUDE.md`, `CLAUDE.local.md`, git root to launch directory, in a trusted folder only |
-| Below the launch directory | on `Read` of a file there; `InstructionsLoaded` reports `CLAUDE.md` and imports | not loaded; the prompt asks the model to look | not loaded; the model is told the paths |
-| Outside the launch directory (a sibling worktree) | not loaded | not loaded | not loaded |
-| Deny with a reason the model reads | `PreToolUse` `permissionDecision` | `PreToolUse` `permissionDecision` | `PreToolUse` `permissionDecision` |
-| Context after a tool | `PostToolUse` `additionalContext`, over 10,000 characters saved to a file | `PostToolUse` `additionalContext`, about 2,500 tokens | `PostToolUse` `additionalContext` |
-| Edit tool name | `Edit`, `Write`, `MultiEdit`, `NotebookEdit` | `apply_patch`, the patch text in `tool_input.command` | Claude Code names |
+| Instruction files | Claude Code | Codex CLI | Grok Build | OpenCode 1.19.5 (read from its source, not run) |
+| --- | --- | --- | --- | --- |
+| At start | `CLAUDE.md`, `CLAUDE.local.md` from the launch directory up, with `@path` imports; `AGENTS.md` instead when there is none | one `AGENTS.override.md` or `AGENTS.md` per directory, git root to launch directory | `AGENTS.md`, `CLAUDE.md`, `CLAUDE.local.md`, git root to launch directory, in a trusted folder only | all `AGENTS.md` from the launch directory up to the git root; `CLAUDE.md` when there is none, then `CONTEXT.md`; plus `~/.config/opencode/AGENTS.md` or `~/.claude/CLAUDE.md` |
+| Below the launch directory | on `Read` of a file there; `InstructionsLoaded` reports `CLAUDE.md` and imports | not loaded; the prompt asks the model to look | not loaded; the model is told the paths | on `read` of a file there: the first of `AGENTS.md`, `CLAUDE.md`, `CONTEXT.md` per directory, appended to the tool output |
+| Outside the launch directory (a sibling worktree) | not loaded | not loaded | not loaded | not loaded |
+| Deny with a reason the model reads | `PreToolUse` `permissionDecision` | `PreToolUse` `permissionDecision` | `PreToolUse` `permissionDecision` | an error thrown in `tool.execute.before` |
+| Context after a tool | `PostToolUse` `additionalContext`, over 10,000 characters saved to a file | `PostToolUse` `additionalContext`, about 2,500 tokens | `PostToolUse` `additionalContext` | `output.output` changed in `tool.execute.after` |
+| Edit tool name | `Edit`, `Write`, `MultiEdit`, `NotebookEdit` | `apply_patch`, the patch text in `tool_input.command` | Claude Code names | `edit`, `write`, `apply_patch` (`patchText`); jig passes them on as `Edit`, `Write`, `apply_patch` |
