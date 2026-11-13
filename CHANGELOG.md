@@ -1,5 +1,11 @@
 # jig
 
+## 0.6.0
+
+### Minor Changes
+
+- [`92476be`](https://github.com/PetukhovArt/jig/commit/92476be005244d7a5dcb6ed3b0d22c7978a14d46) Thanks [@PetukhovArt](https://github.com/PetukhovArt)! - OpenCode: the installed loader follows `claude plugin update` to the current plugin root; the plugin registers jig's skills and the `jig-deep`, `jig-standard`, `jig-fast` subagents (models from `tiers.opencode`) so reviews can spawn finders; `JIG_DEBUG` logs every hook run; `jig tiers` detects OpenCode.
+
 ## 0.5.1
 
 ### Patch Changes
