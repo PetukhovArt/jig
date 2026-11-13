@@ -7265,6 +7265,10 @@ var stateText = (report) => {
 var diffLine = (reads) => reads === void 0 || reads.diff.length === 0 ? [] : [`  diff: ${reads.diff.join(" ")}`];
 var angleReadLines = (reads) => reads === void 0 ? [] : [`  read: ${reads.angles.join(" ")}`, ...reads.atoms.length > 0 ? [`  atoms: ${reads.atoms.join(" ")}`] : []];
 var rulesLine = (reads) => reads === void 0 || reads.rules.length === 0 ? [] : [`  rules: ${reads.rules.join(" ")}`];
+var runTestsLine = (report) => {
+  const parts = report.plan.partitions.flatMap((partition) => report.diffFiles?.partitions[partition.name]?.tests ?? []);
+  return report.plan.partitions.length > 1 && parts.length > 0 ? [`  tests parts of the run: ${parts.join(" ")}`] : [];
+};
 var RUNNER_LINE = "runner: the review runs in one review runner, never in the session that asked for it: that session spawns role review-runner with this run and waits for its return; a review runner (a review cycle's, or one spawned so) goes on";
 var MAX_DIRS = 3;
 var partitionText = (partition) => {
@@ -7307,6 +7311,7 @@ var finderLines = (report) => {
   for (const kind of FINDER_KINDS) {
     const first = plan.finders.find((finder) => finder.kind === kind);
     if (first !== void 0) lines2.push(`${kind} finders (${KIND_TEXT[kind]}) read:`, ...angleReadLines(report.reads[first.name]));
+    if (first !== void 0 && kind === "tests") lines2.push(...runTestsLine(report));
   }
   return lines2;
 };

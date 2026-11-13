@@ -414,6 +414,11 @@ const angleReadLines = (reads: Reads | undefined): string[] =>
 
 const rulesLine = (reads: Reads | undefined): string[] => (reads === undefined || reads.rules.length === 0 ? [] : [`  rules: ${reads.rules.join(' ')}`])
 
+const runTestsLine = (report: ReviewPlanReport): string[] => {
+  const parts = report.plan.partitions.flatMap((partition) => report.diffFiles?.partitions[partition.name]?.tests ?? [])
+  return report.plan.partitions.length > 1 && parts.length > 0 ? [`  tests parts of the run: ${parts.join(' ')}`] : []
+}
+
 const RUNNER_LINE =
   'runner: the review runs in one review runner, never in the session that asked for it: that session spawns role review-runner with this run and waits for its return; a review runner (a review cycle\'s, or one spawned so) goes on'
 
@@ -463,6 +468,7 @@ const finderLines = (report: ReviewPlanReport): string[] => {
   for (const kind of FINDER_KINDS) {
     const first = plan.finders.find((finder) => finder.kind === kind)
     if (first !== undefined) lines.push(`${kind} finders (${KIND_TEXT[kind]}) read:`, ...angleReadLines(report.reads[first.name]))
+    if (first !== undefined && kind === 'tests') lines.push(...runTestsLine(report))
   }
   return lines
 }

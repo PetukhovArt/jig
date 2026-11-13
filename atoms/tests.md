@@ -10,8 +10,9 @@ metadata:
 - Worth a test: a regression of a real bug, a contract between modules, an edge case with a high error cost, an integration with infrastructure, a state machine or invariant.
 - Two imagined edits judge a test: break the behavior, it must fail; restructure the internals, it must still pass.
 - Search the existing tests of the unit first. Extend a table-driven case instead of adding a near duplicate.
-- Junk: no assertion or a trivial one (exists, truthy, does not throw); the expected value computed by the code under test; mocking the unit under test; a mock that implements the asserted behavior; grepping source text; a negative case that passes for an unrelated reason.
+- Junk: no assertion or a trivial one (exists, truthy, does not throw); the expected value computed by or copied from the code under test (a table taken from its own mapping); a name its setup contradicts; mocking the unit under test; a mock that implements the asserted behavior; grepping source text; a negative case that passes for an unrelated reason.
 - Mock only real boundaries (platform, network, external services), never your own modules.
 - A regression test must fail on the code before the fix. Run it before fixing.
-- A test that needs an export, flag or hook no production caller needs is testing at the wrong seam: test at the real boundary.
+- A test that needs an export, flag or hook no production caller needs, or imports a helper behind the module's public interface, is testing at the wrong seam: test at the real boundary.
+- Fixture data no test reads is junk too: cut it to what the tests read.
 - Trivial code (a getter, a re-export, a wrapper) gets no test.

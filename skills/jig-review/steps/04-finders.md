@@ -9,7 +9,7 @@
 - **`behavior`** (`pN-behavior`): angles 1–5, 8, 12, 14, 15 and the project angles of kind `behavior`: bugs, state, wire contracts, efficiency and leaks, the spec. Deep tier, high effort. It traces a link out of its partition into the code on the other side itself.
 - **`conventions`** (`pN-conventions`): only when the project adds angles of kind `conventions`, and only those. Standard tier, high effort. It reads the indexes, standards and glossaries under its `rules:` line.
 - **`ux`** (`pN-ux`): angle 18, only when the partition has UI files the diff changes (markup, components, styles). Role `finder`, standard tier, high effort. It reads atom `ux` and traces each rendered value up to the box owner, wrappers included.
-- **`tests`** (`pN-tests`): angle 16, only when the partition has tests the diff adds or changes. Role `test-reviewer`, standard tier, medium effort: the criterion is mechanical (atom `tests`), so it needs no deep model. It reads the partition's code and tests parts and reports wrong and redundant tests; it never deletes one.
+- **`tests`** (`pN-tests`): angle 16, only when the partition has tests the diff adds or changes. Role `test-reviewer`, standard tier, medium effort: the criterion is mechanical (atom `tests`), so it needs no deep model. It reads the partition's code and tests parts, searches the other partitions' tests parts for duplicates, and reports wrong and redundant tests; it never deletes one.
 
 Each reads only its kind's angle files and atoms, printed once per kind (`behavior finders … read:`, `conventions finders … read:`). A finder reads only its partition's diff parts; behavior outside it, it reads in the code, changed or not.
 
@@ -40,8 +40,8 @@ Spawn every finder of the plan **in one batch**, in parallel, within the [subage
 5. the focus note ([prepare](01-prepare.md#focus-note));
 6. facts and decisions ([prepare](01-prepare.md#facts-and-decisions));
 7. the role template path, and the partition policy verbatim when the plan printed `partition policy:`, with the line "your partition was grouped by this policy; links into the other partitions you trace yourself";
-8. **per kind**: the finder's kind and the angle files and atoms printed under its kind (`read:`, `atoms:`), so the finder reads them without searching; `behavior` also gets the spec file when one was found ([prepare](01-prepare.md#spec));
-9. **personal**: this finder's partition, its name and the part paths under its `diff:`. The parts are split by audience: `pN-code-*` always, `pN-tests-*` when angle 16 runs, `pN-docs-*` when angle 15 runs. A finder reads no part outside its `diff:` list; it may open another file by path to confirm a candidate;
+8. **per kind**: the finder's kind and the angle files and atoms printed under its kind (`read:`, `atoms:`), so the finder reads them without searching; `behavior` also gets the spec file when one was found ([prepare](01-prepare.md#spec)); `tests` also gets the `tests parts of the run:` line when the plan printed one;
+9. **personal**: this finder's partition, its name and the part paths under its `diff:`. The parts are split by audience: `pN-code-*` always, `pN-tests-*` when angle 16 runs, `pN-docs-*` when angle 15 runs. A finder reads no part outside its `diff:` list; it may open another file by path to confirm a candidate. Pass the parts with no reading instruction of your own: how a finder reads its parts is its role's, and a runner that narrowed it to a search lost a finding;
 10. **personal**, `conventions` only: the documents under its `rules:` line ([routing](02-rules.md#4-routing)), narrowed by `route` to its angles, each with its scope ("this rule applies only under that directory").
 
 Items 1–7 are byte-identical across the batch, item 8 within a kind. Every document goes as a path, never pasted, except the severity sections and the skip rules of item 2.

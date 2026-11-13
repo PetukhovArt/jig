@@ -12,11 +12,15 @@ This is a review: you only read. No deletion, no edit, no commit, no test run, n
 
 Input: the diff index, the shared rules block, learnings, the focus note, the angle file of [angle 16](../../../jig-review/angles/16.tests.md) and atom `tests`, then your partition's diff parts under `diff:`. Read the angle and atom files by the absolute paths your brief gives, before the hunt.
 
-Read the diff from the part files your brief lists, every one of them and no other; never run `git diff` for the reviewed range. Every test added or changed in the `pN-tests-*` parts is a subject; a test the diff does not touch is not. For each one, read the production code it covers in narrow windows: a search with line numbers and a few lines of context, then a range of at most ~60 lines. No `cat` of a whole file.
+Read every part file under your `diff:`, each one whole, and no other diff; never run `git diff` for the reviewed range. Subjects are every test and every test resource (fixture, snapshot, data file) the `pN-tests-*` parts add or change; a file the diff does not touch is not. For each test, read the production code it covers in narrow windows: a search with line numbers and a few lines of context, then a range of at most ~60 lines. No `cat` of a whole production file.
+
+For each test resource, search the tests for each of its top-level entries (keys, records, cases). Entries no test reads are one `redundant` candidate per file, with their share ("410 of 910 lines are read by no test") and the first unread entry's line.
+
+When your brief lists `tests parts of the run`, search the other partitions' tests parts for a test of the same behavior as each subject; a match makes the weaker of the two a `redundant` candidate. Those parts hold no subjects of yours.
 
 For each subject:
 
-1. Finish the sentence "this test fails when a developer <edit>, which breaks <behavior>". No realistic edit, or the sentence describes the implementation, not a behavior: a candidate.
+1. Finish the sentence "this test fails when a developer <edit>, which breaks <behavior>". No realistic edit, or the sentence describes the implementation, not a behavior: a candidate. Check the behavior against the test's name: a setup that contradicts the name ("without X" that builds X) is a `wrong` candidate, whatever else it guards.
 2. Match it against the junk list of the angle file and the atom.
 3. Check the disqualifiers of the angle file; one keeps the test.
 4. The mutation is a thought experiment: name the edit that breaks the named behavior and show, from the test's assertions and mocks, that the test still passes. You do not run it.

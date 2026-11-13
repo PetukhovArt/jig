@@ -439,6 +439,7 @@ describe('buildReport on a repository', () => {
       write(root, 'src/features/editor/b.ts', body('b'))
       write(root, 'src/features/editor/a.test.ts', "it('a', () => {})\n")
       write(root, 'src/domain/x/y.ts', body('y'))
+      write(root, 'src/domain/x/y.test.ts', "it('y', () => {})\n")
       run('add', '-A')
       run('commit', '-qm', 'feature')
       return root
@@ -462,10 +463,12 @@ describe('buildReport on a repository', () => {
 
       expect(report.plan.partitions.map((partition) => [partition.name, partition.files])).toEqual([
         ['editor', ['src/features/editor/a.test.ts', 'src/features/editor/a.ts', 'src/features/editor/b.ts']],
-        ['domain', ['src/domain/x/y.ts']],
+        ['domain', ['src/domain/x/y.test.ts', 'src/domain/x/y.ts']],
       ])
       expect(report.reads['editor-behavior']?.diff.map((path) => path.split('/').pop())).toEqual(['editor-code-01.diff'])
+      const tests = (name: string): string => report.diffFiles?.partitions[name]?.tests[0] ?? ''
       expect(formatReport(report)).toContain(`partition policy (to every finder, brief item 7): ${POLICY}`)
+      expect(formatReport(report)).toContain(`\n  tests parts of the run: ${tests('editor')} ${tests('domain')}\n`)
       expect(() => plan({ name: 'editor', entries: ['src/features/editor/'] })).toThrow('--partition: code files in no group: src/domain/x/y.ts')
       expect(() => plan({ name: 'editor', entries: ['src/features/editor/', 'src/domain/x/y.ts'] }, { name: 'domain', entries: ['src/domain/'] })).toThrow(
         'src/domain/x/y.ts is in groups editor and domain',
