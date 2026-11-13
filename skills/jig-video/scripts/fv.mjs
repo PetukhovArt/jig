@@ -9,7 +9,7 @@
 import { spawn, spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { captureInput, pinWindow, placeWindows, platformRequirements, windowClientArea } from './window.mjs'
 
 const [cmd, dirArg, ...rest] = process.argv.slice(2)
 if (cmd === 'cdp') {
@@ -18,7 +18,12 @@ if (cmd === 'cdp') {
   process.exit(0)
 }
 const AGENT_VIEW = resolveAgentView()
-if (!cmd || !dirArg) fail('usage: fv.mjs <narrate|rehearse|record|assemble> <workdir> [--case caseId] [--window "title"] [--region x,y,w,h] [--from stepId]\n       fv.mjs cdp <click|fill|wait|eval|drag|screenshot> [agent-view flags]')
+if (cmd === 'check') checkRequirements()
+if (cmd === 'window') {
+  console.log(await windowAction(process.argv.slice(3)))
+  process.exit(0)
+}
+if (!cmd || !dirArg) fail('usage: fv.mjs <narrate|rehearse|record|assemble> <workdir> [--case caseId] [--window "title"] [--region x,y,w,h] [--from stepId]\n       fv.mjs check\n       fv.mjs window <place|pin> [flags]\n       fv.mjs cdp <click|fill|wait|eval|drag|screenshot> [agent-view flags]')
 const dir = path.resolve(dirArg)
 const flags = {}
 for (let i = 0; i < rest.length; i += 2) flags[rest[i].replace(/^--/, '')] = rest[i + 1]
@@ -27,8 +32,6 @@ const TITLE_SEC = 3
 const GAP_SEC = 0.6
 // The free Edge TTS endpoint drops single requests, and after a burst throttles for minutes (NoAudioReceived).
 const TTS_RETRY_PAUSES_SEC = [3, 90, 90]
-const SCRIPTS = path.dirname(fileURLToPath(import.meta.url))
-const FONT = 'C\\:/Windows/Fonts/segoeui.ttf'
 const FFMPEG = findTool('ffmpeg')
 const FFPROBE = findTool('ffprobe')
 
@@ -45,21 +48,22 @@ await (commands[cmd] ?? (() => fail(`unknown command ${cmd}`)))()
 async function narrate() {
   mkdirSync(path.join(dir, 'audio'), { recursive: true })
   const durations = {}
+  const [tts, ...ttsPrefix] = edgeTtsCommand() ?? fail('edge-tts not found: pipx install edge-tts (or pip install edge-tts)')
   for (const step of steps) {
     const { id, say } = step
     const out = path.join(dir, 'audio', `${id}.mp3`)
     // A step's rate, pitch or volume overrides the scenario's.
     const voice = (key, neutral) => ['--' + key, step[key] ?? scenario[key] ?? neutral]
-    const args = ['-m', 'edge_tts', '--voice', scenario.voice ?? fail('scenario.json: set "voice"'),
+    const args = [...ttsPrefix, '--voice', scenario.voice ?? fail('scenario.json: set "voice"'),
       ...voice('rate', '+0%'), ...voice('pitch', '+0Hz'), ...voice('volume', '+0%'), '--text', say, '--write-media', out]
     let isSynthesised = false
     for (const pause of TTS_RETRY_PAUSES_SEC) {
-      isSynthesised = spawnSync('python', args, { cwd: dir }).status === 0
+      isSynthesised = spawnSync(tts, args, { cwd: dir }).status === 0
       if (isSynthesised) break
       console.log(`edge-tts failed on ${id}, retrying in ${pause}s`)
       await sleep(pause * 1000)
     }
-    if (!isSynthesised) run('python', args)
+    if (!isSynthesised) run(tts, args)
     durations[id] = probeDuration(out)
   }
   writeJson('durations.json', durations)
@@ -81,7 +85,7 @@ async function drive(capture) {
     if (from === 0) for (const action of [...scenario.setup ?? [], ...useCase.setup ?? []]) await act(action)
     await checkViewport(capture)
     if (capture) mkdirSync(path.join(dir, 'cases'), { recursive: true })
-    const ffmpeg = capture ? startCapture(capturePath(useCase.id)) : null
+    const ffmpeg = capture ? await startCapture(capturePath(useCase.id)) : null
     const t0 = capture ? await captureStarted(ffmpeg) : Date.now()
     const now = () => (Date.now() - t0) / 1000
     const caseMarks = {}
@@ -98,7 +102,7 @@ async function drive(capture) {
       if (ffmpeg) {
         ffmpeg.stdin.write('q')
         await new Promise((r) => ffmpeg.on('exit', r))
-        if (flags.window) windowClientArea(flags.window, false)
+        if (flags.window) await windowClientArea(flags.window, false, readInnerSize)
       }
     }
     for (const action of scenario.teardown ?? []) await act(action)
@@ -137,11 +141,12 @@ async function checkViewport(capture) {
   const viewport = JSON.parse(await agentView(['eval', '--json', "innerWidth + 'x' + innerHeight + '@' + devicePixelRatio"]))
   if (!capture) return writeJson('viewport.json', viewport)
   const rehearsed = existsSync(path.join(dir, 'viewport.json')) ? readJson('viewport.json') : fail('no viewport.json: run rehearse first')
-  if (viewport !== rehearsed) fail(`viewport ${viewport} differs from rehearse ${rehearsed}: --pos targets would miss. Size the window as in rehearse (pin-window.ps1) or rehearse again.`)
+  if (viewport !== rehearsed) fail(`viewport ${viewport} differs from rehearse ${rehearsed}: --pos targets would miss. Size the window as in rehearse (window pin) or rehearse again.`)
 }
 
 async function act([verb, ...args]) {
   if (verb === 'sleep') return sleep(Number(args[0]))
+  if (verb === 'window') return console.log(await windowAction(args))
   // An OS-level action agent-view cannot do, e.g. placing a window; a failure fails the run like a failed click.
   if (verb === 'run') {
     const r = spawnSync(args[0], args.slice(1), { encoding: 'utf8' })
@@ -364,11 +369,12 @@ function assemble() {
     const ms = Math.round((TITLE_SEC + start(step)) * 1000)
     return `[${i + 1 + cases.length}:a]adelay=${ms}|${ms}[a${i}]`
   })
-  const text = (file, size, y) => `drawtext=fontfile='${FONT}':textfile=${file}:fontsize=${size}:fontcolor=white:x=(w-tw)/2:y=${y}`
+  const font = platformFont()
+  const text = (file, size, y) => `drawtext=fontfile='${font.file}':textfile=${file}:fontsize=${size}:fontcolor=white:x=(w-tw)/2:y=${y}`
   const graph = [
     `[0:v]${text('title.txt', Math.round(H / 16), '(h/2)-th')},${text('subtitle.txt', Math.round(H / 32), '(h/2)+th/2+20')},format=yuv420p[title]`,
     ...fitted,
-    `${cases.map((_, i) => `[c${i}]`).join('')}concat=n=${cases.length}:v=1:a=0,pad=${W}:${H}:0:0:color=0x1e2430,${subtitlesFilter()}format=yuv420p[main]`,
+    `${cases.map((_, i) => `[c${i}]`).join('')}concat=n=${cases.length}:v=1:a=0,pad=${W}:${H}:0:0:color=0x1e2430,${subtitlesFilter(font.family)}format=yuv420p[main]`,
     `[title][main]concat=n=2:v=1:a=0[v]`,
     ...delays,
     `${steps.map((_, i) => `[a${i}]`).join('')}amix=inputs=${steps.length}:normalize=0,apad[a]`,
@@ -387,26 +393,63 @@ function belowStrip(captureHeight) {
 }
 
 // ASS colours are &HAABBGGRR, alpha 00 opaque; BorderStyle=3 puts a box in OutlineColour behind each line, readable over any UI.
-function subtitlesFilter() {
+function subtitlesFilter(fontFamily) {
   if (scenario.subtitles === false) return ''
   const { size = 18, color = '#ffffff', position = 'bottom', margin = 24 } = scenario.subtitles ?? {}
   const below = position === 'below'
   const bgr = color.replace(/^#(..)(..)(..)$/, '$3$2$1')
-  const style = ['FontName=Segoe UI', `FontSize=${size}`, `PrimaryColour=&H00${bgr}`, `BorderStyle=${below ? 1 : 3}`, 'OutlineColour=&H60000000',
+  const style = [`FontName=${fontFamily}`, `FontSize=${size}`, `PrimaryColour=&H00${bgr}`, `BorderStyle=${below ? 1 : 3}`, 'OutlineColour=&H60000000',
     `Outline=${below ? 0 : 4}`, 'Shadow=0', `Alignment=${position === 'top' ? 6 : 2}`, `MarginV=${below ? Math.round(size / 3) : margin}`]  // force_style over SRT takes legacy SSA codes: 6 is top centre, 2 bottom centre
   return `subtitles=subs.srt:force_style='${style.join(',')}',`
 }
 
-function startCapture(out) {
-  const region = flags.window ? windowClientArea(flags.window, true) : flags.region
-  const area = region ? (([x, y, rw, rh]) => ['-offset_x', x, '-offset_y', y, '-video_size', `${rw}x${rh}`])(region.split(',')) : []
+async function startCapture(out) {
+  const region = flags.window ? await windowClientArea(flags.window, true, readInnerSize) : flags.region
+  const { args, regionCrop } = captureInput(region)
   // yuv420p needs an even width and height: libx264 refuses to open on an odd one.
-  return spawn(FFMPEG, ['-y', '-f', 'gdigrab', '-framerate', '30', '-draw_mouse', '0', ...area, '-i', 'desktop',
-    '-vf', 'crop=trunc(iw/2)*2:trunc(ih/2)*2', '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '18', '-pix_fmt', 'yuv420p', out], { stdio: ['pipe', 'ignore', 'pipe'] })
+  return spawn(FFMPEG, ['-y', ...args,
+    '-vf', `${regionCrop}crop=trunc(iw/2)*2:trunc(ih/2)*2`, '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '18', '-pix_fmt', 'yuv420p', out], { stdio: ['pipe', 'ignore', 'pipe'] })
 }
 
-function windowClientArea(title, isTopmost) {
-  return run('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.join(SCRIPTS, 'window-client-area.ps1'), '-Title', title, '-Topmost', isTopmost ? '1' : '0']).trim()
+async function readInnerSize(title) {
+  return JSON.parse(await agentView(['eval', '--json', '--window', title, '[innerWidth, innerHeight]']))
+}
+
+async function windowAction([action, ...args]) {
+  const opt = optionReader(args)
+  if (action === 'place') return placeWindows({ left: opt('--left'), right: opt('--right'), splitX: opt('--split-x'), waitSec: Number(opt('--wait') ?? 0) })
+  if (action === 'pin') {
+    return pinWindow({ title: opt('--title') ?? fail('window pin: --title'), width: Number(opt('--width')), height: Number(opt('--height')), secondary: args.includes('--secondary') }, readInnerSize)
+  }
+  fail(`window: unknown action ${action}; supported: place, pin`)
+}
+
+function checkRequirements() {
+  const required = [
+    [Boolean(findTool('ffmpeg', true)) && Boolean(findTool('ffprobe', true)), 'ffmpeg and ffprobe (winget install Gyan.FFmpeg | brew install ffmpeg | apt install ffmpeg)'],
+    [Boolean(edgeTtsCommand()), 'edge-tts (pipx install edge-tts, or pip install edge-tts)'],
+    ...platformRequirements(),
+  ]
+  const optional = [[AGENT_VIEW !== undefined, 'agent-view (npm i -g @petukhovart/agent-view); without it fv.mjs drives the app over raw CDP']]
+  for (const [isMet, requirement] of [...required, ...optional]) console.log(`${isMet ? 'ok  ' : 'MISS'} ${requirement}`)
+  process.exit(required.every(([isMet]) => isMet) ? 0 : 1)
+}
+
+function edgeTtsCommand() {
+  const pythons = process.platform === 'win32' ? ['python', 'py', 'python3'] : ['python3', 'python']
+  const candidates = [['edge-tts'], ...pythons.map((python) => [python, '-m', 'edge_tts'])]
+  return candidates.find(([bin, ...prefix]) => spawnSync(bin, [...prefix, '--help']).status === 0)
+}
+
+function platformFont() {
+  if (process.platform === 'win32') return { file: 'C\\:/Windows/Fonts/segoeui.ttf', family: 'Segoe UI' }
+  if (process.platform === 'darwin') {
+    const file = ['/System/Library/Fonts/Supplemental/Arial.ttf', '/Library/Fonts/Arial.ttf', '/System/Library/Fonts/Helvetica.ttc'].find(existsSync)
+    return { file: file ?? fail('no Arial or Helvetica font found'), family: 'Arial' }
+  }
+  const match = spawnSync('fc-match', ['-f', '%{file}\n%{family[0]}', 'sans-serif'], { encoding: 'utf8' })
+  const [file, family] = match.status === 0 ? match.stdout.split('\n') : []
+  return { file: file?.replace(/:/g, '\\:') ?? fail('fc-match finds no sans-serif font: apt install fontconfig fonts-dejavu-core'), family: family ?? 'DejaVu Sans' }
 }
 
 function captureStarted(ffmpeg) {
@@ -425,9 +468,11 @@ function captureStarted(ffmpeg) {
   })
 }
 
-function findTool(name) {
-  const winget = path.join(process.env.LOCALAPPDATA ?? '', 'Microsoft', 'WinGet', 'Links', `${name}.exe`)
-  return spawnSync(name, ['-version']).status === 0 ? name : existsSync(winget) ? winget : fail(`${name} not found`)
+function findTool(name, isOptional = false) {
+  if (spawnSync(name, ['-version']).status === 0) return name
+  const winget = process.platform === 'win32' ? path.join(process.env.LOCALAPPDATA ?? '', 'Microsoft', 'WinGet', 'Links', `${name}.exe`) : undefined
+  if (winget && existsSync(winget)) return winget
+  return isOptional ? undefined : fail(`${name} not found: winget install Gyan.FFmpeg | brew install ffmpeg | apt install ffmpeg`)
 }
 
 function probeDuration(file) {
