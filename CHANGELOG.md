@@ -1,5 +1,17 @@
 # jig
 
+## 0.7.0
+
+### Minor Changes
+
+- [`0805c39`](https://github.com/PetukhovArt/jig/commit/0805c39d91915555e72087964a0fb1cb1135efea) Thanks [@PetukhovArt](https://github.com/PetukhovArt)! - jig-video records on macOS (avfoundation, System Events) and Linux X11 (x11grab, wmctrl) as well as on Windows: `fv.mjs check` reports this OS's requirements, `["window", "place" | "pin", ...]` scenario items replace the PowerShell calls, edge-tts resolves as a command or a python module, and the subtitle font comes from the OS.
+
+- [`4767880`](https://github.com/PetukhovArt/jig/commit/4767880c6a381556c4e781d4275921ef637860fe) Thanks [@PetukhovArt](https://github.com/PetukhovArt)! - jig-video keeps the project's choices in `.jig/video.json` with a setup that tests them; any speech command through `tts` (`{text}`, `{out}`), with unchanged lines reused on a rerun; `fv.mjs attach` posts the video on the PR (`gh pr comment --attach`) or the MR (GitLab uploads API), or copies it to a folder; `fv.mjs say` voices one test line.
+
+### Patch Changes
+
+- [`f5463bc`](https://github.com/PetukhovArt/jig/commit/f5463bc11976e52f73d71b6fcebdbe34b62c0b23) Thanks [@PetukhovArt](https://github.com/PetukhovArt)! - Review angle 16: test resources (fixtures, data files) are subjects and fixture data no test reads is a redundant candidate; new junk items (expected values copied from the implementation, a name its setup contradicts, a helper imported past the module's public interface); a contract keeps a test only with expected values from an independent source; `review-plan` prints `tests parts of the run:` so a test-reviewer searches the other partitions for duplicates; the runner passes diff parts without narrowing how a finder reads them ([#39](https://github.com/PetukhovArt/jig/issues/39))
+
 ## 0.6.0
 
 ### Minor Changes
