@@ -26,7 +26,7 @@ Each token is a predicate over a finding. **A finding is printed when it matches
 | `spec` | 15 | all |
 | `tests` | 16 | all |
 | `ux` | 18 | all |
-| `deepening` | the [deepening](#deepening) proposal, not an angle | outside threads |
+| `deepening` | the [deepening](#deepening) proposal, not an angle | its own thread |
 | `auto` | chosen by the diff shape (below) | by the chosen tokens |
 
 Example: `important,spec` runs the angles with ceiling `Important` plus 15; it prints every `Important`, plus any finding of angle 15.
@@ -62,7 +62,7 @@ The verify judge takes another model of its tier than the finder whose candidate
 
 ## Deepening
 
-Not an angle and not a thread: a proposal, not a defect; verify does not judge it. One agent, role `deepener`, gets the diff and atom `module-depth`, looks at new and heavily changed modules and returns one deepening, the one with the largest effect: the most leverage for callers and locality for maintainers (how many callers stop knowing what the interface would hide). The brief names the comment language: the text fields and the diagram labels are written in it. Format, with a budget of about 600 characters for the text ([deepener](../../jig/references/roles/deepener.md)): module, what to deepen in one sentence with its places as paths, effect, blast radius as counts with the paths apart, and `diagram`: a before and an after vertical Mermaid `flowchart TB` of at most 7 nodes (modules as nodes, the leaking ones in red, the deep one dark, edges only from imports the deepener read). The blast radius is reported but does not decide. Printed as its own section after the findings ([output](../steps/08-output.md#output)); in mode `pre-mr` it goes to Consider. With state on it is written to state as `deepening` ([schema](state-schema.md)) and posting puts it in the FYI note as its own section, the paths and the diagram under `<details>` ([posting](posting.md#8-the-fyi-note-one-per-merge-request)): never a thread, never in the tally, never under the outcome check.
+Not an angle and not a finding: a proposal, not a defect; verify does not judge it. One agent, role `deepener`, gets the diff and atom `module-depth`, looks at new and heavily changed modules and returns one deepening, the one with the largest effect: the most leverage for callers and locality for maintainers (how many callers stop knowing what the interface would hide). The brief names the comment language: the text fields and the diagram labels are written in it. Format, with a budget of about 600 characters for the text ([deepener](../../jig/references/roles/deepener.md)): module, what to deepen in one sentence with its places as paths, effect, blast radius as counts with the paths apart, and `diagram`: a before and an after vertical Mermaid `flowchart TB` of at most 7 nodes (modules as nodes, the leaking ones in red, the deep one dark, edges only from imports the deepener read). The blast radius is reported but does not decide. Printed as its own section after the findings ([output](../steps/08-output.md#output)); in mode `pre-mr` it goes to Consider. With state on it is written to state as `deepening` ([schema](state-schema.md)) and posting posts it as a thread of its own with the deepening chip, the paths and the diagram under `<details>` ([posting](posting.md#the-deepening-thread)): never in the tally, never under the outcome check, and its open thread never holds the merge.
 
 ## Re-review
 

@@ -16,4 +16,4 @@ Input: the worktree path, the merge request number, the state file path, the spe
 4. A body never travels as a command-line argument: always a payload file.
 5. Never approve, never set a label or a tracker status.
 
-Return the report line of `posting.md` (`postable`, `positioned`, `threads`, `verified`, `discussion ids written: N/M`), the created thread ids with their `file:line`, `promoted <anchor>` or `FYI`, and the resolved thread ids and posted replies, each `OK` or `ERR <reason>`.
+Return the report line of `posting.md` (`postable`, `positioned`, `threads`, `verified`, `discussion ids written: N/M`), the created thread ids with their `file:line`, `promoted <anchor>`, `deepening` or `FYI`, and the resolved thread ids and posted replies, each `OK` or `ERR <reason>`.

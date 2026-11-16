@@ -63,8 +63,15 @@ describe('review route', () => {
       { route: 'promoted', id: 'caused', severity: 'Nit', at: 'a.ts:10', victim: 'b.ts:3' },
       { route: 'fyi', id: 'false-cause', severity: 'Nit', at: 'b.ts:4' },
       { route: 'fyi', id: 'simplify', severity: 'optional', at: 'a.ts:10' },
-      { route: 'fyi', id: 'deepening', severity: 'deepening', at: '' },
+      { route: 'discussion', id: 'deepening', severity: 'deepening', at: '' },
     ])
+  })
+
+  it('posts the deepening as its own discussion once: one with a thread is not postable', () => {
+    const base = commit({ 'a.ts': lines(5, 'a') })
+    const head = commit({ 'a.ts': lines(6, 'a') })
+    expect(routeFindings(root, { findings: [], deepening: { module: 'm' } }, base, head)).toEqual([{ route: 'discussion', id: 'deepening', severity: 'deepening', at: '' }])
+    expect(routeFindings(root, { findings: [], deepening: { module: 'm', discussion_id: 'd9' } }, base, head)).toEqual([])
   })
 
   it('posts every spec deviation as one thread: an Important on a shown line leads, the rest are its items', () => {

@@ -33,9 +33,14 @@ interface RouteFinding {
   caused_by?: CausedBy | null
 }
 
+export interface StateDeepening {
+  module?: string
+  discussion_id?: string | null
+}
+
 export interface RouteState {
   findings?: RouteFinding[]
-  deepening?: unknown
+  deepening?: StateDeepening | null
 }
 
 interface DiffFile {
@@ -80,13 +85,17 @@ const fileAt = (root: string, sha: string, path: string): string[] | undefined =
   return result.ok ? result.stdout.split('\n').map((line) => line.trim()) : undefined
 }
 
+export const hasUnpostedDeepening = (state: RouteState): boolean =>
+  state.deepening !== undefined && state.deepening !== null && (state.deepening.discussion_id ?? undefined) === undefined
+
 const isPostable = (finding: RouteFinding, held: ReadonlySet<string>): boolean =>
   !held.has(finding.id ?? '') && (finding.status === 'optional' || (finding.status === 'open' && (finding.discussion_id ?? undefined) === undefined))
 
 /**
  * The posting route of every postable finding of a state against the merge request diff `<base>...<head>`:
  * a line the forge shows on the new side → `thread`; a diff file off its hunks, or an Important outside the diff → `discussion`;
- * outside the diff with a `caused_by` the diff proves → `promoted` on the cause line; the rest outside the diff, `optional` and the deepening → `fyi`.
+ * outside the diff with a `caused_by` the diff proves → `promoted` on the cause line; the rest outside the diff and `optional` → `fyi`.
+ * The deepening without a thread yet is a `discussion` of its own.
  * Spec findings share one thread: the lead (an Important first, on a shown line when one is) is a `thread` or a `discussion` carrying the heaviest severity,
  * every other one a `spec-item` of that lead; with a spec thread already open, every new one is a `spec-item` of it.
  */
@@ -128,7 +137,7 @@ export const routeFindings = (root: string, state: RouteState, base: string, hea
       }
     }
   }
-  return state.deepening === undefined || state.deepening === null ? routed : [...routed, { route: 'fyi', id: 'deepening', severity: 'deepening', at: '' }]
+  return hasUnpostedDeepening(state) ? [...routed, { route: 'discussion', id: 'deepening', severity: 'deepening', at: '' }] : routed
 }
 
 const ROUTES: readonly Route[] = ['thread', 'promoted', 'discussion', 'spec-item', 'fyi']

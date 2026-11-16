@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs'
+import { hasUnpostedDeepening, type StateDeepening } from './route'
 
 type Command = (args: string[]) => number
 
@@ -22,7 +23,7 @@ interface SummaryState {
   runs?: number
   tally?: Record<string, number>
   findings?: SummaryFinding[]
-  deepening?: unknown
+  deepening?: StateDeepening | null
 }
 
 const SUMMARY_WIDTH = 100
@@ -33,10 +34,15 @@ const short = (value: string | undefined, width: number): string => {
   return value.length > width ? `${value.slice(0, width - 1)}…` : value
 }
 
-const postableLine = (findings: readonly SummaryFinding[], hasDeepening: boolean): string => {
+const deepeningWord = (state: SummaryState): string => {
+  if (state.deepening === undefined || state.deepening === null) return 'no'
+  return hasUnpostedDeepening(state) ? 'yes' : 'posted'
+}
+
+const postableLine = (findings: readonly SummaryFinding[], deepening: string): string => {
   const unposted = findings.filter((finding) => finding.status === 'open' && finding.discussion_id === undefined).length
   const optional = findings.filter((finding) => finding.status === 'optional').length
-  return `postable: ${unposted} open without a thread · ${optional} optional · deepening ${hasDeepening ? 'yes' : 'no'}`
+  return `postable: ${unposted} open without a thread · ${optional} optional · deepening ${deepening}`
 }
 
 export const summarizeState = (state: SummaryState): string => {
@@ -50,7 +56,7 @@ export const summarizeState = (state: SummaryState): string => {
   return [
     `key ${state.key ?? '-'} · target ${state.target ?? '-'} · runs ${state.runs ?? 0} · base ${short(state.base_sha, SHA_WIDTH)} · last reviewed ${short(state.last_reviewed_sha, SHA_WIDTH)} · diff hash ${short(state.diff_hash, SHA_WIDTH)}`,
     `tally: ${tally === '' ? 'all zero' : tally}`,
-    postableLine(findings, state.deepening !== undefined),
+    postableLine(findings, deepeningWord(state)),
     `findings: ${findings.length}${byStatus.size > 0 ? ` (${[...byStatus.entries()].map(([status, count]) => `${status} ${count}`).join(', ')})` : ''} · deepening ${state.deepening === undefined ? 'no' : 'yes'}`,
     ...findings.map(
       (finding) =>

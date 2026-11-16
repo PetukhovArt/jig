@@ -8261,6 +8261,7 @@ var fileAt = (root, sha, path2) => {
   const result = git(["show", `${sha}:${path2}`], root);
   return result.ok ? result.stdout.split("\n").map((line) => line.trim()) : void 0;
 };
+var hasUnpostedDeepening = (state) => state.deepening !== void 0 && state.deepening !== null && (state.deepening.discussion_id ?? void 0) === void 0;
 var isPostable = (finding, held) => !held.has(finding.id ?? "") && (finding.status === "optional" || finding.status === "open" && (finding.discussion_id ?? void 0) === void 0);
 var routeFindings = (root, state, base, head, hold = []) => {
   const diff = parseDiff(gitOut2(root, ["-c", "core.quotePath=false", "diff", "--no-color", "--no-ext-diff", "-M", `-U${FORGE_CONTEXT_LINES}`, `${base}...${head}`]));
@@ -8300,7 +8301,7 @@ var routeFindings = (root, state, base, head, hold = []) => {
       }
     }
   }
-  return state.deepening === void 0 || state.deepening === null ? routed : [...routed, { route: "fyi", id: "deepening", severity: "deepening", at: "" }];
+  return hasUnpostedDeepening(state) ? [...routed, { route: "discussion", id: "deepening", severity: "deepening", at: "" }] : routed;
 };
 var ROUTES = ["thread", "promoted", "discussion", "spec-item", "fyi"];
 var formatRoutes = (routed) => [
@@ -8410,10 +8411,14 @@ var short = (value, width) => {
   if (value === void 0) return "-";
   return value.length > width ? `${value.slice(0, width - 1)}\u2026` : value;
 };
-var postableLine = (findings, hasDeepening) => {
+var deepeningWord = (state) => {
+  if (state.deepening === void 0 || state.deepening === null) return "no";
+  return hasUnpostedDeepening(state) ? "yes" : "posted";
+};
+var postableLine = (findings, deepening) => {
   const unposted = findings.filter((finding) => finding.status === "open" && finding.discussion_id === void 0).length;
   const optional = findings.filter((finding) => finding.status === "optional").length;
-  return `postable: ${unposted} open without a thread \xB7 ${optional} optional \xB7 deepening ${hasDeepening ? "yes" : "no"}`;
+  return `postable: ${unposted} open without a thread \xB7 ${optional} optional \xB7 deepening ${deepening}`;
 };
 var summarizeState = (state) => {
   const findings = state.findings ?? [];
@@ -8423,7 +8428,7 @@ var summarizeState = (state) => {
   return [
     `key ${state.key ?? "-"} \xB7 target ${state.target ?? "-"} \xB7 runs ${state.runs ?? 0} \xB7 base ${short(state.base_sha, SHA_WIDTH)} \xB7 last reviewed ${short(state.last_reviewed_sha, SHA_WIDTH)} \xB7 diff hash ${short(state.diff_hash, SHA_WIDTH)}`,
     `tally: ${tally === "" ? "all zero" : tally}`,
-    postableLine(findings, state.deepening !== void 0),
+    postableLine(findings, deepeningWord(state)),
     `findings: ${findings.length}${byStatus.size > 0 ? ` (${[...byStatus.entries()].map(([status, count]) => `${status} ${count}`).join(", ")})` : ""} \xB7 deepening ${state.deepening === void 0 ? "no" : "yes"}`,
     ...findings.map(
       (finding) => `  ${finding.status ?? "?"} \xB7 ${finding.severity ?? "?"} \xB7 angle ${finding.angle ?? "?"} \xB7 ${finding.file ?? "?"}:${finding.line ?? "?"} \xB7 thread ${short(finding.discussion_id, SHA_WIDTH)} \xB7 ${finding.id ?? "?"} \xB7 ${short(finding.summary, SUMMARY_WIDTH)}`
@@ -8612,7 +8617,7 @@ var defaultAdapter = (forge, repoDir) => ({
 });
 
 // src/review-cycle/filter.ts
-var OPTIONAL_OPENING = /^\*\*(\[[^\]]*(Nit|Pre-existing)|(Улучшения|Упрощения) — по желанию)/;
+var OPTIONAL_OPENING = /^\*\*(\[[^\]]*(Nit|Pre-existing|Deepening)|(Улучшения|Упрощения) — по желанию)/;
 var isOptionalNote = (note) => OPTIONAL_OPENING.test(note.body.trim());
 var FYI_MARKER = "<!-- review-fyi -->";
 var isFyiNote = (note) => note.body.includes(FYI_MARKER);

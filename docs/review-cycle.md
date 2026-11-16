@@ -7,7 +7,7 @@
 The verdict folds one outcome per merge request: `returned`, `ready`, `approved` or `held`.
 
 - **An Important that stands returns the merge request.** A posted Important the outcome check left `open` or `skipped`, in a thread still open, means the merge request waits on the developer: `returned`, whether this pass reviewed it or skipped it. A developer who pushes a commit that does not fix it and asks for review again gets it back, with one note in the thread: ``after `<sha>` the defect stands: <the line>``, once per commit. A merge request moved back to review by hand with no commit and no reply (`SKIP unchanged`, or `SKIP stale` under `stale=on`) goes back too, with nothing posted; `queue` prints the outcome as `outcome=` on every `SKIP` line, and the summary names these as `returned without review`. A `held` here would leave the ref in review, and the developer waiting on a review that has already decided.
-- **Nit, Pre-existing and optional items never return or hold a merge request.** An `unverified` Important does not return it either: the check could not tell.
+- **Nit, Pre-existing, the deepening thread and optional items never return or hold a merge request.** An `unverified` Important does not return it either: the check could not tell.
 - **A dispute left to a human** is `held`: it waits on the human.
 - **A reply is never skipped as stale.** A developer note in my open thread, or under my FYI note, after my last note there makes the merge request actionable. An answer under the FYI note, or a new commit, rechecks the optional items: the done ones are ticked in the note.
 

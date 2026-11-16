@@ -15,4 +15,9 @@ describe('review state summary', () => {
     })
     expect(summary.split('\n')).toContain('postable: 2 open without a thread · 1 optional · deepening yes')
   })
+
+  it('leaves a deepening with a thread out of the postable set', () => {
+    const summary = summarizeState({ findings: [], deepening: { module: 'x', discussion_id: 'd1' } })
+    expect(summary.split('\n')).toContain('postable: 0 open without a thread · 0 optional · deepening posted')
+  })
 })

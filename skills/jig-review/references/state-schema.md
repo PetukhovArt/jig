@@ -26,7 +26,7 @@
       "status": "open"
     }
   ],
-  "deepening": { "module": "…", "what": "…", "places": ["…"], "effect": "…", "blast_radius": "N modules, M tests", "blast_paths": ["…"], "diagram": { "before": "flowchart TB …", "after": "flowchart TB …" }, "sha": "…" }
+  "deepening": { "module": "…", "what": "…", "places": ["…"], "effect": "…", "blast_radius": "N modules, M tests", "blast_paths": ["…"], "diagram": { "before": "flowchart TB …", "after": "flowchart TB …" }, "sha": "…", "discussion_id": "…" }
 }
 ```
 
@@ -52,7 +52,7 @@
 - **`source_branch`** = the source branch of the merge request (posting resolves the merge request by it; a re-review checks it out).
 - **`base_sha`** = the base of the reviewed diff resolved to a sha (`git rev-parse <base>`). Updated by every run together with `last_reviewed_sha` and `diff_hash`: the triple describes one patch. Scope recovery after a force-push reads it whole ([re-review](../steps/09-rereview.md)); absent or inconsistent with `diff_hash`: the scope falls back to the full diff.
 - **`discussion_id`**: set on posting; absent before.
-- **`deepening`**: the latest deepening proposal ([selector](selector.md#deepening)): the four parts of its printed item, `diagram` (the deepener's before and after Mermaid sources; may be absent in a state an earlier run wrote) and `sha`, the HEAD it was proposed on. Not a finding: no status, no thread, not in the tally. Its texts are in the comment language ([comment texts](../steps/07-comments.md)), code names as they are. Posting puts it in the FYI note. **Absent = no proposal yet.**
+- **`deepening`**: the latest deepening proposal ([selector](selector.md#deepening)): the four parts of its printed item, `diagram` (the deepener's before and after Mermaid sources; may be absent in a state an earlier run wrote) and `sha`, the HEAD it was proposed on. Not a finding: no status, not in the tally, never under the outcome check. Its texts are in the comment language ([comment texts](../steps/07-comments.md)), code names as they are. Posting posts it as a thread of its own ([posting](posting.md#the-deepening-thread)) and writes that thread's id into `discussion_id`; absent = not posted yet, so the next posting posts it (a state an earlier engine wrote, whose proposal sat in the FYI note, included). A run that replaces the proposal keeps `discussion_id` when `module` is the same and drops it otherwise: the new proposal gets a new thread, the old one stays with the developer. **Absent = no proposal yet.**
 - **`category`** = the kebab slug of the angle, ONLY one of five: `correctness`, `security`, `efficiency`, `spec`, `conventions` ([severity](../gates/severity.md#category)). Invent no others. A finding an earlier run wrote may hold a slug of a removed angle (`reuse`, `simplification`, `altitude`, `architecture`); it stays as written.
 - **`severity_class`** = the class code from the taxonomy in force; **`severity_gate`** = the code of the gate that cut the severity below the class level, otherwise `null` ([severity](../gates/severity.md#class-code)). Adopted threads have neither.
 - **`mrComment`** exists on every finding that passed the verify gates; [comment texts](../steps/07-comments.md) write it.

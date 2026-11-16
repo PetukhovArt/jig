@@ -46,7 +46,7 @@ Threads: "Read its threads" in `forge.md`. Your user: `glab api user` (`.id`) or
 
 - **yours** = the author of the first note is you and that note is not a system note. **The first note owns the thread**: someone else's thread stays theirs even when you replied in it;
 - **unresolved** = some note is resolvable and not resolved (GitHub: the review thread is not resolved);
-- **unknown** = its id matches no `discussion_id` in state.
+- **unknown** = its id matches no `discussion_id` in state, the deepening's included.
 
 Each adopted thread adds a finding: `discussion_id` = the thread id, `status: "open"`, `file`/`line` from the position of the first note (no position: a note outside the diff, skip it), `summary` = the first line of the note, `mrComment` = the note body, `category: "correctness"`, `severity: "Important"`, `verdict: "CONFIRMED"`, `id` = `<file>:<line>:adopted-<thread id>`.
 

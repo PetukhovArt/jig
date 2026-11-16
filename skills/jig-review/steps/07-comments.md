@@ -20,7 +20,7 @@ You write short comments yourself from the judge's evidence, without a subagent 
 
 The suggestion block is outside the limit.
 
-**The chip opens the body**, every form, counter-replies aside: nothing before `**[`, not a path, not a heading. A review cycle tells an optional thread (Nit, Pre-existing) from a blocking one by the first line of its opening note, read off the forge: an open Nit never withholds the merge, and a Nit whose chip is not first counts as blocking.
+**The chip opens the body**, every form, counter-replies aside: nothing before `**[`, not a path, not a heading. A review cycle tells an optional thread (Nit, Pre-existing, the deepening's `**[💡 Deepening]**`) from a blocking one by the first line of its opening note, read off the forge: an open Nit never withholds the merge, and a Nit whose chip is not first counts as blocking.
 
 - **Nit / Pre-existing: up to 4 lines / ~350 characters.** No fix in prose, only a ` ```suggestion ` block.
 - **Important: up to 8 lines / ~800 characters**, and two things are required that the author gets nowhere else:

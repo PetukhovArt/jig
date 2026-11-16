@@ -164,13 +164,18 @@ describe('jig review-cycle queue: filter rules', () => {
     expect(queueLines({ mrs, adapter: adapterQueue([row(1)], 'off') }).map(decisionOf)).toEqual(['ACTIONABLE'])
   })
 
-  it('does not call a re-review stale when a commit landed after my last note, or when my only open thread is a Nit', () => {
+  it('does not call a re-review stale when a commit landed after my last note, or when my only open thread is a Nit or the deepening', () => {
     const newerCommit = { commits: ['2026-10-11T10:00:00Z'], discussions: [MY_OPEN_THREAD] }
     const nitOnly = {
       commits: ['2026-10-09T10:00:00Z'],
       discussions: [thread('d2', { author: ME, at: '2026-10-10T10:00:00Z', body: '**[🟡 Nit]** name', open: true })],
     }
-    expect(queueLines({ mrs: { 1: newerCommit, 2: nitOnly }, adapter: adapterQueue([row(1), row(2)]) }).map(decisionOf)).toEqual([
+    const deepeningOnly = {
+      commits: ['2026-10-09T10:00:00Z'],
+      discussions: [thread('d3', { author: ME, at: '2026-10-10T10:00:00Z', body: '**[💡 Deepening]** a proposal', open: true })],
+    }
+    expect(queueLines({ mrs: { 1: newerCommit, 2: nitOnly, 3: deepeningOnly }, adapter: adapterQueue([row(1), row(2), row(3)]) }).map(decisionOf)).toEqual([
+      'ACTIONABLE',
       'ACTIONABLE',
       'ACTIONABLE',
     ])
@@ -340,11 +345,13 @@ describe('jig review-cycle standing', () => {
         finding('e', 'Important', 'unverified', 'd1'),
         finding('f', 'Important', 'open', null),
       ],
+      deepening: { module: 'm', discussion_id: 'd4' },
     })
     const discussions = [
       MY_OPEN_THREAD,
       thread('d2', { author: ME, at: '2026-10-10T10:00:00Z', body: '**[🔴 Important]** other', open: true }),
       thread('d3', { author: ME, at: '2026-10-10T10:00:00Z', body: '**[🔴 Important]** resolved', open: false }),
+      thread('d4', { author: ME, at: '2026-10-10T10:00:00Z', body: '**[💡 Deepening]** a proposal', open: true }),
     ]
     expect(run({ mrs: { 1: { discussions } } }, ['standing', '1']).out).toEqual(['2'])
     expect(run({ mrs: { 2: { discussions } } }, ['standing', '2']).out).toEqual(['0'])
@@ -352,9 +359,10 @@ describe('jig review-cycle standing', () => {
 })
 
 describe('jig review-cycle unresolved', () => {
-  it('counts open threads by anyone and ignores those opened with a Nit or Pre-existing chip', () => {
+  it('counts open threads by anyone and ignores those opened with a Nit, Pre-existing or Deepening chip', () => {
     const discussions = [
       MY_OPEN_THREAD,
+      thread('d7', { author: ME, at: '2026-10-10T10:00:00Z', body: '**[💡 Deepening]** a proposal, not a finding', open: true }),
       thread('d2', { author: ME, at: '2026-10-10T10:00:00Z', body: '**[🟡 Nit]** rename', open: true }),
       thread('d3', { author: ME, at: '2026-10-10T10:00:00Z', body: '**[🟣 Pre-existing]** old bug', open: true }),
       thread('d4', { author: DEV, at: '2026-10-10T10:00:00Z', body: 'question', open: true }),

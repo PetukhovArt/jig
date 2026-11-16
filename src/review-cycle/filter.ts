@@ -3,10 +3,10 @@ import type { Finding } from './state'
 import type { Outcome } from './verdict'
 
 /**
- * A thread is optional when its opening note starts with the Nit or Pre-existing chip. The two
+ * A thread is optional when its opening note starts with the Nit, Pre-existing or Deepening chip. The two
  * header forms are the optional-items note as an older engine posted it, before it carried the chip.
  */
-export const OPTIONAL_OPENING = /^\*\*(\[[^\]]*(Nit|Pre-existing)|(Улучшения|Упрощения) — по желанию)/
+export const OPTIONAL_OPENING = /^\*\*(\[[^\]]*(Nit|Pre-existing|Deepening)|(Улучшения|Упрощения) — по желанию)/
 
 export const isOptionalNote = (note: Note): boolean => OPTIONAL_OPENING.test(note.body.trim())
 

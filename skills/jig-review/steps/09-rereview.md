@@ -92,6 +92,10 @@ The last note of an unresolved thread is the developer's and the outcome is not 
 
 Form and limits as for a counter-reply. The reply returns in the output with its `discussion_id`; posting sends it. My note is already the last in the thread → do not reply: the developer has not answered it yet, unless a commit answered it ([below](#an-important-that-stands-after-a-new-commit)).
 
+### The deepening thread
+
+The deepening's `discussion_id` is a thread like a Nit's, without a finding behind it. A developer note there after my last one gets a [reply](#reply-to-every-reply) judged against the code as under a Nit thread: the argument holds → say so in one sentence; it does not → once, what the proposal still gains, by symbol. No status, no outcome check, no learning, no "dispute: needs a human": a proposal waits on nobody. The run never resolves it; the developer does. The reply returns with its `discussion_id` like any thread reply.
+
 ### An Important that stands after a new commit
 
 The developer may answer with a commit and no note: they push, ask for review again and wait. Silence on such a thread leaves them waiting on a review that already decided. Reply once when all hold:
