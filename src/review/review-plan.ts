@@ -141,7 +141,7 @@ export interface ProjectReviewConfig {
   partitions: string | undefined
 }
 
-const PROJECT_KEYS = ['$schema', 'iterationsMemory', 'discover', 'review', 'severity', 'route', 'angles', 'tiers', 'maxParallel', 'layout', 'testPaths', 'partitions']
+const PROJECT_KEYS = ['$schema', 'iterationsMemory', 'discover', 'review', 'mr', 'severity', 'route', 'angles', 'tiers', 'maxParallel', 'layout', 'testPaths', 'partitions']
 
 const readPolicy = (validator: Validator, value: unknown): string | undefined => {
   const text = validator.string(value, '$.partitions')

@@ -7080,7 +7080,7 @@ var countLines = (stats, root) => {
   }
   return { lines: lines2, counted, excluded };
 };
-var PROJECT_KEYS = ["$schema", "iterationsMemory", "discover", "review", "severity", "route", "angles", "tiers", "maxParallel", "layout", "testPaths", "partitions"];
+var PROJECT_KEYS = ["$schema", "iterationsMemory", "discover", "review", "mr", "severity", "route", "angles", "tiers", "maxParallel", "layout", "testPaths", "partitions"];
 var readPolicy = (validator, value) => {
   const text3 = validator.string(value, "$.partitions");
   if (text3 === void 0) return void 0;

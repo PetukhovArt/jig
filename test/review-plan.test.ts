@@ -220,6 +220,20 @@ describe('project config', () => {
     expect(() => parseProjectConfig('{ "partitions": 3 }', '.jig/review.jsonc')).toThrow('.jig/review.jsonc: $.partitions: expected a string')
     expect(() => parseProjectConfig('{ "partitions": "  " }', '.jig/review.jsonc')).toThrow('$.partitions: expected a non-empty text')
   })
+
+  it('parses the documented default config, every key the agent reads included', () => {
+    const reference = readFileSync(join(__dirname, '../skills/jig-review/references/project-config.md'), 'utf8')
+    const documented = /```jsonc\n([\s\S]*?)\n```/.exec(reference)?.[1] ?? ''
+    expect(parseProjectConfig(documented, '.jig/review.jsonc')).toEqual({
+      layout: 'auto',
+      angles: {},
+      projectAngles: [],
+      grades: {},
+      maxParallel: 6,
+      testPaths: [],
+      partitions: undefined,
+    })
+  })
 })
 
 describe('buildReport on a repository', () => {
