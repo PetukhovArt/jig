@@ -6,9 +6,8 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
-  pull-requests: write
-  actions: write
+  contents: read
+  pull-requests: read
 
 jobs:
   merge-version-pr:
@@ -17,20 +16,28 @@ jobs:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       GH_REPO: ${{ github.repository }}
     steps:
-      - name: Merge the version pull request when main is green
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          ssh-key: ${{ secrets.RELEASE_DEPLOY_KEY }}
+      - name: Land the version pull request when main is green
         run: |
           pr=$(gh pr list --head changeset-release/main --state open --json number -q '.[0].number')
           if [ -z "$pr" ]; then
             echo "no version pull request: nothing to release"
             exit 0
           fi
-          main=$(gh api "repos/$GH_REPO/commits/main" -q .sha)
+          main=$(git rev-parse HEAD)
           ci=$(gh run list --workflow ci.yml --branch main --commit "$main" --limit 1 --json conclusion -q '.[0].conclusion')
           if [ "$ci" != "success" ]; then
             echo "::error::CI on main $main is '${ci:-not run}': no release this week"
             exit 1
           fi
-          gh pr merge "$pr" --squash
-          # A merge made with GITHUB_TOKEN starts no push workflow, only workflow_dispatch:
-          # https://docs.github.com/en/actions/concepts/security/github_token#when-github_token-triggers-workflow-runs
-          gh workflow run release.yml --ref main
+          # main takes changes only through a pull request its owner approved, and GITHUB_TOKEN cannot
+          # get past that rule; the RELEASE_DEPLOY_KEY deploy key can, and its push also starts
+          # `Release`, which a push made with GITHUB_TOKEN does not. The changesets action rebuilds the
+          # branch as one commit on top of main after every push, so a fast-forward lands it and marks
+          # the pull request merged; a branch not on top of main yet is refused until the next run.
+          git fetch origin changeset-release/main
+          git push origin FETCH_HEAD:main
