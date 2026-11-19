@@ -215,7 +215,7 @@ Atoms are those short rules, indexed in [`skills/jig/SKILL.md`](skills/jig/SKILL
 
 <!-- roles:start -->
 
-<details><summary><b>All 21 roles</b></summary>
+<details><summary><b>All 22 roles</b></summary>
 
 | role | tier / effort | when |
 | --- | --- | --- |
@@ -236,6 +236,7 @@ Atoms are those short rules, indexed in [`skills/jig/SKILL.md`](skills/jig/SKILL
 | [reflect-judgment](skills/jig/references/roles/reflect-judgment.md) | deep/high | Use in the weekly loop (references/loop.md) to turn jig loop candidates into proposals through the judgment lens: mistakes that need a better atom or flow step. |
 | [reflect-synthesizer](skills/jig/references/roles/reflect-synthesizer.md) | deep/high | Use in the weekly loop (references/loop.md) to merge the three reflect tables and filter proposals into accepted, rejected and backlog. |
 | [reflect-tooling](skills/jig/references/roles/reflect-tooling.md) | deep/high | Use in the weekly loop (references/loop.md) to turn jig loop candidates into proposals through the tooling lens: mistakes a check, message or tool fix can stop. |
+| [review-cycle-pass](skills/jig/references/roles/review-cycle-pass.md) | standard/high | Use in jig-review-cycle, one per invocation, to run a whole pass away from the invoking session and return only its summary. Orchestrates; never reviews or posts by hand. |
 | [review-runner](skills/jig/references/roles/review-runner.md) | deep/medium | Use in jig-review-cycle, one per actionable merge request in its worktree, or from jig-review when the plan has finders, to run jig-review end to end and return its proof of run. Never posts. |
 | [synthesizer](skills/jig/references/roles/synthesizer.md) | deep/high | Use in investigation (Why step) to reconcile the investigators' evidence into found, inferred and unknown. Hunts for gaps; explainer merges code maps for How instead. |
 | [test-reviewer](skills/jig/references/roles/test-reviewer.md) | standard/medium | Use in jig-review, one per partition whose diff adds or changes tests (kind tests), to find wrong and redundant tests for angle 16. Reports only; never deletes or edits a test. |

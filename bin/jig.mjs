@@ -7846,8 +7846,9 @@ import { appendFileSync as appendFileSync5, existsSync as existsSync18, mkdirSyn
 import { homedir as homedir3 } from "node:os";
 import { basename as basename7, dirname as dirname15, join as join35 } from "node:path";
 import { parseArgs as parseArgs4 } from "node:util";
-var ROLES = ["runner", "finder", "judge", "deepener", "outcome", "poster", "other"];
+var ROLES = ["pass", "runner", "finder", "judge", "deepener", "outcome", "poster", "other"];
 var ROLE_PATTERNS = [
+  ["pass", /^cycle pass\b/i],
   ["runner", /^review\b/i],
   ["finder", /^finder\b/i],
   ["deepener", /^deepen/i],

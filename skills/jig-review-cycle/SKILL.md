@@ -10,9 +10,15 @@ Plugin root: `${CLAUDE_PLUGIN_ROOT}` when the agent sets it, otherwise the direc
 
 Discover → filter → review → post → verdict. You are the orchestrator: you **never review or post by hand**. You spawn subagents, own the worktrees and the verdict. What triggers a review and where a verdict is recorded belongs to the team's **process adapter** (`<root>/skills/jig/references/process-adapter.md`); this file never names a label or a tracker status. The deterministic parts are `jig review-cycle <sub>`; never recompute what it prints.
 
+## Pass agent: the invoking session only relays
+
+The session that invokes this skill does not run the pass: under a loop every report, plan and tool output of a pass would stay in its context for every later pass. It spawns one subagent of role `review-cycle-pass` in the background, described `Cycle pass`, with a prompt that begins `Read <root>/skills/jig/references/roles/review-cycle-pass.md and follow it.`, then the brief: the path of this file, the directory the skill was invoked from, and the arguments verbatim, with a focus the session established in conversation appended as focus text. It ends its turn and, when the pass agent returns, shows the returned text verbatim and nothing else.
+
+Everything below is the pass agent's. A brief that names role `review-cycle-pass` means you are it: never spawn another one. An agent without subagents runs the pass in the invoking session itself.
+
 ## Output: keep the main context lean
 
-The user-facing text of a pass is the [summary](#4-summary) (when everything was skipped, its one-line form), plus the reason when discovery aborts. Per-merge-request progress is not narrated: under a loop each restated line stays in the main context for every later pass.
+The text a pass returns is the [summary](#4-summary) (when everything was skipped, its one-line form), plus the reason when discovery aborts. Per-merge-request progress is not narrated.
 
 **While the pass runs**: each turn that ends after a merge request finishes (its review returned and was acted on) prints only the list of merge requests finished so far, one per line, and no other text:
 

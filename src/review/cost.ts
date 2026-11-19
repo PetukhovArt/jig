@@ -13,10 +13,11 @@ export { CACHE_MULTIPLIERS, DEFAULT_PRICES, priceOf }
 
 type Command = (args: string[]) => number
 
-export const ROLES = ['runner', 'finder', 'judge', 'deepener', 'outcome', 'poster', 'other'] as const
+export const ROLES = ['pass', 'runner', 'finder', 'judge', 'deepener', 'outcome', 'poster', 'other'] as const
 export type Role = (typeof ROLES)[number]
 
 const ROLE_PATTERNS: readonly [Role, RegExp][] = [
+  ['pass', /^cycle pass\b/i],
   ['runner', /^review\b/i],
   ['finder', /^finder\b/i],
   ['deepener', /^deepen/i],

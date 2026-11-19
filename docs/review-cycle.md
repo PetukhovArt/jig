@@ -25,7 +25,7 @@ Without one, the queue is the forge's open merge requests where you are a review
 
 The skill never schedules itself (`jig loop` is the weekly journal loop, not this). Recurrence is the caller's:
 
-- Claude Code: `/loop 2h /jig-review-cycle`. A new focus later: run `/jig-review-cycle <focus>` once; it is stored in `.jig/runs/review-cycle/focus.md` and every later firing reads it.
+- Claude Code: `/loop 2h /jig-review-cycle`. Each firing spawns one pass agent that runs the whole pass, so the looping session keeps only the summaries. A new focus later: run `/jig-review-cycle <focus>` once; it is stored in `.jig/runs/review-cycle/focus.md` and every later firing reads it.
 - cron, a CI schedule or Task Scheduler: a headless agent run of the skill in the repository, e.g. `claude -p "/jig-review-cycle"` every two hours. The pass is idempotent, so an overlapping firing skips what the previous one is still reviewing.
 
 ## Cost

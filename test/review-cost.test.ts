@@ -68,6 +68,7 @@ describe('dollarsOf', () => {
 describe('roles and merge requests from descriptions', () => {
   it.each([
     ['Review MR !12', 'runner', '12'],
+    ['Cycle pass', 'pass', undefined],
     ['Finder bugs-1 MR454', 'finder', '454'],
     ['Judge Important candidate MR452', 'judge', '452'],
     ['Deepener MR452', 'deepener', '452'],
