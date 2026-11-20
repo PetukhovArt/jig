@@ -1,7 +1,7 @@
 import { spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { adapterCommand, nativePath, parseQueue } from '../src/review-cycle/adapter'
 import type { Exec, ExecResult } from '../src/review-cycle/exec'
@@ -239,13 +239,45 @@ describe('jig review-cycle queue: filter rules', () => {
     expect(line).toContain('standing=2')
   })
 
-  it('skips a merge request whose review worktree is live', () => {
-    mkdirSync(join(root, '..', `${root.split(/[\\/]/).pop() ?? ''}-review-1`), { recursive: true })
-    try {
-      expect(queueLines({ mrs: { 1: {} }, adapter: adapterQueue([row(1)]) }).map(decisionOf)).toEqual(['SKIP busy'])
-    } finally {
-      rmSync(join(root, '..', `${root.split(/[\\/]/).pop() ?? ''}-review-1`), { recursive: true, force: true })
+  describe('review worktree of a merge request', () => {
+    const worktreePath = (iid: number): string => join(root, '..', `${basename(root)}-review-${iid}`)
+    const addWorktree = (iid: number): string => {
+      spawnSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '--allow-empty', '-m', 'init'], { cwd: root })
+      const path = worktreePath(iid)
+      expect(spawnSync('git', ['worktree', 'add', '-q', '--detach', path], { cwd: root }).status).toBe(0)
+      return path
     }
+    const queueOne = (): string[] => queueLines({ mrs: { 1: {} }, adapter: adapterQueue([row(1)]) })
+
+    afterEach(() => {
+      rmSync(worktreePath(1), { recursive: true, force: true })
+    })
+
+    it('skips a merge request whose review worktree git still has registered', () => {
+      addWorktree(1)
+      expect(queueOne().map(decisionOf)).toEqual(['SKIP busy'])
+    })
+
+    it('does not call an empty leftover folder git does not know busy', () => {
+      mkdirSync(worktreePath(1))
+      expect(queueOne().map(decisionOf)).toEqual(['ACTIONABLE'])
+    })
+
+    it('blocks a merge request whose review path holds a non-empty folder git does not know, and keeps the folder', () => {
+      mkdirSync(worktreePath(1))
+      writeFileSync(join(worktreePath(1), 'keep.txt'), 'x')
+      const [line] = queueOne()
+      expect(decisionOf(line)).toBe('BLOCKED')
+      expect(line).toContain('not a registered worktree')
+      expect(existsSync(join(worktreePath(1), 'keep.txt'))).toBe(true)
+    })
+
+    it('prunes a registered worktree whose folder is gone instead of staying busy', () => {
+      const path = addWorktree(1)
+      rmSync(path, { recursive: true, force: true })
+      expect(queueOne().map(decisionOf)).toEqual(['ACTIONABLE'])
+      expect(spawnSync('git', ['worktree', 'list'], { cwd: root, encoding: 'utf8' }).stdout).not.toContain('-review-1')
+    })
   })
 
   it('does not call a re-review stale when the developer answered my open thread without a commit', () => {

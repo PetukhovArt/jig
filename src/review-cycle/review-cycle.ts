@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { basename, relative, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 import { loadConfig, type ForgeName } from '../core/config'
@@ -127,8 +127,24 @@ const hasReviewedDiff = (root: string, head: Head, reviewedHash: string): boolea
   }
 }
 
-const isBusy = (repo: Repo, worktree: string): boolean =>
-  existsSync(worktree) || worktreesOf(repo.mainRoot).some((entry) => samePath(entry.path, worktree))
+type Occupancy = 'free' | 'busy' | 'foreign'
+
+/**
+ * Who holds the review worktree path: 'busy' only when git has it registered as a worktree. A registered
+ * worktree whose folder is gone is pruned. An empty leftover folder is free (`git worktree add` accepts it);
+ * a non-empty folder git does not know is 'foreign': never deleted, reported.
+ */
+const occupancyOf = (repo: Repo, worktree: string): Occupancy => {
+  const entry = worktreesOf(repo.mainRoot).find((candidate) => samePath(candidate.path, worktree))
+  if (entry !== undefined && !entry.isPrunable) return 'busy'
+  if (entry !== undefined) git(['worktree', 'prune'], repo.mainRoot)
+  if (!existsSync(worktree)) return 'free'
+  try {
+    return readdirSync(worktree).length === 0 ? 'free' : 'foreign'
+  } catch {
+    return 'foreign'
+  }
+}
 
 export type QueueEntry =
   | { kind: 'actionable'; row: QueueRow; worktree: string; state: string | undefined; standing: number; threads: ThreadFacts; lastCommit: string | undefined }
@@ -139,7 +155,8 @@ const judgeRow = (row: QueueRow, adapter: ProcessAdapter, repos: (dir: string) =
   try {
     const repo = repos(row.repoDir)
     const worktree = reviewWorktreePath(repo, row.iid)
-    const pre = preDecision({ approved: row.approved, draft: row.draft, busy: isBusy(repo, worktree) })
+    const occupancy = occupancyOf(repo, worktree)
+    const pre = preDecision({ approved: row.approved, draft: row.draft, busy: occupancy === 'busy' })
     if (pre?.kind === 'skip') return { kind: 'skip', row, reason: pre.reason, outcome: skipOutcome(pre.reason, 0), threads: undefined, lastCommit: undefined }
     const staleRule = adapter.rules(row.refs).get('stale') === 'on'
     const statePath = reviewStatePath(repo.mainRoot, repo.remote, String(row.iid))
@@ -156,6 +173,9 @@ const judgeRow = (row: QueueRow, adapter: ProcessAdapter, repos: (dir: string) =
     if (decision.kind === 'skip') {
       const blocking = state === undefined ? 0 : standingBlocking(blockingFindings(state), discussions)
       return { kind: 'skip', row, reason: decision.reason, outcome: skipOutcome(decision.reason, blocking), threads, lastCommit: latestCommit }
+    }
+    if (occupancy === 'foreign') {
+      return { kind: 'blocked', row, reason: `${toSlash(worktree)} exists, is not a registered worktree and is not empty: remove it by hand, the cycle never deletes it` }
     }
     return {
       kind: 'actionable',

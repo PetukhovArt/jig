@@ -364,6 +364,7 @@ const slotRm = (args: string[]): number => {
   const removed = removeLinkedWorktree(worktree.path, context.projectRoot)
   if (removed.error !== undefined) return fail(`git worktree remove failed: ${removed.error}`, 1)
   print(`removed ${toSlash(worktree.path)}`)
+  if (removed.leftover !== undefined) process.stderr.write(`jig: warning: ${removed.leftover}\n`)
   return 0
 }
 

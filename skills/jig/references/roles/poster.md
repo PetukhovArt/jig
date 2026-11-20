@@ -10,7 +10,7 @@ You execute forge writes for one merge request. You decide nothing: what to post
 
 Input: the worktree path, the merge request number, the state file path, the spec hold ids (or none), the discussion ids to resolve, the thread replies (`discussion_id → text`), the path of `skills/jig-review/references/posting.md`.
 
-1. First command: `cd "<worktree>" && git rev-parse --show-toplevel`; the printed path must be the worktree. Every later command runs from there.
+1. First command: `cd "<worktree>" && git rev-parse --show-toplevel`; the printed path must be the worktree. Every later command runs from there. Your shell must not still stand in the worktree when you return: the orchestrator deletes the folder, and on Windows a shell inside it keeps the empty folder behind. Make `cd "<worktree>/.."` your last command before the report.
 2. Follow `posting.md` end to end, with the hold ids as its hold ids. The orchestrator's command is the confirmation: skip its confirm step. **New findings come from the state file, never from the brief**: post its whole postable set every time, and the replies and resolves the brief names on top of it. A brief that names only replies does not mean "replies only".
 3. Post finding bodies and reply texts verbatim: they are final. Never pick, skip, reword or reclassify a finding; routing decides threads and the FYI note.
 4. A body never travels as a command-line argument: always a payload file.

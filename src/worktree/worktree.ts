@@ -112,6 +112,7 @@ const worktreeRemove = (args: string[]): number => {
   const removal = removeLinkedWorktree(dir, main)
   if (removal.error !== undefined) return fail(`could not remove ${toSlash(dir)}: ${removal.error}`, 1)
   print(`removed ${toSlash(dir)} (${removal.unlinked} links unlinked first)`)
+  if (removal.leftover !== undefined) process.stderr.write(`jig: warning: ${removal.leftover}\n`)
   return 0
 }
 
@@ -134,9 +135,10 @@ const removeRows = (rows: readonly SweepRow[], mainRoot: string): number => {
       code = fail(`kept ${row.path}: ${row.bucket}`, 1)
       continue
     }
-    const error = removeWorktree(row, mainRoot)
+    const { error, leftover } = removeWorktree(row, mainRoot)
     if (error === undefined) {
       print(`removed ${row.path}`)
+      if (leftover !== undefined) process.stderr.write(`jig: warning: ${leftover}\n`)
     } else {
       code = fail(`git could not remove ${row.path}: ${error}`, 1)
     }

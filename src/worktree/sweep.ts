@@ -105,10 +105,13 @@ export const matchItems = (rows: readonly SweepRow[], items: readonly string[], 
   return { rows: matched, unknown }
 }
 
-export const removeWorktree = (row: SweepRow, mainRoot: string): string | undefined => {
-  if (row.bucket !== 'prunable') return removeLinkedWorktree(row.path, mainRoot).error
+export const removeWorktree = (row: SweepRow, mainRoot: string): { error: string | undefined; leftover: string | undefined } => {
+  if (row.bucket !== 'prunable') {
+    const { error, leftover } = removeLinkedWorktree(row.path, mainRoot)
+    return { error, leftover }
+  }
   const result = git(['worktree', 'prune'], mainRoot)
-  return result.ok ? undefined : result.stderr.trim()
+  return { error: result.ok ? undefined : result.stderr.trim(), leftover: undefined }
 }
 
 export const formatRow = (row: SweepRow): string =>
