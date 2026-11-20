@@ -77,7 +77,7 @@ These hold for the whole task, in every flow.
 ## Flows
 <!-- flows:start -->
 - `afk-mode`: work unattended toward a checkable done condition, or turn a queue of tasks into a stack of merge requests the human lands.
-- `bug-bash`: attack a feature in the running app and report reproduced bugs.
+- `break-it`: attack a feature in the running app and report reproduced bugs (bug bash), one breaker subagent per screen or claim.
 - `bug-fix`: reproduce, find the root cause, fix, prove.
 - `custom-flow`: no flow fits, or the work is large and cross-cutting: frame it, design its workflow, run each unit as an experiment, leave a decision trail.
 - `deepening`: find module deepenings in a scope (paths, a merge request, a branch, a scan card), show them as an HTML report, then design and refactor the one the user picks.

@@ -1,5 +1,6 @@
 # Role index
 
+- `breaker` (`skills/jig/references/roles/breaker.md`, standard/high): Use in break-it, one per screen or claim, to attack it in the running app and return only the bugs that reproduced twice. Attacks and triages; never fixes, posts or runs the UX council.
 - `comment-pruner` (`skills/jig/references/roles/comment-pruner.md`, fast/low): Use in jig-prune-comments, one per batch of files, to delete comments the comments atom does not allow. Edits only inside one function; hands everything else back.
 - `composer` (`skills/jig/references/roles/composer.md`, standard/medium): Use in jig-review, one per architectural Important finding, to write its expanded thread text from the judge's evidence. Writes text only; the verdict is given.
 - `deepener` (`skills/jig/references/roles/deepener.md`, deep/high): Use in jig-review to propose the one module deepening with the most effect on the diff's new modules, or in the deepening flow (mode scan) to list the candidates of a scope. A proposal, not a finding.

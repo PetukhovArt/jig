@@ -89,7 +89,7 @@ It repeats the task back with a done check, picks a flow and puts the flow's ste
 | flow | for |
 | --- | --- |
 | [afk-mode](skills/jig/flows/afk-mode.md) | work unattended toward a checkable done condition, or turn a queue of tasks into a stack of merge requests the human lands. |
-| [bug-bash](skills/jig/flows/bug-bash.md) | attack a feature in the running app and report reproduced bugs. |
+| [break-it](skills/jig/flows/break-it.md) | attack a feature in the running app and report reproduced bugs (bug bash), one breaker subagent per screen or claim. |
 | [bug-fix](skills/jig/flows/bug-fix.md) | reproduce, find the root cause, fix, prove. |
 | [custom-flow](skills/jig/flows/custom-flow.md) | no flow fits, or the work is large and cross-cutting: frame it, design its workflow, run each unit as an experiment, leave a decision trail. |
 | [deepening](skills/jig/flows/deepening.md) | find module deepenings in a scope (paths, a merge request, a branch, a scan card), show them as an HTML report, then design and refactor the one the user picks. |
@@ -215,10 +215,11 @@ Atoms are those short rules, indexed in [`skills/jig/SKILL.md`](skills/jig/SKILL
 
 <!-- roles:start -->
 
-<details><summary><b>All 22 roles</b></summary>
+<details><summary><b>All 23 roles</b></summary>
 
 | role | tier / effort | when |
 | --- | --- | --- |
+| [breaker](skills/jig/references/roles/breaker.md) | standard/high | Use in break-it, one per screen or claim, to attack it in the running app and return only the bugs that reproduced twice. Attacks and triages; never fixes, posts or runs the UX council. |
 | [comment-pruner](skills/jig/references/roles/comment-pruner.md) | fast/low | Use in jig-prune-comments, one per batch of files, to delete comments the comments atom does not allow. Edits only inside one function; hands everything else back. |
 | [composer](skills/jig/references/roles/composer.md) | standard/medium | Use in jig-review, one per architectural Important finding, to write its expanded thread text from the judge's evidence. Writes text only; the verdict is given. |
 | [deepener](skills/jig/references/roles/deepener.md) | deep/high | Use in jig-review to propose the one module deepening with the most effect on the diff's new modules, or in the deepening flow (mode scan) to list the candidates of a scope. A proposal, not a finding. |

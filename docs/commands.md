@@ -30,7 +30,7 @@ Run as `node "<plugin root>/bin/jig.mjs" <command>`.
 | `review state <state file>` | a review state in a few lines: shas, runs, the non-zero tally, one line per finding (status, severity, angle, `file:line`, thread, id, summary), without the comment bodies |
 | `review cost --report [--by project\|week]` | the recorded runs per project, or per project and ISO week: runs, re-reviews, $, $ per 1000 diff lines, $ per thread over first runs |
 | `pre-mr [<base>] [-- <pathspec>...]` | exit 0 when the branch's UI changes (in the given paths only) are proven or skipped with a level, else lists what is missing and exits 1 ([UI proof](ui-proof.md)) |
-| `pre-mr proof "<command>"` / `pre-mr bug-bash "<result>"` | runs a proof command and records it when it exits 0 / records the bug-bash result |
+| `pre-mr proof "<command>"` / `pre-mr break-it "<result>"` | runs a proof command and records it when it exits 0 / records the break-it result |
 | `skip-verify --level unit-test\|type-check\|none --why "<reason>"` | lets `pre-mr` pass with that level until the next edit |
 | `task-status log <phase> <decision> [--why <text>] [--evidence <text>] [--result <text>]` | appends a row to the decision journal `.jig/runs/<branch>/task-status.tsv` |
 | `task-status plan "<step>" ["<step>" ...]` | declares the run's steps up front as `todo` rows, skipping titles the run already has; on the page a step with result `skip`, `skipped`, `superseded`, `dropped` or `cancelled` is struck and left out of the count, and steps an earlier run left unclosed stay marked with their run |

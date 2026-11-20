@@ -7594,7 +7594,8 @@ var EXIT_MISSING = 1;
 var EXIT_USAGE4 = 2;
 var CLI_SESSION = "cli";
 var MAX_BUFFER2 = 64 * 1024 * 1024;
-var PRE_MR_USAGE = 'usage: jig pre-mr [<base>] [-- <pathspec>...] |jig pre-mr proof "<command>" | jig pre-mr bug-bash "<result>"';
+var isBreakIt = (entry) => entry.kind === "break-it" || entry.kind === "bug-bash";
+var PRE_MR_USAGE = 'usage: jig pre-mr [<base>] [-- <pathspec>...] |jig pre-mr proof "<command>" | jig pre-mr break-it "<result>"';
 var SKIP_USAGE = `usage: jig skip-verify --level ${VERIFY_LEVELS.join("|")} --why "<reason>"`;
 var UsageError = class extends Error {
 };
@@ -7668,7 +7669,7 @@ var recordsOf = (root) => {
     const key = resolve16(path2).replace(/\\/g, "/").toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);
-    records.push(...readJournal(path2).filter((entry) => entry.kind === "proof" || entry.kind === "bug-bash" || entry.kind === "skip-verify"));
+    records.push(...readJournal(path2).filter((entry) => entry.kind === "proof" || isBreakIt(entry) || entry.kind === "skip-verify"));
   }
   return records.sort((left, right) => right.ts.localeCompare(left.ts));
 };
@@ -7711,12 +7712,12 @@ var evaluate = ({ root, mergeBase, head, tree, files, records, checks }) => {
     gaps.push({ what: "proof", kind, files: kindFiles, hint: hintFor(kind), ...latest2 === void 0 ? {} : { latest: latest2 } });
   }
   const commits = branchCommits(root, mergeBase, head);
-  const bugBash2 = records.find((entry) => entry.kind === "bug-bash" && entry.head !== void 0 && commits.has(entry.head));
-  if (bugBash2 === void 0) gaps.push({ what: "bug-bash" });
-  if (gaps.length === 0 && bugBash2 !== void 0) return { type: "proven", proofs, bugBash: bugBash2 };
+  const breakIt2 = records.find((entry) => isBreakIt(entry) && entry.head !== void 0 && commits.has(entry.head));
+  if (breakIt2 === void 0) gaps.push({ what: "break-it" });
+  if (gaps.length === 0 && breakIt2 !== void 0) return { type: "proven", proofs, breakIt: breakIt2 };
   const skip = records.find((entry) => entry.kind === "skip-verify" && entry.tree !== void 0 && editedSince(entry)?.size === 0);
   if (skip === void 0) return { type: "missing", gaps };
-  return { type: "skipped", skip, gaps, ...bugBash2 === void 0 ? {} : { bugBash: bugBash2 } };
+  return { type: "skipped", skip, gaps, ...breakIt2 === void 0 ? {} : { breakIt: breakIt2 } };
 };
 var untrackedPaths = (root, paths) => (gitStatus(root, paths) ?? []).filter((entry) => entry.status === "??").map((entry) => entry.path);
 var levelLine = (skip) => `Verification level: ${skip.rule ?? "none"} (${skip.message ?? "no reason given"})`;
@@ -7725,33 +7726,33 @@ var fileList = (files) => {
   return files.length > 5 ? `${shown} and ${files.length - 5} more` : shown;
 };
 var describeGap = (gap) => {
-  if (gap.what === "bug-bash") return '- bug-bash: no record on this branch. Run flows/bug-bash.md on your diff, then: jig pre-mr bug-bash "<bugs found and fixed, what could not be tested>"';
+  if (gap.what === "break-it") return '- break-it: no record on this branch. Run flows/break-it.md on your diff, then: jig pre-mr break-it "<bugs found and fixed, what could not be tested>"';
   const state = gap.latest === void 0 ? "never proven" : `last proof at ${gap.latest.ts} (\`${gap.latest.message ?? ""}\`) predates edits`;
   return `- ${gap.kind}: ${state} for ${fileList(gap.files)}. Run: jig pre-mr proof "${gap.hint}"`;
 };
 var formatVerdict = (verdict2, baseLine) => {
   switch (verdict2.type) {
     case "no-ui":
-      return [baseLine, "UI files: none", "Bug-bash: UI not touched", "Verification level: full"];
+      return [baseLine, "UI files: none", "Break-it: UI not touched", "Verification level: full"];
     case "no-proof-tool":
       return [
         baseLine,
         `UI files: ${fileList(verdict2.files)}; no UI proof tool in .jig/config.jsonc, UI not proven`,
-        "Bug-bash: not run, no UI proof tool configured",
+        "Break-it: not run, no UI proof tool configured",
         "Verification level: no UI proof tool configured"
       ];
     case "proven":
       return [
         baseLine,
         ...[...new Set(verdict2.proofs)].map((proof2) => `proof: \`${proof2.message ?? ""}\` at ${proof2.ts}`),
-        `Bug-bash: ${verdict2.bugBash.message ?? ""}`,
+        `Break-it: ${verdict2.breakIt.message ?? ""}`,
         "Verification level: full"
       ];
     case "skipped":
       return [
         baseLine,
         `not proven: ${verdict2.gaps.map((gap) => gap.what === "proof" ? gap.kind : gap.what).join(", ")}`,
-        `Bug-bash: ${verdict2.bugBash?.message ?? "not run, verification skipped"}`,
+        `Break-it: ${verdict2.breakIt?.message ?? "not run, verification skipped"}`,
         levelLine(verdict2.skip)
       ];
     case "missing":
@@ -7816,13 +7817,13 @@ var proof = (args, ctx) => {
   }
   return 0;
 };
-var bugBash = (args, ctx) => {
-  const result = textArgument(args, 'usage: jig pre-mr bug-bash "<bugs found and fixed, what could not be tested and why>"');
+var breakIt = (args, ctx) => {
+  const result = textArgument(args, 'usage: jig pre-mr break-it "<bugs found and fixed, what could not be tested and why>"');
   const root = requireRoot(ctx.cwd);
   ensureJigDir(root);
-  const entry = record(root, { kind: "bug-bash", message: result, ...snapshot2(root) });
-  mirror(root, "bug-bash", { result });
-  ctx.io.out(`jig: recorded bug-bash at ${entry.ts}
+  const entry = record(root, { kind: "break-it", message: result, ...snapshot2(root) });
+  mirror(root, "break-it", { result });
+  ctx.io.out(`jig: recorded break-it at ${entry.ts}
 `);
   return 0;
 };
@@ -7839,7 +7840,7 @@ var withUsage = (run3, io) => {
 var preMr = (args, ctx) => withUsage(() => {
   const [sub, ...rest] = args;
   if (sub === "proof") return proof(rest, ctx);
-  if (sub === "bug-bash") return bugBash(rest, ctx);
+  if (sub === "break-it") return breakIt(rest, ctx);
   return check(args, ctx);
 }, ctx.io);
 var skipVerify = (args, ctx) => withUsage(() => {

@@ -43,7 +43,7 @@ const stderr = (): string => err.join('')
 const proveAll = (cwd?: string): void => {
   expect(run(['proof', REPLAY], cwd)).toBe(0)
   expect(run(['proof', SCREENSHOT], cwd)).toBe(0)
-  expect(run(['bug-bash', 'no bugs found; offline mode not tested'], cwd)).toBe(0)
+  expect(run(['break-it', 'no bugs found; offline mode not tested'], cwd)).toBe(0)
 }
 
 beforeEach(() => {
@@ -74,7 +74,7 @@ describe('jig pre-mr', () => {
 
     expect(run(['main'])).toBe(0)
     expect(stdout()).toContain('UI files: none')
-    expect(stdout()).toContain('Bug-bash: UI not touched')
+    expect(stdout()).toContain('Break-it: UI not touched')
     expect(stdout()).toContain('Verification level: full')
   })
 
@@ -106,18 +106,18 @@ describe('jig pre-mr', () => {
     expect(stdout()).toContain('Verification level: no UI proof tool configured')
   })
 
-  it('lists every missing proof and the bug-bash when UI files changed without them', () => {
+  it('lists every missing proof and the break-it when UI files changed without them', () => {
     write(root, 'src/App.vue', '<template><span /></template>\n')
     write(root, 'src/new.css', '.b {}\n')
 
     expect(run(['main'])).toBe(1)
     expect(stderr()).toContain('- behavior: never proven for src/App.vue.')
     expect(stderr()).toContain('- look: never proven for src/App.vue, src/new.css.')
-    expect(stderr()).toContain('- bug-bash: no record on this branch')
+    expect(stderr()).toContain('- break-it: no record on this branch')
     expect(stderr()).toContain('jig skip-verify --level unit-test|type-check|none')
   })
 
-  it('passes once a replay, a screenshot and a bug-bash cover the current UI files', () => {
+  it('passes once a replay, a screenshot and a break-it cover the current UI files', () => {
     write(root, 'src/App.vue', '<template><span /></template>\n')
     proveAll()
     out = []
@@ -125,7 +125,7 @@ describe('jig pre-mr', () => {
     expect(run(['main'])).toBe(0)
     expect(stdout()).toContain(`proof: \`${REPLAY}\``)
     expect(stdout()).toContain(`proof: \`${SCREENSHOT}\``)
-    expect(stdout()).toContain('Bug-bash: no bugs found; offline mode not tested')
+    expect(stdout()).toContain('Break-it: no bugs found; offline mode not tested')
     expect(stdout()).toContain('Verification level: full')
     expect(commands).toEqual([REPLAY, SCREENSHOT])
   })
@@ -137,7 +137,7 @@ describe('jig pre-mr', () => {
 
     expect(run(['main'])).toBe(1)
     expect(stderr()).toMatch(/- behavior: last proof at \S+ \(`agent-view act replay checkout`\) predates edits for src\/App\.vue/)
-    expect(stderr()).not.toContain('bug-bash: no record')
+    expect(stderr()).not.toContain('break-it: no record')
 
     err = []
     expect(run(['proof', REPLAY])).toBe(0)
@@ -178,7 +178,7 @@ describe('jig skip-verify', () => {
 
     out = []
     expect(run(['main'])).toBe(0)
-    expect(stdout()).toContain('not proven: behavior, look, bug-bash')
+    expect(stdout()).toContain('not proven: behavior, look, break-it')
     expect(stdout()).toContain('Verification level: unit-test (no runnable app here)')
 
     write(root, 'src/App.vue', '<template><p /></template>\n')
@@ -197,7 +197,7 @@ describe('arguments', () => {
     ['pre-mr with no path after --', () => run(['main', '--'])],
     ['proof that proves nothing', () => run(['proof', 'npm test'])],
     ['proof without a command', () => run(['proof'])],
-    ['bug-bash without a result', () => run(['bug-bash'])],
+    ['break-it without a result', () => run(['break-it'])],
   ])('%s exits 2', (_name, call) => {
     expect(call()).toBe(2)
     expect(stderr()).toMatch(/^jig: /)

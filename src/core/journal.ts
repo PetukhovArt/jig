@@ -16,6 +16,7 @@ export type JournalKind =
   | 'hook-failure'
   | 'skip-verify'
   | 'proof'
+  | 'break-it'
   | 'bug-bash'
 
 export type JournalTool = string

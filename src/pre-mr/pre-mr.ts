@@ -39,13 +39,13 @@ export interface Requirement {
 
 export type Gap =
   | { what: 'proof'; kind: ProofKind; files: string[]; latest?: JournalRecord; hint: string }
-  | { what: 'bug-bash' }
+  | { what: 'break-it' }
 
 export type Verdict =
   | { type: 'no-ui' }
   | { type: 'no-proof-tool'; files: string[] }
-  | { type: 'proven'; proofs: JournalRecord[]; bugBash: JournalRecord }
-  | { type: 'skipped'; skip: JournalRecord; gaps: Gap[]; bugBash?: JournalRecord }
+  | { type: 'proven'; proofs: JournalRecord[]; breakIt: JournalRecord }
+  | { type: 'skipped'; skip: JournalRecord; gaps: Gap[]; breakIt?: JournalRecord }
   | { type: 'missing'; gaps: Gap[] }
 
 const EXIT_MISSING = 1
@@ -53,7 +53,9 @@ const EXIT_USAGE = 2
 const CLI_SESSION = 'cli'
 const MAX_BUFFER = 64 * 1024 * 1024
 
-const PRE_MR_USAGE = 'usage: jig pre-mr [<base>] [-- <pathspec>...] |jig pre-mr proof "<command>" | jig pre-mr bug-bash "<result>"'
+const isBreakIt = (entry: JournalRecord): boolean => entry.kind === 'break-it' || entry.kind === 'bug-bash'
+
+const PRE_MR_USAGE = 'usage: jig pre-mr [<base>] [-- <pathspec>...] |jig pre-mr proof "<command>" | jig pre-mr break-it "<result>"'
 const SKIP_USAGE = `usage: jig skip-verify --level ${VERIFY_LEVELS.join('|')} --why "<reason>"`
 
 class UsageError extends Error {}
@@ -157,7 +159,7 @@ const recordsOf = (root: string): JournalRecord[] => {
     const key = resolve(path).replace(/\\/g, '/').toLowerCase()
     if (seen.has(key)) continue
     seen.add(key)
-    records.push(...readJournal(path).filter((entry) => entry.kind === 'proof' || entry.kind === 'bug-bash' || entry.kind === 'skip-verify'))
+    records.push(...readJournal(path).filter((entry) => entry.kind === 'proof' || isBreakIt(entry) || entry.kind === 'skip-verify'))
   }
   return records.sort((left, right) => right.ts.localeCompare(left.ts))
 }
@@ -213,12 +215,12 @@ export const evaluate = ({ root, mergeBase, head, tree, files, records, checks }
     gaps.push({ what: 'proof', kind, files: kindFiles, hint: hintFor(kind), ...(latest === undefined ? {} : { latest }) })
   }
   const commits = branchCommits(root, mergeBase, head)
-  const bugBash = records.find((entry) => entry.kind === 'bug-bash' && entry.head !== undefined && commits.has(entry.head))
-  if (bugBash === undefined) gaps.push({ what: 'bug-bash' })
-  if (gaps.length === 0 && bugBash !== undefined) return { type: 'proven', proofs, bugBash }
+  const breakIt = records.find((entry) => isBreakIt(entry) && entry.head !== undefined && commits.has(entry.head))
+  if (breakIt === undefined) gaps.push({ what: 'break-it' })
+  if (gaps.length === 0 && breakIt !== undefined) return { type: 'proven', proofs, breakIt }
   const skip = records.find((entry) => entry.kind === 'skip-verify' && entry.tree !== undefined && editedSince(entry)?.size === 0)
   if (skip === undefined) return { type: 'missing', gaps }
-  return { type: 'skipped', skip, gaps, ...(bugBash === undefined ? {} : { bugBash }) }
+  return { type: 'skipped', skip, gaps, ...(breakIt === undefined ? {} : { breakIt }) }
 }
 
 const untrackedPaths = (root: string, paths: readonly string[]): string[] =>
@@ -232,7 +234,7 @@ const fileList = (files: readonly string[]): string => {
 }
 
 const describeGap = (gap: Gap): string => {
-  if (gap.what === 'bug-bash') return '- bug-bash: no record on this branch. Run flows/bug-bash.md on your diff, then: jig pre-mr bug-bash "<bugs found and fixed, what could not be tested>"'
+  if (gap.what === 'break-it') return '- break-it: no record on this branch. Run flows/break-it.md on your diff, then: jig pre-mr break-it "<bugs found and fixed, what could not be tested>"'
   const state = gap.latest === undefined ? 'never proven' : `last proof at ${gap.latest.ts} (\`${gap.latest.message ?? ''}\`) predates edits`
   return `- ${gap.kind}: ${state} for ${fileList(gap.files)}. Run: jig pre-mr proof "${gap.hint}"`
 }
@@ -240,26 +242,26 @@ const describeGap = (gap: Gap): string => {
 export const formatVerdict = (verdict: Verdict, baseLine: string): string[] => {
   switch (verdict.type) {
     case 'no-ui':
-      return [baseLine, 'UI files: none', 'Bug-bash: UI not touched', 'Verification level: full']
+      return [baseLine, 'UI files: none', 'Break-it: UI not touched', 'Verification level: full']
     case 'no-proof-tool':
       return [
         baseLine,
         `UI files: ${fileList(verdict.files)}; no UI proof tool in .jig/config.jsonc, UI not proven`,
-        'Bug-bash: not run, no UI proof tool configured',
+        'Break-it: not run, no UI proof tool configured',
         'Verification level: no UI proof tool configured',
       ]
     case 'proven':
       return [
         baseLine,
         ...[...new Set(verdict.proofs)].map((proof) => `proof: \`${proof.message ?? ''}\` at ${proof.ts}`),
-        `Bug-bash: ${verdict.bugBash.message ?? ''}`,
+        `Break-it: ${verdict.breakIt.message ?? ''}`,
         'Verification level: full',
       ]
     case 'skipped':
       return [
         baseLine,
         `not proven: ${verdict.gaps.map((gap) => (gap.what === 'proof' ? gap.kind : gap.what)).join(', ')}`,
-        `Bug-bash: ${verdict.bugBash?.message ?? 'not run, verification skipped'}`,
+        `Break-it: ${verdict.breakIt?.message ?? 'not run, verification skipped'}`,
         levelLine(verdict.skip),
       ]
     case 'missing':
@@ -324,13 +326,13 @@ const proof = (args: string[], ctx: PreMrContext): number => {
   return 0
 }
 
-const bugBash = (args: string[], ctx: PreMrContext): number => {
-  const result = textArgument(args, 'usage: jig pre-mr bug-bash "<bugs found and fixed, what could not be tested and why>"')
+const breakIt = (args: string[], ctx: PreMrContext): number => {
+  const result = textArgument(args, 'usage: jig pre-mr break-it "<bugs found and fixed, what could not be tested and why>"')
   const root = requireRoot(ctx.cwd)
   ensureJigDir(root)
-  const entry = record(root, { kind: 'bug-bash', message: result, ...snapshot(root) })
-  mirror(root, 'bug-bash', { result })
-  ctx.io.out(`jig: recorded bug-bash at ${entry.ts}\n`)
+  const entry = record(root, { kind: 'break-it', message: result, ...snapshot(root) })
+  mirror(root, 'break-it', { result })
+  ctx.io.out(`jig: recorded break-it at ${entry.ts}\n`)
   return 0
 }
 
@@ -348,7 +350,7 @@ export const preMr = (args: string[], ctx: PreMrContext): number =>
   withUsage(() => {
     const [sub, ...rest] = args
     if (sub === 'proof') return proof(rest, ctx)
-    if (sub === 'bug-bash') return bugBash(rest, ctx)
+    if (sub === 'break-it') return breakIt(rest, ctx)
     return check(args, ctx)
   }, ctx.io)
 
