@@ -1,5 +1,19 @@
 # jig
 
+## 0.8.0
+
+### Minor Changes
+
+- [`8bac16a`](https://github.com/PetukhovArt/jig/commit/8bac16a8418f3a0b2f5a0e5594c7ec3381d6b964) Thanks [@PetukhovArt](https://github.com/PetukhovArt)! - Flow `bug-bash` is now `break-it`: the main session holds the queue of screens and claims and spawns one `breaker` subagent (standard tier, high effort) per entry, which attacks with the action and its checks in one shell call and returns only the reproduced bugs. The attack no longer runs one command per turn on the main session's full context. `jig pre-mr bug-bash` is now `jig pre-mr break-it` and prints a `Break-it:` line; records written by the old command still count.
+
+- [`2dc41c6`](https://github.com/PetukhovArt/jig/commit/2dc41c6e12eda70892981b97debff1cf50bcb1ba) Thanks [@PetukhovArt](https://github.com/PetukhovArt)! - `jig-review-cycle` runs each pass in one pass agent (role `review-cycle-pass`): the invoking session only relays the summary, so `/loop 2h /jig-review-cycle` no longer piles every report, plan and tool output of each pass into the looping session. `jig review cost` reports the pass agent as role `pass`.
+
+### Patch Changes
+
+- [`da0d7e9`](https://github.com/PetukhovArt/jig/commit/da0d7e913d394313ef2d16de224c2e1af71ced89) Thanks [@PetukhovArt](https://github.com/PetukhovArt)! - `jig review-plan` accepts `mr.standard` in `.jig/review.jsonc`: the documented key no longer fails the plan with `$.mr: unknown key`.
+
+- [`d6c058c`](https://github.com/PetukhovArt/jig/commit/d6c058cbb3fe10f598fcd779b7c6c8578214bf1b) Thanks [@PetukhovArt](https://github.com/PetukhovArt)! - `jig review-cycle queue` no longer marks a merge request `SKIP busy` forever because an empty leftover folder sits at its review worktree path: busy is only a worktree git still has registered (a registered one whose folder is gone is pruned; a non-empty folder git does not know is reported `BLOCKED` and never deleted). `jig worktree remove`, `slot rm` and `worktree sweep` delete the empty top folder git leaves behind on Windows when a process holds it (retrying briefly) and print a warning when it cannot; the review-cycle roles leave the worktree before returning and teardown runs from the main checkout.
+
 ## 0.7.0
 
 ### Minor Changes
