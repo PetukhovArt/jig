@@ -5,6 +5,7 @@ import { gitToplevel } from '../core/git'
 import { resolveProjectRoot } from '../core/paths'
 import type { Io } from '../pre-mr/pre-mr'
 import { buildMatrix, formatMatrix } from './matrix'
+import { checkReuse, formatReuse } from './reuse'
 
 export interface UiContext {
   cwd: string
@@ -43,7 +44,25 @@ const matrix: UiSubcommand = (args, ctx) => {
   return 0
 }
 
-export const SUBCOMMANDS = new Map<string, UiSubcommand>([['matrix', matrix]])
+const REUSE_USAGE = 'usage: jig ui reuse [--base <ref>] [--json]'
+
+const reuse: UiSubcommand = (args, ctx) => {
+  const { values, positionals } = parseArgs({ args, allowPositionals: true, strict: true, options: { json: { type: 'boolean' }, base: { type: 'string' } } })
+  if (positionals.length > 0) throw new UsageError(REUSE_USAGE)
+  const root = projectRootOf(ctx.cwd)
+  const components = requireUi(root).components
+  if (components === undefined || Object.keys(components.map).length === 0) {
+    throw new Error('ui.components.map is empty: name the raw elements and the component to use for each (docs/configuration.md#ui-profile)')
+  }
+  const result = checkReuse(root, components, values.base)
+  ctx.io.out(values.json === true ? `${JSON.stringify(result, null, 2)}\n` : `${formatReuse(result).join('\n')}\n`)
+  return result.findings.length > 0 ? EXIT_FINDINGS : 0
+}
+
+export const SUBCOMMANDS = new Map<string, UiSubcommand>([
+  ['matrix', matrix],
+  ['reuse', reuse],
+])
 
 export const ui = (args: string[], ctx: UiContext): number => {
   const [name, ...rest] = args

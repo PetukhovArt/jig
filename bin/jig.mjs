@@ -1603,13 +1603,13 @@ var parseDiffLines = (diff) => {
   }
   return lines2;
 };
-var changedLines = (projectRoot, files) => {
+var changedLines = (projectRoot, files, base = "HEAD") => {
   const result = /* @__PURE__ */ new Map();
   if (files.length === 0) return result;
   const listed = git(["ls-files", "-z", "--", ...files], projectRoot);
   const tracked = new Set(listed.ok ? listed.stdout.split("\0").filter(Boolean) : []);
   const diff = git(
-    ["-c", "core.quotePath=false", "diff", "--no-color", "--no-ext-diff", "--unified=0", "--relative", "--no-prefix", "HEAD", "--", ...files],
+    ["-c", "core.quotePath=false", "diff", "--no-color", "--no-ext-diff", "--unified=0", "--relative", "--no-prefix", base, "--", ...files],
     projectRoot
   );
   const diffLines = diff.ok ? parseDiffLines(diff.stdout) : /* @__PURE__ */ new Map();
@@ -10294,7 +10294,71 @@ var formatMatrix = (matrix2) => {
   return lines2;
 };
 
+// src/ui/reuse.ts
+import { existsSync as existsSync25, readFileSync as readFileSync40 } from "node:fs";
+import { join as join43 } from "node:path";
+var REUSE_RULE = "ui/raw-element";
+var CREATE_CALLS = ["h", "createElement", "createVNode", "createElementVNode", "_createElementVNode", "jsx", "jsxs", "_jsx", "_jsxs", "jsxDEV", "_jsxDEV"];
+var COMMENT_START = /^\s*(?:\/\/|\/\*|\*|<!--)/;
+var escapeRegExp2 = (text3) => text3.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+var elementPatterns = (element) => {
+  const name = escapeRegExp2(element);
+  return [
+    new RegExp(`(?<![\\w$.])<${name}(?=[\\s/>]|$)`),
+    new RegExp(`\\b(?:${CREATE_CALLS.join("|")})\\(\\s*(['"\`])${name}\\1`)
+  ];
+};
+var rawElementsIn = (text3, elements, lines2) => {
+  const patterns = elements.map((element) => ({ element, patterns: elementPatterns(element) }));
+  const found = [];
+  text3.split(/\r?\n/).forEach((content, index) => {
+    const line = index + 1;
+    if (!isOnChangedLine(lines2, line) || COMMENT_START.test(content)) return;
+    for (const { element, patterns: own } of patterns) {
+      if (own.some((pattern) => pattern.test(content))) found.push({ line, element });
+    }
+  });
+  return found;
+};
+var changedFiles3 = (root, tracked) => {
+  const untracked = (gitStatus(root) ?? []).filter((entry) => entry.status === "??").map((entry) => entry.path);
+  return [.../* @__PURE__ */ new Set([...tracked, ...untracked])].map((path2) => path2.replace(/\\/g, "/")).filter((path2) => existsSync25(join43(root, path2)));
+};
+var resolveReuseBase = (root, given) => {
+  try {
+    const base = resolveBase(root, given, "ui reuse");
+    return { label: `${base.ref} (merge base ${base.mergeBase.slice(0, 8)})`, mergeBase: base.mergeBase, tracked: base.stats.map((stat) => stat.path) };
+  } catch (error) {
+    if (given !== void 0) throw error;
+    return { label: "HEAD (no upstream: uncommitted and untracked files only)", mergeBase: "HEAD", tracked: [] };
+  }
+};
+var checkReuse = (root, components, given) => {
+  const base = resolveReuseBase(root, given);
+  const isComponentFile = createMatcher(components.files);
+  const isShared = createMatcher(components.dirs.map((dir2) => `${dir2.replace(/\\/g, "/").replace(/\/+$/, "")}/**`));
+  const files = changedFiles3(root, base.tracked).filter((path2) => isComponentFile(path2) && !isShared(path2) && exclusionOf(path2, root) === void 0);
+  const lines2 = changedLines(root, files, base.mergeBase);
+  const elements = Object.keys(components.map);
+  const findings = [];
+  for (const file of files) {
+    const own = lines2.get(file);
+    if (own === void 0) continue;
+    for (const { line, element } of rawElementsIn(readFileSync40(join43(root, file), "utf8"), elements, own)) {
+      const use = components.map[element] ?? "";
+      findings.push({ tool: "ui", rule: REUSE_RULE, severity: "error", file, line, message: `use ${use} instead of <${element}>`, element, use });
+    }
+  }
+  return { base: base.label, files: files.length, findings };
+};
+var formatReuse = (result) => {
+  const lines2 = result.findings.map(formatFinding);
+  const summary = result.findings.length === 0 ? "no raw elements on changed lines" : `${result.findings.length} raw elements on changed lines`;
+  return [...lines2, `ui reuse: ${summary} (${result.files} component files read, base ${result.base})`];
+};
+
 // src/ui/ui.ts
+var EXIT_FINDINGS2 = 1;
 var EXIT_USAGE5 = 2;
 var UsageError3 = class extends Error {
 };
@@ -10317,7 +10381,25 @@ var matrix = (args, ctx) => {
 `);
   return 0;
 };
-var SUBCOMMANDS2 = /* @__PURE__ */ new Map([["matrix", matrix]]);
+var REUSE_USAGE = "usage: jig ui reuse [--base <ref>] [--json]";
+var reuse2 = (args, ctx) => {
+  const { values, positionals } = parseArgs8({ args, allowPositionals: true, strict: true, options: { json: { type: "boolean" }, base: { type: "string" } } });
+  if (positionals.length > 0) throw new UsageError3(REUSE_USAGE);
+  const root = projectRootOf(ctx.cwd);
+  const components = requireUi(root).components;
+  if (components === void 0 || Object.keys(components.map).length === 0) {
+    throw new Error("ui.components.map is empty: name the raw elements and the component to use for each (docs/configuration.md#ui-profile)");
+  }
+  const result = checkReuse(root, components, values.base);
+  ctx.io.out(values.json === true ? `${JSON.stringify(result, null, 2)}
+` : `${formatReuse(result).join("\n")}
+`);
+  return result.findings.length > 0 ? EXIT_FINDINGS2 : 0;
+};
+var SUBCOMMANDS2 = /* @__PURE__ */ new Map([
+  ["matrix", matrix],
+  ["reuse", reuse2]
+]);
 var ui = (args, ctx) => {
   const [name, ...rest] = args;
   const subcommand = name === void 0 ? void 0 : SUBCOMMANDS2.get(name);
@@ -10338,7 +10420,7 @@ var ui = (args, ctx) => {
 var runUi = (args) => ui(args, { cwd: process.cwd(), io: { out: (text3) => process.stdout.write(text3), err: (text3) => process.stderr.write(text3) } });
 
 // src/worktree/worktree.ts
-import { existsSync as existsSync25 } from "node:fs";
+import { existsSync as existsSync26 } from "node:fs";
 import { basename as basename12, resolve as resolve21 } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { parseArgs as parseArgs9 } from "node:util";
@@ -10437,7 +10519,7 @@ var checkoutTarget = (positionals, usage2) => {
   const [target] = positionals;
   if (positionals.length !== 1 || target === void 0) return fail4(`usage: ${usage2}`, 2);
   const dir2 = resolve21(target);
-  if (!existsSync25(dir2)) return fail4(`no such dir ${toSlash(dir2)}`, 1);
+  if (!existsSync26(dir2)) return fail4(`no such dir ${toSlash(dir2)}`, 1);
   const toplevel = gitToplevel(dir2);
   if (toplevel === void 0 || !samePath(toplevel, dir2)) return fail4(`${toSlash(dir2)} is not the root of a git worktree`, 1);
   const main = mainCheckout(dir2);
@@ -10486,7 +10568,7 @@ var worktreeRemove = (args) => {
   const [target] = positionals;
   if (positionals.length !== 1 || target === void 0) return fail4("usage: worktree remove <dir>", 2);
   const dir2 = resolve21(target);
-  const worktrees = listWorktrees(existsSync25(dir2) ? dir2 : process.cwd());
+  const worktrees = listWorktrees(existsSync26(dir2) ? dir2 : process.cwd());
   const main = worktrees[0]?.path;
   if (main === void 0) return fail4(`no git worktrees found from ${toSlash(dir2)}`, 1);
   if (samePath(main, dir2)) return fail4(`${toSlash(dir2)} is the main checkout, remove takes a linked worktree`, 1);

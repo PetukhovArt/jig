@@ -189,13 +189,13 @@ const parseDiffLines = (diff: string): Map<string, Set<number>> => {
   return lines
 }
 
-export const changedLines = (projectRoot: string, files: readonly string[]): Map<string, ChangedLines> => {
+export const changedLines = (projectRoot: string, files: readonly string[], base = 'HEAD'): Map<string, ChangedLines> => {
   const result = new Map<string, ChangedLines>()
   if (files.length === 0) return result
   const listed = git(['ls-files', '-z', '--', ...files], projectRoot)
   const tracked = new Set(listed.ok ? listed.stdout.split('\0').filter(Boolean) : [])
   const diff = git(
-    ['-c', 'core.quotePath=false', 'diff', '--no-color', '--no-ext-diff', '--unified=0', '--relative', '--no-prefix', 'HEAD', '--', ...files],
+    ['-c', 'core.quotePath=false', 'diff', '--no-color', '--no-ext-diff', '--unified=0', '--relative', '--no-prefix', base, '--', ...files],
     projectRoot,
   )
   const diffLines = diff.ok ? parseDiffLines(diff.stdout) : new Map<string, Set<number>>()
