@@ -3,9 +3,10 @@ import { join } from 'node:path'
 import type { UiComponents } from '../core/config-ui'
 import { gitStatus } from '../core/git'
 import { createMatcher } from '../core/glob'
-import { exclusionOf, resolveBase } from '../review/review-plan'
+import { exclusionOf } from '../review/review-plan'
 import { formatFinding, type Finding } from '../tools/finding'
 import { changedLines, isOnChangedLine, type ChangedLines } from '../tools/tool'
+import { resolveUiBase } from './base'
 
 export const REUSE_RULE = 'ui/raw-element'
 
@@ -46,23 +47,13 @@ export const rawElementsIn = (text: string, elements: readonly string[], lines: 
   return found
 }
 
-const changedFiles = (root: string, tracked: readonly string[]): string[] => {
+export const changedFiles = (root: string, tracked: readonly string[]): string[] => {
   const untracked = (gitStatus(root) ?? []).filter((entry) => entry.status === '??').map((entry) => entry.path)
   return [...new Set([...tracked, ...untracked])].map((path) => path.replace(/\\/g, '/')).filter((path) => existsSync(join(root, path)))
 }
 
-const resolveReuseBase = (root: string, given: string | undefined): { label: string; mergeBase: string; tracked: string[] } => {
-  try {
-    const base = resolveBase(root, given, 'ui reuse')
-    return { label: `${base.ref} (merge base ${base.mergeBase.slice(0, 8)})`, mergeBase: base.mergeBase, tracked: base.stats.map((stat) => stat.path) }
-  } catch (error) {
-    if (given !== undefined) throw error
-    return { label: 'HEAD (no upstream: uncommitted and untracked files only)', mergeBase: 'HEAD', tracked: [] }
-  }
-}
-
 export const checkReuse = (root: string, components: UiComponents, given: string | undefined): ReuseResult => {
-  const base = resolveReuseBase(root, given)
+  const base = resolveUiBase(root, given, 'ui reuse')
   const isComponentFile = createMatcher(components.files)
   const isShared = createMatcher(components.dirs.map((dir) => `${dir.replace(/\\/g, '/').replace(/\/+$/, '')}/**`))
   const files = changedFiles(root, base.tracked).filter((path) => isComponentFile(path) && !isShared(path) && exclusionOf(path, root) === undefined)

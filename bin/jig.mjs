@@ -33,8 +33,8 @@ var git = (args, cwd, input) => {
   }
   return { ok: result.status === 0, code: result.status, stdout: result.stdout, stderr: result.stderr };
 };
-var firstLine = (text3) => {
-  const line = text3.split("\n")[0]?.trim();
+var firstLine = (text4) => {
+  const line = text4.split("\n")[0]?.trim();
   return line === "" ? void 0 : line;
 };
 var gitToplevel = (cwd) => {
@@ -172,7 +172,7 @@ ${body}
 ${OPENCODE_EXPORT}await loadJig(PINNED_ROOT)
 `;
 };
-var isJigFile = (text3) => text3.startsWith(OPENCODE_PINNED) || text3.startsWith(LEGACY_OPENCODE_EXPORT);
+var isJigFile = (text4) => text4.startsWith(OPENCODE_PINNED) || text4.startsWith(LEGACY_OPENCODE_EXPORT);
 var runOpencode = (action) => {
   const shim = opencodeLoader(resolvePluginRoot());
   if (action === void 0) {
@@ -236,11 +236,11 @@ var fail = (cursor, message) => {
   throw new FrontmatterError(message, cursor.line);
 };
 var readDoubleQuoted = (cursor) => {
-  const { text: text3 } = cursor;
+  const { text: text4 } = cursor;
   let value = "";
   let index = cursor.index + 1;
-  while (index < text3.length) {
-    const char = text3[index] ?? "";
+  while (index < text4.length) {
+    const char = text4[index] ?? "";
     if (char === '"') {
       cursor.index = index + 1;
       return value;
@@ -250,9 +250,9 @@ var readDoubleQuoted = (cursor) => {
       index++;
       continue;
     }
-    const escape = text3[index + 1] ?? "";
+    const escape = text4[index + 1] ?? "";
     if (escape === "u") {
-      const hex = text3.slice(index + 2, index + 6);
+      const hex = text4.slice(index + 2, index + 6);
       if (!/^[0-9a-fA-F]{4}$/.test(hex)) fail(cursor, `invalid escape \\u${hex}`);
       value += String.fromCharCode(Number.parseInt(hex, 16));
       index += 6;
@@ -264,17 +264,17 @@ var readDoubleQuoted = (cursor) => {
   return fail(cursor, "unterminated double-quoted string");
 };
 var readSingleQuoted = (cursor) => {
-  const { text: text3 } = cursor;
+  const { text: text4 } = cursor;
   let value = "";
   let index = cursor.index + 1;
-  while (index < text3.length) {
-    const char = text3[index] ?? "";
+  while (index < text4.length) {
+    const char = text4[index] ?? "";
     if (char !== "'") {
       value += char;
       index++;
       continue;
     }
-    if (text3[index + 1] === "'") {
+    if (text4[index + 1] === "'") {
       value += "'";
       index += 2;
       continue;
@@ -292,9 +292,9 @@ var isRestEmpty = (cursor) => {
   const rest = cursor.text.slice(cursor.index);
   return rest === "" || rest.startsWith("#");
 };
-var stripPlainComment = (text3) => {
-  const match = /(^|\s)#/.exec(text3);
-  return (match ? text3.slice(0, match.index) : text3).trim();
+var stripPlainComment = (text4) => {
+  const match = /(^|\s)#/.exec(text4);
+  return (match ? text4.slice(0, match.index) : text4).trim();
 };
 var readFlowItem = (cursor) => {
   const char = cursor.text[cursor.index];
@@ -336,8 +336,8 @@ var readInlineValue = (cursor) => {
   if (!isRestEmpty(cursor)) fail(cursor, "unexpected text after value");
   return value;
 };
-var readScalar = (text3, line) => {
-  const cursor = { text: text3, index: 0, line };
+var readScalar = (text4, line) => {
+  const cursor = { text: text4, index: 0, line };
   const value = readInlineValue(cursor);
   if (Array.isArray(value)) return fail(cursor, "nested arrays are not supported");
   return value;
@@ -406,8 +406,8 @@ var parseBlock = (lines2, firstLine5) => {
   }
   return data;
 };
-var parseFrontmatter = (text3) => {
-  const lines2 = text3.replace(/^﻿/, "").replace(/\r\n/g, "\n").split("\n");
+var parseFrontmatter = (text4) => {
+  const lines2 = text4.replace(/^﻿/, "").replace(/\r\n/g, "\n").split("\n");
   if (lines2[0]?.trimEnd() !== FENCE) return void 0;
   const closing = lines2.findIndex((line, index) => index > 0 && line.trimEnd() === FENCE);
   if (closing === -1) throw new FrontmatterError('missing closing "---"', lines2.length);
@@ -536,28 +536,28 @@ import { extname, join as join3 } from "node:path";
 
 // src/catalog/languages/lexer.ts
 var WORD = /[\p{L}\p{N}_$]/u;
-var countNewlines = (text3, from, to) => {
+var countNewlines = (text4, from, to) => {
   let count = 0;
   for (let index = from; index < to; index++) {
-    if (text3[index] === "\n") {
+    if (text4[index] === "\n") {
       count++;
     }
   }
   return count;
 };
-var lineEnd = (text3, index) => {
-  const end = text3.indexOf("\n", index);
-  return end === -1 ? text3.length : end;
+var lineEnd = (text4, index) => {
+  const end = text4.indexOf("\n", index);
+  return end === -1 ? text4.length : end;
 };
-var blockEnd = (text3, index) => {
-  const end = text3.indexOf("*/", index + 2);
-  return end === -1 ? text3.length : end + 2;
+var blockEnd = (text4, index) => {
+  const end = text4.indexOf("*/", index + 2);
+  return end === -1 ? text4.length : end + 2;
 };
-var skipQuoted = (text3, from, quote, escapes = true, multiline = false) => {
+var skipQuoted = (text4, from, quote, escapes = true, multiline = false) => {
   let index = from + 1;
-  while (index < text3.length && text3[index] !== quote) {
-    if (text3[index] === "\n" && !multiline) return index;
-    index += escapes && text3[index] === "\\" ? 2 : 1;
+  while (index < text4.length && text4[index] !== quote) {
+    if (text4[index] === "\n" && !multiline) return index;
+    index += escapes && text4[index] === "\\" ? 2 : 1;
   }
   return index + 1;
 };
@@ -566,7 +566,7 @@ var blankShebang = (source) => {
   const end = lineEnd(source, 0);
   return " ".repeat(end) + source.slice(end);
 };
-var kindOf = (text3) => text3.startsWith("/*") || text3.startsWith("<!--") ? "block" : "line";
+var kindOf = (text4) => text4.startsWith("/*") || text4.startsWith("<!--") ? "block" : "line";
 var commentLexer = (lex) => (source) => {
   const code = blankShebang(source);
   const ranges = lex(code).sort((left, right) => left.start - right.start);
@@ -575,58 +575,58 @@ var commentLexer = (lex) => (source) => {
   return ranges.map(({ start, end }) => {
     line += countNewlines(code, counted, start);
     counted = start;
-    const text3 = code.slice(start, end).replace(/\r$/, "");
-    return { text: text3, line, kind: kindOf(text3) };
+    const text4 = code.slice(start, end).replace(/\r$/, "");
+    return { text: text4, line, kind: kindOf(text4) };
   });
 };
 
 // src/catalog/languages/c-style-lexer.ts
 var RUST_RAW_STRING = /^b?r(#*)"/;
 var RUST_CHAR = /^'(?:\\(?:u\{[0-9a-fA-F]+\}|x[0-9a-fA-F]{2}|.)|[^\\'])'/u;
-var nestedBlockEnd = (text3, from) => {
+var nestedBlockEnd = (text4, from) => {
   let depth = 0;
   let i = from;
-  while (i < text3.length) {
-    const pair = text3.slice(i, i + 2);
+  while (i < text4.length) {
+    const pair = text4.slice(i, i + 2);
     if (pair === "/*") depth++;
     else if (pair === "*/") depth--;
     i += pair === "/*" || pair === "*/" ? 2 : 1;
     if (depth === 0) return i;
   }
-  return text3.length;
+  return text4.length;
 };
-var cStyleRanges = (nested, literalEnd) => (text3) => {
+var cStyleRanges = (nested, literalEnd) => (text4) => {
   const found = [];
   let i = 0;
-  while (i < text3.length) {
-    const c = text3[i];
-    const d = text3[i + 1];
+  while (i < text4.length) {
+    const c = text4[i];
+    const d = text4[i + 1];
     if (c === "/" && (d === "/" || d === "*")) {
-      const end = d === "/" ? lineEnd(text3, i) : nested ? nestedBlockEnd(text3, i) : blockEnd(text3, i);
+      const end = d === "/" ? lineEnd(text4, i) : nested ? nestedBlockEnd(text4, i) : blockEnd(text4, i);
       found.push({ start: i, end });
       i = end;
-    } else i = literalEnd(text3, i) ?? i + 1;
+    } else i = literalEnd(text4, i) ?? i + 1;
   }
   return found;
 };
-var goLiteralEnd = (text3, i) => {
-  const c = text3[i];
-  if (c === '"' || c === "'") return skipQuoted(text3, i, c);
-  if (c === "`") return skipQuoted(text3, i, "`", false, true);
+var goLiteralEnd = (text4, i) => {
+  const c = text4[i];
+  if (c === '"' || c === "'") return skipQuoted(text4, i, c);
+  if (c === "`") return skipQuoted(text4, i, "`", false, true);
   return void 0;
 };
-var rustLiteralEnd = (text3, i) => {
-  const c = text3[i];
-  if ((c === "r" || c === "b") && !WORD.test(text3[i - 1] ?? "")) {
-    const raw = RUST_RAW_STRING.exec(text3.slice(i, i + 260));
+var rustLiteralEnd = (text4, i) => {
+  const c = text4[i];
+  if ((c === "r" || c === "b") && !WORD.test(text4[i - 1] ?? "")) {
+    const raw = RUST_RAW_STRING.exec(text4.slice(i, i + 260));
     if (raw !== null) {
       const hashes = raw[1] ?? "";
-      const close = text3.indexOf(`"${hashes}`, i + raw[0].length);
-      return close === -1 ? text3.length : close + 1 + hashes.length;
+      const close = text4.indexOf(`"${hashes}`, i + raw[0].length);
+      return close === -1 ? text4.length : close + 1 + hashes.length;
     }
   }
-  if (c === '"') return skipQuoted(text3, i, '"', true, true);
-  if (c === "'") return i + (RUST_CHAR.exec(text3.slice(i, i + 12))?.[0].length ?? 1);
+  if (c === '"') return skipQuoted(text4, i, '"', true, true);
+  if (c === "'") return i + (RUST_CHAR.exec(text4.slice(i, i + 12))?.[0].length ?? 1);
   return void 0;
 };
 var lexRust = commentLexer(cStyleRanges(true, rustLiteralEnd));
@@ -793,8 +793,8 @@ var CSharpLexer = class {
   scanLineComment() {
     const start = this.index;
     this.index = this.lineEnd();
-    const text3 = this.source.slice(start, this.index).replace(/\r$/, "");
-    this.comments.push({ text: text3, line: this.line, kind: "line" });
+    const text4 = this.source.slice(start, this.index).replace(/\r$/, "");
+    this.comments.push({ text: text4, line: this.line, kind: "line" });
   }
   scanBlockComment() {
     const start = this.index;
@@ -818,8 +818,8 @@ var CSharpLexer = class {
     }
     this.index++;
     if (!CHECK_DIRECTIVE.test(lineText)) return;
-    const text3 = lineText.replace(TRAILING_COMMENT, "");
-    this.comments.push({ text: text3, line: this.line, kind: "directive" });
+    const text4 = lineText.replace(TRAILING_COMMENT, "");
+    this.comments.push({ text: text4, line: this.line, kind: "directive" });
   }
 };
 var lexCSharp = (source) => new CSharpLexer(source).run();
@@ -827,23 +827,23 @@ var lexCSharp = (source) => new CSharpLexer(source).run();
 // src/catalog/languages/css-lexer.ts
 var URL_START = /^url\(/i;
 var NAME_PART = /[\w-]/;
-var cssRanges = (lineComments) => (text3) => {
+var cssRanges = (lineComments) => (text4) => {
   const found = [];
-  const n = text3.length;
+  const n = text4.length;
   let i = 0;
   while (i < n) {
-    const c = text3[i] ?? "";
-    const d = text3[i + 1];
+    const c = text4[i] ?? "";
+    const d = text4[i + 1];
     if (c === "/" && (d === "*" || d === "/" && lineComments)) {
-      const end = d === "*" ? blockEnd(text3, i) : lineEnd(text3, i);
+      const end = d === "*" ? blockEnd(text4, i) : lineEnd(text4, i);
       found.push({ start: i, end });
       i = end;
-    } else if (c === '"' || c === "'") i = skipQuoted(text3, i, c);
-    else if ((c === "u" || c === "U") && URL_START.test(text3.slice(i, i + 4)) && !NAME_PART.test(text3[i - 1] ?? "")) {
+    } else if (c === '"' || c === "'") i = skipQuoted(text4, i, c);
+    else if ((c === "u" || c === "U") && URL_START.test(text4.slice(i, i + 4)) && !NAME_PART.test(text4[i - 1] ?? "")) {
       i += 4;
-      while (i < n && text3[i] !== ")") {
-        const quote = text3[i] ?? "";
-        i = quote === '"' || quote === "'" ? skipQuoted(text3, i, quote) : i + 1;
+      while (i < n && text4[i] !== ")") {
+        const quote = text4[i] ?? "";
+        i = quote === '"' || quote === "'" ? skipQuoted(text4, i, quote) : i + 1;
       }
     } else i++;
   }
@@ -855,65 +855,65 @@ var lexScss = commentLexer(cssRanges(true));
 // src/catalog/languages/hash-lexers.ts
 var HEREDOC = /^<<(-?)[ \t]*(['"]?)([A-Za-z_][\w.-]*)\2/;
 var SHELL_COMMENT_AFTER = /[\s;&|()]/;
-var pythonRanges = (text3) => {
+var pythonRanges = (text4) => {
   const found = [];
-  const n = text3.length;
+  const n = text4.length;
   let i = 0;
   while (i < n) {
-    const c = text3[i] ?? "";
+    const c = text4[i] ?? "";
     if (c === "#") {
-      const end = lineEnd(text3, i);
+      const end = lineEnd(text4, i);
       found.push({ start: i, end });
       i = end;
     } else if (c === '"' || c === "'") {
       const triple = c.repeat(3);
-      if (!text3.startsWith(triple, i)) {
-        i = skipQuoted(text3, i, c);
+      if (!text4.startsWith(triple, i)) {
+        i = skipQuoted(text4, i, c);
         continue;
       }
       i += 3;
-      while (i < n && !text3.startsWith(triple, i)) i += text3[i] === "\\" ? 2 : 1;
+      while (i < n && !text4.startsWith(triple, i)) i += text4[i] === "\\" ? 2 : 1;
       i += 3;
     } else i++;
   }
   return found;
 };
-var skipHeredoc = (text3, from, { tag, strip }) => {
+var skipHeredoc = (text4, from, { tag, strip }) => {
   let i = from;
-  while (i < text3.length) {
-    const end = lineEnd(text3, i);
-    const line = text3.slice(i, end).replace(/\r$/, "");
+  while (i < text4.length) {
+    const end = lineEnd(text4, i);
+    const line = text4.slice(i, end).replace(/\r$/, "");
     if ((strip ? line.replace(/^\t+/, "") : line) === tag) return end + 1;
     i = end + 1;
   }
-  return text3.length;
+  return text4.length;
 };
-var shellRanges = (text3) => {
+var shellRanges = (text4) => {
   const found = [];
   const pending = [];
-  const n = text3.length;
+  const n = text4.length;
   let arithmetic = 0;
   let i = 0;
   while (i < n) {
-    const c = text3[i];
+    const c = text4[i];
     if (c === "\n") {
       i++;
-      for (let heredoc = pending.shift(); heredoc !== void 0; heredoc = pending.shift()) i = skipHeredoc(text3, i, heredoc);
-    } else if (c === "#" && (i === 0 || SHELL_COMMENT_AFTER.test(text3[i - 1] ?? ""))) {
-      const end = lineEnd(text3, i);
+      for (let heredoc = pending.shift(); heredoc !== void 0; heredoc = pending.shift()) i = skipHeredoc(text4, i, heredoc);
+    } else if (c === "#" && (i === 0 || SHELL_COMMENT_AFTER.test(text4[i - 1] ?? ""))) {
+      const end = lineEnd(text4, i);
       found.push({ start: i, end });
       i = end;
     } else if (c === "\\") i += 2;
-    else if (c === "'") i = skipQuoted(text3, i, "'", text3[i - 1] === "$", true);
-    else if (c === '"') i = skipQuoted(text3, i, '"', true, true);
-    else if (c === "(" && text3[i + 1] === "(") {
+    else if (c === "'") i = skipQuoted(text4, i, "'", text4[i - 1] === "$", true);
+    else if (c === '"') i = skipQuoted(text4, i, '"', true, true);
+    else if (c === "(" && text4[i + 1] === "(") {
       arithmetic++;
       i += 2;
-    } else if (c === ")" && text3[i + 1] === ")" && arithmetic > 0) {
+    } else if (c === ")" && text4[i + 1] === ")" && arithmetic > 0) {
       arithmetic--;
       i += 2;
-    } else if (c === "<" && text3[i + 1] === "<" && text3[i + 2] !== "<" && arithmetic === 0) {
-      const heredoc = HEREDOC.exec(text3.slice(i, i + 200));
+    } else if (c === "<" && text4[i + 1] === "<" && text4[i + 2] !== "<" && arithmetic === 0) {
+      const heredoc = HEREDOC.exec(text4.slice(i, i + 200));
       if (heredoc !== null) pending.push({ tag: heredoc[3] ?? "", strip: heredoc[1] === "-" });
       i += heredoc === null ? 2 : heredoc[0].length;
     } else i++;
@@ -927,9 +927,9 @@ var lexShell = commentLexer(shellRanges);
 var REGEX_AFTER = /* @__PURE__ */ new Set(["return", "typeof", "instanceof", "in", "of", "new", "delete", "void", "throw", "case", "do", "else", "yield", "await"]);
 var TYPE_PARAMETERS = /^<\s*(?:const\s+)?[\p{L}_$][\p{L}\p{N}_$]*\s*(?:extends\b|[,=])/u;
 var JSX_START = /[\p{L}_$>]/u;
-var jsRanges = (jsx2) => (text3) => {
+var jsRanges = (jsx2) => (text4) => {
   const found = [];
-  const n = text3.length;
+  const n = text4.length;
   let i = 0;
   const comment = (end) => {
     found.push({ start: i, end });
@@ -938,8 +938,8 @@ var jsRanges = (jsx2) => (text3) => {
   const regex = () => {
     let inClass = false;
     i++;
-    while (i < n && text3[i] !== "\n") {
-      const c = text3[i];
+    while (i < n && text4[i] !== "\n") {
+      const c = text4[i];
       if (c === "\\") {
         i += 2;
         continue;
@@ -949,7 +949,7 @@ var jsRanges = (jsx2) => (text3) => {
       else if (c === "]") inClass = false;
       else if (c === "/" && !inClass) break;
     }
-    while (i < n && /[a-z]/i.test(text3[i] ?? "")) i++;
+    while (i < n && /[a-z]/i.test(text4[i] ?? "")) i++;
   };
   const hole = () => {
     i++;
@@ -959,12 +959,12 @@ var jsRanges = (jsx2) => (text3) => {
   const template = () => {
     i++;
     while (i < n) {
-      const c = text3[i];
+      const c = text4[i];
       if (c === "\\") i += 2;
       else if (c === "`") {
         i++;
         return;
-      } else if (c === "$" && text3[i + 1] === "{") {
+      } else if (c === "$" && text4[i + 1] === "{") {
         i++;
         hole();
       } else i++;
@@ -972,8 +972,8 @@ var jsRanges = (jsx2) => (text3) => {
   };
   const tag = () => {
     while (i < n) {
-      const c = text3[i];
-      const d = text3[i + 1];
+      const c = text4[i];
+      const d = text4[i + 1];
       if (c === "/" && d === ">") {
         i += 2;
         return true;
@@ -982,9 +982,9 @@ var jsRanges = (jsx2) => (text3) => {
         i++;
         return false;
       }
-      if (c === "/" && d === "/") comment(lineEnd(text3, i));
-      else if (c === "/" && d === "*") comment(blockEnd(text3, i));
-      else if (c === '"' || c === "'") i = skipQuoted(text3, i, c, false, true);
+      if (c === "/" && d === "/") comment(lineEnd(text4, i));
+      else if (c === "/" && d === "*") comment(blockEnd(text4, i));
+      else if (c === '"' || c === "'") i = skipQuoted(text4, i, c, false, true);
       else if (c === "{") hole();
       else i++;
     }
@@ -994,12 +994,12 @@ var jsRanges = (jsx2) => (text3) => {
     let depth = 0;
     while (i < n) {
       i++;
-      const closing = text3[i] === "/";
+      const closing = text4[i] === "/";
       const selfClosing = tag();
       depth += closing ? -1 : selfClosing ? 0 : 1;
       if (depth <= 0) return;
-      while (i < n && text3[i] !== "<") {
-        if (text3[i] === "{") hole();
+      while (i < n && text4[i] !== "<") {
+        if (text4[i] === "{") hole();
         else i++;
       }
     }
@@ -1008,13 +1008,13 @@ var jsRanges = (jsx2) => (text3) => {
     let depth = 0;
     let operand = true;
     while (i < n) {
-      const c = text3[i] ?? "";
-      const d = text3[i + 1] ?? "";
-      if (c === "/" && d === "/") comment(lineEnd(text3, i));
-      else if (c === "/" && d === "*") comment(blockEnd(text3, i));
+      const c = text4[i] ?? "";
+      const d = text4[i + 1] ?? "";
+      if (c === "/" && d === "/") comment(lineEnd(text4, i));
+      else if (c === "/" && d === "*") comment(blockEnd(text4, i));
       else if (c === " " || c === "	" || c === "\n" || c === "\r") i++;
       else if (c === '"' || c === "'") {
-        i = skipQuoted(text3, i, c);
+        i = skipQuoted(text4, i, c);
         operand = false;
       } else if (c === "`") {
         template();
@@ -1023,7 +1023,7 @@ var jsRanges = (jsx2) => (text3) => {
         if (operand) regex();
         else i++;
         operand = !operand;
-      } else if (c === "<" && jsx2 && operand && JSX_START.test(d) && !TYPE_PARAMETERS.test(text3.slice(i, i + 64))) {
+      } else if (c === "<" && jsx2 && operand && JSX_START.test(d) && !TYPE_PARAMETERS.test(text4.slice(i, i + 64))) {
         element();
         operand = false;
       } else if (c === "{") {
@@ -1037,8 +1037,8 @@ var jsRanges = (jsx2) => (text3) => {
         operand = true;
       } else if (WORD.test(c)) {
         const start = i;
-        while (i < n && WORD.test(text3[i] ?? "")) i++;
-        operand = REGEX_AFTER.has(text3.slice(start, i));
+        while (i < n && WORD.test(text4[i] ?? "")) i++;
+        operand = REGEX_AFTER.has(text4.slice(start, i));
       } else {
         i++;
         operand = c !== ")" && c !== "]";
@@ -1072,32 +1072,32 @@ var TAG_START = /[a-zA-Z/!]/;
 var EMBEDDED_BLOCK = /^<(script|style)[\s>]/;
 var LANG = /\blang\s*=\s*["']?(\w+)/;
 var SFC_TAG = /<(?:script|template|style)\b/i;
-var tagEnd = (text3, from) => {
+var tagEnd = (text4, from) => {
   let i = from;
-  while (i < text3.length && text3[i] !== ">") {
-    const c = text3[i] ?? "";
-    i = c === '"' || c === "'" ? skipQuoted(text3, i, c, false, true) : i + 1;
+  while (i < text4.length && text4[i] !== ">") {
+    const c = text4[i] ?? "";
+    i = c === '"' || c === "'" ? skipQuoted(text4, i, c, false, true) : i + 1;
   }
   return i + 1;
 };
-var markupRanges = (text3) => {
+var markupRanges = (text4) => {
   const found = [];
-  const lower = text3.toLowerCase();
-  const n = text3.length;
+  const lower = text4.toLowerCase();
+  const n = text4.length;
   let i = 0;
   while (i < n) {
-    if (text3.startsWith("<!--", i)) {
-      const close2 = text3.indexOf("-->", i + 4);
+    if (text4.startsWith("<!--", i)) {
+      const close2 = text4.indexOf("-->", i + 4);
       const end = close2 === -1 ? n : close2 + 3;
       found.push({ start: i, end });
       i = end;
       continue;
     }
-    if (text3[i] !== "<" || !TAG_START.test(text3[i + 1] ?? "")) {
+    if (text4[i] !== "<" || !TAG_START.test(text4[i + 1] ?? "")) {
       i++;
       continue;
     }
-    const bodyStart = tagEnd(text3, i);
+    const bodyStart = tagEnd(text4, i);
     const block = EMBEDDED_BLOCK.exec(lower.slice(i, i + 8))?.[1];
     if (block === void 0) {
       i = bodyStart;
@@ -1107,7 +1107,7 @@ var markupRanges = (text3) => {
     const bodyEnd = close === -1 ? n : close;
     const lang = LANG.exec(lower.slice(i, bodyStart))?.[1] ?? (block === "script" ? "js" : "css");
     const lex = EMBEDDED[lang];
-    for (const { start, end } of lex === void 0 ? [] : lex(text3.slice(bodyStart, bodyEnd))) {
+    for (const { start, end } of lex === void 0 ? [] : lex(text4.slice(bodyStart, bodyEnd))) {
       found.push({ start: start + bodyStart, end: end + bodyStart });
     }
     i = bodyEnd;
@@ -1115,10 +1115,10 @@ var markupRanges = (text3) => {
   return found;
 };
 var overlaps = (range, others) => others.some((other) => range.start < other.end && other.start < range.end);
-var vueRanges = (text3) => {
-  const markup = markupRanges(text3);
-  if (SFC_TAG.test(text3)) return markup;
-  return [...markup, ...jsx(text3).filter((range) => !overlaps(range, markup))];
+var vueRanges = (text4) => {
+  const markup = markupRanges(text4);
+  if (SFC_TAG.test(text4)) return markup;
+  return [...markup, ...jsx(text4).filter((range) => !overlaps(range, markup))];
 };
 var lexMarkup = commentLexer(markupRanges);
 var lexVue = commentLexer(vueRanges);
@@ -1177,8 +1177,8 @@ var isTestFile = (file, source) => {
   if ((language?.isTestPath ?? isScriptTestPath)(file)) return true;
   const pattern = language?.testFile;
   if (pattern === void 0 || source === void 0) return false;
-  const text3 = source();
-  return text3 !== void 0 && pattern.test(text3);
+  const text4 = source();
+  return text4 !== void 0 && pattern.test(text4);
 };
 var lexComments = (file, source) => languageFor(file)?.lexComments(source);
 
@@ -1340,15 +1340,15 @@ var readText = (path2) => {
     return void 0;
   }
 };
-var shimVariables = (text3) => new Map([...text3.matchAll(SHIM_VARIABLE)].map((match) => [(match[1] ?? "").toUpperCase(), match[2] ?? ""]));
-var variableTargets = (text3) => {
-  const variables = shimVariables(text3);
-  return [...text3.matchAll(SHIM_VARIABLE_USE)].flatMap((match) => variables.get((match[1] ?? "").toUpperCase()) ?? []);
+var shimVariables = (text4) => new Map([...text4.matchAll(SHIM_VARIABLE)].map((match) => [(match[1] ?? "").toUpperCase(), match[2] ?? ""]));
+var variableTargets = (text4) => {
+  const variables = shimVariables(text4);
+  return [...text4.matchAll(SHIM_VARIABLE_USE)].flatMap((match) => variables.get((match[1] ?? "").toUpperCase()) ?? []);
 };
 var resolveShimTarget = (shimPath) => {
-  const text3 = readText(shimPath) ?? "";
-  const direct = [...text3.matchAll(SHIM_TARGET)].map((match) => match[1] ?? "");
-  const targets = [...direct, ...variableTargets(text3)].map((target2) => target2.replace(/\\/g, "/")).filter((target2) => !NODE_EXECUTABLE.test(basename(target2)));
+  const text4 = readText(shimPath) ?? "";
+  const direct = [...text4.matchAll(SHIM_TARGET)].map((match) => match[1] ?? "");
+  const targets = [...direct, ...variableTargets(text4)].map((target2) => target2.replace(/\\/g, "/")).filter((target2) => !NODE_EXECUTABLE.test(basename(target2)));
   const target = targets.at(-1);
   if (target === void 0) return void 0;
   const absolute = resolve2(dirname3(shimPath), target);
@@ -1562,7 +1562,7 @@ var groupByMarker = (projectRoot, files, markers) => {
 var withMarker = (entry, marker) => entry === void 0 || marker === void 0 ? void 0 : { bin: entry.bin, config: marker };
 var FAILURE_DETAIL_MAX = 200;
 var HUNK_HEADER = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/;
-var firstOutputLine = (text3) => text3.trim().split("\n")[0]?.slice(0, FAILURE_DETAIL_MAX) ?? "";
+var firstOutputLine = (text4) => text4.trim().split("\n")[0]?.slice(0, FAILURE_DETAIL_MAX) ?? "";
 var settleExit = (invocation, exited) => {
   const { tool, okCodes, parse: parse2 } = invocation;
   const failed2 = (failure) => ({ tool, findings: [], durationMs: exited.durationMs, failure });
@@ -1839,11 +1839,11 @@ import { dirname as dirname7, extname as extname3, join as join6, relative as re
 // src/core/jsonc.ts
 var BOM = "\uFEFF";
 var isWhitespace = (char) => char === " " || char === "	" || char === "\n" || char === "\r";
-var blank = (text3) => text3.replace(/[^\n]/g, " ");
-var skipString = (text3, start) => {
+var blank = (text4) => text4.replace(/[^\n]/g, " ");
+var skipString = (text4, start) => {
   let index = start + 1;
-  while (index < text3.length) {
-    const char = text3[index];
+  while (index < text4.length) {
+    const char = text4[index];
     if (char === "\\") {
       index += 2;
       continue;
@@ -1853,33 +1853,33 @@ var skipString = (text3, start) => {
   }
   return index;
 };
-var commentEnd = (text3, start) => {
-  const next = text3[start + 1];
+var commentEnd = (text4, start) => {
+  const next = text4[start + 1];
   if (next === "/") {
-    const newline = text3.indexOf("\n", start);
-    return newline === -1 ? text3.length : newline;
+    const newline = text4.indexOf("\n", start);
+    return newline === -1 ? text4.length : newline;
   }
   if (next === "*") {
-    const close = text3.indexOf("*/", start + 2);
+    const close = text4.indexOf("*/", start + 2);
     if (close === -1) throw new SyntaxError("unterminated block comment");
     return close + 2;
   }
   return void 0;
 };
-var stripComments = (text3) => {
+var stripComments = (text4) => {
   let output = "";
   let index = 0;
-  while (index < text3.length) {
-    const char = text3[index];
+  while (index < text4.length) {
+    const char = text4[index];
     if (char === '"') {
-      const end2 = skipString(text3, index);
-      output += text3.slice(index, end2);
+      const end2 = skipString(text4, index);
+      output += text4.slice(index, end2);
       index = end2;
       continue;
     }
-    const end = char === "/" ? commentEnd(text3, index) : void 0;
+    const end = char === "/" ? commentEnd(text4, index) : void 0;
     if (end !== void 0) {
-      output += blank(text3.slice(index, end));
+      output += blank(text4.slice(index, end));
       index = end;
       continue;
     }
@@ -1888,13 +1888,13 @@ var stripComments = (text3) => {
   }
   return output;
 };
-var stripTrailingCommas = (text3) => {
-  const chars = text3.split("");
+var stripTrailingCommas = (text4) => {
+  const chars = text4.split("");
   let index = 0;
   while (index < chars.length) {
     const char = chars[index];
     if (char === '"') {
-      index = skipString(text3, index);
+      index = skipString(text4, index);
       continue;
     }
     if (char === ",") {
@@ -1909,8 +1909,8 @@ var stripTrailingCommas = (text3) => {
   }
   return chars.join("");
 };
-var parseJsonc = (text3) => {
-  const source = text3.startsWith(BOM) ? text3.slice(1) : text3;
+var parseJsonc = (text4) => {
+  const source = text4.startsWith(BOM) ? text4.slice(1) : text4;
   return JSON.parse(stripTrailingCommas(stripComments(source)));
 };
 
@@ -2316,7 +2316,7 @@ var unlisted = (config, discovery) => discovery.found.filter((found) => found.st
 
 // src/core/command.ts
 var TOKEN = /"([^"]*)"|'([^']*)'|(\S+)/g;
-var splitCommand = (text3) => [...text3.matchAll(TOKEN)].map((match) => match[1] ?? match[2] ?? match[3] ?? "");
+var splitCommand = (text4) => [...text4.matchAll(TOKEN)].map((match) => match[1] ?? match[2] ?? match[3] ?? "");
 var expandToken = (argv, placeholder, values) => argv.flatMap((token) => token === placeholder ? [...values] : [token]);
 
 // src/core/config.ts
@@ -2400,8 +2400,8 @@ var readSwitch = (validator, value, path2, allowed) => {
   if (given.length !== 1) return validator.report(path2, `expected exactly one of ${allowed.join(", ")}`);
   const kind = given[0];
   if (!allowed.includes(kind)) return validator.report(childPath(path2, kind), `is not available here, expected ${allowed.join(" or ")}`);
-  const text3 = readName(validator, object[kind], childPath(path2, kind));
-  return text3 === void 0 ? void 0 : { [kind]: text3 };
+  const text4 = readName(validator, object[kind], childPath(path2, kind));
+  return text4 === void 0 ? void 0 : { [kind]: text4 };
 };
 var readNamedList = (validator, value, path2, readEntry) => {
   if (!Array.isArray(value)) return validator.report(path2, "expected an array");
@@ -2777,9 +2777,9 @@ var mergeConfigValues = (shared, local, path2 = "$") => {
   return merged2;
 };
 var failed = (files, error) => ({ ...defaultConfig(), files, error });
-var parseText = (text3, label) => {
+var parseText = (text4, label) => {
   try {
-    return { value: parseJsonc(text3) };
+    return { value: parseJsonc(text4) };
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
     return { error: `${label}$: ${reason}` };
@@ -2797,8 +2797,8 @@ var loadConfig = (projectRoot) => {
     { path: paths.config, label: ".jig/config.jsonc: " },
     { path: paths.localConfig, label: ".jig/config.local.jsonc: " }
   ].flatMap((source) => {
-    const text3 = readOptional(source.path);
-    return text3 === void 0 ? [] : [{ ...source, text: text3 }];
+    const text4 = readOptional(source.path);
+    return text4 === void 0 ? [] : [{ ...source, text: text4 }];
   });
   const files = sources.map((source) => source.path);
   if (sources.length === 0) return { ...defaultConfig(), files };
@@ -2835,15 +2835,15 @@ var openShellCall = (projectRoot, sessionId, callId, call) => {
 };
 var closeShellCall = (projectRoot, sessionId, callId) => {
   const path2 = shellCallPath(projectRoot, sessionId, callId);
-  let text3;
+  let text4;
   try {
-    text3 = readFileSync11(path2, "utf8");
+    text4 = readFileSync11(path2, "utf8");
   } catch {
     return void 0;
   }
   rmSync3(path2, { force: true });
   try {
-    const value = JSON.parse(text3);
+    const value = JSON.parse(text4);
     if (typeof value !== "object" || value === null || !("snapshot" in value)) return void 0;
     const { snapshot: snapshot3 } = value;
     if (typeof snapshot3 !== "object" || snapshot3 === null) return void 0;
@@ -2886,14 +2886,14 @@ var isSessionState = (value) => {
   return candidate.v === 1 && typeof candidate.sessionId === "string" && typeof candidate.snapshot === "object";
 };
 var readState = (projectRoot, sessionId) => {
-  let text3;
+  let text4;
   try {
-    text3 = readFileSync11(sessionStatePath(projectRoot, sessionId), "utf8");
+    text4 = readFileSync11(sessionStatePath(projectRoot, sessionId), "utf8");
   } catch {
     return void 0;
   }
   try {
-    const value = JSON.parse(text3);
+    const value = JSON.parse(text4);
     if (!isSessionState(value)) return void 0;
     return { ...value, turn: typeof value.turn === "number" ? value.turn : 0 };
   } catch {
@@ -2915,10 +2915,10 @@ var renameWithRetry = (from, to) => {
     }
   }
 };
-var writeFileAtomic = (path2, text3) => {
+var writeFileAtomic = (path2, text4) => {
   tmpCounter++;
   const tmp = `${path2}.${process.pid}-${tmpCounter}.tmp`;
-  writeFileSync5(tmp, text3);
+  writeFileSync5(tmp, text4);
   renameWithRetry(tmp, path2);
 };
 var writeState = (projectRoot, state, now = /* @__PURE__ */ new Date()) => {
@@ -3076,10 +3076,10 @@ import { join as join11 } from "node:path";
 // src/rules/comments.ts
 import { basename as basename2 } from "node:path";
 var CONFIG_FILE = [/^\./, /\.(?:config|conf)\./];
-var lf = (text3) => text3.replace(/\r\n/g, "\n");
-var normalize = (text3) => text3.replace(/\s+/g, " ").trim();
+var lf = (text4) => text4.replace(/\r\n/g, "\n");
+var normalize = (text4) => text4.replace(/\s+/g, " ").trim();
 var isConfigFile = (file) => CONFIG_FILE.some((pattern) => pattern.test(basename2(file)));
-var commentsIn = (file, text3) => (lexComments(file, text3) ?? []).map((comment) => ({ text: comment.text, key: normalize(comment.text), line: comment.line }));
+var commentsIn = (file, text4) => (lexComments(file, text4) ?? []).map((comment) => ({ text: comment.text, key: normalize(comment.text), line: comment.line }));
 var isSubsequence = (short2, long) => {
   const wanted = [...short2];
   let found = 0;
@@ -3090,10 +3090,10 @@ var isSubsequence = (short2, long) => {
 };
 var unmatched = (file, before, after) => {
   const left = /* @__PURE__ */ new Map();
-  for (const text3 of before) {
-    for (const { key } of commentsIn(file, text3)) left.set(key, (left.get(key) ?? 0) + 1);
+  for (const text4 of before) {
+    for (const { key } of commentsIn(file, text4)) left.set(key, (left.get(key) ?? 0) + 1);
   }
-  const fresh = after.flatMap((text3) => commentsIn(file, text3)).filter(({ key }) => {
+  const fresh = after.flatMap((text4) => commentsIn(file, text4)).filter(({ key }) => {
     const count = left.get(key) ?? 0;
     if (count > 0) left.set(key, count - 1);
     return count === 0;
@@ -3106,19 +3106,19 @@ var unmatched = (file, before, after) => {
   });
 };
 var applyEdits = (current, edits) => {
-  let text3 = current;
+  let text4 = current;
   for (const edit of edits) {
     const before = lf(edit.before);
     const after = lf(edit.after);
-    if (before === "" && text3 === "") {
-      text3 = after;
+    if (before === "" && text4 === "") {
+      text4 = after;
       continue;
     }
-    const at = before === "" ? -1 : text3.indexOf(before);
+    const at = before === "" ? -1 : text4.indexOf(before);
     if (at === -1) return void 0;
-    text3 = text3.slice(0, at) + after + text3.slice(at + before.length);
+    text4 = text4.slice(0, at) + after + text4.slice(at + before.length);
   }
-  return text3;
+  return text4;
 };
 var addedComments = (file, edits, current) => {
   if (lexComments(file, "") === void 0) return void 0;
@@ -3131,9 +3131,9 @@ var addedComments = (file, edits, current) => {
 };
 
 // src/rules/suppressions.ts
-var firstMatch = (patterns, text3) => {
+var firstMatch = (patterns, text4) => {
   for (const pattern of patterns) {
-    const match = pattern.exec(text3);
+    const match = pattern.exec(text4);
     if (match !== null) return match[0];
   }
   return void 0;
@@ -3177,8 +3177,8 @@ var rulesText = (input, atom, reminder) => {
   const path2 = atomPath(input.pluginRoot, atom);
   if (!claimFirst(input, atomKey(atom))) return `${reminder} Rules: ${path2}.`;
   try {
-    const text3 = readFileSync13(path2, "utf8");
-    return (parseFrontmatter(text3)?.body ?? text3).replace(/^\s+/, "").replace(LEADING_HEADING, "").trim();
+    const text4 = readFileSync13(path2, "utf8");
+    return (parseFrontmatter(text4)?.body ?? text4).replace(/^\s+/, "").replace(LEADING_HEADING, "").trim();
   } catch {
     return `Rules: ${path2}.`;
   }
@@ -3281,9 +3281,9 @@ var readText2 = (path2) => {
     return "";
   }
 };
-var parseMarkdownFile = (text3) => {
+var parseMarkdownFile = (text4) => {
   try {
-    return parseFrontmatter(text3) ?? "frontmatter is missing";
+    return parseFrontmatter(text4) ?? "frontmatter is missing";
   } catch (error) {
     if (error instanceof FrontmatterError) return `frontmatter is invalid (${error.message})`;
     throw error;
@@ -3310,33 +3310,33 @@ var listNested = (pluginRoot, dir2) => {
   }
 };
 var exists = (pluginRoot, path2) => existsSync6(join13(pluginRoot, path2));
-var lineAt = (text3, index) => text3.slice(0, index).split("\n").length;
+var lineAt = (text4, index) => text4.slice(0, index).split("\n").length;
 var skillOf = (command) => {
   const [plugin, skill] = command.split(":");
   return skill ?? plugin ?? "";
 };
 var skillRoot = (file) => /^skills\/[^/]+/.exec(file)?.[0];
-var checkSlashCommands = ({ file, text: text3 }, skills) => [...text3.matchAll(SLASH)].filter((match) => !skills.has(skillOf(match[1] ?? ""))).map((match) => `${file}:${lineAt(text3, match.index)}: /${match[1]} names no skill in skills/`);
-var checkLinks = ({ file, text: text3 }, pluginRoot) => [...text3.matchAll(LINK)].flatMap((match) => {
+var checkSlashCommands = ({ file, text: text4 }, skills) => [...text4.matchAll(SLASH)].filter((match) => !skills.has(skillOf(match[1] ?? ""))).map((match) => `${file}:${lineAt(text4, match.index)}: /${match[1]} names no skill in skills/`);
+var checkLinks = ({ file, text: text4 }, pluginRoot) => [...text4.matchAll(LINK)].flatMap((match) => {
   const target = (match[1] ?? "").split("#")[0] ?? "";
   if (target === "" || URL_SCHEME.test(target)) return [];
   const path2 = posix3.normalize(posix3.join(posix3.dirname(file), decodeURI(target)));
-  return exists(pluginRoot, path2) ? [] : [`${file}:${lineAt(text3, match.index)}: link ${target} points at no file`];
+  return exists(pluginRoot, path2) ? [] : [`${file}:${lineAt(text4, match.index)}: link ${target} points at no file`];
 });
-var checkBacktickedPaths = ({ file, text: text3 }, pluginRoot) => [...text3.matchAll(BACKTICKED_PATH)].flatMap((match) => {
+var checkBacktickedPaths = ({ file, text: text4 }, pluginRoot) => [...text4.matchAll(BACKTICKED_PATH)].flatMap((match) => {
   const path2 = match[1] ?? "";
   if (PLACEHOLDER.test(path2)) return [];
   const root = SKILL_RELATIVE.test(path2) ? skillRoot(file) : "";
   if (root === void 0) return [];
   const resolved = root === "" ? path2 : `${root}/${path2}`;
-  return exists(pluginRoot, resolved) ? [] : [`${file}:${lineAt(text3, match.index)}: \`${path2}\` points at no file`];
+  return exists(pluginRoot, resolved) ? [] : [`${file}:${lineAt(text4, match.index)}: \`${path2}\` points at no file`];
 });
-var checkFlowTable = ({ file, text: text3 }, pluginRoot) => {
-  const rows = file === "README.md" ? [...text3.matchAll(FLOW_ROW)] : [];
+var checkFlowTable = ({ file, text: text4 }, pluginRoot) => {
+  const rows = file === "README.md" ? [...text4.matchAll(FLOW_ROW)] : [];
   const [first] = rows;
   if (first === void 0) return [];
   const listed = new Set(rows.map((row) => row[1] ?? ""));
-  const line = lineAt(text3, first.index);
+  const line = lineAt(text4, first.index);
   return listMarkdown(join13(pluginRoot, FLOWS_DIR)).map((name) => name.slice(0, -".md".length)).filter((name) => name !== SHARED_FLOW && !listed.has(name)).map((name) => `${file}:${line}: flow ${name} is missing from the flow table`);
 };
 var validateDocRefs = (pluginRoot) => {
@@ -3368,12 +3368,12 @@ var MAX_SKILL_NAME_LENGTH = 64;
 var ROLE_MENTION = /\b[Rr]oles? `[^`]+`(?:(?:, |,? and |,? or )`[^`]+`)*/g;
 var BACKTICKED = /`([^`]+)`/g;
 var FLOW_MENTION = /\bflows\/([A-Za-z0-9_-]+)\.md/g;
-var lineAt2 = (text3, index) => text3.slice(0, index).split("\n").length;
-var findMentions = (file, text3) => {
-  const roles = [...text3.matchAll(ROLE_MENTION)].flatMap(
-    (match) => [...match[0].matchAll(BACKTICKED)].map((name) => ({ name: name[1] ?? "", file, line: lineAt2(text3, match.index) }))
+var lineAt2 = (text4, index) => text4.slice(0, index).split("\n").length;
+var findMentions = (file, text4) => {
+  const roles = [...text4.matchAll(ROLE_MENTION)].flatMap(
+    (match) => [...match[0].matchAll(BACKTICKED)].map((name) => ({ name: name[1] ?? "", file, line: lineAt2(text4, match.index) }))
   );
-  const flows = [...text3.matchAll(FLOW_MENTION)].map((match) => ({ name: match[1] ?? "", file, line: lineAt2(text3, match.index) }));
+  const flows = [...text4.matchAll(FLOW_MENTION)].map((match) => ({ name: match[1] ?? "", file, line: lineAt2(text4, match.index) }));
   return { roles, flows };
 };
 var listSkillMarkdown = (pluginRoot) => {
@@ -3468,14 +3468,14 @@ var skillMarkdown = (pluginRoot) => {
 var reachableNames = (pluginRoot) => {
   const texts = skillMarkdown(pluginRoot).map((path2) => readText2(path2).replace(/\r\n/g, "\n"));
   const names = new Set(GATE_ATOMS);
-  for (const text3 of texts) {
-    for (const match of text3.matchAll(/atom `([^`]+)`/g)) {
+  for (const text4 of texts) {
+    for (const match of text4.matchAll(/atom `([^`]+)`/g)) {
       names.add(match[1] ?? "");
     }
-    for (const match of text3.matchAll(INDEX_LINE)) {
+    for (const match of text4.matchAll(INDEX_LINE)) {
       names.add(match[1] ?? "");
     }
-    for (const match of text3.matchAll(ATOMS_LINE)) {
+    for (const match of text4.matchAll(ATOMS_LINE)) {
       for (const item of (match[1] ?? "").split(",")) {
         names.add(item.trim().replace(/[`.]/g, ""));
       }
@@ -3543,8 +3543,8 @@ var validateAtoms = (pluginRoot) => {
   );
 };
 var readAtomBody = (file) => {
-  const text3 = readFileSync15(file, "utf8");
-  const body = parseFrontmatter(text3)?.body ?? text3.replace(/\r\n/g, "\n");
+  const text4 = readFileSync15(file, "utf8");
+  const body = parseFrontmatter(text4)?.body ?? text4.replace(/\r\n/g, "\n");
   return body.replace(/^\n+/, "").replace(/\s+$/, "");
 };
 var BUILD_FLAGS = /* @__PURE__ */ new Set(["--atoms-only", "--check"]);
@@ -3713,7 +3713,7 @@ var JOURNAL_MAX_BYTES = 50 * 1024 * 1024;
 var JOURNAL_MESSAGE_MAX = 300;
 var DAY_MS = 24 * 60 * 60 * 1e3;
 var JOURNAL_FILE = /^(\d{4}-\d{2}-\d{2})\.jsonl$/;
-var truncate = (text3) => text3.length <= JOURNAL_MESSAGE_MAX ? text3 : `${text3.slice(0, JOURNAL_MESSAGE_MAX - 1)}\u2026`;
+var truncate = (text4) => text4.length <= JOURNAL_MESSAGE_MAX ? text4 : `${text4.slice(0, JOURNAL_MESSAGE_MAX - 1)}\u2026`;
 var appendJournal = (projectRoot, entry) => {
   const record2 = { v: 1, ...entry, ts: entry.ts ?? (/* @__PURE__ */ new Date()).toISOString() };
   if (record2.message !== void 0) {
@@ -3880,10 +3880,10 @@ var validateUserConfig = (value) => {
   const prices = root["prices"] === void 0 ? {} : readPrices(validator, root["prices"]);
   return { config: { tiers, prices }, errors: validator.errors };
 };
-var parseUserConfig = (text3) => {
+var parseUserConfig = (text4) => {
   let value;
   try {
-    value = parseJsonc(text3);
+    value = parseJsonc(text4);
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
     return { config: emptyUserConfig(), error: `$: ${reason}` };
@@ -3955,9 +3955,9 @@ var formatDenyBlock = () => {
   const rules = RECOMMENDED_DENY.map((rule) => `      "${rule}"`);
   return ["{", '  "permissions": {', '    "deny": [', rules.join(",\n"), "    ]", "  }", "}"].join("\n");
 };
-var ok = (text3) => ({ status: "ok", text: text3 });
-var warn = (text3) => ({ status: "warn", text: text3 });
-var fail2 = (text3) => ({ status: "fail", text: text3 });
+var ok = (text4) => ({ status: "ok", text: text4 });
+var warn = (text4) => ({ status: "warn", text: text4 });
+var fail2 = (text4) => ({ status: "fail", text: text4 });
 var checkNode = () => {
   const version2 = process.versions.node;
   const major = Number(version2.split(".")[0]);
@@ -4037,16 +4037,16 @@ var checkDeny = (projectRoot) => {
   }
   const missing = RECOMMENDED_DENY.filter((entry) => !deny.includes(entry));
   if (missing.length === 0) return ok(`deny: ${path2} has the recommended block`);
-  const text3 = `deny: ${path2} misses ${missing.length} of ${RECOMMENDED_DENY.length} rules, add the recommended block:`;
-  return { ...warn(text3), block: formatDenyBlock() };
+  const text4 = `deny: ${path2} misses ${missing.length} of ${RECOMMENDED_DENY.length} rules, add the recommended block:`;
+  return { ...warn(text4), block: formatDenyBlock() };
 };
 var AGENTS_READING_CLAUDE_SETTINGS = /* @__PURE__ */ new Set(["claude", UNKNOWN_AGENT]);
 var denyApplies = (agent) => AGENTS_READING_CLAUDE_SETTINGS.has(agent);
 var checkJournal = (projectRoot) => {
   const files = listJournalFiles(projectRoot);
   const bytes = files.reduce((total, file) => total + file.size, 0);
-  const text3 = `journal: ${(bytes / BYTES_PER_MB).toFixed(1)} MB in ${files.length} files`;
-  return bytes > JOURNAL_MAX_BYTES ? warn(`${text3}, above ${JOURNAL_MAX_BYTES / BYTES_PER_MB} MB`) : ok(text3);
+  const text4 = `journal: ${(bytes / BYTES_PER_MB).toFixed(1)} MB in ${files.length} files`;
+  return bytes > JOURNAL_MAX_BYTES ? warn(`${text4}, above ${JOURNAL_MAX_BYTES / BYTES_PER_MB} MB`) : ok(text4);
 };
 var checkLock = (path2) => {
   if (!existsSync8(path2)) return ok(`lock: ${path2} free`);
@@ -4209,7 +4209,7 @@ var parseLine = (line) => {
   const [ts2 = "", phase = "", decision = "", why = "", evidence = "", ...result] = line.split("	");
   return { ts: ts2, phase, decision, why, evidence, result: result.join(" ") };
 };
-var parseJournal = (text3) => text3.split("\n").map((line) => line.replace(/\r$/, "")).filter((line) => line.trim() !== "" && line !== HEADER).map(parseLine);
+var parseJournal = (text4) => text4.split("\n").map((line) => line.replace(/\r$/, "")).filter((line) => line.trim() !== "" && line !== HEADER).map(parseLine);
 var readText4 = (path2) => {
   try {
     return readFileSync20(path2, "utf8");
@@ -4218,8 +4218,8 @@ var readText4 = (path2) => {
   }
 };
 var readJournalRows = (path2) => {
-  const text3 = readText4(path2);
-  return text3 === void 0 ? void 0 : parseJournal(text3);
+  const text4 = readText4(path2);
+  return text4 === void 0 ? void 0 : parseJournal(text4);
 };
 var appendRow = (path2, input, now) => {
   const row = {
@@ -4243,16 +4243,16 @@ var isActive = (rows, now) => {
   return now.getTime() - Date.parse(last.ts) < ACTIVE_JOURNAL_MAX_AGE_MS;
 };
 var readActiveJournal = (projectRoot, now = /* @__PURE__ */ new Date()) => {
-  const location = journalLocation(projectRoot);
-  const rows = readJournalRows(location.journal);
+  const location2 = journalLocation(projectRoot);
+  const rows = readJournalRows(location2.journal);
   if (rows === void 0 || !isActive(rows, now)) return void 0;
-  return { rows, journal: toSlash(location.journal) };
+  return { rows, journal: toSlash(location2.journal) };
 };
 var logToActiveJournal = (projectRoot, input, now = /* @__PURE__ */ new Date()) => {
-  const location = journalLocation(projectRoot);
-  const rows = readJournalRows(location.journal);
+  const location2 = journalLocation(projectRoot);
+  const rows = readJournalRows(location2.journal);
   if (rows === void 0 || !isActive(rows, now)) return false;
-  appendRow(location.journal, input, now);
+  appendRow(location2.journal, input, now);
   return true;
 };
 var lastStart = (rows) => rows.findLast((row) => row.phase === START_PHASE);
@@ -4340,37 +4340,37 @@ var renderPage = (data) => {
 ${json}
 ${close}`);
 };
-var noJournal = (location) => new TaskStatusFailure(EXIT_NOT_MET, `no task-status journal for branch ${location.branch}, start one with: task-status log start "<task title>"`);
-var openPage = (location, args, now) => {
+var noJournal = (location2) => new TaskStatusFailure(EXIT_NOT_MET, `no task-status journal for branch ${location2.branch}, start one with: task-status log start "<task title>"`);
+var openPage = (location2, args, now) => {
   const { lang, isBrowser } = parseOpen(args);
-  const rows = readJournalRows(location.journal);
-  if (rows === void 0) throw noJournal(location);
-  const journal2 = toSlash(location.journal);
-  writeFileAtomic(location.page, renderPage({ branch: location.branch, journal: journal2, builtAt: now.toISOString(), lang, rows }));
-  if (isBrowser) showInBrowserBestEffort(location.page);
-  return toSlash(location.page);
+  const rows = readJournalRows(location2.journal);
+  if (rows === void 0) throw noJournal(location2);
+  const journal2 = toSlash(location2.journal);
+  writeFileAtomic(location2.page, renderPage({ branch: location2.branch, journal: journal2, builtAt: now.toISOString(), lang, rows }));
+  if (isBrowser) showInBrowserBestEffort(location2.page);
+  return toSlash(location2.page);
 };
 var dispatch = (args, now) => {
   const [sub, ...rest] = args;
   const projectRoot = resolveProjectRoot(process.cwd());
-  const location = journalLocation(projectRoot);
+  const location2 = journalLocation(projectRoot);
   const record2 = (write) => {
     ensureJigDir(projectRoot);
     write();
-    return toSlash(location.journal);
+    return toSlash(location2.journal);
   };
   if (sub === "log") {
     const input = parseLog(rest);
-    return record2(() => appendRow(location.journal, input, now));
+    return record2(() => appendRow(location2.journal, input, now));
   }
   if (sub === "plan") {
     const titles = parsePlan(rest);
-    return record2(() => planSteps(location.journal, titles, now));
+    return record2(() => planSteps(location2.journal, titles, now));
   }
-  if (sub === "open") return openPage(location, rest, now);
+  if (sub === "open") return openPage(location2, rest, now);
   if (sub === "path") {
-    if (readJournalRows(location.journal) === void 0) throw noJournal(location);
-    return toSlash(location.journal);
+    if (readJournalRows(location2.journal) === void 0) throw noJournal(location2);
+    return toSlash(location2.journal);
   }
   throw usage(`unknown task-status subcommand ${sub ?? "(none)"}, expected log, plan, open or path`);
 };
@@ -4485,7 +4485,7 @@ var checkArgv = (projectRoot, check2, files) => {
   const [command = "", ...args] = expandToken(splitCommand(check2.run), FILES_TOKEN2, files);
   return [...resolveBin(projectRoot, [], command) ?? [command], ...args];
 };
-var firstLine2 = (text3) => text3.split("\n").map((line) => line.trim()).find((line) => line !== "")?.slice(0, MESSAGE_MAX) ?? "";
+var firstLine2 = (text4) => text4.split("\n").map((line) => line.trim()).find((line) => line !== "")?.slice(0, MESSAGE_MAX) ?? "";
 var exitFinding = (check2, file, output, code) => ({
   tool: check2.name,
   rule: checkRule(check2),
@@ -5496,10 +5496,10 @@ var freshnessOf = (checkout, keyed) => {
 var hasDepsDir = (checkout, deps) => lstatSync4(join27(checkout, deps), { throwIfNoEntry: false })?.isDirectory() === true;
 var isStringArray = (value) => Array.isArray(value) && value.every((item) => typeof item === "string");
 var isTransfer = (value) => value === "hardlink" || value === "copy";
-var parseManifest = (text3) => {
+var parseManifest = (text4) => {
   let value;
   try {
-    value = JSON.parse(text3);
+    value = JSON.parse(text4);
   } catch {
     return void 0;
   }
@@ -5932,8 +5932,8 @@ var newWorktreesNote = (ctx, state, before) => {
 };
 var noteOf = (ctx, note) => {
   try {
-    const text3 = note();
-    return text3 === void 0 ? [] : [text3];
+    const text4 = note();
+    return text4 === void 0 ? [] : [text4];
   } catch (error) {
     journalFailure(ctx, error);
     return [];
@@ -6385,14 +6385,14 @@ var findCandidates = (records) => {
     examples: group.records.slice(0, MAX_EXAMPLES)
   })).sort(compareCandidates);
 };
-var cell = (text3) => text3.replace(/\r?\n/g, " ").replace(/\|/g, "\\|");
+var cell = (text4) => text4.replace(/\r?\n/g, " ").replace(/\|/g, "\\|");
 var formatLocation = (record2) => {
   if (record2.file === void 0) return void 0;
   return record2.line === void 0 ? record2.file : `${record2.file}:${record2.line}`;
 };
 var formatExample = (record2) => {
-  const location = formatLocation(record2);
-  const parts = [location === void 0 ? void 0 : `\`${location}\``, record2.ts, record2.message];
+  const location2 = formatLocation(record2);
+  const parts = [location2 === void 0 ? void 0 : `\`${location2}\``, record2.ts, record2.message];
   return cell(parts.filter((part) => part !== void 0).join(" "));
 };
 var formatCandidateTable = (candidates) => {
@@ -6501,8 +6501,8 @@ var compactChunk = (chunk, path2) => {
   ];
   return [`=== ${path2}${notes.length > 0 ? ` (${notes.join(", ")})` : ""}`, ...firstHunk === -1 ? [] : chunk.slice(firstHunk)];
 };
-var splitDiff = (text3, audienceOf2 = () => "code", maxLines = DIFF_PART_MAX_LINES, partitionOf = () => "") => {
-  const lines2 = text3.split("\n");
+var splitDiff = (text4, audienceOf2 = () => "code", maxLines = DIFF_PART_MAX_LINES, partitionOf = () => "") => {
+  const lines2 = text4.split("\n");
   if (lines2.at(-1) === "") lines2.pop();
   const chunks = [];
   for (const line of lines2) {
@@ -6875,7 +6875,7 @@ var ancestors = (file) => {
 var sorted = (items) => [...new Set(items)].sort();
 var dirOf2 = (path2) => posix6.dirname(path2) === "." ? "" : posix6.dirname(path2);
 var depthOf = (dir2) => dir2 === "" ? 0 : dir2.split("/").length;
-var linkedDocuments = (index, text3) => [...text3.matchAll(MARKDOWN_LINK)].map((match) => match[1] ?? match[2] ?? "").filter((target) => target !== "" && !/^[a-z]+:/i.test(target)).map((target) => posix6.normalize(target.startsWith("/") ? target.slice(1) : posix6.join(dirOf2(index), target)));
+var linkedDocuments = (index, text4) => [...text4.matchAll(MARKDOWN_LINK)].map((match) => match[1] ?? match[2] ?? "").filter((target) => target !== "" && !/^[a-z]+:/i.test(target)).map((target) => posix6.normalize(target.startsWith("/") ? target.slice(1) : posix6.join(dirOf2(index), target)));
 var standardScopes = (root, indexes, standards) => {
   const linkers = /* @__PURE__ */ new Map();
   for (const index of indexes) {
@@ -7251,10 +7251,10 @@ var countLines = (stats, root) => {
 };
 var PROJECT_KEYS = ["$schema", "iterationsMemory", "discover", "review", "mr", "severity", "route", "angles", "tiers", "maxParallel", "layout", "testPaths", "partitions"];
 var readPolicy = (validator, value) => {
-  const text3 = validator.string(value, "$.partitions");
-  if (text3 === void 0) return void 0;
-  if (text3.trim() === "") return validator.report("$.partitions", "expected a non-empty text");
-  return text3.trim();
+  const text4 = validator.string(value, "$.partitions");
+  if (text4 === void 0) return void 0;
+  if (text4.trim() === "") return validator.report("$.partitions", "expected a non-empty text");
+  return text4.trim();
 };
 var SETTING_KEYS = ["enabled", "severityCeiling"];
 var PROJECT_ANGLE_KEYS = [...SETTING_KEYS, "file", "kind"];
@@ -7316,9 +7316,9 @@ var readGrades = (validator, value) => {
   }
   return grades;
 };
-var parseProjectConfig = (text3, label) => {
+var parseProjectConfig = (text4, label) => {
   const validator = new Validator();
-  const root = validator.object(parseJsonc(text3), "$", PROJECT_KEYS);
+  const root = validator.object(parseJsonc(text4), "$", PROJECT_KEYS);
   const { angles, projectAngles } = root?.["angles"] === void 0 ? { angles: {}, projectAngles: [] } : readAngles(validator, root["angles"]);
   const grades = root?.["tiers"] === void 0 ? {} : readGrades(validator, root["tiers"]);
   const maxParallel = root?.["maxParallel"] === void 0 ? MAX_PARALLEL : validator.integer(root["maxParallel"], "$.maxParallel", 1);
@@ -7339,7 +7339,7 @@ var loadProjectConfig = (root) => {
   }
   return { label, config: { ...config, projectAngles: config.projectAngles.map((angle) => ({ ...angle, file: toSlash(join33(file.root, angle.file)) })) } };
 };
-var firstLine3 = (text3) => text3.split("\n")[0]?.trim() || void 0;
+var firstLine3 = (text4) => text4.split("\n")[0]?.trim() || void 0;
 var gitLine = (args, root) => {
   const result = git(args, root);
   return result.ok ? firstLine3(result.stdout) : void 0;
@@ -7391,8 +7391,8 @@ var resolveLayout = (argument, env, config) => {
   }
   return config === void 0 ? { name: DEFAULT_LAYOUT, source: "default" } : { name: config, source: "config" };
 };
-var angleAtoms = (text3) => {
-  const header = /\*\*Atoms?:\*\*([^\n]*)/.exec(text3)?.[1] ?? "";
+var angleAtoms = (text4) => {
+  const header = /\*\*Atoms?:\*\*([^\n]*)/.exec(text4)?.[1] ?? "";
   return [...header.matchAll(/`([^`]+)`/g)].map((match) => match[1] ?? "").filter((name) => name !== "");
 };
 var readsFor = (pluginRoot, angles, projectFiles2 = []) => {
@@ -7657,11 +7657,11 @@ var buildReport = (root, options) => {
 };
 var isMode = (value) => MODES.includes(value);
 var USAGE4 = "usage: jig review-plan [<base>] [--selector full|quick|auto|<tokens>] [--layout auto|lean|solo] [--spec] [--mode review|pre-mr] [--mr] [--no-state] [--rereview] [--state <path>] [--partition <name>=<path>,<dir>/...]... [--agent <id>] [--json] [-- <pathspec>...]";
-var parseGroupSpec = (text3) => {
-  const separator = text3.indexOf("=");
-  const name = separator === -1 ? "" : text3.slice(0, separator).trim();
-  if (!GROUP_NAME.test(name)) throw new Error(`--partition ${text3}: expected <name>=<path>,<path> with a name of lowercase letters, digits and dashes`);
-  const entries = text3.slice(separator + 1).split(",").map((entry) => toSlash(entry.trim()).replace(/^\.\//, "")).filter((entry) => entry !== "");
+var parseGroupSpec = (text4) => {
+  const separator = text4.indexOf("=");
+  const name = separator === -1 ? "" : text4.slice(0, separator).trim();
+  if (!GROUP_NAME.test(name)) throw new Error(`--partition ${text4}: expected <name>=<path>,<path> with a name of lowercase letters, digits and dashes`);
+  const entries = text4.slice(separator + 1).split(",").map((entry) => toSlash(entry.trim()).replace(/^\.\//, "")).filter((entry) => entry !== "");
   return { name, entries };
 };
 var splitPathspec = (args) => {
@@ -7928,9 +7928,9 @@ var check = (args, ctx) => {
 };
 var textArgument = (args, usage2) => {
   const parts = args[0] === "--" ? args.slice(1) : args;
-  const text3 = parts.join(" ").trim();
-  if (text3 === "" || args[0] !== "--" && text3.startsWith("-")) throw new UsageError(usage2);
-  return text3;
+  const text4 = parts.join(" ").trim();
+  if (text4 === "" || args[0] !== "--" && text4.startsWith("-")) throw new UsageError(usage2);
+  return text4;
 };
 var proof = (args, ctx) => {
   const command = textArgument(args, `usage: jig pre-mr proof "<command>", e.g. jig pre-mr proof "${hintFor("behavior")}"`);
@@ -8005,8 +8005,8 @@ var shellExec = (command, cwd) => {
   return result.status ?? 1;
 };
 var processIo = {
-  out: (text3) => process.stdout.write(text3),
-  err: (text3) => process.stderr.write(text3)
+  out: (text4) => process.stdout.write(text4),
+  err: (text4) => process.stderr.write(text4)
 };
 var runPreMr = (args) => preMr(args, { cwd: process.cwd(), io: processIo, exec: shellExec });
 var runSkipVerify = (args) => skipVerify(args, { cwd: process.cwd(), io: processIo });
@@ -8064,20 +8064,20 @@ var parseEntry = (line) => {
     return void 0;
   }
 };
-var messageIds = (text3) => {
+var messageIds = (text4) => {
   const ids = /* @__PURE__ */ new Set();
-  for (const line of text3.split("\n")) {
+  for (const line of text4.split("\n")) {
     const id = parseEntry(line)?.message?.id;
     if (id !== void 0) ids.add(id);
   }
   return ids;
 };
-var readTranscript = (text3, inherited = /* @__PURE__ */ new Set()) => {
+var readTranscript = (text4, inherited = /* @__PURE__ */ new Set()) => {
   const usageByMessageId = /* @__PURE__ */ new Map();
   let model = "";
   let firstTimestamp = "";
   let startedAt = "";
-  for (const line of text3.split("\n")) {
+  for (const line of text4.split("\n")) {
     const entry = parseEntry(line);
     if (entry === void 0) continue;
     if (firstTimestamp === "" && typeof entry.timestamp === "string") firstTimestamp = entry.timestamp;
@@ -8117,10 +8117,10 @@ var mostSpawnedMr = (agents, run3) => {
   }
   return [...counts].sort((left, right) => right[1] - left[1])[0]?.[0];
 };
-var readSessionRuns = (text3, session, prices, subagents) => {
+var readSessionRuns = (text4, session, prices, subagents) => {
   const runs = [];
   let current;
-  for (const line of text3.split("\n")) {
+  for (const line of text4.split("\n")) {
     const entry = parseEntry(line);
     if (entry === void 0) continue;
     const invocation = invocationOf(entry);
@@ -8179,9 +8179,9 @@ var readAgents = (sessionDir2, prices) => {
     return { id: name.replace(/^agent-/, "").replace(/\.jsonl$/, ""), meta, text: readFileSync31(join35(subagents, name), "utf8") };
   });
   const idsByAgent = new Map(read.map((agent) => [agent.id, messageIds(agent.text)]));
-  return read.map(({ id, meta, text: text3 }) => {
+  return read.map(({ id, meta, text: text4 }) => {
     const description = meta.description ?? "";
-    const transcript = readTranscript(text3, (meta.parentAgentId === void 0 ? void 0 : idsByAgent.get(meta.parentAgentId)) ?? sessionIds);
+    const transcript = readTranscript(text4, (meta.parentAgentId === void 0 ? void 0 : idsByAgent.get(meta.parentAgentId)) ?? sessionIds);
     return {
       id,
       description,
@@ -8497,9 +8497,9 @@ import { readFileSync as readFileSync33 } from "node:fs";
 import { join as join36 } from "node:path";
 var AVOID_MARKER = /(?:^|[\s(|>*_-])[_*]{0,2}(?:avoid|не\s+использовать|избегать)[_*]{0,2}\s*:\s*[_*]{0,2}/iu;
 var isMarkdown2 = createMatcher(["**/*.md"]);
-var wordsOf = (text3) => (text3.match(/[\p{L}\p{N}]+/gu) ?? []).flatMap((token) => token.split(new RegExp("(?<=\\p{Ll})(?=\\p{Lu})|(?<=\\p{Lu})(?=\\p{Lu}\\p{Ll})", "u"))).map((word) => word.toLowerCase());
+var wordsOf = (text4) => (text4.match(/[\p{L}\p{N}]+/gu) ?? []).flatMap((token) => token.split(new RegExp("(?<=\\p{Ll})(?=\\p{Lu})|(?<=\\p{Lu})(?=\\p{Lu}\\p{Ll})", "u"))).map((word) => word.toLowerCase());
 var cleanTerm = (raw) => raw.replace(/\([^)]*\)/g, "").replace(/[`"'«»“”*_]/g, " ").replace(/\s+/g, " ").replace(/[.:]+$/, "").trim();
-var avoidTerms = (text3) => text3.split(/\r?\n/).flatMap((source, index) => {
+var avoidTerms = (text4) => text4.split(/\r?\n/).flatMap((source, index) => {
   const marker = AVOID_MARKER.exec(source);
   if (marker === null) return [];
   return source.slice(marker.index + marker[0].length).split(/[,;/]/).map(cleanTerm).filter((word) => word !== "").map((word) => ({ word, words: wordsOf(word), line: index + 1, quote: source.trim() })).filter((term) => term.words.length > 0);
@@ -8652,15 +8652,15 @@ var EnvironmentError = class extends Error {
 var BlockedRefError = class extends Error {
   exitCode = 4;
 };
-var firstLine4 = (text3) => text3.trim().split(/\r?\n/)[0] ?? "";
-var parseJsonPages = (text3) => {
+var firstLine4 = (text4) => text4.trim().split(/\r?\n/)[0] ?? "";
+var parseJsonPages = (text4) => {
   const values = [];
   let depth = 0;
   let start = -1;
   let inString = false;
   let escaped = false;
-  for (let index = 0; index < text3.length; index++) {
-    const char = text3[index];
+  for (let index = 0; index < text4.length; index++) {
+    const char = text4[index];
     if (inString) {
       if (escaped) escaped = false;
       else if (char === "\\") escaped = true;
@@ -8674,7 +8674,7 @@ var parseJsonPages = (text3) => {
       depth++;
     } else if (char === "]" || char === "}") {
       depth--;
-      if (depth === 0) values.push(JSON.parse(text3.slice(start, index + 1)));
+      if (depth === 0) values.push(JSON.parse(text4.slice(start, index + 1)));
     }
   }
   if (depth !== 0 || inString) throw new Error("truncated JSON");
@@ -9071,10 +9071,10 @@ var reviewStatePath = (mainRoot, remote, target) => join39(mainRoot, ".jig", "ru
 var isObject5 = (value) => typeof value === "object" && value !== null && !Array.isArray(value);
 var optionalText = (value) => typeof value === "string" && value !== "" ? value : void 0;
 var isStatus = (value) => typeof value === "string" && FINDING_STATUSES.includes(value);
-var parseReviewState = (text3, label) => {
+var parseReviewState = (text4, label) => {
   let raw;
   try {
-    raw = JSON.parse(text3);
+    raw = JSON.parse(text4);
   } catch {
     throw new EnvironmentError(`${label}: not JSON`);
   }
@@ -9103,23 +9103,23 @@ var parseReviewState = (text3, label) => {
 };
 var readReviewState = (path2) => {
   if (!existsSync21(path2)) return void 0;
-  let text3;
+  let text4;
   try {
-    text3 = readFileSync35(path2, "utf8");
+    text4 = readFileSync35(path2, "utf8");
   } catch (error) {
     throw new EnvironmentError(`${path2}: ${error instanceof Error ? error.message : String(error)}`);
   }
-  return parseReviewState(text3, path2);
+  return parseReviewState(text4, path2);
 };
 var CLOSED = /* @__PURE__ */ new Set(["fixed", "no_change_needed", "optional"]);
 var standingFindings = (state) => state.findings.filter((finding) => !CLOSED.has(finding.status));
 var STANDING = /* @__PURE__ */ new Set(["open", "skipped"]);
 var blockingFindings = (state) => state.findings.filter((finding) => finding.severity === "Important" && STANDING.has(finding.status) && finding.discussionId !== void 0);
 var PRIOR_KEYS = ["prior_fixed", "prior_skipped", "prior_unverified", "prior_no_change_needed"];
-var parseTally = (text3) => {
+var parseTally = (text4) => {
   let raw;
   try {
-    raw = JSON.parse(text3);
+    raw = JSON.parse(text4);
   } catch {
     throw new EnvironmentError("tally: not JSON");
   }
@@ -9142,7 +9142,7 @@ var reconcile = (before, tally) => {
   }
   return { kind: "ok", standing: standing2, accounted: tally.prior };
 };
-var flat = (text3) => text3.replace(/\s+/g, " ").trim();
+var flat = (text4) => text4.replace(/\s+/g, " ").trim();
 var specHold = (state, spec2) => {
   const specText = flat(spec2);
   const isQuoted = (finding) => finding.specQuote !== void 0 && flat(finding.specQuote) !== "" && specText.includes(flat(finding.specQuote));
@@ -9212,8 +9212,8 @@ var FINDING_FIELDS = /* @__PURE__ */ new Set([
 ]);
 var isObject6 = (value) => typeof value === "object" && value !== null && !Array.isArray(value);
 var hintedIid = (target) => {
-  const text3 = typeof target === "string" || typeof target === "number" ? String(target) : "";
-  const match = /^!?(\d+)$/.exec(text3) ?? /merge_requests\/(\d+)/.exec(text3) ?? /pull\/(\d+)/.exec(text3);
+  const text4 = typeof target === "string" || typeof target === "number" ? String(target) : "";
+  const match = /^!?(\d+)$/.exec(text4) ?? /merge_requests\/(\d+)/.exec(text4) ?? /pull\/(\d+)/.exec(text4);
   return match?.[1] === void 0 ? void 0 : Number(match[1]);
 };
 var legacyIid = (raw, remote, fileKey) => {
@@ -9351,7 +9351,7 @@ var applyVerdicts = (adapter, verdicts, dryRun) => {
     }
     try {
       const output = adapter.transition(ref, target);
-      lines2.push(...(output.length > 0 ? output : [`${ref} \u2192 ${target}`]).map((text3) => ({ ref, text: text3, failed: false })));
+      lines2.push(...(output.length > 0 ? output : [`${ref} \u2192 ${target}`]).map((text4) => ({ ref, text: text4, failed: false })));
     } catch (error) {
       if (error instanceof BlockedRefError) lines2.push({ ref, text: `${ref}: ${error.message}`, failed: false });
       else if (error instanceof EnvironmentError) lines2.push({ ref, text: `${ref}: status not recorded, ${error.message}`, failed: true });
@@ -9902,11 +9902,11 @@ var fail3 = (message, code) => {
 `);
   return code;
 };
-var print = (text3) => {
-  process.stdout.write(`${text3}
+var print = (text4) => {
+  process.stdout.write(`${text4}
 `);
 };
-var escapeRegExp = (text3) => text3.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+var escapeRegExp = (text4) => text4.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 var slotNumber = (dirName, repo) => {
   const match = new RegExp(`^${escapeRegExp(repo)}-s(\\d+)(?:-|$)`).exec(dirName);
   if (match?.[1] === void 0) return void 0;
@@ -9935,12 +9935,12 @@ var lowestFreeSlot = (slots) => {
 var slotDirName = (repo, slot, slug) => slug === void 0 ? `${repo}-s${slot}` : `${repo}-s${slot}-${slug}`;
 var slotPorts = (config, slot) => Object.fromEntries(Object.entries(config.ports ?? {}).map(([key, port]) => [key, port.base + slot * port.step]));
 var slotCdpPort = (config, slot) => config.cdp === void 0 ? void 0 : config.cdp.base + slot * config.cdp.step;
-var setEnvValue = (text3, key, value) => {
-  const eol = text3.includes("\r\n") ? "\r\n" : "\n";
+var setEnvValue = (text4, key, value) => {
+  const eol = text4.includes("\r\n") ? "\r\n" : "\n";
   const line = new RegExp(`^([ \\t]*(?:export[ \\t]+)?)${escapeRegExp(key)}[ \\t]*=.*$`, "gm");
-  if (line.test(text3)) return text3.replace(line, (_match, prefix) => `${prefix}${key}=${value}`);
-  const separator = text3 === "" || text3.endsWith("\n") ? "" : eol;
-  return `${text3}${separator}${key}=${value}${eol}`;
+  if (line.test(text4)) return text4.replace(line, (_match, prefix) => `${prefix}${key}=${value}`);
+  const separator = text4 === "" || text4.endsWith("\n") ? "" : eol;
+  return `${text4}${separator}${key}=${value}${eol}`;
 };
 var LOCAL_HOSTS = /* @__PURE__ */ new Set(["localhost", "127.0.0.1", "[::1]", "0.0.0.0"]);
 var slotUrl = (url, ports, slot) => {
@@ -10013,8 +10013,8 @@ var insideDir = (dir2, file) => {
 };
 var writeEnv = (dir2, target, key, value) => {
   const path2 = insideDir(dir2, target);
-  const text3 = existsSync24(path2) ? readFileSync39(path2, "utf8") : "";
-  writeLocalFile(dir2, target, setEnvValue(text3, key, String(value)));
+  const text4 = existsSync24(path2) ? readFileSync39(path2, "utf8") : "";
+  writeLocalFile(dir2, target, setEnvValue(text4, key, String(value)));
 };
 var writePorts = (dir2, slots, slot) => {
   for (const [key, port] of Object.entries(slots.ports ?? {})) {
@@ -10128,8 +10128,8 @@ var slotLs = (args) => {
   }
   return 0;
 };
-var parseSlotNumber = (text3) => {
-  const slot = Number(text3?.replace(/^s/, ""));
+var parseSlotNumber = (text4) => {
+  const slot = Number(text4?.replace(/^s/, ""));
   return Number.isInteger(slot) && slot >= 1 ? slot : void 0;
 };
 var findSlot = (context, slot) => {
@@ -10236,7 +10236,21 @@ var runSlot = (args) => {
 };
 
 // src/ui/ui.ts
-import { parseArgs as parseArgs8 } from "node:util";
+import { parseArgs as parseArgs9 } from "node:util";
+
+// src/ui/command.ts
+var EXIT_FINDINGS2 = 1;
+var EXIT_USAGE5 = 2;
+var UsageError3 = class extends Error {
+};
+var isUsageError2 = (error) => error instanceof UsageError3 || error instanceof TypeError && "code" in error && typeof error.code === "string" && error.code.startsWith("ERR_PARSE_ARGS");
+var projectRootOf = (cwd) => gitToplevel(cwd) ?? resolveProjectRoot(cwd);
+var requireUi = (root) => {
+  const config = loadConfig(root);
+  if (config.error !== void 0) throw new Error(`config: ${config.error}`);
+  if (config.ui === void 0) throw new Error('no "ui" section in .jig/config.jsonc: run jig init and add the proposed ui key, or write one (docs/configuration.md)');
+  return config.ui;
+};
 
 // src/ui/matrix.ts
 var buildMatrix = (ui2, localeCheck) => {
@@ -10294,13 +10308,29 @@ var formatMatrix = (matrix2) => {
   return lines2;
 };
 
+// src/ui/mockup/mockup.ts
+import { existsSync as existsSync27, readFileSync as readFileSync43 } from "node:fs";
+import { resolve as resolve20 } from "node:path";
+import { parseArgs as parseArgs8 } from "node:util";
+
+// src/ui/base.ts
+var resolveUiBase = (root, given, command) => {
+  try {
+    const base = resolveBase(root, given, command);
+    return { label: `${base.ref} (merge base ${base.mergeBase.slice(0, 8)})`, mergeBase: base.mergeBase, tracked: base.stats.map((stat) => stat.path) };
+  } catch (error) {
+    if (given !== void 0) throw error;
+    return { label: "HEAD (no upstream: uncommitted and untracked files only)", mergeBase: "HEAD", tracked: [] };
+  }
+};
+
 // src/ui/reuse.ts
 import { existsSync as existsSync25, readFileSync as readFileSync40 } from "node:fs";
 import { join as join43 } from "node:path";
 var REUSE_RULE = "ui/raw-element";
 var CREATE_CALLS = ["h", "createElement", "createVNode", "createElementVNode", "_createElementVNode", "jsx", "jsxs", "_jsx", "_jsxs", "jsxDEV", "_jsxDEV"];
 var COMMENT_START = /^\s*(?:\/\/|\/\*|\*|<!--)/;
-var escapeRegExp2 = (text3) => text3.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+var escapeRegExp2 = (text4) => text4.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 var elementPatterns = (element) => {
   const name = escapeRegExp2(element);
   return [
@@ -10308,10 +10338,10 @@ var elementPatterns = (element) => {
     new RegExp(`\\b(?:${CREATE_CALLS.join("|")})\\(\\s*(['"\`])${name}\\1`)
   ];
 };
-var rawElementsIn = (text3, elements, lines2) => {
+var rawElementsIn = (text4, elements, lines2) => {
   const patterns = elements.map((element) => ({ element, patterns: elementPatterns(element) }));
   const found = [];
-  text3.split(/\r?\n/).forEach((content, index) => {
+  text4.split(/\r?\n/).forEach((content, index) => {
     const line = index + 1;
     if (!isOnChangedLine(lines2, line) || COMMENT_START.test(content)) return;
     for (const { element, patterns: own } of patterns) {
@@ -10324,17 +10354,8 @@ var changedFiles3 = (root, tracked) => {
   const untracked = (gitStatus(root) ?? []).filter((entry) => entry.status === "??").map((entry) => entry.path);
   return [.../* @__PURE__ */ new Set([...tracked, ...untracked])].map((path2) => path2.replace(/\\/g, "/")).filter((path2) => existsSync25(join43(root, path2)));
 };
-var resolveReuseBase = (root, given) => {
-  try {
-    const base = resolveBase(root, given, "ui reuse");
-    return { label: `${base.ref} (merge base ${base.mergeBase.slice(0, 8)})`, mergeBase: base.mergeBase, tracked: base.stats.map((stat) => stat.path) };
-  } catch (error) {
-    if (given !== void 0) throw error;
-    return { label: "HEAD (no upstream: uncommitted and untracked files only)", mergeBase: "HEAD", tracked: [] };
-  }
-};
 var checkReuse = (root, components, given) => {
-  const base = resolveReuseBase(root, given);
+  const base = resolveUiBase(root, given, "ui reuse");
   const isComponentFile = createMatcher(components.files);
   const isShared = createMatcher(components.dirs.map((dir2) => `${dir2.replace(/\\/g, "/").replace(/\/+$/, "")}/**`));
   const files = changedFiles3(root, base.tracked).filter((path2) => isComponentFile(path2) && !isShared(path2) && exclusionOf(path2, root) === void 0);
@@ -10357,23 +10378,739 @@ var formatReuse = (result) => {
   return [...lines2, `ui reuse: ${summary} (${result.files} component files read, base ${result.base})`];
 };
 
-// src/ui/ui.ts
-var EXIT_FINDINGS2 = 1;
-var EXIT_USAGE5 = 2;
-var UsageError3 = class extends Error {
+// src/ui/mockup/code.ts
+import { readdirSync as readdirSync20, readFileSync as readFileSync41, statSync as statSync16 } from "node:fs";
+import { join as join44, posix as posix8 } from "node:path";
+
+// src/ui/mockup/export.ts
+var NODES_SECTION = /^NODES:\s*$/m;
+var NODE_LINE = /^(\s*)\[([A-Z-]+)\](?: "((?:[^"\\]|\\.)*)")? #(\S+)(.*)$/;
+var hasNodes = (source) => NODES_SECTION.test(source);
+var parseScalar = (raw) => {
+  const value = raw.trim();
+  if (value === "{}") return {};
+  if (value === "[]") return [];
+  if (/^'.*'$/.test(value)) return value.slice(1, -1).replace(/''/g, "'");
+  if (/^".*"$/.test(value)) return JSON.parse(value);
+  if (/^-?\d+(\.\d+)?$/.test(value)) return Number(value);
+  if (value === "true" || value === "false") return value === "true";
+  return value;
 };
-var isUsageError2 = (error) => error instanceof UsageError3 || error instanceof TypeError && "code" in error && typeof error.code === "string" && error.code.startsWith("ERR_PARSE_ARGS");
-var projectRootOf = (cwd) => gitToplevel(cwd) ?? resolveProjectRoot(cwd);
-var requireUi = (root) => {
+var parseYamlBlock = (lines2) => {
+  const items = lines2.map((line) => ({ indent: line.search(/\S/), text: line.trim() })).filter((line) => line.indent >= 0 && !line.text.startsWith("#"));
+  let at = 0;
+  const block = (indent) => {
+    const first = items[at];
+    if (first === void 0) return null;
+    if (first.text.startsWith("- ")) {
+      const list = [];
+      for (let item = items[at]; item !== void 0 && item.indent === indent && item.text.startsWith("- "); item = items[at]) {
+        list.push(parseScalar(item.text.slice(2)));
+        at++;
+      }
+      return list;
+    }
+    const map = {};
+    for (let item = items[at]; item !== void 0 && item.indent === indent; item = items[at]) {
+      const { text: text4 } = item;
+      at++;
+      if (text4.endsWith(":")) {
+        const next = items[at];
+        const hasChild = next !== void 0 && (next.indent > indent || next.indent === indent && next.text.startsWith("- "));
+        map[text4.slice(0, -1)] = hasChild ? block(next.indent) : null;
+      } else {
+        const colon = text4.indexOf(": ");
+        if (colon < 0) continue;
+        map[text4.slice(0, colon)] = parseScalar(text4.slice(colon + 2));
+      }
+    }
+    return map;
+  };
+  const root = {};
+  while (at < items.length) {
+    const before = at;
+    const first = items[at];
+    if (first !== void 0) {
+      const parsed = block(first.indent);
+      if (isObject(parsed)) Object.assign(root, parsed);
+    }
+    if (at === before) at++;
+  }
+  return root;
+};
+var closingBrace = (text4, from) => {
+  let depth = 0;
+  let inString = false;
+  let at = from;
+  for (; at < text4.length; at++) {
+    const char = text4[at];
+    if (inString) {
+      if (char === "\\") at++;
+      else if (char === '"') inString = false;
+      continue;
+    }
+    if (char === '"') inString = true;
+    else if (char === "{") depth++;
+    else if (char === "}" && --depth === 0) break;
+  }
+  return at;
+};
+var parseAttrs = (text4) => {
+  const attrs = {};
+  let at = 0;
+  while (at < text4.length) {
+    const found = /^\s*([A-Za-z]+)=/.exec(text4.slice(at));
+    if (found === null) break;
+    at += found[0].length;
+    const key = found[1] ?? "";
+    if (text4[at] === "{") {
+      const end = closingBrace(text4, at);
+      try {
+        attrs[key] = JSON.parse(text4.slice(at, end + 1));
+      } catch {
+        attrs[key] = text4.slice(at, end + 1);
+      }
+      at = end + 1;
+    } else if (text4[at] === '"') {
+      let end = at + 1;
+      for (; end < text4.length; end++) {
+        if (text4[end] === "\\") end++;
+        else if (text4[end] === '"') break;
+      }
+      try {
+        attrs[key] = JSON.parse(text4.slice(at, end + 1));
+      } catch {
+        attrs[key] = text4.slice(at + 1, end);
+      }
+      at = end + 1;
+    } else {
+      const space = text4.indexOf(" ", at);
+      const end = space < 0 ? text4.length : space;
+      attrs[key] = parseScalar(text4.slice(at, end));
+      at = end;
+    }
+  }
+  return attrs;
+};
+var parseNodes = (lines2, elements) => {
+  const nodes2 = [];
+  for (const line of lines2) {
+    const found = NODE_LINE.exec(line);
+    if (found === null) continue;
+    const inline = parseAttrs(found[5] ?? "");
+    const template = typeof inline["template"] === "string" ? elements[inline["template"]] : void 0;
+    nodes2.push({
+      depth: (found[1] ?? "").length / 2,
+      type: found[2] ?? "",
+      name: found[3] ?? "",
+      id: found[4] ?? "",
+      props: { ...isObject(template) ? template : {}, ...inline }
+    });
+  }
+  return nodes2;
+};
+var parseExport = (rawSource) => {
+  const source = rawSource.replace(/\r\n/g, "\n");
+  const nodesAt = source.search(NODES_SECTION);
+  const head = parseYamlBlock(source.slice(0, nodesAt).split("\n"));
+  const pick = (section) => {
+    const value = head[section];
+    return isObject(value) ? value : head;
+  };
+  const vars = pick("GLOBAL_VARS");
+  const elements = pick("ELEMENTS");
+  const nodes2 = parseNodes(source.slice(nodesAt).split("\n").slice(1), elements);
+  const resolveVar = (ref) => {
+    if (ref === void 0 || ref === null) return null;
+    if (typeof ref !== "string") return ref;
+    if (ref in vars) return vars[ref];
+    const bare = ref.replace(/\s*\([^)]*\)\s*$/, "");
+    return bare in vars ? vars[bare] : ref;
+  };
+  return { nodes: nodes2, resolveVar };
+};
+var normHex = (raw) => {
+  let hex = raw.toUpperCase();
+  if (hex.length === 3) hex = hex.split("").map((char) => char + char).join("");
+  if (hex.length === 8) hex = hex.slice(0, 6) + (hex.slice(6) === "FF" ? "" : ` @${(parseInt(hex.slice(6), 16) / 255).toFixed(2)}`);
+  return `#${hex}`;
+};
+var hexOf = (value) => {
+  const out = [];
+  for (const item of [value ?? []].flat()) {
+    if (typeof item !== "string") continue;
+    const text4 = item.trim();
+    const hex = /^#([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i.exec(text4);
+    if (hex !== null) out.push(normHex(hex[1] ?? ""));
+    const rgba = /^rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)$/.exec(text4);
+    if (rgba !== null) {
+      const channels = [1, 2, 3].map((index) => Number(rgba[index]).toString(16).padStart(2, "0")).join("").toUpperCase();
+      out.push(`#${channels}${rgba[4] !== void 0 && rgba[4] !== "1" ? ` @${rgba[4]}` : ""}`);
+    }
+  }
+  return out;
+};
+var layoutOf = (exported, node) => {
+  const layout = typeof node.props["layout"] === "string" ? exported.resolveVar(node.props["layout"]) : node.props["layout"];
+  return isObject(layout) ? layout : {};
+};
+var textStyleOf = (exported, node) => {
+  const style = exported.resolveVar(node.props["textStyle"]);
+  return isObject(style) ? style : null;
+};
+var textOf = (node) => typeof node.props["text"] === "string" ? node.props["text"] : "";
+var normText = (text4) => text4.toLowerCase().replace(/ё/g, "\u0435").replace(/\s+/g, " ").trim();
+
+// src/ui/mockup/code.ts
+var SOURCE_EXT = /\.(ts|tsx|js|jsx|mjs|cjs|vue|svelte|css|scss|less|json|cs|xaml|kt|swift|dart)$/;
+var TEST_PATH = /^_?_?tests?_?_?$|\.(test|spec|stories)\.[a-z]+$/;
+var GLOB_CHARS = /[*?{[]/;
+var isTestFile2 = (file) => file.split(/[\\/]/).some((part) => TEST_PATH.test(part));
+var isSourceFile = (file) => SOURCE_EXT.test(file);
+var statOrUndefined = (path2) => statSync16(path2, { throwIfNoEntry: false });
+var loadCode = (root, paths, skip) => {
+  const files = [];
+  const walk2 = (path2) => {
+    const stat = statOrUndefined(join44(root, path2));
+    if (stat === void 0) {
+      skip(`skip ${path2}: not found`);
+      return;
+    }
+    if (stat.isDirectory()) {
+      for (const entry of readdirSync20(join44(root, path2))) {
+        if (entry !== "node_modules" && !entry.startsWith(".") && !TEST_PATH.test(entry)) walk2(posix8.join(path2, entry));
+      }
+    } else if (SOURCE_EXT.test(path2) && !TEST_PATH.test(posix8.basename(path2))) {
+      files.push(path2);
+    }
+  };
+  paths.forEach((path2) => walk2(posix8.normalize(path2.replace(/\\/g, "/"))));
+  return files.map((file) => ({ file, lines: readFileSync41(join44(root, file), "utf8").split(/\r?\n/) }));
+};
+var STYLE_FILE = /\.(css|scss|less)$/;
+var tokenFilesOf = (root, entry, skip) => {
+  const base = entry.replace(/\\/g, "/");
+  const found = [];
+  const isGlob = GLOB_CHARS.test(base);
+  const prefix = isGlob ? base.split("/").slice(0, base.split("/").findIndex((part) => GLOB_CHARS.test(part))).join("/") : base;
+  const walk2 = (path2) => {
+    const stat = statOrUndefined(join44(root, path2));
+    if (stat === void 0) {
+      if (!isGlob || path2 !== prefix) skip(`skip ${path2}: not found`);
+      return;
+    }
+    if (stat.isDirectory()) {
+      for (const name of readdirSync20(join44(root, path2))) {
+        if (name !== "node_modules" && name !== ".git") walk2(path2 === "" ? name : posix8.join(path2, name));
+      }
+    } else if (STYLE_FILE.test(path2) && (!isGlob || matchGlob(path2, base))) {
+      found.push(path2);
+    }
+  };
+  walk2(prefix);
+  return found;
+};
+var loadTokenDefs = (root, entries, skip) => {
+  const defs = /* @__PURE__ */ new Map();
+  for (const entry of entries) {
+    for (const file of tokenFilesOf(root, entry, skip)) {
+      for (const match of readFileSync41(join44(root, file), "utf8").matchAll(/(--[\w-]+)\s*:\s*([^;]+);/g)) {
+        const name = match[1] ?? "";
+        if (!defs.has(name)) defs.set(name, (match[2] ?? "").trim());
+      }
+    }
+  }
+  return defs;
+};
+var resolveToken = (defs, name, seen = /* @__PURE__ */ new Set()) => {
+  const value = defs.get(name);
+  if (seen.has(name) || value === void 0) return null;
+  seen.add(name);
+  const reference = /^var\(\s*(--[\w-]+)\s*(?:,\s*(.+))?\)$/.exec(value);
+  if (reference !== null) {
+    const resolved = resolveToken(defs, reference[1] ?? "", seen);
+    if (resolved !== null) return resolved;
+    return reference[2] === void 0 ? null : hexOf(reference[2])[0]?.split(" ")[0] ?? null;
+  }
+  return hexOf(value)[0]?.split(" ")[0] ?? null;
+};
+var location = (file, index) => `${file}:${index + 1}`;
+var collectCodeColors = (root, code, tokens, skip) => {
+  const defs = loadTokenDefs(root, tokens, skip);
+  const colors = /* @__PURE__ */ new Map();
+  const add = (hex, where2) => {
+    const places = colors.get(hex) ?? [];
+    places.push(where2);
+    colors.set(hex, places);
+  };
+  for (const { file, lines: lines2 } of code) {
+    lines2.forEach((line, index) => {
+      for (const match of line.matchAll(/(?:#|\b0x)([0-9a-f]{6}|[0-9a-f]{3})\b/gi)) {
+        const digits = match[1] ?? "";
+        if (match[0].startsWith("#") && digits.length === 3 && /^\d+$/.test(digits)) continue;
+        add(normHex(digits), location(file, index));
+      }
+      if (defs.size === 0) return;
+      const names = [
+        ...[...line.matchAll(/var\(\s*(--[\w-]+)/g)].map((match) => match[1] ?? ""),
+        ...[...line.matchAll(/['"`]([a-z][\w-]*(?:\.[\w-]+)+)['"`]/gi)].map((match) => `--${(match[1] ?? "").replace(/\./g, "-")}`)
+      ];
+      for (const name of names) {
+        const hex = resolveToken(defs, name);
+        if (hex !== null) add(hex, `${location(file, index)} (${name})`);
+      }
+    });
+  }
+  return { colors, tokenCount: defs.size };
+};
+var parseRoles = (roles, normalize2) => roles.map((raw) => {
+  const at = raw.lastIndexOf("=");
+  const target = raw.slice(at + 1);
+  const colon = target.lastIndexOf(":");
+  return {
+    sample: normalize2(raw.slice(0, at)),
+    file: colon > 0 ? target.slice(0, colon).replace(/\\/g, "/") : null,
+    key: colon > 0 ? target.slice(colon + 1) : target,
+    raw
+  };
+});
+var declarationMentionsFont = (lines2, index) => {
+  for (let at = index; at >= 0; at--) {
+    const line = lines2[at] ?? "";
+    if (/font/i.test(line)) return true;
+    if (at < index && /^(export\b|const\b|let\b|function\b|class\b|\}|[A-Za-z_$])/.test(line)) return false;
+  }
+  return false;
+};
+var sizesInCode = (code, role) => {
+  const hits = [];
+  const esc = role.key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const direct = new RegExp(`(?:^\\s*|[{,]\\s*|\\b(?:const|let|var|readonly|static)\\s+)${esc}\\s*[:=]\\s*(\\d+(?:\\.\\d+)?)\\b`);
+  const block = new RegExp(`\\b${esc}\\s*:\\s*\\{\\s*$|\\b${esc}\\s*:\\s*\\{(?![^}]*\\})`);
+  for (const { file, lines: lines2 } of code) {
+    if (role.file !== null && !file.endsWith(role.file)) continue;
+    lines2.forEach((line, index) => {
+      if (!declarationMentionsFont(lines2, index)) return;
+      for (const match of line.matchAll(new RegExp(direct, "g"))) hits.push({ size: Number(match[1]), where: location(file, index) });
+      if (!block.test(line)) return;
+      for (let at = index + 1; at < Math.min(lines2.length, index + 10); at++) {
+        const next = lines2[at] ?? "";
+        const preset = /\bdefault\s*:\s*(\d+(?:\.\d+)?)\b/.exec(next);
+        if (preset !== null) {
+          hits.push({ size: Number(preset[1]), where: location(file, at) });
+          break;
+        }
+        if (/^\s*\},?\s*$/.test(next)) break;
+      }
+    });
+  }
+  return hits;
+};
+
+// src/ui/mockup/fetch.ts
+import { spawnSync as spawnSync9 } from "node:child_process";
+import { existsSync as existsSync26, mkdirSync as mkdirSync20, writeFileSync as writeFileSync16 } from "node:fs";
+import { tmpdir as tmpdir6 } from "node:os";
+import { dirname as dirname20, join as join45 } from "node:path";
+var FIGMA_KEY_ENVS = ["JIG_FIGMA_API_KEY", "FIGMA_API_KEY"];
+var FETCH_BUFFER = 256 * 1024 * 1024;
+var FigmaFetchError = class extends Error {
+};
+var figmaApiKey = (env = process.env) => FIGMA_KEY_ENVS.map((name) => env[name]).find((value) => value !== void 0 && value !== "");
+var parseFigmaUrl = (url) => {
+  let parsed;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new FigmaFetchError(`${url}: not a URL`);
+  }
+  const fileKey = /\/(?:design|file|proto|board)\/([^/]+)/.exec(parsed.pathname)?.[1];
+  const nodeId = parsed.searchParams.get("node-id")?.replace(/-/g, ":");
+  if (fileKey === void 0 || nodeId === void 0 || nodeId === "") throw new FigmaFetchError(`${url}: need a Figma URL with /design/<file>/ and ?node-id=`);
+  return { fileKey, nodeId };
+};
+var exportPathFor = (root, url) => {
+  const { fileKey, nodeId } = parseFigmaUrl(url);
+  return join45(ensureJigDir(root).ui, "figma", `${fileKey}-${nodeId.replace(/:/g, "-")}.yaml`);
+};
+var fetchExport = ({ root, url, env = process.env, log }) => {
+  const file = exportPathFor(root, url);
+  if (existsSync26(file)) return file;
+  const key = figmaApiKey(env);
+  if (key === void 0) throw new FigmaFetchError(`no Figma key: set ${FIGMA_KEY_ENVS.join(" or ")}, or pass an existing export with --export <file>`);
+  const { fileKey, nodeId } = parseFigmaUrl(url);
+  const isWindows2 = process.platform === "win32";
+  const fetched2 = spawnSync9(
+    isWindows2 ? "npx.cmd" : "npx",
+    ["-y", "figma-developer-mcp", "fetch", "--no-telemetry", "--format", "tree", "--file-key", fileKey, "--node-id", nodeId],
+    { cwd: tmpdir6(), encoding: "utf8", maxBuffer: FETCH_BUFFER, env: { ...env, FIGMA_API_KEY: key }, shell: isWindows2, windowsHide: true }
+  );
+  if (fetched2.status !== 0 || !hasNodes(fetched2.stdout ?? "")) {
+    throw new FigmaFetchError(`figma fetch failed:
+${(fetched2.stderr ?? "").slice(-2e3)}`);
+  }
+  mkdirSync20(dirname20(file), { recursive: true });
+  writeFileSync16(file, fetched2.stdout);
+  log(`saved ${file}
+`);
+  return file;
+};
+
+// src/ui/mockup/report.ts
+import { readFileSync as readFileSync42 } from "node:fs";
+import { join as join46 } from "node:path";
+var LIBRARY_UI_SHARE = 0.3;
+var NEAR = 4;
+var UI_KEY = /\b(label|title|text|placeholder|tooltip|caption|header|heading|description|hint)\s*[:=]\s*$/i;
+var FAIL_LINES = [
+  "FAIL. The mockup is the source of truth for the whole component, not only for the part the task names.",
+  "  MISSING: set the code to the mockup value.",
+  "  UNMAPPED, NOT FOUND, TYPO (typography): map every text role with --role, then set each font size default to the mockup.",
+  "  WRONG NODE: check the component drawn on the canvas, not the app UI around it.",
+  "  NOT IN MOCKUP, DUPLICATE: the mockup has no such control. Make the control that already exists do the job instead of adding one; renaming a label does not clear the line.",
+  "  A deviation that has to stay is the user's decision: ask, do not settle it yourself.",
+  "EXTRA lines are for review only: a color of a state the mockup does not draw (hover, tooltip) may stay."
+];
+var PASS_LINE = "PASS. EXTRA lines are for review only: a color of a state the mockup does not draw (hover, tooltip) may stay.";
+var text3 = (value, fallback = "") => value === void 0 || value === null ? fallback : String(value);
+var subtreeOf = (nodes2, rootIndex) => {
+  const root = nodes2[rootIndex];
+  if (root === void 0) return [];
+  const out = [];
+  for (let at = rootIndex + 1; at < nodes2.length && (nodes2[at]?.depth ?? 0) > root.depth; at++) out.push(nodes2[at]);
+  return out;
+};
+var sampleTexts = (list, max = 4) => [...new Set(list.map(textOf).filter(Boolean))].slice(0, max);
+var libraryShare = (list) => list.filter((node) => node.type === "INSTANCE" || node.props["componentId"] || node.id.startsWith("I")).length / Math.max(1, list.length);
+var rgbOf = (hex) => [1, 3, 5].map((at) => parseInt(hex.slice(at, at + 2), 16));
+var isNear = (a, b) => {
+  const [r, g, bl] = rgbOf(a);
+  const [r2, g2, b2] = rgbOf(b);
+  return Math.max(Math.abs((r ?? 0) - (r2 ?? 0)), Math.abs((g ?? 0) - (g2 ?? 0)), Math.abs((bl ?? 0) - (b2 ?? 0))) <= NEAR;
+};
+var listTopNodes = (exported) => {
+  const { nodes: nodes2 } = exported;
+  const lines2 = ["Top nodes of the frame (pass the component with --component <id>):"];
+  for (const node of nodes2.filter((entry) => entry.depth === 1)) {
+    const own = subtreeOf(nodes2, nodes2.indexOf(node));
+    const texts = sampleTexts(own, 3).map((sample) => JSON.stringify(sample)).join(", ");
+    const kind = own.length >= 10 ? libraryShare(own) > LIBRARY_UI_SHARE ? "  [app UI from library instances]" : "  [drawn shapes: a scene component?]" : "";
+    lines2.push(`  ${node.id}  ${node.type}${node.name === "" ? "" : ` "${node.name}"`}  ${own.length} nodes  ${texts}${kind}`);
+  }
+  return lines2;
+};
+var describeNode = (input, node) => {
+  const dimensions = layoutOf(input.exported, node)["dimensions"];
+  const d = typeof dimensions === "object" && dimensions !== null ? dimensions : {};
+  const size = d["width"] != null || d["height"] != null ? ` ${text3(d["width"], "?")}\xD7${text3(d["height"], "?")}` : "";
+  const sample = textOf(node);
+  return `${node.type}${node.name === "" ? "" : ` "${node.name}"`}${sample === "" ? size : ` ${JSON.stringify(sample)}`}`;
+};
+var colorsSection = (ctx) => {
+  const { input, comp, counts } = ctx;
+  const { exported } = input;
+  const mockColors = /* @__PURE__ */ new Map();
+  const addColor = (hex, role, node) => {
+    const entry = mockColors.get(hex) ?? { uses: 0, roles: /* @__PURE__ */ new Map() };
+    entry.uses++;
+    const key = `${role} ${describeNode(input, node)}`;
+    entry.roles.set(key, (entry.roles.get(key) ?? 0) + 1);
+    mockColors.set(hex, entry);
+  };
+  for (const node of comp) {
+    for (const hex of hexOf(exported.resolveVar(node.props["fills"]))) addColor(hex, node.type === "TEXT" ? "text" : "fill", node);
+    for (const hex of hexOf(exported.resolveVar(node.props["strokes"]))) addColor(hex, `stroke ${text3(node.props["strokeWeight"])}`.trim(), node);
+  }
+  const out = ["", "## colors (mockup component \u2192 code)"];
+  const codeColors = input.colors.colors;
+  const nearest = (hex) => {
+    for (const [other, where2] of codeColors) if (isNear(hex, other)) return { hex: other, where: where2 };
+    return null;
+  };
+  for (const [hex, entry] of [...mockColors].sort((a, b) => b[1].uses - a[1].uses)) {
+    const base = hex.split(" ")[0] ?? hex;
+    const exact = codeColors.get(base);
+    const near = exact === void 0 ? nearest(base) : null;
+    const where2 = exact ?? near?.where;
+    if (where2 === void 0) counts.missing++;
+    const roles = [...entry.roles].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([role, count]) => `${role}${count > 1 ? ` \xD7${count}` : ""}`).join("; ");
+    const tag = exact !== void 0 ? "ok     " : near !== null ? `\u2248${near.hex}` : "MISSING";
+    const source = where2 === void 0 ? "" : `  \u2190 ${where2.slice(0, 2).join(", ")}${where2.length > 2 ? ` +${where2.length - 2}` : ""}`;
+    out.push(`${tag} ${hex.padEnd(8)} ${String(entry.uses).padStart(3)} uses: ${roles}${source}`);
+  }
+  out.push("", "## extra colors (code \u2192 not in the mockup component)");
+  const mockBases = [...mockColors.keys()].map((hex) => hex.split(" ")[0] ?? hex);
+  for (const [hex, where2] of codeColors) {
+    if (mockBases.some((mock) => isNear(hex, mock))) continue;
+    counts.extra++;
+    out.push(`EXTRA   ${hex}  ${where2.slice(0, 3).join(", ")}${where2.length > 3 ? ` +${where2.length - 3}` : ""}`);
+  }
+  if (counts.extra === 0) out.push("none");
+  return out;
+};
+var typographySection = (ctx) => {
+  const { input, comp, counts } = ctx;
+  const { exported } = input;
+  const groups = /* @__PURE__ */ new Map();
+  for (const node of comp) {
+    if (node.type !== "TEXT") continue;
+    const style = textStyleOf(exported, node);
+    if (style === null) continue;
+    const lineHeight = style["lineHeight"] ? ` lh ${text3(style["lineHeight"])}` : "";
+    const textCase = style["textCase"] ? ` ${text3(style["textCase"])}` : "";
+    const key = `${text3(style["fontFamily"], "?")} ${text3(style["fontWeight"] ?? style["fontStyle"])} ${text3(style["fontSize"], "?")}px${lineHeight}${textCase} ${hexOf(exported.resolveVar(node.props["fills"])).join(",")}`;
+    groups.set(key, [...groups.get(key) ?? [], node]);
+  }
+  const roles = parseRoles(input.roles, normText);
+  const out = ["", "## typography (mockup component)"];
+  for (const [key, list] of [...groups].sort((a, b) => b[1].length - a[1].length)) {
+    const first = list[0];
+    const size = first === void 0 ? void 0 : textStyleOf(exported, first)?.["fontSize"];
+    const texts = [...new Set(list.map(textOf).filter(Boolean))];
+    const role = roles.find((candidate) => texts.some((sample) => normText(sample) === candidate.sample));
+    let verdict2;
+    if (role === void 0) {
+      counts.typography++;
+      verdict2 = "UNMAPPED";
+    } else {
+      const hits = sizesInCode(input.code, role);
+      const wrong = hits.filter((hit) => hit.size !== size);
+      if (hits.length === 0) {
+        counts.typography++;
+        verdict2 = `NOT FOUND ${role.key}`;
+      } else if (wrong.length > 0) {
+        counts.typography++;
+        verdict2 = `TYPO ${role.key} = ${wrong.map((hit) => `${hit.size} at ${hit.where}`).join(", ")}; mockup ${text3(size)}`;
+      } else {
+        verdict2 = `ok ${role.key} \u2190 ${hits.slice(0, 2).map((hit) => hit.where).join(", ")}`;
+      }
+    }
+    out.push(`${key.padEnd(44)} ${String(list.length).padStart(3)} \xD7  ${texts.slice(0, 5).map((sample) => JSON.stringify(sample)).join(", ")}  ${verdict2}`);
+  }
+  if (counts.typography > 0) {
+    out.push(`Each UNMAPPED row needs --role "<one of its texts>=[<file>:]<code key of that text's font size>"; NOT FOUND and TYPO rows need the code default set to the mockup size.`);
+  }
+  return out;
+};
+var geometrySection = (ctx) => {
+  const { input, nodes: nodes2, comp, variants } = ctx;
+  const { exported } = input;
+  const first = variants[0];
+  const out = ["", `## geometry (first child ${first?.id ?? "-"}, and shapes outside it)`];
+  const firstVariant = first === void 0 ? [] : subtreeOf(nodes2, nodes2.indexOf(first));
+  const shapeKey = (node) => {
+    const dimensions = layoutOf(exported, node)["dimensions"];
+    const d = typeof dimensions === "object" && dimensions !== null ? dimensions : {};
+    const fill = hexOf(exported.resolveVar(node.props["fills"])).join(",");
+    const stroke = hexOf(exported.resolveVar(node.props["strokes"])).join(",");
+    const radius = node.props["borderRadius"];
+    const hasRadius = typeof radius === "string" && radius !== "" && !/^0px( 0px)*$/.test(radius);
+    return `${node.type} ${text3(d["width"], "?")}\xD7${text3(d["height"], "?")}${fill ? ` fill ${fill}` : ""}${stroke ? ` stroke ${stroke} ${text3(node.props["strokeWeight"])}` : ""}${hasRadius ? ` radius ${radius}` : ""}${node.props["opacity"] != null ? ` opacity ${text3(node.props["opacity"])}` : ""}`;
+  };
+  const outside = comp.filter((node) => !firstVariant.includes(node) && !variants.includes(node) && node.type !== "TEXT" && node.type !== "GROUP" && node.type !== "FRAME");
+  const shapes = /* @__PURE__ */ new Map();
+  for (const node of [...firstVariant.filter((entry) => entry.type !== "TEXT" && entry.type !== "GROUP"), ...outside]) {
+    const key = shapeKey(node);
+    shapes.set(key, (shapes.get(key) ?? 0) + 1);
+  }
+  for (const [key, count] of shapes) out.push(`${key}${count > 1 ? `  \xD7${count}` : ""}`);
+  return out;
+};
+var pathspec2 = (paths) => paths.length > 0 ? ["--", ...paths] : [];
+var addedLines2 = (root, base, paths) => {
+  const added = [];
+  const diff = git(["-c", "core.quotePath=false", "diff", "--unified=0", "--no-color", base, ...pathspec2(paths)], root);
+  let current = null;
+  for (const line of diff.stdout.split("\n")) {
+    if (line.startsWith("+++ ")) current = line.slice(6);
+    else if (line.startsWith("+") && current !== null && !isTestFile2(current)) added.push({ file: current, text: line.slice(1) });
+  }
+  const untracked = git(["-c", "core.quotePath=false", "ls-files", "--others", "--exclude-standard", ...pathspec2(paths)], root);
+  for (const file of untracked.stdout.split("\n").filter((entry) => isSourceFile(entry) && !isTestFile2(entry))) {
+    for (const line of readFileSync42(join46(root, file), "utf8").split(/\r?\n/)) added.push({ file, text: line });
+  }
+  return added;
+};
+var baseCodeOf = (root, base, paths, code) => {
+  const deleted = git(["-c", "core.quotePath=false", "diff", "--name-only", "--diff-filter=D", base, ...pathspec2(paths)], root);
+  const files = [...code.map((entry) => entry.file), ...deleted.stdout.split("\n").filter((file) => file !== "" && !isTestFile2(file))];
+  return files.map((file) => {
+    const shown = git(["show", `${base}:${file}`], root);
+    return { file, lines: shown.ok ? shown.stdout.split(/\r?\n/) : [] };
+  });
+};
+var occurrences = (label, source) => {
+  const hits = [];
+  const quoted = new RegExp(`(['"\`])${label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\1`);
+  for (const { file, lines: lines2 } of source) lines2.forEach((line, index) => {
+    if (quoted.test(line)) hits.push(location(file, index));
+  });
+  return hits;
+};
+var labelsSection = (ctx) => {
+  const { input, nodes: nodes2, counts } = ctx;
+  const out = ["", "## labels the change adds"];
+  const added = addedLines2(input.root, input.base, input.paths);
+  const baseCode = baseCodeOf(input.root, input.base, input.paths, input.code);
+  const mockTexts = nodes2.map(textOf).filter(Boolean).map((sample) => normText(sample.replace(/\{\/?\w+\}|\*\*/g, "")));
+  const inMockup = (label) => {
+    const wanted = normText(label);
+    return mockTexts.some((sample) => sample === wanted || ` ${sample} `.includes(` ${wanted} `));
+  };
+  const labels = /* @__PURE__ */ new Map();
+  for (const { file, text: line } of added) {
+    for (const match of line.matchAll(/(['"`])((?:\\.|(?!\1).)*?)\1/g)) {
+      const label = match[2] ?? "";
+      if (label === "" || label.includes("${") || label.length < 2) continue;
+      const isUi = /[а-яё]/i.test(label) || UI_KEY.test(line.slice(0, match.index ?? 0));
+      if (!isUi || /^[#.\/@]|^[\w.-]+\.[a-z]{2,4}$/.test(label)) continue;
+      if (!labels.has(label)) labels.set(label, file);
+    }
+  }
+  let kept = 0;
+  for (const [label, file] of labels) {
+    const after = occurrences(label, input.code);
+    const before = occurrences(label, baseCode).length;
+    if (after.length <= before) {
+      kept++;
+      continue;
+    }
+    const notIn = before === 0 && !inMockup(label);
+    const duplicate = after.length > 1;
+    if (notIn) counts.notInMockup++;
+    if (duplicate) counts.duplicate++;
+    const tags = [notIn && "NOT IN MOCKUP", duplicate && "DUPLICATE"].filter(Boolean).join(" + ") || "ok";
+    out.push(`${tags.padEnd(13)} ${JSON.stringify(label)}  ${duplicate ? `now ${after.length}\xD7, was ${before}\xD7: ${after.slice(0, 4).join(", ")}` : file}`);
+  }
+  if (kept > 0) out.push(`(${kept} strings on changed lines stand in the code no more often than before)`);
+  if (labels.size === 0) out.push(`none (diff against ${input.base.slice(0, 12)})`);
+  return out;
+};
+var buildReport2 = (input) => {
+  const { nodes: nodes2 } = input.exported;
+  const rootIndex = nodes2.findIndex((node) => node.id === input.componentId);
+  const root = nodes2[rootIndex];
+  if (root === void 0) return { type: "unknown-node" };
+  const comp = subtreeOf(nodes2, rootIndex);
+  const variants = nodes2.filter((node, at) => at > rootIndex && node.depth === root.depth + 1 && at <= rootIndex + comp.length);
+  const counts = { missing: 0, extra: 0, notInMockup: 0, duplicate: 0, typography: 0, wrongNode: 0 };
+  const ctx = { input, nodes: nodes2, rootIndex, comp, variants, counts };
+  const out = [`# ui mockup ${input.exportName} ${root.id}${root.name === "" ? "" : ` "${root.name}"`}: ${comp.length} nodes, ${variants.length} children`];
+  if (!input.isAppUi && libraryShare(comp) > LIBRARY_UI_SHARE) {
+    counts.wrongNode++;
+    out.push(
+      `WRONG NODE: ${Math.round(libraryShare(comp) * 100)}% of this node is library instances, so it is app UI (a panel, a toolbar), not the component drawn on the canvas. Pick the node of the component itself from the list without --component; pass --ui only when the task is that app UI.`
+    );
+  }
+  for (const variant of variants.slice(0, 12)) {
+    const texts = sampleTexts(subtreeOf(nodes2, nodes2.indexOf(variant)).concat(variant), 3).map((sample) => JSON.stringify(sample)).join(", ");
+    out.push(`  ${variant.id} ${describeNode(input, variant)}${texts === "" ? "" : `  ${texts}`}`);
+  }
+  out.push(...colorsSection(ctx), ...typographySection(ctx), ...geometrySection(ctx), ...labelsSection(ctx));
+  out.push("", `summary: ${counts.missing} MISSING, ${counts.extra} EXTRA, ${counts.notInMockup} NOT IN MOCKUP, ${counts.duplicate} DUPLICATE, ${counts.typography} TYPOGRAPHY${counts.wrongNode > 0 ? ", WRONG NODE" : ""}`);
+  const blocking = counts.missing + counts.notInMockup + counts.duplicate + counts.typography + counts.wrongNode;
+  out.push(...blocking > 0 ? FAIL_LINES : [PASS_LINE]);
+  return { type: "report", report: { lines: out, counts, blocking } };
+};
+
+// src/ui/mockup/mockup.ts
+var MOCKUP_USAGE = `usage: jig ui mockup (--figma <Figma URL with node-id> | --export <export file>) [--component <nodeId>] [--tokens <css file|dir|glob>]... [--base <ref>] [--role "<text>=[<file>:]<key>"]... [--ui] [<code path>...]
+
+Compares a Figma node (figma-developer-mcp tree export) with the code that implements it.
+  --figma      a Figma URL with node-id: fetched once with JIG_FIGMA_API_KEY, else FIGMA_API_KEY, into .jig/ui/figma/, which later runs read
+  --export     a path to such an export instead of a URL
+  --component  node id of one component on the canvas (e.g. 4067:47270); without it, lists the top nodes and exits
+  --tokens     CSS files, folders or globs that define design tokens (--name: value): a token the code names (var(--a-b), 'a.b') counts as its color; default ui.tokens of the config
+  --base       git ref the change started from (default: merge base with the upstream or origin/HEAD)
+  --role       "<mockup text>=[<file>:]<key>": the code key that holds the font size of the text role the sample belongs to; one per typography row
+  --ui         the component is app UI assembled from library instances (a panel, a toolbar), not a drawn one
+  code paths   files or folders holding the component and its spec, tests are skipped; default: the changed files matching ui.components.files
+
+Exit 1 while a MISSING, NOT IN MOCKUP, DUPLICATE, typography or WRONG NODE line stands.`;
+var EXIT_FAILURE = 2;
+var mockup = (args, ctx) => {
+  const { values, positionals } = parseArgs8({
+    args,
+    allowPositionals: true,
+    strict: true,
+    options: {
+      figma: { type: "string" },
+      export: { type: "string" },
+      component: { type: "string" },
+      tokens: { type: "string", multiple: true },
+      base: { type: "string" },
+      role: { type: "string", multiple: true },
+      ui: { type: "boolean" },
+      help: { type: "boolean", short: "h" }
+    }
+  });
+  if (values.help === true) {
+    ctx.io.out(`${MOCKUP_USAGE}
+`);
+    return 0;
+  }
+  if (values.figma === void 0 === (values.export === void 0)) throw new UsageError3(MOCKUP_USAGE);
+  const root = projectRootOf(ctx.cwd);
   const config = loadConfig(root);
   if (config.error !== void 0) throw new Error(`config: ${config.error}`);
-  if (config.ui === void 0) throw new Error('no "ui" section in .jig/config.jsonc: run jig init and add the proposed ui key, or write one (docs/configuration.md)');
-  return config.ui;
+  const skip = (message) => ctx.io.err(`${message}
+`);
+  let exportFile;
+  try {
+    exportFile = values.export === void 0 ? fetchExport({ root, url: values.figma ?? "", log: ctx.io.err }) : resolve20(ctx.cwd, values.export);
+  } catch (error) {
+    if (!(error instanceof FigmaFetchError)) throw error;
+    ctx.io.err(`jig: ${error.message}
+`);
+    return EXIT_FAILURE;
+  }
+  if (!existsSync27(exportFile)) throw new Error(`${exportFile}: no such export file`);
+  const source = readFileSync43(exportFile, "utf8");
+  if (!hasNodes(source)) throw new Error(`no NODES: section in ${exportFile}`);
+  const exported = parseExport(source);
+  if (values.component === void 0) {
+    ctx.io.out(`${listTopNodes(exported).join("\n")}
+`);
+    return 0;
+  }
+  if (!exported.nodes.some((node) => node.id === values.component)) {
+    ctx.io.err(`node ${values.component} not in ${exportFile}
+`);
+    return EXIT_FAILURE;
+  }
+  const base = resolveUiBase(root, values.base, "ui mockup");
+  const given = toRootPaths(root, ctx.cwd, positionals);
+  const matchesComponents = createMatcher(config.ui?.components?.files ?? []);
+  const paths = given.length > 0 ? given : changedFiles3(root, base.tracked).filter((path2) => matchesComponents(path2) && exclusionOf(path2, root) === void 0);
+  if (paths.length === 0) throw new UsageError3(`no code paths: pass the files or folders of the component
+
+${MOCKUP_USAGE}`);
+  const tokens = values.tokens === void 0 || values.tokens.length === 0 ? config.ui?.tokens ?? [] : toRootPaths(root, ctx.cwd, values.tokens);
+  const code = loadCode(root, paths, skip);
+  const colors = collectCodeColors(root, code, tokens, skip);
+  const result = buildReport2({
+    root,
+    exportName: exportFile.replace(/\\/g, "/").split("/").pop() ?? exportFile,
+    exported,
+    componentId: values.component,
+    code,
+    colors,
+    roles: values.role ?? [],
+    isAppUi: values.ui === true,
+    base: base.mergeBase,
+    paths
+  });
+  if (result.type === "unknown-node") return EXIT_FAILURE;
+  ctx.io.out(`${result.report.lines.join("\n")}
+`);
+  return result.report.blocking > 0 ? EXIT_FINDINGS2 : 0;
 };
+
+// src/ui/ui.ts
 var MATRIX_USAGE = "usage: jig ui matrix [--locales one|all] [--json]";
 var isLocaleCheck = (value) => value === void 0 || value === "one" || value === "all";
 var matrix = (args, ctx) => {
-  const { values, positionals } = parseArgs8({ args, allowPositionals: true, strict: true, options: { json: { type: "boolean" }, locales: { type: "string" } } });
+  const { values, positionals } = parseArgs9({ args, allowPositionals: true, strict: true, options: { json: { type: "boolean" }, locales: { type: "string" } } });
   if (positionals.length > 0 || !isLocaleCheck(values.locales)) throw new UsageError3(MATRIX_USAGE);
   const result = buildMatrix(requireUi(projectRootOf(ctx.cwd)), values.locales);
   ctx.io.out(values.json === true ? `${JSON.stringify(result, null, 2)}
@@ -10383,7 +11120,7 @@ var matrix = (args, ctx) => {
 };
 var REUSE_USAGE = "usage: jig ui reuse [--base <ref>] [--json]";
 var reuse2 = (args, ctx) => {
-  const { values, positionals } = parseArgs8({ args, allowPositionals: true, strict: true, options: { json: { type: "boolean" }, base: { type: "string" } } });
+  const { values, positionals } = parseArgs9({ args, allowPositionals: true, strict: true, options: { json: { type: "boolean" }, base: { type: "string" } } });
   if (positionals.length > 0) throw new UsageError3(REUSE_USAGE);
   const root = projectRootOf(ctx.cwd);
   const components = requireUi(root).components;
@@ -10398,7 +11135,8 @@ var reuse2 = (args, ctx) => {
 };
 var SUBCOMMANDS2 = /* @__PURE__ */ new Map([
   ["matrix", matrix],
-  ["reuse", reuse2]
+  ["reuse", reuse2],
+  ["mockup", mockup]
 ]);
 var ui = (args, ctx) => {
   const [name, ...rest] = args;
@@ -10417,23 +11155,23 @@ var ui = (args, ctx) => {
     return EXIT_USAGE5;
   }
 };
-var runUi = (args) => ui(args, { cwd: process.cwd(), io: { out: (text3) => process.stdout.write(text3), err: (text3) => process.stderr.write(text3) } });
+var runUi = (args) => ui(args, { cwd: process.cwd(), io: { out: (text4) => process.stdout.write(text4), err: (text4) => process.stderr.write(text4) } });
 
 // src/worktree/worktree.ts
-import { existsSync as existsSync26 } from "node:fs";
-import { basename as basename12, resolve as resolve21 } from "node:path";
+import { existsSync as existsSync28 } from "node:fs";
+import { basename as basename12, resolve as resolve22 } from "node:path";
 import { createInterface } from "node:readline/promises";
-import { parseArgs as parseArgs9 } from "node:util";
+import { parseArgs as parseArgs10 } from "node:util";
 
 // src/worktree/sweep.ts
-import { spawnSync as spawnSync9 } from "node:child_process";
-import { basename as basename11, resolve as resolve20 } from "node:path";
+import { spawnSync as spawnSync10 } from "node:child_process";
+import { basename as basename11, resolve as resolve21 } from "node:path";
 var KEPT_BUCKETS = /* @__PURE__ */ new Set(["hold-current", "hold-locked", "hold-wip"]);
 var RECENT_MS = 24 * 60 * 60 * 1e3;
 var MS_PER_SECOND = 1e3;
 var SLOT_ITEM = /^s?(\d+)$/;
 var runJson = (bin, args, cwd) => {
-  const result = spawnSync9(bin, args, { cwd, encoding: "utf8", windowsHide: true });
+  const result = spawnSync10(bin, args, { cwd, encoding: "utf8", windowsHide: true });
   if (result.status !== 0) return void 0;
   try {
     return JSON.parse(result.stdout);
@@ -10480,7 +11218,7 @@ var matchItems = (rows, items, cwd) => {
   for (const item of items) {
     const slot = SLOT_ITEM.exec(item)?.[1];
     const row = rows.find(
-      (candidate) => slot === void 0 ? samePath(candidate.path, resolve20(cwd, item)) : candidate.slot === Number(slot)
+      (candidate) => slot === void 0 ? samePath(candidate.path, resolve21(cwd, item)) : candidate.slot === Number(slot)
     );
     if (row === void 0) {
       unknown.push(item);
@@ -10506,8 +11244,8 @@ var fail4 = (message, code) => {
 `);
   return code;
 };
-var print2 = (text3) => {
-  process.stdout.write(`${text3}
+var print2 = (text4) => {
+  process.stdout.write(`${text4}
 `);
 };
 var mainCheckout = (cwd) => {
@@ -10518,8 +11256,8 @@ var mainCheckout = (cwd) => {
 var checkoutTarget = (positionals, usage2) => {
   const [target] = positionals;
   if (positionals.length !== 1 || target === void 0) return fail4(`usage: ${usage2}`, 2);
-  const dir2 = resolve21(target);
-  if (!existsSync26(dir2)) return fail4(`no such dir ${toSlash(dir2)}`, 1);
+  const dir2 = resolve22(target);
+  if (!existsSync28(dir2)) return fail4(`no such dir ${toSlash(dir2)}`, 1);
   const toplevel = gitToplevel(dir2);
   if (toplevel === void 0 || !samePath(toplevel, dir2)) return fail4(`${toSlash(dir2)} is not the root of a git worktree`, 1);
   const main = mainCheckout(dir2);
@@ -10528,7 +11266,7 @@ var checkoutTarget = (positionals, usage2) => {
   return { dir: dir2, main, config };
 };
 var worktreeSeed = (args) => {
-  const { positionals } = parseArgs9({ args, options: {}, allowPositionals: true, strict: true });
+  const { positionals } = parseArgs10({ args, options: {}, allowPositionals: true, strict: true });
   const target = checkoutTarget(positionals, "worktree seed <dir>");
   if (typeof target === "number") return target;
   if (samePath(target.main, target.dir)) return fail4(`${toSlash(target.dir)} is the main checkout, seed fills another worktree from it`, 1);
@@ -10540,7 +11278,7 @@ var worktreeSeed = (args) => {
 };
 var DEPS_USAGE = "worktree deps <dir> [--save [--force] | --refresh] | worktree deps --prune [--dry-run]";
 var worktreeDeps = (args) => {
-  const { values, positionals } = parseArgs9({
+  const { values, positionals } = parseArgs10({
     args,
     options: { save: { type: "boolean" }, force: { type: "boolean" }, refresh: { type: "boolean" }, prune: { type: "boolean" }, "dry-run": { type: "boolean" } },
     allowPositionals: true,
@@ -10564,11 +11302,11 @@ var worktreeDeps = (args) => {
   return outcome.kind === "failed" ? 1 : 0;
 };
 var worktreeRemove = (args) => {
-  const { positionals } = parseArgs9({ args, options: {}, allowPositionals: true, strict: true });
+  const { positionals } = parseArgs10({ args, options: {}, allowPositionals: true, strict: true });
   const [target] = positionals;
   if (positionals.length !== 1 || target === void 0) return fail4("usage: worktree remove <dir>", 2);
-  const dir2 = resolve21(target);
-  const worktrees = listWorktrees(existsSync26(dir2) ? dir2 : process.cwd());
+  const dir2 = resolve22(target);
+  const worktrees = listWorktrees(existsSync28(dir2) ? dir2 : process.cwd());
   const main = worktrees[0]?.path;
   if (main === void 0) return fail4(`no git worktrees found from ${toSlash(dir2)}`, 1);
   if (samePath(main, dir2)) return fail4(`${toSlash(dir2)} is the main checkout, remove takes a linked worktree`, 1);
@@ -10610,7 +11348,7 @@ var removeRows = (rows, mainRoot) => {
   return code;
 };
 var worktreeSweep = async (args, confirm = terminalConfirm()) => {
-  const { values } = parseArgs9({
+  const { values } = parseArgs10({
     args,
     options: { json: { type: "boolean" }, ask: { type: "boolean" }, yes: { type: "string", multiple: true } },
     strict: true
@@ -10656,7 +11394,7 @@ var runWorktree = (args) => {
 };
 
 // src/cli/main.ts
-var EXIT_FAILURE = 2;
+var EXIT_FAILURE2 = 2;
 var MIN_NODE_MAJOR2 = 20;
 var runVersion = () => {
   process.stdout.write(`jig ${version}
@@ -10688,7 +11426,7 @@ var commands = /* @__PURE__ */ new Map([
 var fail5 = (message) => {
   process.stderr.write(`jig: ${message}
 `);
-  return EXIT_FAILURE;
+  return EXIT_FAILURE2;
 };
 var run2 = async (argv) => {
   const nodeVersion = process.versions.node;
