@@ -14,7 +14,8 @@
       "sessionId": "s1"
     },
     "event": {
-      "kind": "prompt"
+      "kind": "prompt",
+      "text": "fix the bug"
     }
   }
 }

@@ -152,8 +152,10 @@ const toEvent = (name: string, input: Json, paths: PathContext): JigEvent | unde
       return sessionStartEvent(input)
     case 'compact':
       return { kind: 'compact' }
-    case 'user-prompt-submit':
-      return { kind: 'prompt' }
+    case 'user-prompt-submit': {
+      const prompt = text(input, 'prompt')
+      return prompt === undefined ? { kind: 'prompt' } : { kind: 'prompt', text: prompt }
+    }
     case 'pre-edit':
       return preEditEvent(toolName, toolInput, paths)
     case 'post-edit':

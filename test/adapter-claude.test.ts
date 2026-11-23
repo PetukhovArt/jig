@@ -1,11 +1,13 @@
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { formatOutcome, parseHookInput } from '../src/adapters/claude'
+import { git } from '../src/core/git'
 import { readJournal } from '../src/core/journal'
 import { toSlash } from '../src/core/paths'
 import { handleHook, type JigEvent, type Outcome } from '../src/hook/dispatch'
+import { declaredReference } from '../src/ui/dir'
 
 interface HookFixture {
   name: string
@@ -136,5 +138,64 @@ describe('pre-edit and subagent-start through the adapter', () => {
     expect(await handleHook('subagent-start', input, env())).toBe('')
     const record = readJournal(project).find((entry) => entry.kind === 'subagent-start')
     expect(record).toMatchObject({ agent: 'ag-1', rule: 'general-purpose', message: 'Read role implementer, then fix src/a.ts' })
+  })
+})
+
+describe('user-prompt-submit declares the Figma reference of the branch', () => {
+  const FRAME = 'https://www.figma.com/design/AbC123/Screens?node-id=12-34&t=x'
+  const OTHER = 'https://www.figma.com/file/ZzZ999/Other?node-id=5-6'
+  const UI_PROFILE = '{ "ui": { "targets": [{ "name": "web", "runtime": "browser", "widths": [1280] }], "themes": [{ "name": "light" }] } }\n'
+
+  let uiProject: string
+
+  const ask = (prompt: string): Promise<string> =>
+    handleHook('user-prompt-submit', JSON.stringify({ session_id: 's-ui', cwd: uiProject, hook_event_name: 'UserPromptSubmit', prompt }), {
+      CLAUDE_PROJECT_DIR: uiProject,
+      CLAUDE_PLUGIN_ROOT: PLUGIN_ROOT,
+    })
+
+  const contextOf = (output: string): string => (JSON.parse(output) as { hookSpecificOutput: { additionalContext: string } }).hookSpecificOutput.additionalContext
+
+  beforeEach(() => {
+    uiProject = mkdtempSync(join(tmpdir(), 'jig-adapter-ui-'))
+    git(['init', '-q', '-b', 'feat-x'], uiProject)
+  })
+
+  afterEach(() => {
+    rmSync(uiProject, { recursive: true, force: true })
+  })
+
+  const configure = (text: string): void => {
+    mkdirSync(join(uiProject, '.jig'), { recursive: true })
+    writeFileSync(join(uiProject, '.jig', 'config.jsonc'), text)
+  }
+
+  it('declares the reference and tells the agent what pre-mr will ask for', async () => {
+    configure(UI_PROFILE)
+
+    const context = contextOf(await ask(`Build the screen, design: ${FRAME}.`))
+
+    expect(declaredReference(uiProject)).toBe(`figma:${FRAME}`)
+    expect(context).toContain('flows/ui.md')
+    expect(context).toContain(`jig ui mockup --figma ${FRAME} --component <node id>`)
+    expect(context).toContain('jig ui reuse')
+  })
+
+  it('keeps a declared reference and says nothing for another Figma URL', async () => {
+    configure(UI_PROFILE)
+    await ask(FRAME)
+
+    expect(await ask(`now use ${OTHER}`)).toBe('')
+    expect(declaredReference(uiProject)).toBe(`figma:${FRAME}`)
+  })
+
+  it('does nothing without a ui profile or a node id', async () => {
+    configure('{ "tsc": {} }\n')
+    expect(await ask(FRAME)).toBe('')
+    expect(declaredReference(uiProject)).toBeUndefined()
+
+    configure(UI_PROFILE)
+    expect(await ask('see https://www.figma.com/design/AbC123/Screens')).toBe('')
+    expect(declaredReference(uiProject)).toBeUndefined()
   })
 })

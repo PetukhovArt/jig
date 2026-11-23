@@ -13,7 +13,7 @@ export interface FileEdit {
 export type JigEvent =
   | { kind: 'session-start'; source: SessionSource }
   | { kind: 'compact' }
-  | { kind: 'prompt' }
+  | { kind: 'prompt'; text?: string }
   | ({ kind: 'pre-edit' } & FileEdit)
   | { kind: 'pre-patch'; files: FileEdit[] }
   | { kind: 'post-edit'; file: string }

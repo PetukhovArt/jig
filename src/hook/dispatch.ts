@@ -25,6 +25,7 @@ import { RULE_FILES } from '../context/chain'
 import { checkEdit } from '../gates/edit'
 import { stopGate } from '../gates/stop'
 import { collapseFindings, limitLines, POST_EDIT_LINE_LIMIT, type Finding } from '../tools/finding'
+import { declareReferenceFromPrompt } from '../ui/prompt-reference'
 import { missingDepsOf, unprovisionedWorktrees, type Unprovisioned } from '../worktree/deps-pool'
 import { linkedWorktreeRoot, listWorktrees, samePath } from '../worktree/list'
 import type { EventBase, FileEdit, JigEvent, Outcome } from './types'
@@ -220,13 +221,15 @@ const rulesBackstop = (ctx: HookContext, files: readonly string[]): string | und
   return `${delivery.text}\n\n${RETRY}`
 }
 
-const prompt = (ctx: HookContext): Outcome => {
+const prompt = (event: EventOf<'prompt'>, ctx: HookContext): Outcome => {
   const state = openSession(ctx)
   resetSnapshot(state, takeSnapshot(ctx.projectRoot))
   state.turn += 1
   ctx.turn = state.turn
   writeState(ctx.projectRoot, state)
-  return NONE
+  const text = event.text
+  if (text === undefined || !hasProjectConfig(ctx.projectRoot)) return NONE
+  return contextOf(noteOf(ctx, () => declareReferenceFromPrompt(ctx.projectRoot, text)))
 }
 
 const gateFile = (event: FileEdit, ctx: HookContext): Outcome => {
@@ -355,7 +358,7 @@ const route = (event: JigEvent, ctx: HookContext): Outcome | Promise<Outcome> =>
     case 'compact':
       return compact(ctx)
     case 'prompt':
-      return prompt(ctx)
+      return prompt(event, ctx)
     case 'pre-edit':
       return preEdit(event, ctx)
     case 'pre-patch':

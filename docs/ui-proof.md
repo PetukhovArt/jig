@@ -20,6 +20,8 @@ When `.jig/config.jsonc` has a [`ui`](configuration.md#ui-profile) section and t
 | `ui-matrix` | `jig ui prove`, when every matrix combination was driven and no audit error stands | an agent-view proof is configured and the matrix has an `auto` combination |
 | `ui-mockup` | `jig ui mockup`, when it reports no blocking finding | the branch declared a Figma reference: `.jig/ui/<branch>/reference` holds `figma:<url>`, written by `jig ui mockup --figma <url>` or `jig ui prove --reference figma:<url>` |
 
+The `user-prompt-submit` hook declares that reference itself, for every supported agent: when a prompt holds a Figma `/design/` or `/file/` URL with a `node-id` and the branch has no declared reference yet, it writes `figma:<url>` and tells the agent that `jig pre-mr` will ask for `jig ui mockup` and `jig ui reuse`; an existing reference is never overwritten.
+
 A gap prints the command to run. `jig pre-mr proof` takes none of them: the `jig ui` commands record their own proof, and only when they pass. A branch whose only gaps are the static ones (no agent-view proof configured) is not asked for a break-it record. `jig skip-verify` waives only the proofs that need a running app (agent-view and `ui-matrix`): `ui-reuse` and `ui-mockup` read the code and the export, so they stay required after it.
 
 ## `jig ui prove`
