@@ -105,7 +105,7 @@ It repeats the task back with a done check, picks a flow and puts the flow's ste
 | [refactoring](skills/jig/flows/refactoring.md) | change structure, keep behavior, prove equivalence. |
 | [session-pause](skills/jig/flows/session-pause.md) | stop cleanly with a resume point. |
 | [session-resume](skills/jig/flows/session-resume.md) | resume work a previous session left. |
-| [ui-match](skills/jig/flows/ui-match.md) | make UI match a reference: a design (Figma, an image) or an existing implementation. |
+| [ui](skills/jig/flows/ui.md) | build or change UI against a reference (Figma, an image, an existing implementation, a spec) or the project's own tokens and components, then prove it on every target, width and theme. |
 
 </details>
 
@@ -215,7 +215,7 @@ Atoms are those short rules, indexed in [`skills/jig/SKILL.md`](skills/jig/SKILL
 
 <!-- roles:start -->
 
-<details><summary><b>All 23 roles</b></summary>
+<details><summary><b>All 24 roles</b></summary>
 
 | role | tier / effort | when |
 | --- | --- | --- |
@@ -241,6 +241,7 @@ Atoms are those short rules, indexed in [`skills/jig/SKILL.md`](skills/jig/SKILL
 | [review-runner](skills/jig/references/roles/review-runner.md) | deep/medium | Use in jig-review-cycle, one per actionable merge request in its worktree, or from jig-review when the plan has finders, to run jig-review end to end and return its proof of run. Never posts. |
 | [synthesizer](skills/jig/references/roles/synthesizer.md) | deep/high | Use in investigation (Why step) to reconcile the investigators' evidence into found, inferred and unknown. Hunts for gaps; explainer merges code maps for How instead. |
 | [test-reviewer](skills/jig/references/roles/test-reviewer.md) | standard/medium | Use in jig-review, one per partition whose diff adds or changes tests (kind tests), to find wrong and redundant tests for angle 16. Reports only; never deletes or edits a test. |
+| [ui-reviewer](skills/jig/references/roles/ui-reviewer.md) | deep/high | Use in flow ui, each round, to review UI against its reference and the project's rules from shots and code. Read only; each finding cites a shot region or file:line and a rule; never fixes. |
 | [verifier](skills/jig/references/roles/verifier.md) | deep/medium | Use in jig-review, one per cluster of candidates, to judge them on a different model than the finder: a verdict, severity and class per candidate, each on a quoted line. |
 
 </details>

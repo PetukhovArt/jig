@@ -4,6 +4,8 @@ Without `/jig`, only the hooks run, and a small task goes in one shot. `/jig <ta
 
 Every code-changing flow ends with the shared [`mr`](../skills/jig/flows/mr.md) step: the `jig-review` skill in mode `pre-mr`, UI proof, `jig pre-mr`, then the merge request. The flow list is in the [README](../README.md#usage).
 
+UI work goes through the [`ui`](../skills/jig/flows/ui.md) flow, which `feature` and `bug-fix` hand their UI part to (it replaced `ui-match`). It reads the project's `ui` profile, works in reference mode (Figma, an image, an existing implementation, a text spec turned into acceptance criteria) or without one (tokens, shared components and the nearest similar screen; a new screen gets two prototypes and the user picks), takes a reuse inventory before code, proves the change with `jig ui reuse`, `jig ui mockup` and `jig ui prove` ([UI proof](ui-proof.md)), runs up to three rounds of the read-only `ui-reviewer` role, and asks the user about every deviation instead of explaining it away. Accepted deviations go to `.jig/ui/<branch>/deviations.md` and onto the evidence page. A UI miss the user reports becomes an eval case and a check through the `lessons-to-checks` atom.
+
 Subagent roles are templates in `skills/jig/references/roles/`; each template names a model tier and an effort (`metadata.tier`, `metadata.effort`), and `jig tiers` maps the tier to the agent's models (built-in for Claude Code, overridable in `~/.jig/config.jsonc`).
 
 `jig-task-status` keeps the decision trail of a long or unattended run: one TSV row per decision, step or question in `.jig/runs/<branch>/task-status.tsv`, and a page built from it on demand; `afk-mode` follows it.

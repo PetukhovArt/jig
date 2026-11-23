@@ -1,0 +1,22 @@
+---
+name: ui
+description: "build or change UI against a reference (Figma, an image, an existing implementation, a spec) or the project's own tokens and components, then prove it on every target, width and theme."
+---
+# ui
+
+**You own what the user sees. The reference or the project's own system is the spec; a deviation is fixed or asked, never explained away.**
+
+Atoms: prove-shippable, small-steps, shared-state, questions, autonomy, ux.
+
+1. Profile: `jig ui matrix` prints the combinations to prove from the `ui` section of `.jig/config.jsonc`. Missing: run `jig init`, show its proposed `ui` key to the user, ask once what it cannot know (theme and locale switches, targets), write the confirmed key. A task may narrow the profile for this run (one target, one width), never widen it silently.
+2. Mode: name the reference as the user gave it. Figma, an image, an existing implementation, or a text spec: reference mode. None: no-reference mode.
+3. Reference mode, before any code. Figma: `jig ui mockup --figma <url>` lists the frame's nodes and declares the reference of the branch; fetch the frame image through `jig ui prove --reference figma:<url>` later. An image: the file. An existing implementation (a migration, a port): screenshots of the old app at the matrix sizes, and the diff must be zero (`jig ui prove --reference image:<path> --exact`). A text spec: acceptance criteria, each with a visible end state (what the user sees, at which size and in which state), shown to the user before code. Never edit the reference, its captures or the capture script to make a comparison pass; a reference that looks wrong goes in your reply.
+4. No-reference mode: the implicit reference is the project's tokens (`ui.tokens`), its shared components (`ui.components.dirs`) and the nearest similar screen, which you name before code. A new screen: two prototypes behind a switcher (flows/prototype.md), the user picks; afk (atom `autonomy`): you pick, and the reply lists the other and why.
+5. Reuse inventory before code: which shared components the change uses, which element the design needs that none covers. A new shared component only with the user's consent (afk: build the screen from the existing ones and list the need). A raw element that `ui.components.map` names is a defect, not a shortcut.
+6. Build with atom `ux`: one component at a time, shared primitives first; parallel owners each get their own worktree and never write the same file (atom shared-state). Run the app where SKILL.md says (Where the app runs).
+7. Prove, after your last edit: `jig ui reuse`; with a Figma reference `jig ui mockup --figma <url> --component <node id>`; `jig ui prove [--reference <reference>] [--states <use case>,...]` with the states the reference or the criteria show (hover, empty, loading, error). Each prints what failed and exits 1: fix the cause and rerun, never narrow `--root` or `--target` to hide a failure. A pixel diff against Figma is evidence for the reviewer, an audit error is a defect. agent-view not configured: `skip: agent-view not configured` for `jig ui prove`; the other two still run. The matrix lists manual targets (native): name them in your reply for the user to check by hand.
+8. Reviewer rounds, at most 3: role `ui-reviewer` with the reference, the shot of each combination, the outputs of step 7 and the base branch. Re-verify each finding yourself against its shot region or `file:line`; fix the real ones, keep a Dropped list with the evidence for the rest, rerun step 7 after a fix. Findings still open after round 3 go to the user.
+9. Deviations: each remaining difference from the reference, a token or a rule is fixed, or asked of the user in your reply (afk: the question and your answer in the final report). Never present one as acceptable on your own word. An accepted one is a line in `.jig/ui/<branch>/deviations.md`: the difference, the reason, who accepted it; the evidence page shows it.
+10. Evidence and merge request: `flows/mr.md`. Give the user the path of `.jig/ui/<branch>/index.html`. The description holds a table of combinations with their audit result and key images uploaded to the merge request (`references/forge.md`), never committed images.
+
+Reply: the profile and mode, the reuse inventory, the combinations proven with their exit codes, the reviewer rounds and what was dropped, the deviations and who accepted them, the manual targets, the evidence page.

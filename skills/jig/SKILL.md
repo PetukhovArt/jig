@@ -93,7 +93,7 @@ These hold for the whole task, in every flow.
 - `refactoring`: change structure, keep behavior, prove equivalence.
 - `session-pause`: stop cleanly with a resume point.
 - `session-resume`: resume work a previous session left.
-- `ui-match`: make UI match a reference: a design (Figma, an image) or an existing implementation.
+- `ui`: build or change UI against a reference (Figma, an image, an existing implementation, a spec) or the project's own tokens and components, then prove it on every target, width and theme.
 <!-- flows:end -->
 Every code-changing flow ends with the shared step in `flows/mr.md`.
 Reviewing someone else's merge request: the `jig-review` skill in mode `review`.

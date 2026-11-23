@@ -12,3 +12,4 @@ metadata:
 - A rule that needs judgment stays text: make it more prominent and add an example of the failure.
 - A rule that a new check makes impossible leaves the prose.
 - A review finding that repeats across merge requests becomes a constraint, not another thread.
+- A UI miss the user reports (a broken layout, a screen off its reference, a missing state, a raw element where a shared component exists) becomes an eval case first, then a check at the highest level that works: the project's lint, else a `jig ui` check or an agent-view audit rule, else a line in `flows/ui.md`. A new check starts in observe mode (reported, never blocking) until it has run clean on real branches; the UI eval suite must not drop.

@@ -93,6 +93,7 @@ The `ui` section says what a UI change is proven on and which components it must
 - `locales.check`: `one` (default) proves only the first listed locale, `all` proves each. `jig init` orders the list by longest texts first, so the first one is the likeliest to overflow. A task that touches texts asks for all (`jig ui matrix --locales all`).
 - `components.dirs` holds the project's shared components, where raw elements are fine. `components.files` (default `**/*.{tsx,jsx,vue,svelte,astro}`) are the files `jig ui reuse` reads, and `components.map` names for each raw element (a tag) the component to use instead: a project wrapper, or a library component where the project uses the library directly (`"button": "v-btn"`).
 - `tokens` are CSS files, folders or globs with the design tokens; `jig ui mockup` reads them when `--tokens` is not given.
+- The `ui` section also decides what `jig pre-mr` asks for and what `jig ui prove` drives: [UI proof](ui-proof.md#with-a-ui-profile). The `act` switches of `themes` and `locales` are agent-view use cases that `jig ui prove` replays; a `launch` switch is proven only when the app was launched with it (`--launched`).
 
 ## Guard the config files
 
