@@ -3,13 +3,19 @@ import type { UiConfig } from '../core/config-ui'
 import { gitToplevel } from '../core/git'
 import { resolveProjectRoot } from '../core/paths'
 import type { Io } from '../pre-mr/pre-mr'
+import type { FetchFn } from './prove/reference'
+import type { AgentViewRunner } from './prove/runner'
 
 export interface UiContext {
   cwd: string
   io: Io
+  agentView?: AgentViewRunner
+  fetch?: FetchFn
+  env?: NodeJS.ProcessEnv
 }
 
 export type UiSubcommand = (args: string[], ctx: UiContext) => number
+export type AsyncUiSubcommand = (args: string[], ctx: UiContext) => Promise<number>
 
 export const EXIT_FINDINGS = 1
 export const EXIT_USAGE = 2

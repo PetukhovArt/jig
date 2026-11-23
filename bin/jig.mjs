@@ -1425,10 +1425,10 @@ var run = (argv, options) => {
     let outputBytes = 0;
     let timedOut = false;
     let spawnError;
-    const collect2 = (target) => (chunk) => {
-      outputBytes += chunk.length;
+    const collect2 = (target) => (chunk2) => {
+      outputBytes += chunk2.length;
       if (outputBytes <= MAX_OUTPUT_BYTES) {
-        target.push(chunk);
+        target.push(chunk2);
       }
     };
     child.stdout.on("data", collect2(stdout));
@@ -6195,8 +6195,8 @@ var parseHookArgs = (args) => {
 };
 var readStdin = async () => {
   const chunks = [];
-  for await (const chunk of process.stdin) {
-    chunks.push(typeof chunk === "string" ? Buffer.from(chunk) : chunk);
+  for await (const chunk2 of process.stdin) {
+    chunks.push(typeof chunk2 === "string" ? Buffer.from(chunk2) : chunk2);
   }
   return Buffer.concat(chunks).toString("utf8");
 };
@@ -6786,25 +6786,25 @@ var DIFF_FORMAT = "partitions-compact-1";
 var DIFF_DIR_PREFIX = "diff-";
 var DIFF_DIR_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1e3;
 var AUDIENCES = ["code", "tests", "docs"];
-var chunkPath = (chunk) => {
+var chunkPath = (chunk2) => {
   const side = (prefix) => {
-    const line = chunk.find((candidate) => candidate.startsWith(prefix));
+    const line = chunk2.find((candidate) => candidate.startsWith(prefix));
     const path2 = line?.slice(prefix.length).replace(/\r$/, "");
     return path2 === void 0 || path2 === "/dev/null" ? void 0 : path2.replace(/^[ab]\//, "");
   };
-  const header = /^diff --git a\/(.*) b\/(.*?)\r?$/.exec(chunk[0] ?? "");
-  return side("+++ ") ?? side("--- ") ?? header?.[2] ?? chunk[0] ?? "";
+  const header = /^diff --git a\/(.*) b\/(.*?)\r?$/.exec(chunk2[0] ?? "");
+  return side("+++ ") ?? side("--- ") ?? header?.[2] ?? chunk2[0] ?? "";
 };
 var partName = (partition, audience, index) => `${partition === "" ? "" : `${partition}-`}${audience}-${String(index + 1).padStart(2, "0")}.diff`;
 var isGenerated = createMatcher(["**/*.{min.js,min.css,map,snap}", "**/__snapshots__/**"]);
 var isUnreviewed = (path2) => isLockfile(path2) || isGenerated(path2);
-var compactChunk = (chunk, path2) => {
+var compactChunk = (chunk2, path2) => {
   if (isUnreviewed(path2)) return void 0;
-  const firstHunk = chunk.findIndex((line) => line.startsWith("@@"));
-  const header = firstHunk === -1 ? chunk : chunk.slice(0, firstHunk);
+  const firstHunk = chunk2.findIndex((line) => line.startsWith("@@"));
+  const header = firstHunk === -1 ? chunk2 : chunk2.slice(0, firstHunk);
   const renamedFrom = header.find((line) => line.startsWith("rename from "))?.slice("rename from ".length);
   if (header.some((line) => line.startsWith("deleted file mode"))) {
-    const removed = chunk.filter((line) => line.startsWith("-") && !line.startsWith("--- ")).length;
+    const removed = chunk2.filter((line) => line.startsWith("-") && !line.startsWith("--- ")).length;
     return [`=== ${path2} (deleted, ${removed} lines)`];
   }
   if (header.some((line) => line.startsWith("Binary files"))) return [`=== ${path2} (binary)`];
@@ -6812,7 +6812,7 @@ var compactChunk = (chunk, path2) => {
     ...header.some((line) => line.startsWith("new file mode")) ? ["new"] : [],
     ...renamedFrom === void 0 ? [] : [`renamed from ${renamedFrom}`]
   ];
-  return [`=== ${path2}${notes.length > 0 ? ` (${notes.join(", ")})` : ""}`, ...firstHunk === -1 ? [] : chunk.slice(firstHunk)];
+  return [`=== ${path2}${notes.length > 0 ? ` (${notes.join(", ")})` : ""}`, ...firstHunk === -1 ? [] : chunk2.slice(firstHunk)];
 };
 var splitDiff = (text4, audienceOf2 = () => "code", maxLines = DIFF_PART_MAX_LINES, partitionOf = () => "") => {
   const lines2 = text4.split("\n");
@@ -6822,8 +6822,8 @@ var splitDiff = (text4, audienceOf2 = () => "code", maxLines = DIFF_PART_MAX_LIN
     if (line.startsWith("diff --git ") || chunks.length === 0) chunks.push({ path: "", raw: [] });
     chunks.at(-1)?.raw.push(line);
   }
-  chunks.forEach((chunk) => chunk.path = chunkPath(chunk.raw));
-  const partitions = [...new Set(chunks.map((chunk) => partitionOf(chunk.path)))].sort((left, right) => left.localeCompare(right, void 0, { numeric: true }));
+  chunks.forEach((chunk2) => chunk2.path = chunkPath(chunk2.raw));
+  const partitions = [...new Set(chunks.map((chunk2) => partitionOf(chunk2.path)))].sort((left, right) => left.localeCompare(right, void 0, { numeric: true }));
   const parts = [];
   const files = [];
   const skipped = [];
@@ -6832,16 +6832,16 @@ var splitDiff = (text4, audienceOf2 = () => "code", maxLines = DIFF_PART_MAX_LIN
       const own = [];
       for (const { path: path2, raw } of chunks) {
         if (partitionOf(path2) !== partition || audienceOf2(path2) !== audience) continue;
-        const chunk = compactChunk(raw, path2);
-        if (chunk === void 0) {
+        const chunk2 = compactChunk(raw, path2);
+        if (chunk2 === void 0) {
           skipped.push(path2);
           continue;
         }
         const current = own.at(-1);
-        const part = current !== void 0 && current.length + chunk.length <= maxLines ? current : [];
+        const part = current !== void 0 && current.length + chunk2.length <= maxLines ? current : [];
         if (part !== current) own.push(part);
-        files.push({ path: path2, audience, partition, part: partName(partition, audience, own.length - 1), start: part.length + 1, end: part.length + chunk.length });
-        part.push(...chunk);
+        files.push({ path: path2, audience, partition, part: partName(partition, audience, own.length - 1), start: part.length + 1, end: part.length + chunk2.length });
+        part.push(...chunk2);
       }
       parts.push(...own.map((part, index) => ({ name: partName(partition, audience, index), audience, partition, text: `${part.join("\n")}
 ` })));
@@ -8044,6 +8044,8 @@ var runReviewPlan = (args) => {
 import { existsSync as existsSync18, mkdirSync as mkdirSync16, readFileSync as readFileSync32, writeFileSync as writeFileSync11 } from "node:fs";
 import { join as join35 } from "node:path";
 var REFERENCE_FILE = "reference";
+var DEVIATIONS_FILE = "deviations.md";
+var EVIDENCE_PAGE = "index.html";
 var uiBranchDir = (root) => join35(ensureJigDir(root).ui, branchDirName(root));
 var referenceFile = (root) => join35(uiBranchDir(root), REFERENCE_FILE);
 var declareReference = (root, reference) => {
@@ -8576,7 +8578,7 @@ var TRANSCRIPTS_ONLY = "jig review cost reads Claude Code transcripts only";
 var resolveSessionDir = (given, projectDir, projectsDir) => {
   if (given !== void 0 && existsSync20(join37(given, "subagents"))) return given;
   if (given !== void 0) {
-    const found = existsSync20(projectsDir) ? readdirSync17(projectsDir).map((slug) => join37(projectsDir, slug, given)).find((dir2) => existsSync20(dir2)) : void 0;
+    const found = existsSync20(projectsDir) ? readdirSync17(projectsDir).map((slug2) => join37(projectsDir, slug2, given)).find((dir2) => existsSync20(dir2)) : void 0;
     if (found === void 0) throw new Error(`session ${given} not found under ${toSlash(projectsDir)}; ${TRANSCRIPTS_ONLY}`);
     return found;
   }
@@ -10349,7 +10351,7 @@ var lowestFreeSlot = (slots) => {
   }
   return slot;
 };
-var slotDirName = (repo, slot, slug) => slug === void 0 ? `${repo}-s${slot}` : `${repo}-s${slot}-${slug}`;
+var slotDirName = (repo, slot, slug2) => slug2 === void 0 ? `${repo}-s${slot}` : `${repo}-s${slot}-${slug2}`;
 var slotPorts = (config, slot) => Object.fromEntries(Object.entries(config.ports ?? {}).map(([key, port]) => [key, port.base + slot * port.step]));
 var slotCdpPort = (config, slot) => config.cdp === void 0 ? void 0 : config.cdp.base + slot * config.cdp.step;
 var setEnvValue = (text4, key, value) => {
@@ -10494,13 +10496,13 @@ var poolDeps = (context, dir2) => {
 var isPoolServed = (outcome) => outcome !== void 0 && outcome.kind !== "skipped";
 var slotNew = async (args) => {
   const { values } = parseArgs7({ args, options: { slug: { type: "string" }, branch: { type: "string" } }, strict: true });
-  const slug = values.slug;
-  if (slug !== void 0 && !SLUG.test(slug)) return fail3(`invalid --slug ${slug}: use letters, digits, ., _, -`, 2);
+  const slug2 = values.slug;
+  if (slug2 !== void 0 && !SLUG.test(slug2)) return fail3(`invalid --slug ${slug2}: use letters, digits, ., _, -`, 2);
   const context = loadContext();
   const slots = context.slots;
   if (slots === void 0) return fail3("no slots section in .jig/config.jsonc: a human fills it (see skill jig-slots)", 1);
   const reserved = await reserveSlot(context, slots, {
-    ...slug === void 0 ? {} : { slug },
+    ...slug2 === void 0 ? {} : { slug: slug2 },
     ...values.branch === void 0 ? {} : { branch: values.branch }
   });
   if (typeof reserved === "number") return reserved;
@@ -10653,7 +10655,7 @@ var runSlot = (args) => {
 };
 
 // src/ui/ui.ts
-import { parseArgs as parseArgs9 } from "node:util";
+import { parseArgs as parseArgs10 } from "node:util";
 
 // src/ui/command.ts
 var EXIT_FINDINGS2 = 1;
@@ -11482,11 +11484,681 @@ ${MOCKUP_USAGE}`);
   return 0;
 };
 
+// src/ui/prove/prove.ts
+import { existsSync as existsSync31, mkdirSync as mkdirSync23, readFileSync as readFileSync48, writeFileSync as writeFileSync19 } from "node:fs";
+import { dirname as dirname23, join as join51, relative as relative10 } from "node:path";
+import { parseArgs as parseArgs9 } from "node:util";
+
+// src/ui/prove/result.ts
+var auditErrors = (combo) => combo.states.reduce((sum, state) => sum + state.audits.reduce((inner, audit) => inner + audit.errors, 0), 0);
+var failuresOf = (combo) => [
+  ...combo.failure === void 0 ? [] : [combo.failure],
+  ...combo.states.flatMap((state) => state.failure === void 0 ? [] : [`${state.state}: ${state.failure}`])
+];
+
+// src/ui/prove/page.ts
+var STYLE = `
+:root { color-scheme: light dark; --bg: #fff; --fg: #1b1f24; --muted: #59636e; --line: #d1d9e0; --card: #f6f8fa; --err: #b3261e; --warn: #8a5a00; --ok: #1a7f37; }
+@media (prefers-color-scheme: dark) { :root { --bg: #0d1117; --fg: #e6edf3; --muted: #9198a1; --line: #30363d; --card: #161b22; --err: #ff7b72; --warn: #e3b341; --ok: #56d364; } }
+* { box-sizing: border-box; }
+body { margin: 0 auto; max-width: 1400px; padding: 24px; background: var(--bg); color: var(--fg); font: 14px/1.5 system-ui, sans-serif; }
+h1, h2, h3 { margin: 0 0 8px; }
+h2 { margin-top: 32px; padding-top: 16px; border-top: 1px solid var(--line); }
+code, pre { font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
+.meta, figcaption, .muted { color: var(--muted); }
+.status-fail { color: var(--err); font-weight: 600; }
+.status-ok { color: var(--ok); font-weight: 600; }
+.shots { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; align-items: start; }
+figure { margin: 0; padding: 8px; background: var(--card); border: 1px solid var(--line); border-radius: 6px; }
+figure img { display: block; max-width: 100%; height: auto; border: 1px solid var(--line); }
+figcaption { margin-bottom: 6px; font-size: 12px; }
+table { width: 100%; margin: 8px 0 16px; border-collapse: collapse; }
+th, td { padding: 4px 8px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--line); }
+th { color: var(--muted); font-weight: 600; }
+.sev-error { color: var(--err); font-weight: 600; }
+.sev-warn { color: var(--warn); }
+.manual, .notes, .deviations { padding: 8px 16px; background: var(--card); border: 1px solid var(--line); border-radius: 6px; }
+pre { margin: 0; white-space: pre-wrap; }
+`;
+var escapeHtml = (text4) => text4.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+var comboTitle = (combo) => [
+  combo.target,
+  `${combo.width}${combo.height === void 0 ? "" : ` x ${combo.height}`} px`,
+  combo.input,
+  `theme ${combo.theme}${combo.themeSwitch === void 0 ? "" : ` (${describeSwitch(combo.themeSwitch)})`}`,
+  ...combo.locale === void 0 ? [] : [`locale ${combo.locale}`]
+].filter((part) => part !== void 0).join(" \xB7 ");
+var targetLabel = (finding) => {
+  const { target } = finding;
+  const label = target.testid !== void 0 ? `testid=${target.testid}` : target.name ?? target.text ?? target.selector;
+  return `${target.role === void 0 ? "" : `${target.role} `}${label}`;
+};
+var figure = (caption, path2) => path2 === void 0 ? "" : `<figure><figcaption>${escapeHtml(caption)}</figcaption><a href="${escapeHtml(path2)}"><img src="${escapeHtml(path2)}" alt="${escapeHtml(caption)}" loading="lazy"></a></figure>`;
+var percent = (ratio) => `${(ratio * 100).toFixed(2)} %`;
+var auditTable = (audit) => {
+  const head = `<h4>${audit.kind === "scene" ? "scene audit" : "layout audit"}: ${audit.errors} errors, ${audit.warnings} warnings${audit.scanned === void 0 ? "" : `, ${audit.scanned} elements`}</h4>`;
+  if (audit.note !== void 0) return `${head}<p class="muted">${escapeHtml(audit.note)}</p>`;
+  if (audit.findings.length === 0) return `${head}<p class="muted">no findings</p>`;
+  const shot = audit.shot === void 0 ? "" : ` <a href="${escapeHtml(audit.shot)}">shot</a>`;
+  const rows = audit.findings.map(
+    (finding) => `<tr><td>${escapeHtml(finding.rule)}</td><td class="sev-${finding.severity}">${finding.severity}</td><td><code>${escapeHtml(targetLabel(finding))}</code></td><td>${escapeHtml(finding.detail)}</td><td>${shot}</td></tr>`
+  ).join("");
+  return `${head}<table class="audit"><thead><tr><th>rule</th><th>severity</th><th>target</th><th>detail</th><th>evidence</th></tr></thead><tbody>${rows}</tbody></table>`;
+};
+var stateBlock = (state) => {
+  const diff = state.diff;
+  const images = [
+    figure("reference", diff?.reference),
+    figure("result", state.shot),
+    figure(diff === void 0 ? "diff map" : `diff map: ${percent(diff.ratio)} of pixels differ${diff.sizeMismatch ? ", sizes differ" : ""}`, diff?.map),
+    ...state.audits.map((audit) => audit.findings.length > 0 ? figure(`${audit.kind} audit shot`, audit.shot) : "")
+  ].join("");
+  const failure = state.failure === void 0 ? "" : `<p class="status-fail">${escapeHtml(state.failure)}</p>`;
+  const note = state.referenceNote === void 0 ? "" : `<p class="muted">${escapeHtml(state.referenceNote)}</p>`;
+  return `<article><h3>${escapeHtml(state.state)}</h3>${failure}${note}<div class="shots">${images}</div>${state.audits.map(auditTable).join("")}</article>`;
+};
+var comboBlock = (combo) => {
+  const failures = failuresOf(combo).map((text4) => `<p class="status-fail">${escapeHtml(text4)}</p>`).join("");
+  return `<section class="combo" id="${escapeHtml(combo.id)}"><h2>${escapeHtml(comboTitle(combo.combo))}</h2>${failures}${combo.states.map(stateBlock).join("")}</section>`;
+};
+var renderPage2 = (result, deviations) => {
+  const errors = result.combos.reduce((sum, combo) => sum + auditErrors(combo), 0);
+  const warnings = result.combos.reduce((sum, combo) => sum + combo.states.reduce((inner, state) => inner + state.audits.reduce((acc, audit) => acc + audit.warnings, 0), 0), 0);
+  const failed2 = errors > 0 || result.combos.some((combo) => failuresOf(combo).length > 0);
+  const status = failed2 ? `<p class="status-fail">${errors} audit errors, ${warnings} warnings</p>` : `<p class="status-ok">no audit errors, ${warnings} warnings</p>`;
+  const notes = [
+    ...result.notes,
+    ...result.skipped.map((skipped) => `skipped ${comboTitle(skipped.combo)}: ${skipped.why}`)
+  ];
+  const manual = result.manual.length === 0 ? "" : `<section><h2>Check by hand</h2><div class="manual"><p class="muted">jig cannot drive these targets; the user proves them.</p><ul>${result.manual.map((target) => `<li><code>${escapeHtml(target.name)}</code> (${escapeHtml(target.runtime)}${target.widths.length > 0 ? `, ${target.widths.join(", ")} px` : ""})</li>`).join("")}</ul></div></section>`;
+  const deviationBlock = deviations === void 0 ? "" : `<section><h2>Accepted deviations</h2><div class="deviations"><pre>${escapeHtml(deviations.trim())}</pre></div></section>`;
+  const noteBlock = notes.length === 0 ? "" : `<section><h2>Notes</h2><div class="notes"><ul>${notes.map((note) => `<li>${escapeHtml(note)}</li>`).join("")}</ul></div></section>`;
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>UI evidence: ${escapeHtml(result.branch)}</title>
+<style>${STYLE}</style>
+</head>
+<body>
+<header>
+<h1>UI evidence <code>${escapeHtml(result.branch)}</code></h1>
+<p class="meta">generated ${escapeHtml(result.generatedAt)}${result.reference === void 0 ? ", no reference" : `, reference: ${escapeHtml(result.reference)}`}${result.root === void 0 ? "" : `, audit root: ${escapeHtml(result.root)}`}</p>
+<p>${result.combos.length} combinations proven.</p>
+${status}
+<nav>${result.combos.map((combo) => `<a href="#${escapeHtml(combo.id)}">${escapeHtml(combo.id)}</a>`).join(" \xB7 ")}</nav>
+</header>
+${noteBlock}
+${result.combos.map(comboBlock).join("\n")}
+${manual}
+${deviationBlock}
+</body>
+</html>
+`;
+};
+
+// src/ui/prove/png.ts
+import { deflateSync, inflateSync } from "node:zlib";
+var SIGNATURE = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
+var COLOR_RGB = 2;
+var COLOR_RGBA = 6;
+var DIFF_COLOR = [255, 0, 80];
+var DIM = 0.35;
+var unfilter = (filter, left, up, upLeft) => {
+  switch (filter) {
+    case 0:
+      return 0;
+    case 1:
+      return left;
+    case 2:
+      return up;
+    case 3:
+      return left + up >> 1;
+    case 4: {
+      const estimate = left + up - upLeft;
+      const toLeft = Math.abs(estimate - left);
+      const toUp = Math.abs(estimate - up);
+      const toUpLeft = Math.abs(estimate - upLeft);
+      return toLeft <= toUp && toLeft <= toUpLeft ? left : toUp <= toUpLeft ? up : upLeft;
+    }
+    default:
+      throw new Error(`unknown PNG filter ${filter}`);
+  }
+};
+var decodePng = (png) => {
+  if (!png.subarray(0, 8).equals(SIGNATURE)) throw new Error("not a PNG file");
+  let width = 0;
+  let height = 0;
+  let channels = 0;
+  const data = [];
+  for (let offset = 8; offset < png.length; ) {
+    const length = png.readUInt32BE(offset);
+    const type = png.toString("latin1", offset + 4, offset + 8);
+    const body = png.subarray(offset + 8, offset + 8 + length);
+    if (type === "IHDR") {
+      width = body.readUInt32BE(0);
+      height = body.readUInt32BE(4);
+      const colorType = body[9];
+      if (body[8] !== 8 || colorType !== COLOR_RGB && colorType !== COLOR_RGBA || body[12] !== 0) {
+        throw new Error(`unsupported PNG (bit depth ${body[8]}, color type ${colorType}, interlace ${body[12]}): 8-bit RGB or RGBA only`);
+      }
+      channels = colorType === COLOR_RGBA ? 4 : 3;
+    } else if (type === "IDAT") {
+      data.push(body);
+    } else if (type === "IEND") {
+      break;
+    }
+    offset += 12 + length;
+  }
+  const raw = inflateSync(Buffer.concat(data));
+  const stride = width * channels;
+  const pixels = Buffer.alloc(stride * height);
+  for (let y = 0; y < height; y++) {
+    const filter = raw[y * (stride + 1)] ?? 0;
+    const line = raw.subarray(y * (stride + 1) + 1, (y + 1) * (stride + 1));
+    const row = y * stride;
+    for (let i = 0; i < stride; i++) {
+      const left = i >= channels ? pixels[row + i - channels] ?? 0 : 0;
+      const up = y > 0 ? pixels[row - stride + i] ?? 0 : 0;
+      const upLeft = i >= channels && y > 0 ? pixels[row - stride + i - channels] ?? 0 : 0;
+      pixels[row + i] = (line[i] ?? 0) + unfilter(filter, left, up, upLeft) & 255;
+    }
+  }
+  if (channels === 4) return { width, height, rgba: pixels };
+  const rgba = Buffer.alloc(width * height * 4, 255);
+  for (let pixel = 0; pixel < width * height; pixel++) pixels.copy(rgba, pixel * 4, pixel * 3, pixel * 3 + 3);
+  return { width, height, rgba };
+};
+var CRC_TABLE = Array.from({ length: 256 }, (_, n) => {
+  let value = n;
+  for (let bit = 0; bit < 8; bit++) value = value & 1 ? 3988292384 ^ value >>> 1 : value >>> 1;
+  return value >>> 0;
+});
+var crc32 = (bytes) => {
+  let value = 4294967295;
+  for (const byte of bytes) value = (CRC_TABLE[(value ^ byte) & 255] ?? 0) ^ value >>> 8;
+  return (value ^ 4294967295) >>> 0;
+};
+var chunk = (type, body) => {
+  const head = Buffer.alloc(8);
+  head.writeUInt32BE(body.length, 0);
+  head.write(type, 4, "latin1");
+  const crc = Buffer.alloc(4);
+  crc.writeUInt32BE(crc32(Buffer.concat([head.subarray(4), body])), 0);
+  return Buffer.concat([head, body, crc]);
+};
+var encodePng = ({ width, height, rgba }) => {
+  const stride = width * 4;
+  const raw = Buffer.alloc((stride + 1) * height);
+  for (let y = 0; y < height; y++) {
+    rgba.copy(raw, y * (stride + 1) + 1, y * stride, (y + 1) * stride);
+  }
+  const header = Buffer.alloc(13);
+  header.writeUInt32BE(width, 0);
+  header.writeUInt32BE(height, 4);
+  header[8] = 8;
+  header[9] = COLOR_RGBA;
+  return Buffer.concat([SIGNATURE, chunk("IHDR", header), chunk("IDAT", deflateSync(raw)), chunk("IEND", Buffer.alloc(0))]);
+};
+var pixelAt = (image, x, y) => {
+  if (x >= image.width || y >= image.height) return void 0;
+  const offset = (y * image.width + x) * 4;
+  const alpha = (image.rgba[offset + 3] ?? 255) / 255;
+  const channel = (index) => Math.round((image.rgba[offset + index] ?? 0) * alpha + 255 * (1 - alpha));
+  return [channel(0), channel(1), channel(2)];
+};
+var diffImages = (reference, result, tolerance) => {
+  const width = Math.max(reference.width, result.width);
+  const height = Math.max(reference.height, result.height);
+  const map = Buffer.alloc(width * height * 4, 255);
+  let differing = 0;
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const expected = pixelAt(reference, x, y);
+      const actual = pixelAt(result, x, y);
+      const isDifferent = expected === void 0 || actual === void 0 || expected.some((value, index) => Math.abs(value - (actual[index] ?? 0)) > tolerance);
+      const offset = (y * width + x) * 4;
+      const shown = actual ?? expected ?? [255, 255, 255];
+      const color = isDifferent ? DIFF_COLOR : shown.map((value) => Math.round(255 - (255 - value) * DIM));
+      map[offset] = color[0] ?? 0;
+      map[offset + 1] = color[1] ?? 0;
+      map[offset + 2] = color[2] ?? 0;
+      if (isDifferent) differing++;
+    }
+  }
+  const total = width * height;
+  return {
+    width,
+    height,
+    total,
+    differing,
+    ratio: total === 0 ? 0 : differing / total,
+    sizeMismatch: reference.width !== result.width || reference.height !== result.height,
+    map: encodePng({ width, height, rgba: map })
+  };
+};
+
+// src/ui/prove/reference.ts
+import { existsSync as existsSync29, mkdirSync as mkdirSync22, readFileSync as readFileSync46, writeFileSync as writeFileSync18 } from "node:fs";
+import { dirname as dirname21, join as join49, resolve as resolve21 } from "node:path";
+var defaultFetch = (url, init) => fetch(url, init);
+var parseReference = (value) => {
+  if (value.startsWith("figma:")) return { kind: "figma", url: value.slice("figma:".length) };
+  if (value.startsWith("image:")) return { kind: "image", path: value.slice("image:".length) };
+  throw new Error(`--reference ${value}: expected figma:<Figma URL with node-id> or image:<path to a PNG>`);
+};
+var describeReference = (spec2) => spec2.kind === "figma" ? `Figma ${spec2.url}` : `image ${spec2.path}`;
+var figmaImagePath = (root, url) => {
+  const { fileKey, nodeId } = parseFigmaUrl(url);
+  return join49(jigPaths(root).ui, "figma", `${fileKey}-${nodeId.replace(/:/g, "-")}.png`);
+};
+var fetchFigmaImage = async (root, url, fetcher, env = process.env) => {
+  const file = figmaImagePath(root, url);
+  if (existsSync29(file)) return file;
+  const key = figmaApiKey(env);
+  if (key === void 0) throw new Error(`no Figma key: set ${FIGMA_KEY_ENVS.join(" or ")}, or pass a PNG export with --reference image:<path>`);
+  const { fileKey, nodeId } = parseFigmaUrl(url);
+  const listing = await fetcher(`https://api.figma.com/v1/images/${fileKey}?ids=${encodeURIComponent(nodeId)}&format=png&scale=1`, { headers: { "X-Figma-Token": key } });
+  if (!listing.ok) throw new Error(`Figma images endpoint answered ${listing.status}`);
+  const body = await listing.json();
+  const imageUrl = body.images?.[nodeId];
+  if (typeof imageUrl !== "string") throw new Error(`Figma rendered no image for node ${nodeId}`);
+  const image = await fetcher(imageUrl);
+  if (!image.ok) throw new Error(`Figma image download answered ${image.status}`);
+  mkdirSync22(dirname21(file), { recursive: true });
+  writeFileSync18(file, Buffer.from(await image.arrayBuffer()));
+  return file;
+};
+var expandImagePath = (template, values) => template.replace(/\{(\w+)\}/g, (match, name) => values[name] ?? match);
+var readImage = (cwd, path2) => {
+  const file = resolve21(cwd, path2);
+  return existsSync29(file) ? readFileSync46(file) : void 0;
+};
+
+// src/ui/prove/runner.ts
+import { spawnSync as spawnSync10 } from "node:child_process";
+import { existsSync as existsSync30, readFileSync as readFileSync47 } from "node:fs";
+import { dirname as dirname22, join as join50, resolve as resolve22 } from "node:path";
+var CALL_TIMEOUT_MS = 3e5;
+var MAX_BUFFER4 = 64 * 1024 * 1024;
+var spawnAgentView = (root) => {
+  const argv = resolveBin(root, AGENT_VIEW_BINARY.packages, AGENT_VIEW_BINARY.command);
+  return (args, cwd) => {
+    if (argv === void 0) return { code: null, stdout: "", stderr: "", error: "agent-view is not installed: npm i -g @petukhovart/agent-view" };
+    const [command, ...prefix] = argv;
+    const result = spawnSync10(command ?? "", [...prefix, ...args], { cwd, encoding: "utf8", timeout: CALL_TIMEOUT_MS, maxBuffer: MAX_BUFFER4, windowsHide: true });
+    return {
+      code: result.status,
+      stdout: result.stdout ?? "",
+      stderr: result.stderr ?? "",
+      ...result.error === void 0 ? {} : { error: result.error.message }
+    };
+  };
+};
+var findAgentViewConfig = (root) => {
+  let dir2 = resolve22(root);
+  for (; ; ) {
+    const file = join50(dir2, AGENT_VIEW_CONFIG);
+    if (existsSync30(file)) return file;
+    const parent = dirname22(dir2);
+    if (parent === dir2) return void 0;
+    dir2 = parent;
+  }
+};
+var hasSceneHook = (configFile) => {
+  try {
+    const config = JSON.parse(readFileSync47(configFile, "utf8"));
+    return config.webgl?.engine === "app-hook";
+  } catch {
+    return false;
+  }
+};
+var ERROR_LINE = /^(?:\w*Error|error)\b/;
+var failureOf = (result) => {
+  if (result.error !== void 0) return result.error;
+  const lines2 = (result.stderr.trim() || result.stdout.trim()).split("\n").map((line) => line.trim()).filter(Boolean);
+  const reason = lines2.find((line) => ERROR_LINE.test(line)) ?? lines2.at(-1);
+  if (reason === void 0) return `exit ${result.code}`;
+  return /unknown command/.test(reason) ? `${reason} (this agent-view is too old for emulate and audit: update @petukhovart/agent-view)` : reason;
+};
+
+// src/ui/prove/prove.ts
+var PROVE_USAGE = `usage: jig ui prove [--reference figma:<Figma URL with node-id>|image:<PNG path>] [--states <use case>[,<use case>...]] [--target <name>] [--root <test id or selector>] [--no-scene] [--exact] [--launched <theme or locale>[,...]] [--json]
+
+Drives every combination of \`jig ui matrix\` in the running app through agent-view: emulates its width, height, pointer and color scheme, switches the theme and locale, replays each state (a use case; none: the current screen), audits the layout (and the scene when agent-view.config.json has webgl.engine app-hook), screenshots it, and compares it with the reference. Writes .jig/ui/<branch>/index.html.
+  --reference  figma:<url> (the frame is fetched as a PNG with JIG_FIGMA_API_KEY, else FIGMA_API_KEY) or image:<path>; a path may hold {target} {width} {theme} {locale} {state}. A single reference is compared with the combinations as wide as it is, in the first theme
+  --states     agent-view use cases to replay before each audit
+  --target     only this target's combinations (the proof is recorded when every combination has a result for the current working tree)
+  --root       audit only this test id or CSS selector and what it holds
+  --no-scene   skip the scene audit
+  --exact      a nonzero pixel diff against the reference fails (a reference that is an existing implementation)
+  --launched   theme or locale names the app was launched with: a variant with a launch switch can only be proven when named here
+
+Exit 1 while an audit error, a failed state or (with --exact) a pixel diff stands, 2 when agent-view is not configured or cannot reach the app.`;
+var EXIT_ENVIRONMENT = 2;
+var PIXEL_TOLERANCE = 12;
+var RESULT_FILE = "result.json";
+var REFERENCE_DIR = "ref";
+var slug = (text4) => text4.replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") || "screen";
+var comboId = (combo) => slug(`${combo.target}-${combo.width}-${combo.theme}${combo.locale === void 0 ? "" : `-${combo.locale}`}`);
+var comboLabel = (combo) => `${combo.target} ${combo.width}${combo.height === void 0 ? "" : `x${combo.height}`} ${combo.input ?? ""} theme ${combo.theme}${combo.locale === void 0 ? "" : ` locale ${combo.locale}`}`.replace(/\s+/g, " ");
+var splitList = (values) => (values ?? []).flatMap((value) => value.split(",")).map((item) => item.trim()).filter(Boolean);
+var parseOptions = (args) => {
+  const { values, positionals } = parseArgs9({
+    args,
+    allowPositionals: true,
+    strict: true,
+    options: {
+      reference: { type: "string" },
+      states: { type: "string", multiple: true },
+      target: { type: "string" },
+      root: { type: "string" },
+      "no-scene": { type: "boolean" },
+      exact: { type: "boolean" },
+      launched: { type: "string", multiple: true },
+      json: { type: "boolean" }
+    }
+  });
+  if (positionals.length > 0) throw new UsageError3(PROVE_USAGE);
+  let reference;
+  if (values.reference !== void 0) {
+    try {
+      reference = parseReference(values.reference);
+    } catch (error) {
+      throw new UsageError3(`${error instanceof Error ? error.message : String(error)}
+
+${PROVE_USAGE}`);
+    }
+  }
+  return {
+    ...reference === void 0 ? {} : { reference },
+    states: splitList(values.states),
+    ...values.target === void 0 ? {} : { target: values.target },
+    ...values.root === void 0 ? {} : { root: values.root },
+    scene: values["no-scene"] !== true,
+    exact: values.exact === true,
+    launched: splitList(values.launched),
+    json: values.json === true
+  };
+};
+var needsRelaunch = (switchTo, name, launched) => switchTo?.launch === void 0 || launched.includes(name) ? void 0 : `${name} switches by launch (${switchTo.launch}): relaunch the app with it and rerun with --launched ${name}`;
+var readJson2 = (text4) => {
+  const start = text4.indexOf("{");
+  if (start < 0) return void 0;
+  try {
+    return JSON.parse(text4.slice(start));
+  } catch {
+    return void 0;
+  }
+};
+var auditOutcome = (kind, raw, shot) => {
+  const findings = raw.findings ?? [];
+  return {
+    kind,
+    errors: raw.counts?.error ?? findings.filter((finding) => finding.severity === "error").length,
+    warnings: raw.counts?.warn ?? findings.filter((finding) => finding.severity === "warn").length,
+    ...raw.scanned === void 0 ? {} : { scanned: raw.scanned },
+    findings,
+    ...shot === void 0 || findings.length === 0 ? {} : { shot }
+  };
+};
+var loadReference = async (spec2, ctx, root) => {
+  if (spec2 === void 0) return void 0;
+  if (spec2.kind === "image") {
+    const image = spec2.path.includes("{") ? void 0 : readImage(ctx.cwd, spec2.path);
+    if (!spec2.path.includes("{") && image === void 0) throw new UsageError3(`--reference image:${spec2.path}: no such file`);
+    return { spec: spec2, ...image === void 0 ? {} : { image } };
+  }
+  try {
+    const file = await fetchFigmaImage(root, spec2.url, ctx.fetch ?? defaultFetch, ctx.env);
+    return { spec: spec2, image: readFileSync48(file) };
+  } catch (error) {
+    return { spec: spec2, note: `Figma frame not fetched, so no pixel comparison: ${error instanceof Error ? error.message : String(error)}` };
+  }
+};
+var pathIn = (state, ...parts) => {
+  const file = join51(state.dir, ...parts);
+  mkdirSync23(dirname23(file), { recursive: true });
+  return { file, shown: toSlash(relative10(state.dir, file)) };
+};
+var referenceFor = (state, combo, stateName) => {
+  const loaded = state.reference;
+  if (loaded === void 0) return void 0;
+  if (loaded.note !== void 0) return { key: "", note: loaded.note };
+  if (loaded.spec.kind === "image" && loaded.spec.path.includes("{")) {
+    const path2 = expandImagePath(loaded.spec.path, { target: combo.target, width: String(combo.width), theme: combo.theme, locale: combo.locale ?? "", state: stateName });
+    const image = readImage(state.ctx.cwd, path2);
+    return image === void 0 ? { key: "", note: `no reference image at ${path2}` } : { image, key: slug(path2) };
+  }
+  if (loaded.image === void 0) return void 0;
+  const decoded = decodePng(loaded.image);
+  if (decoded.width !== combo.width) return { key: "", note: `reference is ${decoded.width} px wide, this combination ${combo.width} px: not compared` };
+  if (combo.theme !== state.firstTheme) return { key: "", note: `the single reference stands for the first theme (${state.firstTheme}): not compared in ${combo.theme}` };
+  return { image: loaded.image, key: "reference" };
+};
+var compare = (state, combo, stateName, shotFile) => {
+  const found = referenceFor(state, combo, stateName);
+  if (found === void 0) return {};
+  if (found.image === void 0) return found.note === void 0 ? {} : { referenceNote: found.note };
+  try {
+    const diff = diffImages(decodePng(found.image), decodePng(readFileSync48(shotFile)), state.options.exact ? 0 : PIXEL_TOLERANCE);
+    const copy = pathIn(state, REFERENCE_DIR, `${found.key}.png`);
+    writeFileSync19(copy.file, found.image);
+    const map = pathIn(state, comboId(combo), `${slug(stateName)}-diff.png`);
+    writeFileSync19(map.file, diff.map);
+    return { diff: { reference: copy.shown, map: map.shown, differing: diff.differing, total: diff.total, ratio: diff.ratio, sizeMismatch: diff.sizeMismatch } };
+  } catch (error) {
+    return { referenceNote: `reference not compared: ${error instanceof Error ? error.message : String(error)}` };
+  }
+};
+var runAudit = (state, kind, combo, stateName) => {
+  const shot = pathIn(state, comboId(combo), `${slug(stateName)}-${kind === "dom" ? "audit" : "scene"}.png`);
+  const args = ["audit", ...kind === "scene" ? ["--scene"] : [], "--json", "--shot", shot.file, ...kind === "dom" && state.options.root !== void 0 ? ["--root", state.options.root] : []];
+  const result = state.runner(args, state.root);
+  const raw = readJson2(result.stdout);
+  if ((result.code === 0 || result.code === 1) && raw !== void 0) return auditOutcome(kind, raw, shot.shown);
+  const why = `${kind === "dom" ? "layout" : "scene"} audit could not run: ${failureOf(result)}`;
+  return kind === "dom" ? { abort: why } : { kind, errors: 0, warnings: 0, findings: [], note: why };
+};
+var runState = (state, combo, stateName, replay) => {
+  const id = comboId(combo);
+  if (replay) {
+    const replayed = state.runner(["act", "replay", stateName], state.root);
+    if (replayed.code !== 0) return { state: stateName, failure: `act replay ${stateName} exited ${replayed.code}: ${failureOf(replayed)}`, audits: [] };
+  }
+  const audits = [];
+  const dom = runAudit(state, "dom", combo, stateName);
+  if ("abort" in dom) return dom;
+  audits.push(dom);
+  if (state.scene) {
+    const scene = runAudit(state, "scene", combo, stateName);
+    if (!("abort" in scene)) audits.push(scene);
+  }
+  const shot = pathIn(state, id, `${slug(stateName)}.png`);
+  const taken = state.runner(["screenshot", "--out", shot.file], state.root);
+  if (taken.code !== 0) return { state: stateName, failure: `screenshot failed: ${failureOf(taken)}`, audits };
+  return { state: stateName, shot: shot.shown, audits, ...compare(state, combo, stateName, shot.file) };
+};
+var emulateArgs = (combo) => [
+  "emulate",
+  "--reset",
+  "--width",
+  String(combo.width),
+  ...combo.height === void 0 ? [] : ["--height", String(combo.height)],
+  ...combo.input === void 0 ? [] : ["--pointer", combo.input],
+  ...combo.themeSwitch?.media === void 0 ? [] : ["--color-scheme", combo.themeSwitch.media]
+];
+var runCombo = (state, combo) => {
+  const emulated = state.runner(emulateArgs(combo), state.root);
+  if (emulated.code !== 0) return { abort: `agent-view emulate failed: ${failureOf(emulated)}` };
+  const result = { id: comboId(combo), combo, tree: state.tree, states: [] };
+  for (const switchTo of [combo.themeSwitch, combo.localeSwitch]) {
+    if (switchTo?.act === void 0) continue;
+    const switched = state.runner(["act", "replay", switchTo.act], state.root);
+    if (switched.code !== 0) return { ...result, failure: `switch ${switchTo.act} exited ${switched.code}: ${failureOf(switched)}` };
+  }
+  const names = state.options.states.length > 0 ? state.options.states : ["screen"];
+  for (const name of names) {
+    const outcome = runState(state, combo, name, state.options.states.length > 0);
+    if ("abort" in outcome) return outcome;
+    result.states.push(outcome);
+  }
+  return result;
+};
+var variantOf = (list, name) => list?.find((variant) => variant.name === name);
+var skipReason = (ui2, combo, launched) => {
+  const theme = needsRelaunch(variantOf(ui2.themes, combo.theme)?.switch, combo.theme, launched);
+  return theme ?? needsRelaunch(variantOf(ui2.locales?.list, combo.locale)?.switch, combo.locale ?? "", launched);
+};
+var readPrevious = (file) => {
+  try {
+    return JSON.parse(readFileSync48(file, "utf8"));
+  } catch {
+    return void 0;
+  }
+};
+var describeCombo = (result) => {
+  const lines2 = [`${comboLabel(result.combo)}`];
+  for (const state of result.states) {
+    const counts = state.audits.map((audit) => `${audit.kind} ${audit.errors} errors ${audit.warnings} warnings`).join(", ");
+    const diff = state.diff === void 0 ? "" : `, ${(state.diff.ratio * 100).toFixed(2)} % of pixels differ from the reference`;
+    lines2.push(`  ${state.state}: ${state.failure ?? counts}${diff}${state.shot === void 0 ? "" : `  ${state.shot}`}`);
+    for (const audit of state.audits) {
+      for (const finding of audit.findings.filter((entry) => entry.severity === "error")) {
+        lines2.push(`    error ${finding.rule} ${finding.target.testid === void 0 ? finding.target.selector : `testid=${finding.target.testid}`}: ${finding.detail}`);
+      }
+      if (audit.note !== void 0) lines2.push(`    ${audit.note}`);
+    }
+    if (state.referenceNote !== void 0) lines2.push(`    ${state.referenceNote}`);
+  }
+  for (const failure of result.failure === void 0 ? [] : [result.failure]) lines2.push(`  ${failure}`);
+  return lines2;
+};
+var prove = async (args, ctx) => {
+  const options = parseOptions(args);
+  const root = projectRootOf(ctx.cwd);
+  const ui2 = requireUi(root);
+  const full = buildMatrix(ui2);
+  const known = /* @__PURE__ */ new Set([...full.combos.map((combo) => combo.target), ...full.manual.map((target) => target.name)]);
+  if (options.target !== void 0 && !known.has(options.target)) throw new UsageError3(`--target ${options.target}: no such target, expected ${[...known].join(", ")}`);
+  const combos = full.combos.filter((combo) => options.target === void 0 || combo.target === options.target);
+  const manual = full.manual.filter((target) => options.target === void 0 || target.name === options.target);
+  if (combos.length === 0) throw new UsageError3(`no combination to prove${options.target === void 0 ? "" : ` for target ${options.target}`}: the target is proven by hand`);
+  const configFile = findAgentViewConfig(root);
+  if (configFile === void 0) {
+    ctx.io.err("jig: agent-view is not configured: no agent-view.config.json in the project or above it (agent-view init)\n");
+    return EXIT_ENVIRONMENT;
+  }
+  const runner = ctx.agentView ?? spawnAgentView(root);
+  const probe = runner(["emulate", "--json"], root);
+  if (probe.code !== 0) {
+    ctx.io.err(`jig: agent-view cannot reach the app: ${failureOf(probe)}
+`);
+    return EXIT_ENVIRONMENT;
+  }
+  if (options.reference?.kind === "figma") declareReference(root, `figma:${options.reference.url}`);
+  const reference = await loadReference(options.reference, ctx, root);
+  const dir2 = uiBranchDir(root);
+  mkdirSync23(dir2, { recursive: true });
+  const tree = (() => {
+    try {
+      return workingTree(root);
+    } catch {
+      return "";
+    }
+  })();
+  const state = {
+    ctx,
+    runner,
+    root,
+    dir: dir2,
+    options,
+    scene: options.scene && hasSceneHook(configFile),
+    firstTheme: ui2.themes[0]?.name ?? "",
+    ...reference === void 0 ? {} : { reference },
+    tree
+  };
+  const ran = [];
+  const skipped = [];
+  const notes = [];
+  if (reference?.note !== void 0) notes.push(reference.note);
+  let aborted;
+  try {
+    for (const combo of combos) {
+      const why = skipReason(ui2, combo, options.launched);
+      if (why !== void 0) {
+        skipped.push({ id: comboId(combo), combo, why });
+        ctx.io.out(`skipped ${comboLabel(combo)}: ${why}
+`);
+        continue;
+      }
+      const outcome = runCombo(state, combo);
+      if ("abort" in outcome) {
+        aborted = outcome.abort;
+        break;
+      }
+      ran.push(outcome);
+      ctx.io.out(`${describeCombo(outcome).join("\n")}
+`);
+    }
+  } finally {
+    const reset = runner(["emulate", "--reset"], root);
+    if (reset.code !== 0) notes.push(`emulation was not reset: ${failureOf(reset)}`);
+  }
+  if (aborted !== void 0) {
+    ctx.io.err(`jig: ${aborted}
+`);
+    return EXIT_ENVIRONMENT;
+  }
+  const resultFile = join51(dir2, RESULT_FILE);
+  const previous = readPrevious(resultFile);
+  const kept = (previous?.combos ?? []).filter((old) => old.tree === tree && tree !== "" && !ran.some((fresh) => fresh.id === old.id));
+  const merged2 = [...kept, ...ran];
+  const proven = {
+    branch: dir2.replace(/\\/g, "/").split("/").pop() ?? "",
+    generatedAt: (/* @__PURE__ */ new Date()).toISOString(),
+    tree,
+    ...options.reference === void 0 ? {} : { reference: describeReference(options.reference) },
+    ...options.root === void 0 ? {} : { root: options.root },
+    combos: merged2,
+    skipped,
+    manual: full.manual,
+    notes
+  };
+  writeFileSync19(resultFile, `${JSON.stringify(proven, null, 2)}
+`);
+  const deviationsFile = join51(dir2, DEVIATIONS_FILE);
+  writeFileSync19(join51(dir2, EVIDENCE_PAGE), renderPage2(proven, existsSync31(deviationsFile) ? readFileSync48(deviationsFile, "utf8") : void 0));
+  const errors = merged2.reduce((sum, combo) => sum + auditErrors(combo), 0);
+  const failures = merged2.flatMap(failuresOf);
+  const pixelFailures = options.exact ? ran.flatMap((combo) => combo.states).filter((entry) => (entry.diff?.differing ?? 0) > 0).length : 0;
+  const covered = full.combos.every((combo) => merged2.some((entry) => entry.id === comboId(combo)));
+  const summary = `ui prove: ${ran.length} combinations driven, ${errors} audit errors${failures.length > 0 ? `, ${failures.length} failed states` : ""}${pixelFailures > 0 ? `, ${pixelFailures} states differ from the reference` : ""}${skipped.length > 0 ? `, ${skipped.length} skipped` : ""}`;
+  if (options.json) ctx.io.out(`${JSON.stringify(proven, null, 2)}
+`);
+  ctx.io.out(`${summary}
+evidence: ${join51(dir2, EVIDENCE_PAGE)}
+`);
+  if (manual.length > 0) ctx.io.out(`check by hand: ${manual.map((target) => target.name).join(", ")}
+`);
+  if (errors > 0 || failures.length > 0 || pixelFailures > 0) return EXIT_FINDINGS2;
+  if (!covered) {
+    const missing = full.combos.filter((combo) => !merged2.some((entry) => entry.id === comboId(combo))).map(comboLabel);
+    ctx.io.err(`jig: ui-matrix proof not recorded, no result for the current working tree for: ${missing.join("; ")}
+`);
+    return 0;
+  }
+  recordPassed(root, "ui-matrix", `jig ui prove: ${merged2.length} combinations, 0 audit errors`, ctx.io);
+  return 0;
+};
+
 // src/ui/ui.ts
 var MATRIX_USAGE = "usage: jig ui matrix [--locales one|all] [--json]";
 var isLocaleCheck = (value) => value === void 0 || value === "one" || value === "all";
 var matrix = (args, ctx) => {
-  const { values, positionals } = parseArgs9({ args, allowPositionals: true, strict: true, options: { json: { type: "boolean" }, locales: { type: "string" } } });
+  const { values, positionals } = parseArgs10({ args, allowPositionals: true, strict: true, options: { json: { type: "boolean" }, locales: { type: "string" } } });
   if (positionals.length > 0 || !isLocaleCheck(values.locales)) throw new UsageError3(MATRIX_USAGE);
   const result = buildMatrix(requireUi(projectRootOf(ctx.cwd)), values.locales);
   ctx.io.out(values.json === true ? `${JSON.stringify(result, null, 2)}
@@ -11496,7 +12168,7 @@ var matrix = (args, ctx) => {
 };
 var REUSE_USAGE = "usage: jig ui reuse [--base <ref>] [--json]";
 var reuse2 = (args, ctx) => {
-  const { values, positionals } = parseArgs9({ args, allowPositionals: true, strict: true, options: { json: { type: "boolean" }, base: { type: "string" } } });
+  const { values, positionals } = parseArgs10({ args, allowPositionals: true, strict: true, options: { json: { type: "boolean" }, base: { type: "string" } } });
   if (positionals.length > 0) throw new UsageError3(REUSE_USAGE);
   const root = projectRootOf(ctx.cwd);
   const components = requireUi(root).components;
@@ -11516,40 +12188,54 @@ var SUBCOMMANDS2 = /* @__PURE__ */ new Map([
   ["reuse", reuse2],
   ["mockup", mockup]
 ]);
+var ASYNC_SUBCOMMANDS = /* @__PURE__ */ new Map([["prove", prove]]);
+var reportUsage = (error, ctx) => {
+  if (!isUsageError2(error)) throw error;
+  ctx.io.err(`jig: ${error.message}
+`);
+  return EXIT_USAGE5;
+};
 var ui = (args, ctx) => {
   const [name, ...rest] = args;
   const subcommand = name === void 0 ? void 0 : SUBCOMMANDS2.get(name);
   if (subcommand === void 0) {
-    ctx.io.err(`jig: usage: jig ui ${[...SUBCOMMANDS2.keys()].join("|")} ...
+    ctx.io.err(`jig: usage: jig ui ${[...SUBCOMMANDS2.keys(), ...ASYNC_SUBCOMMANDS.keys()].join("|")} ...
 `);
     return EXIT_USAGE5;
   }
   try {
     return subcommand(rest, ctx);
   } catch (error) {
-    if (!isUsageError2(error)) throw error;
-    ctx.io.err(`jig: ${error.message}
-`);
-    return EXIT_USAGE5;
+    return reportUsage(error, ctx);
   }
 };
-var runUi = (args) => ui(args, { cwd: process.cwd(), io: { out: (text4) => process.stdout.write(text4), err: (text4) => process.stderr.write(text4) } });
+var uiAsync = async (args, ctx) => {
+  const [name, ...rest] = args;
+  const subcommand = name === void 0 ? void 0 : ASYNC_SUBCOMMANDS.get(name);
+  if (subcommand === void 0) return ui(args, ctx);
+  try {
+    return await subcommand(rest, ctx);
+  } catch (error) {
+    return reportUsage(error, ctx);
+  }
+};
+var runUi = (args) => uiAsync(args, { cwd: process.cwd(), io: { out: (text4) => process.stdout.write(text4), err: (text4) => process.stderr.write(text4) } });
 
 // src/worktree/worktree.ts
-import { existsSync as existsSync29 } from "node:fs";
-import { basename as basename12, resolve as resolve22 } from "node:path";
+import { existsSync as existsSync32 } from "node:fs";
+import { basename as basename12, resolve as resolve24 } from "node:path";
 import { createInterface } from "node:readline/promises";
-import { parseArgs as parseArgs10 } from "node:util";
+import { parseArgs as parseArgs11 } from "node:util";
 
 // src/worktree/sweep.ts
-import { spawnSync as spawnSync10 } from "node:child_process";
-import { basename as basename11, resolve as resolve21 } from "node:path";
+import { spawnSync as spawnSync11 } from "node:child_process";
+import { basename as basename11, resolve as resolve23 } from "node:path";
 var KEPT_BUCKETS = /* @__PURE__ */ new Set(["hold-current", "hold-locked", "hold-wip"]);
 var RECENT_MS = 24 * 60 * 60 * 1e3;
 var MS_PER_SECOND = 1e3;
 var SLOT_ITEM = /^s?(\d+)$/;
 var runJson = (bin, args, cwd) => {
-  const result = spawnSync10(bin, args, { cwd, encoding: "utf8", windowsHide: true });
+  const result = spawnSync11(bin, args, { cwd, encoding: "utf8", windowsHide: true });
   if (result.status !== 0) return void 0;
   try {
     return JSON.parse(result.stdout);
@@ -11596,7 +12282,7 @@ var matchItems = (rows, items, cwd) => {
   for (const item of items) {
     const slot = SLOT_ITEM.exec(item)?.[1];
     const row = rows.find(
-      (candidate) => slot === void 0 ? samePath(candidate.path, resolve21(cwd, item)) : candidate.slot === Number(slot)
+      (candidate) => slot === void 0 ? samePath(candidate.path, resolve23(cwd, item)) : candidate.slot === Number(slot)
     );
     if (row === void 0) {
       unknown.push(item);
@@ -11634,8 +12320,8 @@ var mainCheckout = (cwd) => {
 var checkoutTarget = (positionals, usage2) => {
   const [target] = positionals;
   if (positionals.length !== 1 || target === void 0) return fail4(`usage: ${usage2}`, 2);
-  const dir2 = resolve22(target);
-  if (!existsSync29(dir2)) return fail4(`no such dir ${toSlash(dir2)}`, 1);
+  const dir2 = resolve24(target);
+  if (!existsSync32(dir2)) return fail4(`no such dir ${toSlash(dir2)}`, 1);
   const toplevel = gitToplevel(dir2);
   if (toplevel === void 0 || !samePath(toplevel, dir2)) return fail4(`${toSlash(dir2)} is not the root of a git worktree`, 1);
   const main = mainCheckout(dir2);
@@ -11644,7 +12330,7 @@ var checkoutTarget = (positionals, usage2) => {
   return { dir: dir2, main, config };
 };
 var worktreeSeed = (args) => {
-  const { positionals } = parseArgs10({ args, options: {}, allowPositionals: true, strict: true });
+  const { positionals } = parseArgs11({ args, options: {}, allowPositionals: true, strict: true });
   const target = checkoutTarget(positionals, "worktree seed <dir>");
   if (typeof target === "number") return target;
   if (samePath(target.main, target.dir)) return fail4(`${toSlash(target.dir)} is the main checkout, seed fills another worktree from it`, 1);
@@ -11656,7 +12342,7 @@ var worktreeSeed = (args) => {
 };
 var DEPS_USAGE = "worktree deps <dir> [--save [--force] | --refresh] | worktree deps --prune [--dry-run]";
 var worktreeDeps = (args) => {
-  const { values, positionals } = parseArgs10({
+  const { values, positionals } = parseArgs11({
     args,
     options: { save: { type: "boolean" }, force: { type: "boolean" }, refresh: { type: "boolean" }, prune: { type: "boolean" }, "dry-run": { type: "boolean" } },
     allowPositionals: true,
@@ -11680,11 +12366,11 @@ var worktreeDeps = (args) => {
   return outcome.kind === "failed" ? 1 : 0;
 };
 var worktreeRemove = (args) => {
-  const { positionals } = parseArgs10({ args, options: {}, allowPositionals: true, strict: true });
+  const { positionals } = parseArgs11({ args, options: {}, allowPositionals: true, strict: true });
   const [target] = positionals;
   if (positionals.length !== 1 || target === void 0) return fail4("usage: worktree remove <dir>", 2);
-  const dir2 = resolve22(target);
-  const worktrees = listWorktrees(existsSync29(dir2) ? dir2 : process.cwd());
+  const dir2 = resolve24(target);
+  const worktrees = listWorktrees(existsSync32(dir2) ? dir2 : process.cwd());
   const main = worktrees[0]?.path;
   if (main === void 0) return fail4(`no git worktrees found from ${toSlash(dir2)}`, 1);
   if (samePath(main, dir2)) return fail4(`${toSlash(dir2)} is the main checkout, remove takes a linked worktree`, 1);
@@ -11726,7 +12412,7 @@ var removeRows = (rows, mainRoot) => {
   return code;
 };
 var worktreeSweep = async (args, confirm = terminalConfirm()) => {
-  const { values } = parseArgs10({
+  const { values } = parseArgs11({
     args,
     options: { json: { type: "boolean" }, ask: { type: "boolean" }, yes: { type: "string", multiple: true } },
     strict: true

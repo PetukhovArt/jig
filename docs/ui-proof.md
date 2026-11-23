@@ -21,3 +21,21 @@ When `.jig/config.jsonc` has a [`ui`](configuration.md#ui-profile) section and t
 | `ui-mockup` | `jig ui mockup`, when it reports no blocking finding | the branch declared a Figma reference: `.jig/ui/<branch>/reference` holds `figma:<url>`, written by `jig ui mockup --figma <url>` or `jig ui prove --reference figma:<url>` |
 
 A gap prints the command to run. `jig pre-mr proof` takes none of them: the `jig ui` commands record their own proof, and only when they pass. A branch whose only gaps are the static ones (no agent-view proof configured) is not asked for a break-it record. `jig skip-verify` stays the way out when a proof cannot run.
+
+## `jig ui prove`
+
+`jig ui prove` needs agent-view configured (`agent-view.config.json` in the project or above it) and the app running; without them it exits 2 and says why. For each combination of [`jig ui matrix`](configuration.md#ui-profile), in order:
+
+1. `agent-view emulate --reset` with the target's width, height and pointer, and the color scheme when the theme switches by `media`.
+2. The theme and locale switch: `act` runs `agent-view act replay <use case>`. A `launch` switch cannot change at runtime: the combination is skipped with the line that names what to relaunch with, and runs when the app was launched with it and `--launched <name>` says so.
+3. Each state of `--states` (an agent-view use case, replayed) or, without it, the current screen: `agent-view audit --json --shot`, plus `audit --scene` when `agent-view.config.json` has `webgl.engine: app-hook` (unless `--no-scene`), and `agent-view screenshot --out`. `--root` limits the layout audit to one test id or selector.
+
+At the end it resets the emulation. Files go to `.jig/ui/<branch>/<target>-<width>-<theme>[-<locale>]/`, with `result.json` and `index.html` beside them. Exit 1 while a layout or scene audit error, a state whose replay failed or (with `--exact`) a pixel difference stands; warnings never fail it.
+
+`--reference figma:<url>` fetches the frame as a PNG through the Figma images endpoint (`JIG_FIGMA_API_KEY`, else `FIGMA_API_KEY`; without a key the run goes on with no comparison and says so) and declares the Figma reference of the branch; `--reference image:<path>` takes a PNG (8-bit RGB or RGBA), whose path may hold `{target}`, `{width}`, `{theme}`, `{locale}` and `{state}` for one image per combination. A single reference is compared with the combinations as wide as it is, in the first listed theme. The comparison is a pixel diff over the screenshot (a difference above 12 of 255 in any channel counts; `--exact` counts every one) and is evidence, not a gate, unless `--exact` is given for a reference that is an existing implementation.
+
+The ui-matrix proof is recorded when no audit error stands and every matrix combination has a result for the current working tree; results of earlier runs on the same tree are kept, so a partial run (`--target`, a launch-switched combination) completes the proof with the next run.
+
+## Evidence page
+
+`.jig/ui/<branch>/index.html` is a single file with inline CSS, no network, readable in a light and a dark system theme, with images by relative path. Per combination and state it shows the reference, the result and the diff map side by side, the audit table (rule, severity, target, detail, a link to the shot with the findings drawn on it), the scene audit, then the targets to check by hand, the notes (skipped combinations, a reference that could not be fetched) and the accepted deviations from `.jig/ui/<branch>/deviations.md` when that file exists. The folder is git-ignored; the merge request gets key images as uploads and a table, never committed images.

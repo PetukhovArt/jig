@@ -1,9 +1,10 @@
 import { parseArgs } from 'node:util'
 import type { UiLocaleCheck } from '../core/config-ui'
-import { EXIT_FINDINGS, EXIT_USAGE, isUsageError, projectRootOf, requireUi, UsageError, type UiContext, type UiSubcommand } from './command'
+import { EXIT_FINDINGS, EXIT_USAGE, isUsageError, projectRootOf, requireUi, UsageError, type AsyncUiSubcommand, type UiContext, type UiSubcommand } from './command'
 import { buildMatrix, formatMatrix } from './matrix'
 import { mockup } from './mockup/mockup'
 import { recordPassed } from './proof'
+import { prove } from './prove/prove'
 import { checkReuse, formatReuse } from './reuse'
 
 export type { UiContext, UiSubcommand }
@@ -43,21 +44,38 @@ export const SUBCOMMANDS = new Map<string, UiSubcommand>([
   ['mockup', mockup],
 ])
 
+export const ASYNC_SUBCOMMANDS = new Map<string, AsyncUiSubcommand>([['prove', prove]])
+
+const reportUsage = (error: unknown, ctx: UiContext): number => {
+  if (!isUsageError(error)) throw error
+  ctx.io.err(`jig: ${error.message}\n`)
+  return EXIT_USAGE
+}
+
 export const ui = (args: string[], ctx: UiContext): number => {
   const [name, ...rest] = args
   const subcommand = name === undefined ? undefined : SUBCOMMANDS.get(name)
   if (subcommand === undefined) {
-    ctx.io.err(`jig: usage: jig ui ${[...SUBCOMMANDS.keys()].join('|')} ...\n`)
+    ctx.io.err(`jig: usage: jig ui ${[...SUBCOMMANDS.keys(), ...ASYNC_SUBCOMMANDS.keys()].join('|')} ...\n`)
     return EXIT_USAGE
   }
   try {
     return subcommand(rest, ctx)
   } catch (error) {
-    if (!isUsageError(error)) throw error
-    ctx.io.err(`jig: ${error.message}\n`)
-    return EXIT_USAGE
+    return reportUsage(error, ctx)
   }
 }
 
-export const runUi = (args: string[]): number =>
-  ui(args, { cwd: process.cwd(), io: { out: (text) => process.stdout.write(text), err: (text) => process.stderr.write(text) } })
+export const uiAsync = async (args: string[], ctx: UiContext): Promise<number> => {
+  const [name, ...rest] = args
+  const subcommand = name === undefined ? undefined : ASYNC_SUBCOMMANDS.get(name)
+  if (subcommand === undefined) return ui(args, ctx)
+  try {
+    return await subcommand(rest, ctx)
+  } catch (error) {
+    return reportUsage(error, ctx)
+  }
+}
+
+export const runUi = (args: string[]): Promise<number> =>
+  uiAsync(args, { cwd: process.cwd(), io: { out: (text) => process.stdout.write(text), err: (text) => process.stderr.write(text) } })
