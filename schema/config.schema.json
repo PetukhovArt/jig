@@ -121,9 +121,99 @@
         },
         "forge": { "enum": ["gitlab", "github"], "description": "Overrides detection by the origin remote (github in the host → github, otherwise gitlab)" }
       }
+    },
+    "ui": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["targets", "themes"],
+      "description": "The project's UI profile for jig ui: what to prove (targets, widths, themes, locales) and which components to reuse.",
+      "properties": {
+        "targets": {
+          "type": "array",
+          "minItems": 1,
+          "description": "Where the UI runs. Names are unique.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "runtime"],
+            "properties": {
+              "name": { "type": "string", "minLength": 1 },
+              "runtime": { "enum": ["electron", "tauri", "browser", "native"] },
+              "widths": { "type": "array", "items": { "type": "integer", "minimum": 1 }, "description": "Viewport widths in CSS px; required unless the runtime is native. A width below minWidth is an error." },
+              "height": { "type": "integer", "minimum": 1 },
+              "minWidth": { "type": "integer", "minimum": 1, "description": "The narrowest window the app allows" },
+              "input": { "enum": ["fine", "coarse"], "description": "Pointer to emulate" },
+              "proof": { "enum": ["auto", "manual"], "default": "auto", "description": "native targets are always manual; auto on a native target is an error" }
+            }
+          }
+        },
+        "themes": {
+          "type": "array",
+          "minItems": 1,
+          "description": "Names are unique; every entry needs a switch when the list has more than one.",
+          "items": { "$ref": "#/$defs/uiVariant" },
+          "allOf": [{ "if": { "minItems": 2 }, "then": { "items": { "required": ["switch"] } } }]
+        },
+        "locales": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["list"],
+          "properties": {
+            "list": {
+              "type": "array",
+              "minItems": 1,
+              "description": "Longest texts first: the first one is the one proven when the check is one. A locale switches through act or launch only.",
+              "items": { "$ref": "#/$defs/uiVariant" },
+              "allOf": [{ "if": { "minItems": 2 }, "then": { "items": { "required": ["switch"] } } }]
+            },
+            "check": { "enum": ["one", "all"], "default": "one", "description": "one: only the first listed locale is proven unless the task touches texts" }
+          }
+        },
+        "components": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "dirs": { "type": "array", "items": { "type": "string" }, "description": "Where the shared components live; raw elements there are fine" },
+            "files": {
+              "oneOf": [{ "type": "string" }, { "type": "array", "items": { "type": "string" } }],
+              "default": "**/*.{tsx,jsx,vue,svelte,astro}",
+              "description": "Glob or globs of the files jig ui reuse reads"
+            },
+            "map": {
+              "type": "object",
+              "additionalProperties": { "type": "string", "minLength": 1 },
+              "description": "Raw element (tag) to the component to use instead, e.g. \"button\": \"Button (@/shared/ui/buttons)\""
+            }
+          }
+        },
+        "tokens": {
+          "oneOf": [{ "type": "string" }, { "type": "array", "items": { "type": "string" } }],
+          "description": "Files or folders with the design tokens (CSS custom properties); the default of jig ui mockup --tokens"
+        }
+      }
     }
   },
   "$defs": {
+    "uiVariant": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "switch": {
+          "type": "object",
+          "additionalProperties": false,
+          "minProperties": 1,
+          "maxProperties": 1,
+          "description": "Exactly one: media (an emulated prefers-color-scheme value), act (an agent-view use case), launch (a string the flow passes to the app launch). A locale takes act or launch only.",
+          "properties": {
+            "media": { "type": "string", "minLength": 1 },
+            "act": { "type": "string", "minLength": 1 },
+            "launch": { "type": "string", "minLength": 1 }
+          }
+        }
+      }
+    },
     "severity": { "enum": ["off", "warn", "error"] },
     "timeout": {
       "type": "integer",

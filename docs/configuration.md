@@ -22,8 +22,9 @@
 - `timeout` on a tool or a check: the seconds it may run at the end of a turn, 1 to 110 (defaults: eslint 30 plus 1 per file, tsc 60, stratum 15, a check 30). Every end-of-turn check shares 110 s; after-edit runs keep 5 s.
 - `slots` and `worktree`: [below](#slots-and-worktrees).
 - `reviewCycle`: `processAdapter` and `forge` for the [review cycle](review-cycle.md).
+- `ui`: the project's UI profile for `jig ui`, [below](#ui-profile).
 
-jig creates only `.jig/` in your project: `config.jsonc` goes to git, `config.local.jsonc`, `journal/`, `runs/` and `cache/` are ignored by `.jig/.gitignore`.
+jig creates only `.jig/` in your project: `config.jsonc` goes to git, `config.local.jsonc`, `journal/`, `runs/`, `cache/` and `ui/` are ignored by `.jig/.gitignore`.
 
 ## User config
 
@@ -61,6 +62,37 @@ Slots need a `slots` section; `worktreesDir` is required. The `worktree` section
 A gitignored lock file (a project whose CI regenerates it) is an output of the install, not its input: the key covers every tracked `package.json` instead, a miss runs the resolving command (`npm install`, `yarn install`) instead of the frozen one, and each entry keeps the lock file it was installed with and writes it into the worktree on reuse. Such an entry keeps what the install resolved: a dist-tag that moved on the registry later reaches it only through `jig worktree deps <dir> --refresh` or another install, so commit the lock file when you can. `slots.install`, when set, is the install command in both cases, so for such a project make it a resolving one (`npm install --prefer-offline --no-audit --no-fund`). With `worktree.depsPool` the hooks also name each linked worktree that has no `node_modules` of its own ([hooks](hooks.md)).
 
 `slots.slotEnv` writes the slot number itself into an env file, for a dev script that derives its ports from it. A slot's `agent-view.config.json` takes the main checkout's `url` with a `ports` base moved to the slot's port ([slots](../skills/jig-slots/references/app-slots.md)).
+
+## UI profile
+
+The `ui` section says what a UI change is proven on and which components it must reuse. `jig init` proposes it from code signals; the user confirms it, since a code signal cannot know which theme switch or which locale the project means.
+
+```jsonc
+"ui": {
+  "targets": [
+    { "name": "desktop", "runtime": "tauri", "widths": [1280, 1920], "height": 900, "minWidth": 1024, "input": "fine" },
+    { "name": "phone", "runtime": "browser", "widths": [390], "height": 844, "input": "coarse" },
+    { "name": "ios", "runtime": "native", "proof": "manual" }
+  ],
+  "themes": [
+    { "name": "light", "switch": { "media": "light" } },
+    { "name": "dark", "switch": { "act": "settings/theme-dark" } }
+  ],
+  "locales": { "list": [{ "name": "ru", "switch": { "launch": "LANG=ru" } }, { "name": "en", "switch": { "act": "settings/lang-en" } }], "check": "one" },
+  "components": {
+    "dirs": ["src/shared/ui"],
+    "files": "**/*.{tsx,jsx,vue,svelte,astro}",
+    "map": { "button": "Button (@/shared/ui/buttons)", "input": "TextField", "select": "Select" }
+  },
+  "tokens": ["src/shared/libs/theme/tokens"]
+}
+```
+
+- `targets` and `themes` are required, everything else is optional; names are unique within a list. A target has a `runtime` (`electron`, `tauri`, `browser`, `native`), `widths` in CSS px (required unless the runtime is `native`; a width below `minWidth` is an error), `height`, `minWidth`, `input` (`fine` or `coarse`, the pointer to emulate) and `proof`: `auto` (default) or `manual`. A `native` target is always `manual`, and an explicit `auto` on it is an error: jig cannot drive it, so `jig ui matrix` lists it apart for the user to prove.
+- `switch` is exactly one of `media` (an emulated `prefers-color-scheme` value), `act` (an agent-view use case) or `launch` (a string the flow passes to the app launch). It is required for every entry when a list has more than one; a locale switches only by `act` or `launch`.
+- `locales.check`: `one` (default) proves only the first listed locale, `all` proves each. `jig init` orders the list by longest texts first, so the first one is the likeliest to overflow. A task that touches texts asks for all (`jig ui matrix --locales all`).
+- `components.dirs` holds the project's shared components, where raw elements are fine. `components.files` (default `**/*.{tsx,jsx,vue,svelte,astro}`) are the files `jig ui reuse` reads, and `components.map` names for each raw element (a tag) the component to use instead: a project wrapper, or a library component where the project uses the library directly (`"button": "v-btn"`).
+- `tokens` are CSS files, folders or globs with the design tokens; `jig ui mockup` reads them when `--tokens` is not given.
 
 ## Guard the config files
 

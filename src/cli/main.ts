@@ -14,6 +14,7 @@ import { runReviewCycle } from '../review-cycle/review-cycle'
 import { runSlot } from '../slot/slot'
 import { runTaskStatus } from '../task-status/task-status'
 import { runTiers } from '../tiers/tiers'
+import { runUi } from '../ui/ui'
 import { runWorktree } from '../worktree/worktree'
 
 type Command = (args: string[]) => number | Promise<number>
@@ -45,6 +46,7 @@ const commands = new Map<string, Command>([
   ['review-cycle', runReviewCycle],
   ['pre-mr', runPreMr],
   ['skip-verify', runSkipVerify],
+  ['ui', runUi],
   ['version', runVersion],
 ])
 

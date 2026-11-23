@@ -69,10 +69,8 @@ var gitShortSha = (cwd, length = 7) => {
 
 // src/core/paths.ts
 var LOCAL_CONFIG = "config.local.jsonc";
-var JIG_GITIGNORE = `journal/
-runs/
-cache/
-${LOCAL_CONFIG}
+var JIG_IGNORED = ["journal/", "runs/", "cache/", "ui/", LOCAL_CONFIG];
+var JIG_GITIGNORE = `${JIG_IGNORED.join("\n")}
 `;
 var resolveProjectRoot = (cwd, env = process.env, names = PROJECT_DIR_ENVS) => {
   const fromEnv = names.map((name) => env[name]).find(Boolean);
@@ -96,6 +94,7 @@ var jigPaths = (projectRoot) => {
     journal: join(dir2, "journal"),
     runs: join(dir2, "runs"),
     cache,
+    ui: join(dir2, "ui"),
     sessions: join(cache, "sessions"),
     plan: join(cache, "plan.json"),
     heavyLock: join(cache, "heavy.lock"),
@@ -111,8 +110,10 @@ var ensureJigDir = (projectRoot) => {
     return paths;
   }
   const current = readFileSync(paths.gitignore, "utf8");
-  if (!current.split(/\r?\n/).includes(LOCAL_CONFIG)) {
-    appendFileSync(paths.gitignore, `${current === "" || current.endsWith("\n") ? "" : "\n"}${LOCAL_CONFIG}
+  const lines2 = current.split(/\r?\n/);
+  const missing = [LOCAL_CONFIG, "ui/"].filter((line) => !lines2.includes(line));
+  if (missing.length > 0) {
+    appendFileSync(paths.gitignore, `${current === "" || current.endsWith("\n") ? "" : "\n"}${missing.join("\n")}
 `);
   }
   return paths;
@@ -2320,17 +2321,8 @@ var expandToken = (argv, placeholder, values) => argv.flatMap((token) => token =
 
 // src/core/config.ts
 import { existsSync as existsSync4, readFileSync as readFileSync10 } from "node:fs";
-var SEVERITIES2 = ["off", "warn", "error"];
-var JIG_RULE_IDS = ["jig/comments", "jig/tests"];
-var RULE_IDS = JIG_RULE_IDS;
-var DEFAULT_SEVERITY = "error";
-var DEFAULT_SEVERITIES = {};
-var CHECK_STAGES = ["edit", "stop"];
-var RUNTIMES = ["electron", "tauri", "browser", "none"];
-var VERIFY_RUNTIMES = ["electron", "tauri", "browser"];
-var DEFAULT_PORT_TARGET = ".env";
-var MAX_PORT = 65535;
-var FORGES = ["gitlab", "github"];
+
+// src/core/validator.ts
 var IDENTIFIER = /^[A-Za-z_$][\w$]*$/;
 var childPath = (path2, key) => {
   if (typeof key === "number") return `${path2}[${key}]`;
@@ -2381,6 +2373,151 @@ var required = (validator, object, path2, keys) => {
   missing.forEach((key) => validator.report(childPath(path2, key), "is required"));
   return missing.length === 0;
 };
+
+// src/core/config-ui.ts
+var UI_RUNTIMES = ["electron", "tauri", "browser", "native"];
+var UI_INPUTS = ["fine", "coarse"];
+var UI_PROOFS = ["auto", "manual"];
+var UI_LOCALE_CHECKS = ["one", "all"];
+var SWITCH_KINDS = ["media", "act", "launch"];
+var DEFAULT_COMPONENT_FILES = "**/*.{tsx,jsx,vue,svelte,astro}";
+var UI_KEYS = ["targets", "themes", "locales", "components", "tokens"];
+var TARGET_KEYS = ["name", "runtime", "widths", "height", "minWidth", "input", "proof"];
+var VARIANT_KEYS = ["name", "switch"];
+var LOCALES_KEYS = ["list", "check"];
+var COMPONENTS_KEYS = ["dirs", "files", "map"];
+var MAX_PIXELS = 1e5;
+var readGlobs = (validator, value, path2) => typeof value === "string" ? [value] : validator.strings(value, path2);
+var readName = (validator, value, path2) => {
+  const name = validator.string(value, path2);
+  if (name !== void 0 && name.trim() === "") return validator.report(path2, "is empty");
+  return name;
+};
+var readSwitch = (validator, value, path2, allowed) => {
+  const object = validator.object(value, path2, SWITCH_KINDS);
+  if (object === void 0) return void 0;
+  const given = SWITCH_KINDS.filter((kind2) => Object.hasOwn(object, kind2));
+  if (given.length !== 1) return validator.report(path2, `expected exactly one of ${allowed.join(", ")}`);
+  const kind = given[0];
+  if (!allowed.includes(kind)) return validator.report(childPath(path2, kind), `is not available here, expected ${allowed.join(" or ")}`);
+  const text3 = readName(validator, object[kind], childPath(path2, kind));
+  return text3 === void 0 ? void 0 : { [kind]: text3 };
+};
+var readNamedList = (validator, value, path2, readEntry) => {
+  if (!Array.isArray(value)) return validator.report(path2, "expected an array");
+  if (value.length === 0) return validator.report(path2, "expected at least one entry");
+  const entries = [];
+  value.forEach((raw, index) => {
+    const entryPath = childPath(path2, index);
+    const entry = readEntry(raw, entryPath, value.length);
+    if (entry === void 0) return;
+    if (entries.some((other) => other.name === entry.name)) {
+      validator.report(childPath(entryPath, "name"), `duplicate name ${entry.name}`);
+      return;
+    }
+    entries.push(entry);
+  });
+  return entries;
+};
+var readTarget = (validator, value, path2) => {
+  const object = validator.object(value, path2, TARGET_KEYS);
+  if (object === void 0 || !required(validator, object, path2, ["name", "runtime"])) return void 0;
+  const before = validator.errors.length;
+  const at = (key) => childPath(path2, key);
+  const name = readName(validator, object["name"], at("name"));
+  const runtime = validator.oneOf(object["runtime"], at("runtime"), UI_RUNTIMES);
+  const isNative = runtime === "native";
+  const proof2 = object["proof"] === void 0 ? void 0 : validator.oneOf(object["proof"], at("proof"), UI_PROOFS);
+  if (isNative && proof2 === "auto") validator.report(at("proof"), "a native target is proven by hand: expected manual");
+  let widths = [];
+  if (object["widths"] === void 0) {
+    if (!isNative && runtime !== void 0) validator.report(at("widths"), "is required");
+  } else if (!Array.isArray(object["widths"]) || object["widths"].length === 0 && !isNative) {
+    validator.report(at("widths"), "expected a non-empty array of integers");
+  } else {
+    widths = object["widths"].flatMap((item, index) => validator.integer(item, childPath(at("widths"), index), 1, MAX_PIXELS) ?? []);
+  }
+  const height = object["height"] === void 0 ? void 0 : validator.integer(object["height"], at("height"), 1, MAX_PIXELS);
+  const minWidth = object["minWidth"] === void 0 ? void 0 : validator.integer(object["minWidth"], at("minWidth"), 1, MAX_PIXELS);
+  const input = object["input"] === void 0 ? void 0 : validator.oneOf(object["input"], at("input"), UI_INPUTS);
+  if (minWidth !== void 0) {
+    widths.forEach((width, index) => {
+      if (width < minWidth) validator.report(childPath(at("widths"), index), `${width} is below minWidth ${minWidth}`);
+    });
+  }
+  if (validator.errors.length > before || name === void 0 || runtime === void 0) return void 0;
+  return {
+    name,
+    runtime,
+    proof: isNative ? "manual" : proof2 ?? "auto",
+    widths,
+    ...height === void 0 ? {} : { height },
+    ...minWidth === void 0 ? {} : { minWidth },
+    ...input === void 0 ? {} : { input }
+  };
+};
+var readVariant = (validator, allowed) => (value, path2, size) => {
+  const object = validator.object(value, path2, VARIANT_KEYS);
+  if (object === void 0 || !required(validator, object, path2, ["name"])) return void 0;
+  const before = validator.errors.length;
+  const name = readName(validator, object["name"], childPath(path2, "name"));
+  const hasSwitch = object["switch"] !== void 0;
+  if (!hasSwitch && size > 1) validator.report(childPath(path2, "switch"), "is required when the list has more than one entry");
+  const switchTo = hasSwitch ? readSwitch(validator, object["switch"], childPath(path2, "switch"), allowed) : void 0;
+  if (validator.errors.length > before || name === void 0) return void 0;
+  return { name, ...switchTo === void 0 ? {} : { switch: switchTo } };
+};
+var readLocales = (validator, value, path2) => {
+  const object = validator.object(value, path2, LOCALES_KEYS);
+  if (object === void 0 || !required(validator, object, path2, ["list"])) return void 0;
+  const list = readNamedList(validator, object["list"], childPath(path2, "list"), readVariant(validator, ["act", "launch"]));
+  const check2 = object["check"] === void 0 ? "one" : validator.oneOf(object["check"], childPath(path2, "check"), UI_LOCALE_CHECKS);
+  return list === void 0 || check2 === void 0 ? void 0 : { list, check: check2 };
+};
+var readMap2 = (validator, value, path2) => {
+  const object = validator.object(value, path2, void 0);
+  if (object === void 0) return void 0;
+  const map = {};
+  for (const [key, entry] of Object.entries(object)) {
+    const target = readName(validator, entry, childPath(path2, key));
+    if (target !== void 0) map[key] = target;
+  }
+  return map;
+};
+var readComponents = (validator, value, path2) => {
+  const object = validator.object(value, path2, COMPONENTS_KEYS);
+  if (object === void 0) return void 0;
+  const dirs = object["dirs"] === void 0 ? [] : validator.strings(object["dirs"], childPath(path2, "dirs")) ?? [];
+  const files = object["files"] === void 0 ? [DEFAULT_COMPONENT_FILES] : readGlobs(validator, object["files"], childPath(path2, "files")) ?? [];
+  const map = object["map"] === void 0 ? {} : readMap2(validator, object["map"], childPath(path2, "map")) ?? {};
+  return { dirs, files, map };
+};
+var readUi = (validator, value) => {
+  const path2 = "$.ui";
+  const object = validator.object(value, path2, UI_KEYS);
+  if (object === void 0 || !required(validator, object, path2, ["targets", "themes"])) return void 0;
+  const at = (key) => childPath(path2, key);
+  const targets = readNamedList(validator, object["targets"], at("targets"), (entry, entryPath) => readTarget(validator, entry, entryPath));
+  const themes = readNamedList(validator, object["themes"], at("themes"), readVariant(validator, SWITCH_KINDS));
+  const locales = object["locales"] === void 0 ? void 0 : readLocales(validator, object["locales"], at("locales"));
+  const components = object["components"] === void 0 ? void 0 : readComponents(validator, object["components"], at("components"));
+  const tokens = object["tokens"] === void 0 ? [] : readGlobs(validator, object["tokens"], at("tokens")) ?? [];
+  if (targets === void 0 || themes === void 0) return void 0;
+  return { targets, themes, ...locales === void 0 ? {} : { locales }, ...components === void 0 ? {} : { components }, tokens };
+};
+
+// src/core/config.ts
+var SEVERITIES2 = ["off", "warn", "error"];
+var JIG_RULE_IDS = ["jig/comments", "jig/tests"];
+var RULE_IDS = JIG_RULE_IDS;
+var DEFAULT_SEVERITY = "error";
+var DEFAULT_SEVERITIES = {};
+var CHECK_STAGES = ["edit", "stop"];
+var RUNTIMES = ["electron", "tauri", "browser", "none"];
+var VERIFY_RUNTIMES = ["electron", "tauri", "browser"];
+var DEFAULT_PORT_TARGET = ".env";
+var MAX_PORT = 65535;
+var FORGES = ["gitlab", "github"];
 var TOOL_KEYS = ["level", "command", "ignoreRules", "timeout"];
 var MAX_TIMEOUT_S = 110;
 var readTimeout = (validator, value, path2) => validator.integer(value, path2, 1, MAX_TIMEOUT_S);
@@ -2417,7 +2554,7 @@ var readNamed = (validator, root, names) => {
   }
   return settings;
 };
-var readGlobs = (validator, value, path2) => typeof value === "string" ? [value] : validator.strings(value, path2);
+var readGlobs2 = (validator, value, path2) => typeof value === "string" ? [value] : validator.strings(value, path2);
 var CHECK_KEYS = ["name", "files", "on", "run", "format", "level", "timeout"];
 var CHECK_NAME = /^[\w.-]+$/;
 var FILES_TOKEN = "{files}";
@@ -2427,7 +2564,7 @@ var readCheck = (validator, value, path2) => {
   const before = validator.errors.length;
   const name = validator.string(object["name"], childPath(path2, "name"));
   if (name !== void 0 && !CHECK_NAME.test(name)) validator.report(childPath(path2, "name"), 'expected letters, digits, ".", "_" or "-"');
-  const files = readGlobs(validator, object["files"], childPath(path2, "files"));
+  const files = readGlobs2(validator, object["files"], childPath(path2, "files"));
   const on = validator.oneOf(object["on"], childPath(path2, "on"), CHECK_STAGES);
   const run3 = validator.string(object["run"], childPath(path2, "run"));
   if (run3 !== void 0 && !run3.includes(FILES_TOKEN)) validator.report(childPath(path2, "run"), `needs the ${FILES_TOKEN} placeholder`);
@@ -2592,7 +2729,7 @@ var defaultRules = () => {
   return rules;
 };
 var defaultConfig = () => ({ rules: defaultRules(), tools: {}, proofs: {}, checks: [] });
-var SECTION_KEYS = ["$schema", "rules", "checks", "slots", "worktree", "reviewCycle"];
+var SECTION_KEYS = ["$schema", "rules", "checks", "slots", "worktree", "reviewCycle", "ui"];
 var ROOT_KEYS = [...SECTION_KEYS, ...TOOL_NAMES, ...PROOF_NAMES];
 var validateConfig = (value) => {
   const validator = new Validator();
@@ -2608,6 +2745,7 @@ var validateConfig = (value) => {
   const slots = root["slots"] === void 0 ? void 0 : readSlots(validator, root["slots"]);
   const worktree = root["worktree"] === void 0 ? void 0 : readWorktree(validator, root["worktree"]);
   const reviewCycle = root["reviewCycle"] === void 0 ? void 0 : readReviewCycle(validator, root["reviewCycle"]);
+  const ui2 = root["ui"] === void 0 ? void 0 : readUi(validator, root["ui"]);
   const config = {
     rules,
     tools,
@@ -2615,7 +2753,8 @@ var validateConfig = (value) => {
     checks,
     ...slots === void 0 ? {} : { slots },
     ...worktree === void 0 ? {} : { worktree },
-    ...reviewCycle === void 0 ? {} : { reviewCycle }
+    ...reviewCycle === void 0 ? {} : { reviewCycle },
+    ...ui2 === void 0 ? {} : { ui: ui2 }
   };
   return { config, errors: validator.errors };
 };
@@ -7686,8 +7825,8 @@ var branchCommits = (root, mergeBase, head) => {
 var evaluate = ({ root, mergeBase, head, tree, files, records, checks }) => {
   const needed = requirements(root, files, checks);
   if (needed.length === 0) {
-    const ui = requirements(root, files).flatMap((requirement) => requirement.files);
-    return ui.length === 0 ? { type: "no-ui" } : { type: "no-proof-tool", files: [...new Set(ui)] };
+    const ui2 = requirements(root, files).flatMap((requirement) => requirement.files);
+    return ui2.length === 0 ? { type: "no-ui" } : { type: "no-proof-tool", files: [...new Set(ui2)] };
   }
   const diffs = /* @__PURE__ */ new Map();
   const editedSince = (entry) => {
@@ -10096,11 +10235,113 @@ var runSlot = (args) => {
   return subcommand(rest);
 };
 
+// src/ui/ui.ts
+import { parseArgs as parseArgs8 } from "node:util";
+
+// src/ui/matrix.ts
+var buildMatrix = (ui2, localeCheck) => {
+  const check2 = localeCheck ?? ui2.locales?.check ?? "one";
+  const list = ui2.locales?.list ?? [];
+  const locales = check2 === "all" ? list : list.slice(0, 1);
+  const combos = [];
+  const manual = [];
+  for (const target of ui2.targets) {
+    if (target.proof === "manual") {
+      manual.push({ name: target.name, runtime: target.runtime, widths: target.widths });
+      continue;
+    }
+    for (const width of target.widths) {
+      for (const theme of ui2.themes) {
+        for (const locale of locales.length > 0 ? locales : [void 0]) {
+          combos.push({
+            target: target.name,
+            runtime: target.runtime,
+            width,
+            ...target.height === void 0 ? {} : { height: target.height },
+            ...target.input === void 0 ? {} : { input: target.input },
+            theme: theme.name,
+            ...theme.switch === void 0 ? {} : { themeSwitch: theme.switch },
+            ...locale === void 0 ? {} : { locale: locale.name },
+            ...locale?.switch === void 0 ? {} : { localeSwitch: locale.switch }
+          });
+        }
+      }
+    }
+  }
+  return { locales: check2, combos, manual };
+};
+var describeSwitch = (value) => {
+  const entry = Object.entries(value ?? {})[0];
+  return entry === void 0 ? "current" : `${entry[0]} ${entry[1]}`;
+};
+var comboLine = (combo) => {
+  const size = `${combo.width}${combo.height === void 0 ? "" : `x${combo.height}`}`;
+  const parts = [
+    combo.target.padEnd(10),
+    size.padEnd(9),
+    combo.input ?? "-",
+    `theme ${combo.theme} (${describeSwitch(combo.themeSwitch)})`,
+    ...combo.locale === void 0 ? [] : [`locale ${combo.locale} (${describeSwitch(combo.localeSwitch)})`]
+  ];
+  return parts.join("  ");
+};
+var formatMatrix = (matrix2) => {
+  const lines2 = [`${matrix2.combos.length} combos to prove (locales: ${matrix2.locales === "all" ? "all" : "one, the first listed"})`, ...matrix2.combos.map(comboLine)];
+  if (matrix2.manual.length > 0) {
+    lines2.push("", "manual targets (the user proves them, jig cannot):");
+    lines2.push(...matrix2.manual.map((target) => `  ${target.name}  ${target.runtime}${target.widths.length > 0 ? `  ${target.widths.join(", ")}` : ""}`));
+  }
+  return lines2;
+};
+
+// src/ui/ui.ts
+var EXIT_USAGE5 = 2;
+var UsageError3 = class extends Error {
+};
+var isUsageError2 = (error) => error instanceof UsageError3 || error instanceof TypeError && "code" in error && typeof error.code === "string" && error.code.startsWith("ERR_PARSE_ARGS");
+var projectRootOf = (cwd) => gitToplevel(cwd) ?? resolveProjectRoot(cwd);
+var requireUi = (root) => {
+  const config = loadConfig(root);
+  if (config.error !== void 0) throw new Error(`config: ${config.error}`);
+  if (config.ui === void 0) throw new Error('no "ui" section in .jig/config.jsonc: run jig init and add the proposed ui key, or write one (docs/configuration.md)');
+  return config.ui;
+};
+var MATRIX_USAGE = "usage: jig ui matrix [--locales one|all] [--json]";
+var isLocaleCheck = (value) => value === void 0 || value === "one" || value === "all";
+var matrix = (args, ctx) => {
+  const { values, positionals } = parseArgs8({ args, allowPositionals: true, strict: true, options: { json: { type: "boolean" }, locales: { type: "string" } } });
+  if (positionals.length > 0 || !isLocaleCheck(values.locales)) throw new UsageError3(MATRIX_USAGE);
+  const result = buildMatrix(requireUi(projectRootOf(ctx.cwd)), values.locales);
+  ctx.io.out(values.json === true ? `${JSON.stringify(result, null, 2)}
+` : `${formatMatrix(result).join("\n")}
+`);
+  return 0;
+};
+var SUBCOMMANDS2 = /* @__PURE__ */ new Map([["matrix", matrix]]);
+var ui = (args, ctx) => {
+  const [name, ...rest] = args;
+  const subcommand = name === void 0 ? void 0 : SUBCOMMANDS2.get(name);
+  if (subcommand === void 0) {
+    ctx.io.err(`jig: usage: jig ui ${[...SUBCOMMANDS2.keys()].join("|")} ...
+`);
+    return EXIT_USAGE5;
+  }
+  try {
+    return subcommand(rest, ctx);
+  } catch (error) {
+    if (!isUsageError2(error)) throw error;
+    ctx.io.err(`jig: ${error.message}
+`);
+    return EXIT_USAGE5;
+  }
+};
+var runUi = (args) => ui(args, { cwd: process.cwd(), io: { out: (text3) => process.stdout.write(text3), err: (text3) => process.stderr.write(text3) } });
+
 // src/worktree/worktree.ts
 import { existsSync as existsSync25 } from "node:fs";
 import { basename as basename12, resolve as resolve21 } from "node:path";
 import { createInterface } from "node:readline/promises";
-import { parseArgs as parseArgs8 } from "node:util";
+import { parseArgs as parseArgs9 } from "node:util";
 
 // src/worktree/sweep.ts
 import { spawnSync as spawnSync9 } from "node:child_process";
@@ -10205,7 +10446,7 @@ var checkoutTarget = (positionals, usage2) => {
   return { dir: dir2, main, config };
 };
 var worktreeSeed = (args) => {
-  const { positionals } = parseArgs8({ args, options: {}, allowPositionals: true, strict: true });
+  const { positionals } = parseArgs9({ args, options: {}, allowPositionals: true, strict: true });
   const target = checkoutTarget(positionals, "worktree seed <dir>");
   if (typeof target === "number") return target;
   if (samePath(target.main, target.dir)) return fail4(`${toSlash(target.dir)} is the main checkout, seed fills another worktree from it`, 1);
@@ -10217,7 +10458,7 @@ var worktreeSeed = (args) => {
 };
 var DEPS_USAGE = "worktree deps <dir> [--save [--force] | --refresh] | worktree deps --prune [--dry-run]";
 var worktreeDeps = (args) => {
-  const { values, positionals } = parseArgs8({
+  const { values, positionals } = parseArgs9({
     args,
     options: { save: { type: "boolean" }, force: { type: "boolean" }, refresh: { type: "boolean" }, prune: { type: "boolean" }, "dry-run": { type: "boolean" } },
     allowPositionals: true,
@@ -10241,7 +10482,7 @@ var worktreeDeps = (args) => {
   return outcome.kind === "failed" ? 1 : 0;
 };
 var worktreeRemove = (args) => {
-  const { positionals } = parseArgs8({ args, options: {}, allowPositionals: true, strict: true });
+  const { positionals } = parseArgs9({ args, options: {}, allowPositionals: true, strict: true });
   const [target] = positionals;
   if (positionals.length !== 1 || target === void 0) return fail4("usage: worktree remove <dir>", 2);
   const dir2 = resolve21(target);
@@ -10287,7 +10528,7 @@ var removeRows = (rows, mainRoot) => {
   return code;
 };
 var worktreeSweep = async (args, confirm = terminalConfirm()) => {
-  const { values } = parseArgs8({
+  const { values } = parseArgs9({
     args,
     options: { json: { type: "boolean" }, ask: { type: "boolean" }, yes: { type: "string", multiple: true } },
     strict: true
@@ -10359,6 +10600,7 @@ var commands = /* @__PURE__ */ new Map([
   ["review-cycle", runReviewCycle],
   ["pre-mr", runPreMr],
   ["skip-verify", runSkipVerify],
+  ["ui", runUi],
   ["version", runVersion]
 ]);
 var fail5 = (message) => {

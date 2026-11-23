@@ -11,6 +11,7 @@ export interface JigPaths {
   journal: string
   runs: string
   cache: string
+  ui: string
   sessions: string
   plan: string
   heavyLock: string
@@ -19,7 +20,8 @@ export interface JigPaths {
 }
 
 const LOCAL_CONFIG = 'config.local.jsonc'
-const JIG_GITIGNORE = `journal/\nruns/\ncache/\n${LOCAL_CONFIG}\n`
+const JIG_IGNORED = ['journal/', 'runs/', 'cache/', 'ui/', LOCAL_CONFIG]
+const JIG_GITIGNORE = `${JIG_IGNORED.join('\n')}\n`
 
 export const resolveProjectRoot = (cwd: string, env: NodeJS.ProcessEnv = process.env, names: readonly string[] = PROJECT_DIR_ENVS): string => {
   const fromEnv = names.map((name) => env[name]).find(Boolean)
@@ -48,6 +50,7 @@ export const jigPaths = (projectRoot: string): JigPaths => {
     journal: join(dir, 'journal'),
     runs: join(dir, 'runs'),
     cache,
+    ui: join(dir, 'ui'),
     sessions: join(cache, 'sessions'),
     plan: join(cache, 'plan.json'),
     heavyLock: join(cache, 'heavy.lock'),
@@ -64,8 +67,10 @@ export const ensureJigDir = (projectRoot: string): JigPaths => {
     return paths
   }
   const current = readFileSync(paths.gitignore, 'utf8')
-  if (!current.split(/\r?\n/).includes(LOCAL_CONFIG)) {
-    appendFileSync(paths.gitignore, `${current === '' || current.endsWith('\n') ? '' : '\n'}${LOCAL_CONFIG}\n`)
+  const lines = current.split(/\r?\n/)
+  const missing = [LOCAL_CONFIG, 'ui/'].filter((line) => !lines.includes(line))
+  if (missing.length > 0) {
+    appendFileSync(paths.gitignore, `${current === '' || current.endsWith('\n') ? '' : '\n'}${missing.join('\n')}\n`)
   }
   return paths
 }
