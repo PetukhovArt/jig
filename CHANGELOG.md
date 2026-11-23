@@ -1,5 +1,39 @@
 # jig
 
+## 0.8.0
+
+### Minor Changes
+
+- [`8bac16a`](https://github.com/PetukhovArt/jig/commit/8bac16a8418f3a0b2f5a0e5594c7ec3381d6b964) Thanks [@PetukhovArt](https://github.com/PetukhovArt)! - Flow `bug-bash` is now `break-it`: the main session holds the queue of screens and claims and spawns one `breaker` subagent (standard tier, high effort) per entry, which attacks with the action and its checks in one shell call and returns only the reproduced bugs. The attack no longer runs one command per turn on the main session's full context. `jig pre-mr bug-bash` is now `jig pre-mr break-it` and prints a `Break-it:` line; records written by the old command still count.
+
+- [`2dc41c6`](https://github.com/PetukhovArt/jig/commit/2dc41c6e12eda70892981b97debff1cf50bcb1ba) Thanks [@PetukhovArt](https://github.com/PetukhovArt)! - `jig-review-cycle` runs each pass in one pass agent (role `review-cycle-pass`): the invoking session only relays the summary, so `/loop 2h /jig-review-cycle` no longer piles every report, plan and tool output of each pass into the looping session. `jig review cost` reports the pass agent as role `pass`.
+
+- [`0482c24`](https://github.com/PetukhovArt/jig/commit/0482c246fa96f4b2470ce2d0649dd19769aa3e83) Thanks [@PetukhovArt](https://github.com/PetukhovArt)! - Flow `ui` replaces `ui-match`: it reads the project's `ui` profile, works from a reference (Figma, an image, an existing implementation, a text spec) or from the project's tokens and components, takes a reuse inventory before code, proves the change with `jig ui reuse`, `jig ui mockup` and `jig ui prove`, runs up to three rounds of the new read-only `ui-reviewer` role and asks about every deviation. `feature` and `bug-fix` hand their UI part to it, and `lessons-to-checks` turns a UI miss the user reports into an eval case and a check that starts in observe mode.
+
+- [`1ff7d17`](https://github.com/PetukhovArt/jig/commit/1ff7d176a9f5eb11fda12b3757b4f790be1841c6) Thanks [@PetukhovArt](https://github.com/PetukhovArt)! - `jig init` proposes a `ui` key from code signals: the runtime (Tauri, Electron, browser, native by hand), desktop and phone widths, light and dark themes with a `media` switch when the app follows `prefers-color-scheme` (a `TODO` act otherwise), locales ordered by longest text first, shared component folders with their wrapper names, and token folders.
+
+- [`1616d41`](https://github.com/PetukhovArt/jig/commit/1616d41da78e1eae264d7e6e2b3b5eec130f262c) Thanks [@PetukhovArt](https://github.com/PetukhovArt)! - `jig ui mockup` compares a Figma node (a `figma-developer-mcp` tree export, fetched once with `JIG_FIGMA_API_KEY` else `FIGMA_API_KEY` and cached in `.jig/ui/figma/`, or `--export <file>`) with the code that implements it: colors through the design tokens (`MISSING`, `EXTRA`), typography per text role (`--role`), labels the change adds (`NOT IN MOCKUP`, `DUPLICATE`), `WRONG NODE` for a node that is app UI, and a geometry table; it exits 1 on blocking findings.
+
+- [`986ad56`](https://github.com/PetukhovArt/jig/commit/986ad564ff1884a395af47774860e4d021af4dd6) Thanks [@PetukhovArt](https://github.com/PetukhovArt)! - `jig pre-mr` asks for `ui-reuse`, `ui-matrix` and, when the branch declared a Figma reference, `ui-mockup` proofs when the project has a `ui` profile and the branch changes UI files; a gap names the command to run. `jig ui reuse` and `jig ui mockup` record their proof when they pass, and `jig ui mockup --figma` declares the branch's Figma reference.
+
+- [`af34720`](https://github.com/PetukhovArt/jig/commit/af347203bd676ff42f335c340316cadb7a20dea4) Thanks [@PetukhovArt](https://github.com/PetukhovArt)! - New config section `ui` (targets with widths, themes, locales, shared components, tokens) and the command `jig ui matrix`, which lists the target × width × theme combinations to prove with the first listed locale (all with `--locales all`) and the manual targets (native) apart. `.jig/.gitignore` also ignores `ui/`.
+
+- [`4080a6f`](https://github.com/PetukhovArt/jig/commit/4080a6f02c672174aeaefad5d371aa1c526c01c2) Thanks [@PetukhovArt](https://github.com/PetukhovArt)! - `jig ui prove` drives every combination of `jig ui matrix` in the running app through agent-view (emulate, theme and locale switch, state replay, layout and scene audit, screenshot), compares the result with a Figma frame or an image as evidence, writes the evidence page `.jig/ui/<branch>/index.html` and records the `ui-matrix` proof when no audit error stands.
+
+- [`a28f18c`](https://github.com/PetukhovArt/jig/commit/a28f18cb328f29214c7ac78790b0f7b672b52032) Thanks [@PetukhovArt](https://github.com/PetukhovArt)! - With a `ui` profile, the `user-prompt-submit` hook declares the branch reference `figma:<url>` when the prompt holds a Figma `/design/` or `/file/` URL with a `node-id` and the branch has no declared reference yet, and tells the agent that the UI part follows `flows/ui.md` and that `jig pre-mr` will ask for `jig ui mockup --figma <url> --component <node id>` and `jig ui reuse`. An agent that never ran `jig ui mockup` is now asked for the `ui-mockup` proof anyway; a declared reference is never overwritten.
+
+- [`37bbec3`](https://github.com/PetukhovArt/jig/commit/37bbec3dc5b84fc8ddc159a780d1c3a54bb52f1f) Thanks [@PetukhovArt](https://github.com/PetukhovArt)! - `jig ui reuse [--base <ref>] [--json]` finds raw elements (`<button`, `<input`, `h('button'`, ...) that `ui.components.map` replaces with a shared or library component, on changed lines only (the branch against its merge base, uncommitted and untracked files included), in component files outside `ui.components.dirs`; it exits 1 and names the component to use.
+
+- [`bd34a51`](https://github.com/PetukhovArt/jig/commit/bd34a519b706459d4b21dc5f4f4f96f3ccabb3e8) Thanks [@PetukhovArt](https://github.com/PetukhovArt)! - New skill `jig-visual-mr` writes and publishes the merge request description from the jig template, on its own or from the `mr` step: it asks which merge request to take when several match the branch, keeps hand edits, and reads the description back after publishing. The Evidence block says in plain words how and where the change was checked, then Before and After; it no longer carries the `jig pre-mr` verification level, the command list or the break-it line.
+
+### Patch Changes
+
+- [`da0d7e9`](https://github.com/PetukhovArt/jig/commit/da0d7e913d394313ef2d16de224c2e1af71ced89) Thanks [@PetukhovArt](https://github.com/PetukhovArt)! - `jig review-plan` accepts `mr.standard` in `.jig/review.jsonc`: the documented key no longer fails the plan with `$.mr: unknown key`.
+
+- [`d6c058c`](https://github.com/PetukhovArt/jig/commit/d6c058cbb3fe10f598fcd779b7c6c8578214bf1b) Thanks [@PetukhovArt](https://github.com/PetukhovArt)! - `jig review-cycle queue` no longer marks a merge request `SKIP busy` forever because an empty leftover folder sits at its review worktree path: busy is only a worktree git still has registered (a registered one whose folder is gone is pruned; a non-empty folder git does not know is reported `BLOCKED` and never deleted). `jig worktree remove`, `slot rm` and `worktree sweep` delete the empty top folder git leaves behind on Windows when a process holds it (retrying briefly) and print a warning when it cannot; the review-cycle roles leave the worktree before returning and teardown runs from the main checkout.
+
+- [`9225a58`](https://github.com/PetukhovArt/jig/commit/9225a58198a4871802ff59cc6152a4bba3e07e1d) Thanks [@PetukhovArt](https://github.com/PetukhovArt)! - `jig skip-verify` no longer waives `ui-reuse` and `ui-mockup`: they need no running app, so `jig pre-mr` keeps asking for them after a skip and says why.
+
 ## 0.7.0
 
 ### Minor Changes
