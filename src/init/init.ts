@@ -6,6 +6,7 @@ import { jigPaths, resolveProjectRoot } from '../core/paths'
 import { configDrift, resolveTools } from '../core/plan'
 import { discover, isListed, type Discovery, type Found } from './discover'
 import { typesCheck, TYPES_CHECK_NAME, type TypeCheckDetection } from './typecheck'
+import { detectUi } from './ui/ui'
 
 type Command = (args: string[]) => number | Promise<number>
 
@@ -25,6 +26,7 @@ export interface InitReport {
   boundaries: boolean
   drift: string[]
   questions: string[]
+  uiNotes: string[]
   proposal: Json
 }
 
@@ -44,8 +46,9 @@ const readSharedConfig = (projectRoot: string): Json => {
 const proposedSetting = (found: Found): Json => (found.command === undefined ? {} : { command: found.command })
 
 /** The explicit config jig would write: the current one (with --update) plus every ready catalog entry it does not name. */
-export const buildProposal = (base: Json, discovery: Discovery, config: Pick<LoadedConfig, 'tools' | 'proofs'>): Json => {
+export const buildProposal = (base: Json, discovery: Discovery, config: Pick<LoadedConfig, 'tools' | 'proofs'>, ui?: Json): Json => {
   const proposal: Json = { $schema: SCHEMA_URL, ...base }
+  if (ui !== undefined && !Object.hasOwn(base, 'ui')) proposal['ui'] = ui
   for (const found of discovery.found) {
     if (found.status === 'ready' && !isListed(config, found)) {
       proposal[found.name] = proposedSetting(found)
@@ -103,7 +106,9 @@ export const buildInitReport = (projectRoot: string, update: boolean): InitRepor
   const boundaries = discovery.packages.includes(BOUNDARIES_PLUGIN)
   const drift = update ? configDrift(projectRoot, config, resolveTools(projectRoot, config).unresolved) : []
   const listed = update ? config : { tools: {}, proofs: {} }
-  return { update, discovery, boundaries, drift, questions: questionsFor(discovery, boundaries, config.slots !== undefined), proposal: buildProposal(base, discovery, listed) }
+  const ui = Object.hasOwn(base, 'ui') ? undefined : detectUi(projectRoot, discovery.packages)
+  const questions = [...questionsFor(discovery, boundaries, config.slots !== undefined), ...(ui?.questions ?? [])]
+  return { update, discovery, boundaries, drift, questions, uiNotes: ui?.notes ?? [], proposal: buildProposal(base, discovery, listed, ui?.proposal) }
 }
 
 const foundLine = (found: Found): string => {
@@ -133,6 +138,7 @@ export const formatInitReport = (report: InitReport): string => {
   if (report.update) {
     lines.push('', 'drift:', ...(report.drift.length > 0 ? report.drift.map((reason) => `  ${reason}`) : ['  none']))
   }
+  if (report.uiNotes.length > 0) lines.push('', 'ui detection:', ...report.uiNotes.map((note) => `  ${note}`))
   lines.push('', 'ask the user (code cannot know):', ...report.questions.map((question) => `  - ${question}`))
   lines.push('', 'proposal for .jig/config.jsonc:', JSON.stringify(report.proposal, null, 2))
   return `${lines.join('\n')}\n`

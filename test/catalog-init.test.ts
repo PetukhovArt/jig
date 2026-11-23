@@ -237,7 +237,7 @@ describe('jig init: the project type-check script', () => {
     manifest({ lint: 'eslint .', 'check:types': 'node tools/ts-decl-check.mjs --unchecked-ok' })
     const report = buildInitReport(root, false)
     const check = { name: 'types', files: ['**/*.ts', '**/*.vue'], on: 'stop', run: 'node tools/ts-decl-check.mjs --unchecked-ok {files}' }
-    expect(report.proposal).toEqual({ $schema: SCHEMA_URL, tsc: false, checks: [check] })
+    expect(report.proposal).toEqual({ $schema: SCHEMA_URL, tsc: false, checks: [check], ui: expect.any(Object) })
     expect(validateConfig(report.proposal).errors).toEqual([])
     expect(checkArgv(root, check, ['src/a.ts']).slice(-3)).toEqual(['tools/ts-decl-check.mjs', '--unchecked-ok', 'src/a.ts'])
     expect(report.questions.join('\n')).not.toMatch(/--unchecked-ok/)

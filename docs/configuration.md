@@ -65,7 +65,7 @@ A gitignored lock file (a project whose CI regenerates it) is an output of the i
 
 ## UI profile
 
-The `ui` section says what a UI change is proven on and which components it must reuse. `jig init` proposes it from code signals; the user confirms it, since a code signal cannot know which theme switch or which locale the project means.
+The `ui` section says what a UI change is proven on and which components it must reuse. `jig init` proposes it from code signals; the user confirms it, since a code signal cannot know which theme switch or which locale the project means. The signals: the runtime from `tauri` / `electron` dependencies (a `capacitor` or `react-native` stack adds a native target proven by hand); desktop widths `[1280, 1920]`; a `phone` target (`[390]`, `input: coarse`) only with a responsive signal (a `max-width` or `min-width` media query below 768px, `pointer: coarse`, a `viewport` or `responsive` module), and for a Tauri or Electron shell only with `pointer: coarse`; themes from `.dark` / `.light` classes, `[data-theme]`, `prefers-color-scheme` and Vuetify, MUI or PrimeVue theme configs, switched by `media` when the app follows `prefers-color-scheme` and else by a `TODO` act the user fills in; locales from i18n bundles (two to six), longest average text first, each with a `TODO` act; `components.dirs` from the common shared-UI folders, `components.map` from wrapper names found there (`Button`, `UiButton`, `TextField`, `Input`, `Select`, `Textarea`) or the UI library's own component; `tokens` from a `tokens` folder. A project without UI signals gets no `ui` key; an existing `ui` key is left as it is.
 
 ```jsonc
 "ui": {
