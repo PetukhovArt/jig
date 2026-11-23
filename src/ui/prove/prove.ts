@@ -354,10 +354,7 @@ export const prove = async (args: string[], ctx: UiContext): Promise<number> => 
     const reset = runner(['emulate', '--reset'], root)
     if (reset.code !== 0) notes.push(`emulation was not reset: ${failureOf(reset)}`)
   }
-  if (aborted !== undefined) {
-    ctx.io.err(`jig: ${aborted}\n`)
-    return EXIT_ENVIRONMENT
-  }
+  if (aborted !== undefined) notes.push(`run stopped: ${aborted}`)
 
   const resultFile = join(dir, RESULT_FILE)
   const previous = readPrevious(resultFile)
@@ -377,6 +374,11 @@ export const prove = async (args: string[], ctx: UiContext): Promise<number> => 
   writeFileSync(resultFile, `${JSON.stringify(proven, null, 2)}\n`)
   const deviationsFile = join(dir, DEVIATIONS_FILE)
   writeFileSync(join(dir, EVIDENCE_PAGE), renderPage(proven, existsSync(deviationsFile) ? readFileSync(deviationsFile, 'utf8') : undefined))
+
+  if (aborted !== undefined) {
+    ctx.io.err(`jig: ${aborted}\nevidence of the ${ran.length} combinations done: ${join(dir, EVIDENCE_PAGE)}\n`)
+    return EXIT_ENVIRONMENT
+  }
 
   const errors = merged.reduce((sum, combo) => sum + auditErrors(combo), 0)
   const failures = merged.flatMap(failuresOf)

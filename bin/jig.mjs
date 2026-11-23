@@ -12107,11 +12107,7 @@ var prove = async (args, ctx) => {
     const reset = runner(["emulate", "--reset"], root);
     if (reset.code !== 0) notes.push(`emulation was not reset: ${failureOf(reset)}`);
   }
-  if (aborted !== void 0) {
-    ctx.io.err(`jig: ${aborted}
-`);
-    return EXIT_ENVIRONMENT;
-  }
+  if (aborted !== void 0) notes.push(`run stopped: ${aborted}`);
   const resultFile = join51(dir2, RESULT_FILE);
   const previous = readPrevious(resultFile);
   const kept = (previous?.combos ?? []).filter((old) => old.tree === tree && tree !== "" && !ran.some((fresh) => fresh.id === old.id));
@@ -12131,6 +12127,12 @@ var prove = async (args, ctx) => {
 `);
   const deviationsFile = join51(dir2, DEVIATIONS_FILE);
   writeFileSync19(join51(dir2, EVIDENCE_PAGE), renderPage2(proven, existsSync31(deviationsFile) ? readFileSync48(deviationsFile, "utf8") : void 0));
+  if (aborted !== void 0) {
+    ctx.io.err(`jig: ${aborted}
+evidence of the ${ran.length} combinations done: ${join51(dir2, EVIDENCE_PAGE)}
+`);
+    return EXIT_ENVIRONMENT;
+  }
   const errors = merged2.reduce((sum, combo) => sum + auditErrors(combo), 0);
   const failures = merged2.flatMap(failuresOf);
   const pixelFailures = options.exact ? ran.flatMap((combo) => combo.states).filter((entry) => (entry.diff?.differing ?? 0) > 0).length : 0;
