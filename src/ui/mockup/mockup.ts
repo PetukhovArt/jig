@@ -5,6 +5,8 @@ import { loadConfig } from '../../core/config'
 import { createMatcher } from '../../core/glob'
 import { exclusionOf, toRootPaths } from '../../review/review-plan'
 import { resolveUiBase } from '../base'
+import { declareReference } from '../dir'
+import { recordPassed } from '../proof'
 import { changedFiles } from '../reuse'
 import { EXIT_FINDINGS, projectRootOf, UsageError, type UiSubcommand } from '../command'
 import { collectCodeColors, loadCode } from './code'
@@ -53,6 +55,7 @@ export const mockup: UiSubcommand = (args, ctx) => {
   const config = loadConfig(root)
   if (config.error !== undefined) throw new Error(`config: ${config.error}`)
   const skip = (message: string): void => ctx.io.err(`${message}\n`)
+  if (values.figma !== undefined) declareReference(root, `figma:${values.figma}`)
 
   let exportFile: string
   try {
@@ -99,5 +102,7 @@ export const mockup: UiSubcommand = (args, ctx) => {
   })
   if (result.type === 'unknown-node') return EXIT_FAILURE
   ctx.io.out(`${result.report.lines.join('\n')}\n`)
-  return result.report.blocking > 0 ? EXIT_FINDINGS : 0
+  if (result.report.blocking > 0) return EXIT_FINDINGS
+  recordPassed(root, 'ui-mockup', `jig ui mockup ${values.figma ?? values.export ?? ''} --component ${values.component}`, ctx.io)
+  return 0
 }

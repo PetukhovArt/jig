@@ -1,13 +1,18 @@
 export {
+  AGENT_PROOF_KINDS,
   AGENT_VIEW_BINARY,
   AGENT_VIEW_CONFIG,
   agentViewCheck,
   defineCheck,
   isCheckActive,
+  isUiProofKind,
   MARKUP_FILES,
   PROOF_KINDS,
   PROOFS as CHECKS,
   STYLE_FILES,
+  UI_PROOF_KINDS,
+  type AgentProofKind,
   type CheckDefinition,
   type ProofKind,
+  type UiProofKind,
 } from '../catalog/proofs'

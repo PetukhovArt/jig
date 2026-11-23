@@ -62,7 +62,7 @@ class TaskStatusFailure extends Error {
 
 const usage = (message: string): TaskStatusFailure => new TaskStatusFailure(EXIT_USAGE, message)
 
-const branchDirName = (projectRoot: string): string => {
+export const branchDirName = (projectRoot: string): string => {
   const branch = gitCurrentBranch(projectRoot)
   if (branch !== undefined) return branch.replace(/[^A-Za-z0-9._-]/g, '_')
   return `detached-${gitShortSha(projectRoot) ?? 'none'}`

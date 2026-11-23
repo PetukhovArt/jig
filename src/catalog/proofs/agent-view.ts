@@ -1,7 +1,7 @@
 import { createMatcher } from '../../core/glob'
 import type { ToolBinary } from '../../tools/tool'
 import { isTestFile, type SourceReader } from '../languages'
-import { defineCheck, type ProofKind } from './proof'
+import { defineCheck, type AgentProofKind } from './proof'
 
 export const AGENT_VIEW_CONFIG = 'agent-view.config.json'
 
@@ -22,12 +22,12 @@ const isStyle = createMatcher(STYLE_FILES)
 
 export const isUiFile = (file: string): boolean => isMarkup(file) || isStyle(file)
 
-const PROOFS: ReadonlyArray<readonly [ProofKind, RegExp]> = [
+const PROOFS: ReadonlyArray<readonly [AgentProofKind, RegExp]> = [
   ['behavior', /(?:^|[\s;&|])(?:npx\s+)?agent-view\s+act\s+replay\b/],
   ['look', /(?:^|[\s;&|])(?:npx\s+)?agent-view\s+(?:screenshot|snap)\b/],
 ]
 
-const requires = (file: string, source?: SourceReader): readonly ProofKind[] => {
+const requires = (file: string, source?: SourceReader): readonly AgentProofKind[] => {
   if (isTestFile(file, source)) return []
   if (isMarkup(file)) return ['behavior', 'look']
   if (isStyle(file)) return ['look']

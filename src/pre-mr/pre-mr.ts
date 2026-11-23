@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 import { fileSource } from '../catalog/languages'
-import { CHECKS, PROOF_KINDS, type CheckDefinition, type ProofKind } from '../checks'
+import { AGENT_PROOF_KINDS, CHECKS, isUiProofKind, type AgentProofKind, type CheckDefinition, type ProofKind, type UiProofKind } from '../checks'
 import { enabledSetting, loadConfig } from '../core/config'
 import { git, gitStatus, gitToplevel } from '../core/git'
 import { appendJournal, readJournal, type JournalEntry, type JournalRecord } from '../core/journal'
@@ -13,6 +13,7 @@ import { MAIN_AGENT } from '../core/state'
 import { requireScopedChanges, resolveBase, splitPathspec, toRootPaths } from '../review/review-plan'
 import { logToActiveJournal } from '../task-status/task-status'
 import { listWorktrees } from '../worktree/list'
+import { uiRequirements, type UiRequirement } from './ui-requirements'
 
 export const VERIFY_LEVELS = ['unit-test', 'type-check', 'none'] as const
 
@@ -33,7 +34,7 @@ export interface PreMrContext {
 }
 
 export interface Requirement {
-  kind: ProofKind
+  kind: AgentProofKind
   files: string[]
 }
 
@@ -44,7 +45,7 @@ export type Gap =
 export type Verdict =
   | { type: 'no-ui' }
   | { type: 'no-proof-tool'; files: string[] }
-  | { type: 'proven'; proofs: JournalRecord[]; breakIt: JournalRecord }
+  | { type: 'proven'; proofs: JournalRecord[]; breakIt?: JournalRecord }
   | { type: 'skipped'; skip: JournalRecord; gaps: Gap[]; breakIt?: JournalRecord }
   | { type: 'missing'; gaps: Gap[] }
 
@@ -126,14 +127,14 @@ export const configuredChecks = (root: string): CheckDefinition[] => {
 }
 
 export const requirements = (root: string, files: readonly string[], checks: readonly CheckDefinition[] = CHECKS): Requirement[] =>
-  PROOF_KINDS.map((kind) => ({
+  AGENT_PROOF_KINDS.map((kind) => ({
     kind,
     files: files.filter((file) => checks.some((check) => check.requires(file, fileSource(root, file)).includes(kind))),
   })).filter(
     (requirement) => requirement.files.length > 0,
   )
 
-const hintFor = (kind: ProofKind): string => CHECKS.map((check) => check.hints[kind]).find((hint) => hint !== undefined) ?? kind
+const hintFor = (kind: AgentProofKind): string => CHECKS.map((check) => check.hints[kind]).find((hint) => hint !== undefined) ?? kind
 
 const record = (root: string, entry: Omit<JournalEntry, 'session' | 'agent'>): JournalRecord =>
   appendJournal(root, { session: CLI_SESSION, agent: MAIN_AGENT, ...entry })
@@ -184,13 +185,15 @@ export interface Evaluation {
   files: string[]
   records: JournalRecord[]
   checks: readonly CheckDefinition[]
+  ui?: readonly UiRequirement[]
 }
 
-export const evaluate = ({ root, mergeBase, head, tree, files, records, checks }: Evaluation): Verdict => {
-  const needed = requirements(root, files, checks)
+export const evaluate = ({ root, mergeBase, head, tree, files, records, checks, ui = [] }: Evaluation): Verdict => {
+  const agentNeeded = requirements(root, files, checks)
+  const needed: { kind: ProofKind; files: string[]; hint?: string }[] = [...agentNeeded, ...ui]
   if (needed.length === 0) {
-    const ui = requirements(root, files).flatMap((requirement) => requirement.files)
-    return ui.length === 0 ? { type: 'no-ui' } : { type: 'no-proof-tool', files: [...new Set(ui)] }
+    const unproven = requirements(root, files).flatMap((requirement) => requirement.files)
+    return unproven.length === 0 ? { type: 'no-ui' } : { type: 'no-proof-tool', files: [...new Set(unproven)] }
   }
   const diffs = new Map<string, Set<string> | undefined>()
   const editedSince = (entry: JournalRecord): Set<string> | undefined => {
@@ -204,7 +207,7 @@ export const evaluate = ({ root, mergeBase, head, tree, files, records, checks }
   }
   const gaps: Gap[] = []
   const proofs: JournalRecord[] = []
-  for (const { kind, files: kindFiles } of needed) {
+  for (const { kind, files: kindFiles, hint } of needed) {
     const candidates = records.filter((entry) => entry.kind === 'proof' && (entry.rule ?? '').split(',').includes(kind))
     const proof = candidates.find((entry) => covers(entry, kindFiles))
     if (proof !== undefined) {
@@ -212,12 +215,13 @@ export const evaluate = ({ root, mergeBase, head, tree, files, records, checks }
       continue
     }
     const latest = candidates[0]
-    gaps.push({ what: 'proof', kind, files: kindFiles, hint: hintFor(kind), ...(latest === undefined ? {} : { latest }) })
+    gaps.push({ what: 'proof', kind, files: kindFiles, hint: hint ?? (isUiProofKind(kind) ? kind : hintFor(kind)), ...(latest === undefined ? {} : { latest }) })
   }
   const commits = branchCommits(root, mergeBase, head)
   const breakIt = records.find((entry) => isBreakIt(entry) && entry.head !== undefined && commits.has(entry.head))
-  if (breakIt === undefined) gaps.push({ what: 'break-it' })
-  if (gaps.length === 0 && breakIt !== undefined) return { type: 'proven', proofs, breakIt }
+  const needsBreakIt = agentNeeded.length > 0
+  if (breakIt === undefined && needsBreakIt) gaps.push({ what: 'break-it' })
+  if (gaps.length === 0) return { type: 'proven', proofs, ...(breakIt === undefined || !needsBreakIt ? {} : { breakIt }) }
   const skip = records.find((entry) => entry.kind === 'skip-verify' && entry.tree !== undefined && editedSince(entry)?.size === 0)
   if (skip === undefined) return { type: 'missing', gaps }
   return { type: 'skipped', skip, gaps, ...(breakIt === undefined ? {} : { breakIt }) }
@@ -236,7 +240,8 @@ const fileList = (files: readonly string[]): string => {
 const describeGap = (gap: Gap): string => {
   if (gap.what === 'break-it') return '- break-it: no record on this branch. Run flows/break-it.md on your diff, then: jig pre-mr break-it "<bugs found and fixed, what could not be tested>"'
   const state = gap.latest === undefined ? 'never proven' : `last proof at ${gap.latest.ts} (\`${gap.latest.message ?? ''}\`) predates edits`
-  return `- ${gap.kind}: ${state} for ${fileList(gap.files)}. Run: jig pre-mr proof "${gap.hint}"`
+  const command = isUiProofKind(gap.kind) ? gap.hint : `jig pre-mr proof "${gap.hint}"`
+  return `- ${gap.kind}: ${state} for ${fileList(gap.files)}. Run: ${command}`
 }
 
 export const formatVerdict = (verdict: Verdict, baseLine: string): string[] => {
@@ -254,7 +259,7 @@ export const formatVerdict = (verdict: Verdict, baseLine: string): string[] => {
       return [
         baseLine,
         ...[...new Set(verdict.proofs)].map((proof) => `proof: \`${proof.message ?? ''}\` at ${proof.ts}`),
-        `Break-it: ${verdict.breakIt.message ?? ''}`,
+        verdict.breakIt === undefined ? 'Break-it: not run, no agent-view proof asked' : `Break-it: ${verdict.breakIt.message ?? ''}`,
         'Verification level: full',
       ]
     case 'skipped':
@@ -285,7 +290,9 @@ const check = (args: string[], ctx: PreMrContext): number => {
   const files = [...new Set([...base.stats.map((stat) => stat.path), ...untrackedPaths(root, paths)])]
   requireScopedChanges(paths, files.length, base.ref)
   const { head, tree } = snapshot(root)
-  const verdict = evaluate({ root, mergeBase: base.mergeBase, head, tree, files, records: recordsOf(root), checks: configuredChecks(root) })
+  const checks = configuredChecks(root)
+  const ui = uiRequirements(root, files, loadConfig(root), checks.length > 0)
+  const verdict = evaluate({ root, mergeBase: base.mergeBase, head, tree, files, records: recordsOf(root), checks, ui })
   const baseLine = `base: ${base.ref} (merge base ${base.mergeBase.slice(0, 8)}, from ${base.source})`
   const lines = formatVerdict(verdict, baseLine)
   if (verdict.type === 'missing') {
@@ -307,7 +314,7 @@ const proof = (args: string[], ctx: PreMrContext): number => {
   const command = textArgument(args, `usage: jig pre-mr proof "<command>", e.g. jig pre-mr proof "${hintFor('behavior')}"`)
   const proven = provenKinds(command)
   if (proven.length === 0) {
-    const hints = PROOF_KINDS.map(hintFor).join('`, `')
+    const hints = AGENT_PROOF_KINDS.map(hintFor).join('`, `')
     throw new UsageError(`\`${command}\` proves nothing jig knows; proof commands: \`${hints}\``)
   }
   const root = requireRoot(ctx.cwd)
@@ -324,6 +331,13 @@ const proof = (args: string[], ctx: PreMrContext): number => {
     ctx.io.out(`jig: recorded ${kinds.join(', ')} proof at ${entry.ts}\n`)
   }
   return 0
+}
+
+export const recordUiProof = (root: string, kind: UiProofKind, message: string): JournalRecord => {
+  ensureJigDir(root)
+  const entry = record(root, { kind: 'proof', tool: 'ui', rule: kind, message, ...snapshot(root) })
+  mirror(root, `proof:${kind}`, { evidence: message, result: 'passed' })
+  return entry
 }
 
 const breakIt = (args: string[], ctx: PreMrContext): number => {
