@@ -47,7 +47,7 @@ export type Verdict =
   | { type: 'no-proof-tool'; files: string[] }
   | { type: 'proven'; proofs: JournalRecord[]; breakIt?: JournalRecord }
   | { type: 'skipped'; skip: JournalRecord; gaps: Gap[]; breakIt?: JournalRecord }
-  | { type: 'missing'; gaps: Gap[] }
+  | { type: 'missing'; gaps: Gap[]; skippable: boolean }
 
 const EXIT_MISSING = 1
 const EXIT_USAGE = 2
@@ -55,6 +55,8 @@ const CLI_SESSION = 'cli'
 const MAX_BUFFER = 64 * 1024 * 1024
 
 const isBreakIt = (entry: JournalRecord): boolean => entry.kind === 'break-it' || entry.kind === 'bug-bash'
+
+const APPLESS_PROOFS: ReadonlySet<ProofKind> = new Set<ProofKind>(['ui-reuse', 'ui-mockup'])
 
 const PRE_MR_USAGE = 'usage: jig pre-mr [<base>] [-- <pathspec>...] |jig pre-mr proof "<command>" | jig pre-mr break-it "<result>"'
 const SKIP_USAGE = `usage: jig skip-verify --level ${VERIFY_LEVELS.join('|')} --why "<reason>"`
@@ -223,7 +225,9 @@ export const evaluate = ({ root, mergeBase, head, tree, files, records, checks, 
   if (breakIt === undefined && needsBreakIt) gaps.push({ what: 'break-it' })
   if (gaps.length === 0) return { type: 'proven', proofs, ...(breakIt === undefined || !needsBreakIt ? {} : { breakIt }) }
   const skip = records.find((entry) => entry.kind === 'skip-verify' && entry.tree !== undefined && editedSince(entry)?.size === 0)
-  if (skip === undefined) return { type: 'missing', gaps }
+  if (skip === undefined) return { type: 'missing', gaps, skippable: true }
+  const appless = gaps.filter((gap) => gap.what === 'proof' && APPLESS_PROOFS.has(gap.kind))
+  if (appless.length > 0) return { type: 'missing', gaps: appless, skippable: false }
   return { type: 'skipped', skip, gaps, ...(breakIt === undefined ? {} : { breakIt }) }
 }
 
@@ -274,7 +278,9 @@ export const formatVerdict = (verdict: Verdict, baseLine: string): string[] => {
         baseLine,
         'pre-mr: the branch touches UI files and lacks:',
         ...verdict.gaps.map(describeGap),
-        `The proof cannot run here: jig skip-verify --level ${VERIFY_LEVELS.join('|')} --why "<reason>"`,
+        verdict.skippable
+          ? `The proof cannot run here: jig skip-verify --level ${VERIFY_LEVELS.join('|')} --why "<reason>"`
+          : 'These need no running app, so jig skip-verify does not waive them.',
       ]
   }
 }

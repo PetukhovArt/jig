@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { git } from '../src/core/git'
 import { readJournal } from '../src/core/journal'
-import { preMr, type PreMrContext } from '../src/pre-mr/pre-mr'
+import { preMr, skipVerify, type PreMrContext } from '../src/pre-mr/pre-mr'
 import { declareReference, declaredReference } from '../src/ui/dir'
 import { ui } from '../src/ui/ui'
 
@@ -91,6 +91,26 @@ describe('jig pre-mr with a ui profile', () => {
     err = []
     expect(run('main')).toBe(1)
     expect(err.join('')).toContain('- ui-mockup: never proven for src/Page.tsx. Run: jig ui mockup --figma https://www.figma.com/design/AbC/x?node-id=1-2 --component <node id>')
+  })
+
+  it('keeps asking for the proofs that need no app after jig skip-verify', () => {
+    write('src/Page.tsx', 'export const Page = () => <span />\n')
+    declareReference(root, 'figma:https://www.figma.com/design/AbC/x?node-id=1-2')
+    expect(skipVerify(['--level', 'unit-test', '--why', 'no app here'], { cwd: root, io })).toBe(0)
+
+    err = []
+    expect(run('main')).toBe(1)
+    expect(err.join('')).toContain('- ui-reuse: never proven for src/Page.tsx')
+    expect(err.join('')).toContain('- ui-mockup: never proven for src/Page.tsx')
+    expect(err.join('')).not.toContain('ui-matrix')
+    expect(err.join('')).toContain('need no running app, so jig skip-verify does not waive them')
+
+    expect(reuse()).toBe(0)
+    declareReference(root, 'image:ref.png')
+    expect(skipVerify(['--level', 'unit-test', '--why', 'no app here'], { cwd: root, io })).toBe(0)
+    out = []
+    expect(run('main')).toBe(0)
+    expect(out.join('')).toContain('not proven: behavior, look, ui-matrix, break-it')
   })
 
   it('passes on ui-reuse alone and skips break-it when no agent-view proof is configured', () => {

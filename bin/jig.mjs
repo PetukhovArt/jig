@@ -8142,6 +8142,7 @@ var EXIT_USAGE4 = 2;
 var CLI_SESSION = "cli";
 var MAX_BUFFER2 = 64 * 1024 * 1024;
 var isBreakIt = (entry) => entry.kind === "break-it" || entry.kind === "bug-bash";
+var APPLESS_PROOFS = /* @__PURE__ */ new Set(["ui-reuse", "ui-mockup"]);
 var PRE_MR_USAGE = 'usage: jig pre-mr [<base>] [-- <pathspec>...] |jig pre-mr proof "<command>" | jig pre-mr break-it "<result>"';
 var SKIP_USAGE = `usage: jig skip-verify --level ${VERIFY_LEVELS.join("|")} --why "<reason>"`;
 var UsageError = class extends Error {
@@ -8265,7 +8266,9 @@ var evaluate = ({ root, mergeBase, head, tree, files, records, checks, ui: ui2 =
   if (breakIt2 === void 0 && needsBreakIt) gaps.push({ what: "break-it" });
   if (gaps.length === 0) return { type: "proven", proofs, ...breakIt2 === void 0 || !needsBreakIt ? {} : { breakIt: breakIt2 } };
   const skip = records.find((entry) => entry.kind === "skip-verify" && entry.tree !== void 0 && editedSince(entry)?.size === 0);
-  if (skip === void 0) return { type: "missing", gaps };
+  if (skip === void 0) return { type: "missing", gaps, skippable: true };
+  const appless = gaps.filter((gap) => gap.what === "proof" && APPLESS_PROOFS.has(gap.kind));
+  if (appless.length > 0) return { type: "missing", gaps: appless, skippable: false };
   return { type: "skipped", skip, gaps, ...breakIt2 === void 0 ? {} : { breakIt: breakIt2 } };
 };
 var untrackedPaths = (root, paths) => (gitStatus(root, paths) ?? []).filter((entry) => entry.status === "??").map((entry) => entry.path);
@@ -8310,7 +8313,7 @@ var formatVerdict = (verdict2, baseLine) => {
         baseLine,
         "pre-mr: the branch touches UI files and lacks:",
         ...verdict2.gaps.map(describeGap),
-        `The proof cannot run here: jig skip-verify --level ${VERIFY_LEVELS.join("|")} --why "<reason>"`
+        verdict2.skippable ? `The proof cannot run here: jig skip-verify --level ${VERIFY_LEVELS.join("|")} --why "<reason>"` : "These need no running app, so jig skip-verify does not waive them."
       ];
   }
 };
