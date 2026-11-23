@@ -123,11 +123,11 @@ It repeats the task back with a done check, picks a flow and puts the flow's ste
 /loop 2h /jig-review-cycle
 ```
 
-The model can start three of them on its own, because a flow or a schedule needs them. The others run only when you type them ([why](docs/flows.md#who-starts-a-skill)).
+The model can start four of them on its own, because a flow or a schedule needs them. The others run only when you type them ([why](docs/flows.md#who-starts-a-skill)).
 
 <!-- skills:start -->
 
-<details><summary><b>All 10 skills</b></summary>
+<details><summary><b>All 11 skills</b></summary>
 
 | skill | started by | what it does |
 | --- | --- | --- |
@@ -141,6 +141,7 @@ The model can start three of them on its own, because a flow or a schedule needs
 | [`/jig-slots`](skills/jig-slots/SKILL.md) | you or the model | Give a task its own git worktree, and show finished branches in a slot: a worktree with a warm dev server on offset dev and CDP ports. |
 | [`/jig-task-status`](skills/jig-task-status/SKILL.md) | you | Keep a reviewable decision trail of a long or unattended run: one TSV row per decision, step or question, and an HTML page built from it on demand. |
 | [`/jig-video`](skills/jig-video/SKILL.md) | you | Record a narrated demo video of a change's use cases by driving the running app. |
+| [`/jig-visual-mr`](skills/jig-visual-mr/SKILL.md) | you or the model | Write or rewrite the description of the current branch's merge request from the jig template: the goal, the reviewer notes, how it works in diagrams, the evidence, then publish it with glab or gh. |
 
 </details>
 

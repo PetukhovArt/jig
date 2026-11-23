@@ -25,6 +25,7 @@ A skill with `disable-model-invocation: true` runs only when the user types it: 
 | `jig-grill` | user | it interviews the user one question at a time; whether to be interviewed is the user's call |
 | `jig-prune-comments` | user | it edits every file in its scope with a swarm of agents: the scope and the cost are the user's |
 | `jig-explain` | user | it answers a request for a visual explanation; open to the model, it would fire on every "explain" |
+| `jig-visual-mr` | user or model | the `mr` step of every code-changing flow writes and publishes the description with it |
 | `jig-video` | user | it drives the app and records a narrated video: slow and costly, and only the user knows a demo is wanted |
 
 A new skill takes `disable-model-invocation: true` unless a flow, a role or a schedule must start it, and gets a row here naming that caller.
