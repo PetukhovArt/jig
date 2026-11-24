@@ -10836,7 +10836,8 @@ var FAIL_LINES = [
   "  UNMAPPED, NOT FOUND, TYPO (typography): map every text role with --role, then set each font size default to the mockup.",
   "  WRONG NODE: check the component drawn on the canvas, not the app UI around it.",
   "  NOT IN MOCKUP, DUPLICATE: the mockup has no such control. Make the control that already exists do the job instead of adding one; renaming a label does not clear the line.",
-  "  A deviation that has to stay is the user's decision: ask, do not settle it yourself.",
+  "  Fix every line before jig pre-mr, also one that predates your change or changes how saved data looks: that goes in the merge request, not in a question.",
+  "  Ask the user only where the task text itself contradicts the mockup.",
   "EXTRA lines are for review only: a color of a state the mockup does not draw (hover, tooltip) may stay."
 ];
 var PASS_LINE = "PASS. EXTRA lines are for review only: a color of a state the mockup does not draw (hover, tooltip) may stay.";
