@@ -8,7 +8,7 @@
 
 ### Budget
 
-A description longer than ~70 lines stops being a description and becomes a second source of truth. 
+A description longer than ~70 lines stops being a description and becomes a second source of truth.
 Two diagrams and one contract block explain more than five code blocks. Cut type declarations already visible in the diff, pseudocode that repeats a diagram, file trees whose nodes a diagram already names.
 
 ### Choice of views
