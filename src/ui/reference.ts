@@ -7,15 +7,18 @@ import { recordPassed } from './proof'
 import { attachFile, readReferences, referenceDir, REFERENCE_IMAGE, REFERENCE_TREE, writeReferences, type ReferenceEntry, type References } from './references'
 import { fillTemplate, failureOf, shellRunner } from './run'
 import { parseTree } from './tree'
+import { attachRule } from '../pre-mr/ui-requirements'
 
 export const REFERENCE_USAGE = `usage: jig ui reference
        jig ui reference add "<source>" [--covers "<screen or state>"] [--fetch]
        jig ui reference none "<reason>"
        jig ui reference attach <n> [--image <png>] [--tree <json>] [--fetch]
+       jig ui reference attach <n> --none "<why no image or tree can be made>"
 
 add      list one reference of the task: its source exactly as the user gave it (a link, a path, a name) and the screen or state it covers
 none     the task has no reference: the user said so, answered so, or nobody can be asked (afk)
-attach   give reference <n> its jig-format files: a PNG and a node tree (schema/ui-tree.schema.json)
+attach   give reference <n> its jig-format files: a PNG and a node tree (schema/ui-tree.schema.json); jig pre-mr asks this for every listed reference
+--none   reference <n> has no visual form (a text spec): its criteria go to the reviewer
 --fetch  with ui.reference.fetch set in .jig/config.local.jsonc: jig runs it for the source and attaches {out}/image.png and {out}/tree.json
 no args  print the list`
 
@@ -25,7 +28,8 @@ const emptyReferences = (): References => ({ version: 1, entries: [] })
 
 const describeEntry = (entry: ReferenceEntry): string => {
   const files = [entry.image === undefined ? undefined : 'image', entry.tree === undefined ? undefined : 'tree'].filter((part) => part !== undefined)
-  return `${entry.n}  ${entry.source}${entry.covers === undefined ? '' : `  covers: ${entry.covers}`}  [${files.length === 0 ? 'no files attached' : files.join(', ')}]`
+  const state = entry.unattached === undefined ? (files.length === 0 ? 'no files attached' : files.join(', ')) : `no files: ${entry.unattached}`
+  return `${entry.n}  ${entry.source}${entry.covers === undefined ? '' : `  covers: ${entry.covers}`}  [${state}]`
 }
 
 const list = (root: string, ctx: UiContext): number => {
@@ -104,18 +108,19 @@ const attach = (args: string[], root: string, ctx: UiContext): number => {
     args,
     allowPositionals: true,
     strict: true,
-    options: { image: { type: 'string' }, tree: { type: 'string' }, fetch: { type: 'boolean' } },
+    options: { image: { type: 'string' }, tree: { type: 'string' }, fetch: { type: 'boolean' }, none: { type: 'string' } },
   })
   const n = Number(positionals[0])
-  if (positionals.length !== 1 || !Number.isInteger(n) || (values.image === undefined && values.tree === undefined && values.fetch !== true)) throw new UsageError(REFERENCE_USAGE)
+  const files = values.image !== undefined || values.tree !== undefined || values.fetch === true
+  const reason = values.none?.trim()
+  if (positionals.length !== 1 || !Number.isInteger(n) || files === (reason !== undefined) || reason === '') throw new UsageError(REFERENCE_USAGE)
   const references = readReferences(root)
   const entry = references?.entries.find((own) => own.n === n)
   if (references === undefined || entry === undefined) throw new UsageError(`no reference ${n}: list it first with jig ui reference add "<source>"`)
-  const fetched = values.fetch === true ? fetchInto(root, entry, ctx) : entry
-  const next = attachChecked(root, fetched, values.image === undefined ? undefined : resolve(ctx.cwd, values.image), values.tree === undefined ? undefined : resolve(ctx.cwd, values.tree))
+  const next = reason === undefined ? attachChecked(root, values.fetch === true ? fetchInto(root, entry, ctx) : entry, values.image === undefined ? undefined : resolve(ctx.cwd, values.image), values.tree === undefined ? undefined : resolve(ctx.cwd, values.tree)) : { ...entry, unattached: reason }
   writeReferences(root, replaceEntry(references, next))
   ctx.io.out(`${describeEntry(next)}\n`)
-  return 0
+  return recordPassed(root, attachRule(n), `jig ui reference attach ${n}: ${reason === undefined ? 'files attached' : `none: ${reason}`}`, ctx.io) ? 0 : EXIT_FINDINGS
 }
 
 export const reference: UiSubcommand = (args, ctx) => {

@@ -3,18 +3,19 @@ export interface UiCheckConfig {
   stop?: string
   restore?: string
   reset?: string
-  replay: string
+  scenario: string
+  drive: string
+  screenshot?: string
+  id?: string
   final_steps?: string[]
   patch?: string
-  store?: string
-  store_sections?: string[]
-  acts?: string[]
+  files?: { from: string; to: string }[]
   env?: string
-  replay_timeout_seconds?: number
+  drive_timeout_seconds?: number
 }
 
 export interface UiCheck {
-  replay: string
+  id: string
   verdict: 'pass' | 'fail' | 'inconclusive'
   error?: string
   attempts: { outcome: string; exitCode: number | null; output: string; screenshot?: string }[]

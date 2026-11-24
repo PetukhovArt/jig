@@ -2,9 +2,8 @@ import { spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
-import { loadConfig, type PortConfig, type SlotsConfig, type WorktreeConfig } from '../core/config'
+import { loadConfig, type SlotsConfig, type WorktreeConfig } from '../core/config'
 import { git } from '../core/git'
-import { parseJsonc } from '../core/jsonc'
 import { ensureJigDir, resolveProjectRoot, toSlash } from '../core/paths'
 import { acquireLock } from '../core/proc'
 import { clearOwner, ownerIdOf, refusalOf, writeOwner } from './guard'
@@ -21,7 +20,6 @@ export interface SlotWorktree extends Worktree {
 }
 
 const SLOT_LOCK = 'slot.lock'
-const AGENT_VIEW_CONFIG = 'agent-view.config.json'
 const SLUG = /^[A-Za-z0-9][A-Za-z0-9._-]*$/
 const NO_VALUE = 'none'
 
@@ -72,61 +70,12 @@ const slotDirName = (repo: string, slot: number, slug?: string): string =>
 const slotPorts = (config: SlotsConfig, slot: number): Record<string, number> =>
   Object.fromEntries(Object.entries(config.ports ?? {}).map(([key, port]) => [key, port.base + slot * port.step]))
 
-const slotCdpPort = (config: SlotsConfig, slot: number): number | undefined =>
-  config.cdp === undefined ? undefined : config.cdp.base + slot * config.cdp.step
-
 export const setEnvValue = (text: string, key: string, value: string): string => {
   const eol = text.includes('\r\n') ? '\r\n' : '\n'
   const line = new RegExp(`^([ \\t]*(?:export[ \\t]+)?)${escapeRegExp(key)}[ \\t]*=.*$`, 'gm')
   if (line.test(text)) return text.replace(line, (_match, prefix: string) => `${prefix}${key}=${value}`)
   const separator = text === '' || text.endsWith('\n') ? '' : eol
   return `${text}${separator}${key}=${value}${eol}`
-}
-
-const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]', '0.0.0.0'])
-
-/**
- * The main checkout's app URL as the slot sees it: a local port that a `ports` entry starts at moves with the slot,
- * another local port is dropped (it would reach slot 0), a remote URL stays.
- */
-export const slotUrl = (url: string, ports: Readonly<Record<string, PortConfig>>, slot: number): string | undefined => {
-  let parsed: URL
-  try {
-    parsed = new URL(url)
-  } catch {
-    return url
-  }
-  if (!LOCAL_HOSTS.has(parsed.hostname) || parsed.port === '') return url
-  const port = Object.values(ports).find((entry) => entry.base === Number(parsed.port))
-  if (port === undefined) return undefined
-  parsed.port = String(port.base + slot * port.step)
-  return parsed.toString()
-}
-
-const agentViewConfig = (
-  base: Record<string, unknown>,
-  config: SlotsConfig,
-  slot: number,
-  cdpPort: number,
-): Record<string, unknown> => {
-  const result: Record<string, unknown> = { ...base, port: cdpPort }
-  if (typeof base['url'] === 'string') {
-    const url = slotUrl(base['url'], config.ports ?? {}, slot)
-    if (url === undefined) {
-      delete result['url']
-      process.stderr.write(`jig: agent-view url ${base['url']} names a local port no slots.ports entry starts at: left out of the slot's ${AGENT_VIEW_CONFIG}\n`)
-    } else {
-      result['url'] = url
-    }
-  }
-  const runtime = config.verifyRuntime ?? config.runtime
-  if (runtime !== undefined && runtime !== 'none') {
-    result['runtime'] = runtime
-  }
-  if (result['launch'] === undefined && config.dev !== undefined) {
-    result['launch'] = config.dev
-  }
-  return result
 }
 
 const formatPorts = (ports: Record<string, number>): string => {
@@ -193,19 +142,6 @@ const writePorts = (dir: string, slots: SlotsConfig, slot: number): void => {
   if (slots.slotEnv !== undefined) {
     writeEnv(dir, slots.slotEnv.target, slots.slotEnv.key, slot)
   }
-}
-
-const readJsonObject = (path: string): Record<string, unknown> => {
-  if (!existsSync(path)) return {}
-  const value = parseJsonc(readFileSync(path, 'utf8'))
-  const isObject = typeof value === 'object' && value !== null && !Array.isArray(value)
-  return isObject ? (value as Record<string, unknown>) : {}
-}
-
-const writeAgentView = (mainRoot: string, dir: string, slots: SlotsConfig, slot: number, cdpPort: number): void => {
-  const own = join(dir, AGENT_VIEW_CONFIG)
-  const base = readJsonObject(existsSync(own) ? own : join(mainRoot, AGENT_VIEW_CONFIG))
-  writeLocalFile(dir, AGENT_VIEW_CONFIG, `${JSON.stringify(agentViewConfig(base, slots, slot, cdpPort), null, 2)}\n`)
 }
 
 const branchExists = (cwd: string, branch: string): boolean =>
@@ -279,10 +215,6 @@ const slotNew = async (args: string[]): Promise<number> => {
     process.stderr.write(`jig: ${line}\n`)
   }
   writePorts(dir, slots, slot)
-  const cdpPort = slotCdpPort(slots, slot)
-  if (cdpPort !== undefined) {
-    writeAgentView(context.mainRoot, dir, slots, slot, cdpPort)
-  }
   for (const cache of slots.clearCache ?? []) {
     rmSync(insideDir(dir, cache), { recursive: true, force: true })
   }
@@ -292,7 +224,7 @@ const slotNew = async (args: string[]): Promise<number> => {
     const status = runInstall(slots.install, dir)
     if (status !== 0) return fail(`install failed (exit ${status}) in slot ${slot} ${toSlash(dir)}`, 1)
   }
-  print(`slot ${slot} ${toSlash(dir)} ports ${formatPorts(slotPorts(slots, slot))} cdp ${cdpPort ?? NO_VALUE}`)
+  print(`slot ${slot} ${toSlash(dir)} ports ${formatPorts(slotPorts(slots, slot))}`)
   return 0
 }
 
@@ -301,7 +233,6 @@ interface SlotRow {
   path: string
   branch: string | null
   ports: Record<string, number>
-  cdp: number | null
 }
 
 const slotLs = (args: string[]): number => {
@@ -314,14 +245,13 @@ const slotLs = (args: string[]): number => {
       path: toSlash(worktree.path),
       branch: worktree.branch ?? null,
       ports: context.slots === undefined ? {} : slotPorts(context.slots, worktree.slot),
-      cdp: context.slots === undefined ? null : (slotCdpPort(context.slots, worktree.slot) ?? null),
     }))
   if (values.json === true) {
     print(JSON.stringify(rows, null, 2))
     return 0
   }
   for (const row of rows) {
-    print(`s${row.slot}  ${row.path}  ${row.branch ?? '(detached)'}  ports ${formatPorts(row.ports)}  cdp ${row.cdp ?? NO_VALUE}`)
+    print(`s${row.slot}  ${row.path}  ${row.branch ?? '(detached)'}  ports ${formatPorts(row.ports)}`)
   }
   return 0
 }
@@ -426,7 +356,8 @@ const slotShow = (args: string[]): number => {
     const status = runInstall(step.command, resolve(worktree.path, step.dir))
     if (status !== 0) return fail(`install failed (exit ${status}) in slot ${slot} ${toSlash(worktree.path)}`, 1)
   }
-  print(`slot ${slot} ${toSlash(worktree.path)} at ${(after ?? '').slice(0, 12)} ${ref}`)
+  const ports = context.slots === undefined ? {} : slotPorts(context.slots, slot)
+  print(`slot ${slot} ${toSlash(worktree.path)} at ${(after ?? '').slice(0, 12)} ${ref} ports ${formatPorts(ports)}`)
   return 0
 }
 

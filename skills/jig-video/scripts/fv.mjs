@@ -1,25 +1,12 @@
 #!/usr/bin/env node
-// Feature video pipeline. Run from the app checkout (its agent-view.config.json, or CDP_PORT, picks the CDP port).
-//   narrate <dir>   audio/<stepId>.mp3 + durations.json (Edge TTS, online)
-//   rehearse <dir>  drives the app, no capture; writes viewport.json
-//   record <dir>    cases/<caseId>.mkv + marks.json, one clip per case
-//   assemble <dir>  joins the clips: video.mp4 + timeline.json
-//   cdp <verb> ...  one action over raw CDP (click, fill, wait, eval, drag, screenshot): probes when agent-view is missing
-// The app is driven through the agent-view CLI; without it, the same verbs go over raw CDP (`cdp` below).
 import { spawn, spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { attachVideo } from './attach.mjs'
 import { audioFiles, edgeTtsCommand, loadProjectSettings, synthesize, voiceKey } from './tts.mjs'
 import { captureInput, pinWindow, placeWindows, platformRequirements, windowClientArea } from './window.mjs'
 
 const [cmd, dirArg, ...rest] = process.argv.slice(2)
-if (cmd === 'cdp') {
-  const output = await cdp(process.argv.slice(3))
-  if (output !== undefined) console.log(output)
-  process.exit(0)
-}
-const AGENT_VIEW = resolveAgentView()
 if (cmd === 'check') checkRequirements()
 if (cmd === 'window') {
   console.log(await windowAction(process.argv.slice(3)))
@@ -31,16 +18,19 @@ if (cmd === 'say') {
   console.log(await synthesize(text, path.resolve(out), loadProjectSettings()))
   process.exit(0)
 }
-if (!cmd || !dirArg) fail('usage: fv.mjs <narrate|rehearse|record|assemble> <workdir> [--case caseId] [--window "title"] [--region x,y,w,h] [--from stepId]\n       fv.mjs attach <workdir> [--to <PR/MR number or url>] [--file video-fast.mp4] [--dry-run]\n       fv.mjs say "<text>" <out>\n       fv.mjs check\n       fv.mjs window <place|pin> [flags]\n       fv.mjs cdp <click|fill|wait|eval|drag|screenshot> [agent-view flags]')
+if (!cmd || !dirArg) fail('usage: fv.mjs narrate <workdir>\n       fv.mjs record <workdir> --case <caseId> [--window "title" [--inner WxH]] [--region x,y,w,h] [--cursor]   (runs until stop: start it in the background)\n       fv.mjs mark <workdir> <stepId>\n       fv.mjs stop <workdir>\n       fv.mjs viewport <workdir> <innerWidth>x<innerHeight>@<devicePixelRatio> [--check]\n       fv.mjs assemble <workdir>\n       fv.mjs attach <workdir> [--to <PR/MR number or url>] [--file video-fast.mp4] [--dry-run]\n       fv.mjs say "<text>" <out>\n       fv.mjs check\n       fv.mjs window <place|pin> [flags] [--inner WxH]')
 const dir = path.resolve(dirArg)
+const positional = rest[0] === undefined || rest[0].startsWith('--') ? undefined : rest[0]
 const flags = {}
-for (let i = 0; i < rest.length; i++) {
-  const hasValue = rest[i + 1] !== undefined && !rest[i + 1].startsWith('--')
-  flags[rest[i].replace(/^--/, '')] = hasValue ? rest[++i] : true
+const flagArgs = positional === undefined ? rest : rest.slice(1)
+for (let i = 0; i < flagArgs.length; i++) {
+  const hasValue = flagArgs[i + 1] !== undefined && !flagArgs[i + 1].startsWith('--')
+  flags[flagArgs[i].replace(/^--/, '')] = hasValue ? flagArgs[++i] : true
 }
 
 const TITLE_SEC = 3
 const GAP_SEC = 0.6
+const CONTROL = { state: 'capture.json', marks: 'capture-marks.jsonl', stop: 'capture.stop' }
 const FFMPEG = findTool('ffmpeg')
 const FFPROBE = findTool('ffprobe')
 
@@ -51,7 +41,7 @@ const steps = cases.flatMap((c) => c.steps)
 const duplicate = steps.find((s, i) => steps.findIndex((t) => t.id === s.id) !== i)
 if (duplicate) fail(`scenario.json: step id ${duplicate.id} is used twice`)
 const capturePath = (caseId) => path.join(dir, 'cases', `${caseId}.mkv`)
-const commands = { narrate, rehearse: () => drive(false), record: () => drive(true), assemble, attach }
+const commands = { narrate, record, mark, stop, viewport, assemble, attach }
 await (commands[cmd] ?? (() => fail(`unknown command ${cmd}`)))()
 
 async function narrate() {
@@ -70,270 +60,88 @@ async function narrate() {
   console.log(durations)
 }
 
-// rehearse: run the actions without capture or narration pauses; record: capture the screen and hold each step for its narration.
-// Every case starts from `setup` + its own `setup` and gets its own capture; `--case` runs one case.
-async function drive(capture) {
-  const durations = capture ? readJson('durations.json') : {}
-  const fromCase = !capture && flags.from ? cases.find((c) => c.steps.some((s) => s.id === flags.from)) ?? fail(`no step ${flags.from}`) : null
-  const selected = flags.case ? [cases.find((c) => c.id === flags.case) ?? fail(`no case ${flags.case}; cases: ${cases.map((c) => c.id).join(', ')}`)]
-    : fromCase ? cases.slice(cases.indexOf(fromCase)) : cases
-  const marks = capture && existsSync(path.join(dir, 'marks.json')) ? readJson('marks.json') : {}
-  const stopFocus = await emulateFocus()
-  for (const useCase of selected) {
-    const from = useCase === fromCase ? useCase.steps.findIndex((s) => s.id === flags.from) : 0
-    console.log(`case ${useCase.id}`)
-    if (from === 0) for (const action of [...scenario.setup ?? [], ...useCase.setup ?? []]) await act(action)
-    await checkViewport(capture)
-    if (capture) mkdirSync(path.join(dir, 'cases'), { recursive: true })
-    const ffmpeg = capture ? await startCapture(capturePath(useCase.id)) : null
-    const t0 = capture ? await captureStarted(ffmpeg) : Date.now()
-    const now = () => (Date.now() - t0) / 1000
-    const caseMarks = {}
-    try {
-      for (const { id, do: actions = [], delay = 0 } of useCase.steps.slice(from)) {
-        caseMarks[id] = now()
-        console.log(`[${caseMarks[id].toFixed(1)}s] ${id}`)
-        for (const action of actions) await act(action)
-        const left = capture ? caseMarks[id] + delay + durations[id] + GAP_SEC - now() : 0
-        if (left > 0) await sleep(left * 1000)
-      }
-      if (capture) await sleep(1000)
-    } finally {
-      if (ffmpeg) {
-        ffmpeg.stdin.write('q')
-        await new Promise((r) => ffmpeg.on('exit', r))
-        if (flags.window) await windowClientArea(flags.window, false, readInnerSize)
-      }
+async function record() {
+  const useCase = cases.find((c) => c.id === flags.case) ?? fail(`--case <id> is required; cases: ${cases.map((c) => c.id).join(', ')}`)
+  for (const name of Object.values(CONTROL)) rmSync(path.join(dir, name), { force: true })
+  mkdirSync(path.join(dir, 'cases'), { recursive: true })
+  const ffmpeg = await startCapture(capturePath(useCase.id))
+  let exitCode
+  ffmpeg.on('exit', (code) => { exitCode = code })
+  const t0 = await captureStarted(ffmpeg)
+  writeJson(CONTROL.state, { case: useCase.id, t0 })
+  console.log(`recording ${useCase.id}`)
+  while (!existsSync(path.join(dir, CONTROL.stop))) {
+    if (exitCode !== undefined) {
+      rmSync(path.join(dir, CONTROL.state), { force: true })
+      fail(`ffmpeg exited ${exitCode} during the capture of ${useCase.id}`)
     }
-    for (const action of scenario.teardown ?? []) await act(action)
-    // Written per case, so a run that fails later keeps the cases already recorded.
-    if (capture) {
-      marks[useCase.id] = caseMarks
-      writeJson('marks.json', marks)
-    }
+    await sleep(200)
   }
-  stopFocus()
+  ffmpeg.stdin.write('q')
+  await new Promise((resolve) => (exitCode === undefined ? ffmpeg.on('exit', resolve) : resolve()))
+  if (flags.window) await windowClientArea(flags.window, false, innerSizeReader(flags.inner))
+  const caseMarks = Object.fromEntries(readMarks().map(({ id, at }) => [id, (at - t0) / 1000]))
+  const marks = existsSync(path.join(dir, 'marks.json')) ? readJson('marks.json') : {}
+  writeJson('marks.json', { ...marks, [useCase.id]: caseMarks })
+  rmSync(path.join(dir, CONTROL.state), { force: true })
+  console.log(`recorded ${capturePath(useCase.id)}`)
 }
 
-// A window that is not the foreground one has no :focus and fires blur, so menus close and fields commit mid-step.
-// Focus emulation on every page, held for the whole run, lets the user keep working in another window meanwhile.
-async function emulateFocus() {
-  const port = cdpPort()
-  const sockets = new Map()
-  const attach = async () => {
-    const targets = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json()
-    const fresh = targets.filter((t) => t.type === 'page' && !sockets.has(t.id))
-    await Promise.all(fresh.map((t) => new Promise((resolve) => {
-      const ws = new WebSocket(t.webSocketDebuggerUrl)
-      ws.onopen = () => { ws.send(JSON.stringify({ id: 1, method: 'Emulation.setFocusEmulationEnabled', params: { enabled: true } })); resolve() }
-      ws.onclose = () => { sockets.delete(t.id); resolve() }
-      sockets.set(t.id, ws)
-    })))
+async function mark() {
+  const id = positional ?? fail('usage: fv.mjs mark <workdir> <stepId>')
+  const state = await captureState()
+  const step = cases.find((c) => c.id === state.case).steps.find((s) => s.id === id) ?? fail(`step ${id} is not in case ${state.case}`)
+  await holdLastStep(0)
+  appendFileSync(path.join(dir, CONTROL.marks), `${JSON.stringify({ id, at: Date.now() })}\n`)
+  console.log(`[${((Date.now() - state.t0) / 1000).toFixed(1)}s] ${id}: ${step.say}`)
+}
+
+async function stop() {
+  const state = await captureState()
+  await holdLastStep(1)
+  writeFileSync(path.join(dir, CONTROL.stop), '')
+  const deadline = Date.now() + 30_000
+  while (existsSync(path.join(dir, CONTROL.state))) {
+    if (Date.now() > deadline) fail('the recorder did not finish within 30 s')
+    await sleep(200)
   }
-  await attach()
-  // Pop-out windows open mid-run.
-  const timer = setInterval(() => attach().catch(() => {}), 1000)
-  return () => { clearInterval(timer); for (const ws of sockets.values()) ws.close() }
+  console.log(`cases/${state.case}.mkv`)
 }
 
-// `--pos` coordinates are CSS pixels of the window size rehearse ran at; record fails before capture when that size changed.
-async function checkViewport(capture) {
-  const viewport = JSON.parse(await agentView(['eval', '--json', "innerWidth + 'x' + innerHeight + '@' + devicePixelRatio"]))
-  if (!capture) return writeJson('viewport.json', viewport)
-  const rehearsed = existsSync(path.join(dir, 'viewport.json')) ? readJson('viewport.json') : fail('no viewport.json: run rehearse first')
-  if (viewport !== rehearsed) fail(`viewport ${viewport} differs from rehearse ${rehearsed}: --pos targets would miss. Size the window as in rehearse (window pin) or rehearse again.`)
-}
-
-async function act([verb, ...args]) {
-  if (verb === 'sleep') return sleep(Number(args[0]))
-  if (verb === 'window') return console.log(await windowAction(args))
-  // An OS-level action agent-view cannot do, e.g. placing a window; a failure fails the run like a failed click.
-  if (verb === 'run') {
-    const r = spawnSync(args[0], args.slice(1), { encoding: 'utf8' })
-    return r.status === 0 ? undefined : fail(`run ${args[0]} failed:\n${r.stdout}\n${r.stderr}`)
+async function captureState() {
+  const file = path.join(dir, CONTROL.state)
+  const deadline = Date.now() + 30_000
+  while (!existsSync(file)) {
+    if (Date.now() > deadline) fail('no capture running: start `fv.mjs record <workdir> --case <id>` in the background first')
+    await sleep(200)
   }
-  if (verb === 'click' || verb === 'drag') await glideCursor(args)
-  await agentView([verb, ...args])
+  return readJson(CONTROL.state)
 }
 
-// Shows a cursor dot in the page and glides it to the click target or the drag start: CDP input moves no real cursor, so the capture would show none.
-// During a `--pointer` drag the dot follows the dispatched mousemove events.
-async function glideCursor(args) {
-  const opt = optionReader(args)
-  const target = { ...targetOf(opt), pos: opt('--pos', '-p') ?? opt('--from-pos') }
-  const window = opt('--window', '-w')
-  const script = `(async (t) => {
-    let dot = document.getElementById('fv-cursor')
-    if (!dot) {
-      dot = Object.assign(document.createElement('div'), { id: 'fv-cursor' })
-      dot.style.cssText = 'position:fixed;z-index:2147483647;pointer-events:none;width:30px;height:30px;margin:-15px 0 0 -15px;border-radius:50%;background:rgba(255,200,0,.6);border:2px solid #fff;box-shadow:0 0 6px #000;left:50vw;top:50vh;transition:left .5s ease-in-out,top .5s ease-in-out'
-      document.documentElement.append(dot)
-      addEventListener('mousemove', (e) => { dot.style.left = e.clientX + 'px'; dot.style.top = e.clientY + 'px' }, true)
-    }
-    const el = (${findElementSource()})(t)
-    const r = el?.getBoundingClientRect()
-    const [x, y] = r ? [r.x + r.width / 2, r.y + r.height / 2] : (t.pos ?? '').split(',').map(Number)
-    if (Number.isNaN(x) || x === undefined) return
-    dot.style.left = x + 'px'; dot.style.top = y + 'px'
-    await new Promise((res) => setTimeout(res, 650))
-  })(${JSON.stringify(target)})`
-  await agentView(['eval', '--await', ...(window ? ['--window', window] : []), script])
+function readMarks() {
+  const file = path.join(dir, CONTROL.marks)
+  return existsSync(file) ? readFileSync(file, 'utf8').split('\n').filter(Boolean).map((line) => JSON.parse(line)) : []
 }
 
-// The agent-view CLI as an argv prefix: AGENT_VIEW_JS, the global npm root (nvm and nvm-windows included), then the
-// `agent-view` command on PATH (volta's shim is an .exe; an npm .cmd shim is read for its script). undefined: not installed.
-function resolveAgentView() {
-  const script = '@petukhovart/agent-view/dist/cli/index.js'
-  if (process.env.AGENT_VIEW_JS) return [process.execPath, process.env.AGENT_VIEW_JS]
-  const isWindows = process.platform === 'win32'
-  const npmRoot = spawnSync(isWindows ? 'npm.cmd' : 'npm', ['root', '-g'], { encoding: 'utf8', shell: isWindows })
-  const global = npmRoot.status === 0 ? path.join(npmRoot.stdout.trim(), script) : undefined
-  if (global !== undefined && existsSync(global)) return [process.execPath, global]
-  const found = spawnSync(isWindows ? 'where' : 'which', ['agent-view'], { encoding: 'utf8' })
-  const runnable = isWindows ? /\.(exe|cmd|bat)$/i : /./
-  const bin = found.status === 0 ? found.stdout.split(/\r?\n/).map((line) => line.trim()).find((line) => runnable.test(line)) : undefined
-  if (bin === undefined) return undefined
-  if (!/\.(cmd|bat)$/i.test(bin)) return [bin]
-  const target = /"%~?dp0%?\\([^"%]+\.js)"/i.exec(readFileSync(bin, 'utf8'))?.[1]
-  return target === undefined ? undefined : [process.execPath, path.join(path.dirname(bin), target)]
+async function holdLastStep(tailSec) {
+  const last = readMarks().at(-1)
+  if (!last) return
+  const durations = readJson('durations.json')
+  const { delay = 0 } = steps.find((s) => s.id === last.id)
+  const left = last.at / 1000 + delay + durations[last.id] + GAP_SEC + tailSec - Date.now() / 1000
+  if (left > 0) await sleep(left * 1000)
 }
 
-async function agentView(args) {
-  if (AGENT_VIEW === undefined) return cdp(args)
-  const [bin, ...prefix] = AGENT_VIEW
-  const r = spawnSync(bin, [...prefix, ...args], { encoding: 'utf8' })
-  if (r.status !== 0) fail(`agent-view ${args.slice(0, 3).join(' ')} failed:\n${r.stdout}\n${r.stderr}`)
-  return r.stdout
-}
-
-// Page-side lookup shared by the cursor dot and the CDP fallback: test id, CSS selector, or visible text (exact match first).
-// A function, not a const: the `cdp` command runs before the module's consts are initialised.
-function findElementSource() {
-  return `(t) => {
-    const visible = (el) => el.getClientRects().length > 0
-    const byText = (text) => [...document.querySelectorAll('body *')].filter((el) => visible(el) && el.textContent.trim() === text).pop()
-      ?? [...document.querySelectorAll('body *')].filter((el) => visible(el) && el.textContent.includes(text)).pop()
-    return (t.testid ? document.querySelector('[data-testid="' + t.testid + '"]') : t.selector ? document.querySelector(t.selector) : t.filter ? byText(t.filter) : null) ?? null
-  }`
+function viewport() {
+  const value = positional ?? fail('usage: fv.mjs viewport <workdir> <innerWidth>x<innerHeight>@<devicePixelRatio> [--check]')
+  if (!flags.check) return writeJson('viewport.json', value)
+  const rehearsed = existsSync(path.join(dir, 'viewport.json')) ? readJson('viewport.json') : fail('no viewport.json: save the rehearsal viewport first')
+  if (value !== rehearsed) fail(`viewport ${value} differs from the rehearsal ${rehearsed}: position targets would miss. Size the window as in the rehearsal (window pin) or rehearse again.`)
 }
 
 function optionReader(args) {
   return (...names) => { const i = args.findIndex((a) => names.includes(a)); return i < 0 ? undefined : args[i + 1] }
 }
-
-function targetOf(opt) {
-  return { testid: opt('--testid'), selector: opt('--selector'), filter: opt('--filter', '-f') }
-}
-
-// The agent-view verbs a scenario uses, over raw CDP, for a machine without agent-view. Covers click (--testid, --selector,
-// -f, --pos, --right, --double), fill, wait (-t), eval (--await, --json), drag (--from-pos/--to-pos, pointer events only),
-// screenshot [file]; --window matches a title substring or a target id. Refs from `dom`, --scene, --modifiers and HTML5 drag need agent-view.
-async function cdp([verb, ...args]) {
-  const opt = optionReader(args)
-  const has = (name) => args.includes(name)
-  const VALUE_FLAGS = ['--testid', '--selector', '--filter', '-f', '--pos', '-p', '--window', '-w', '--timeout', '-t',
-    '--from-pos', '--to-pos', '--steps', '--button', '--hold-ms']
-  const positional = args.filter((a, i) => !a.startsWith('-') && !VALUE_FLAGS.includes(args[i - 1]))
-  const unsupported = ['--scene', '--modifiers', '--from', '--to', '--html5', '--cancel', '--mask'].filter(has)
-  if (unsupported.length || (verb === 'click' && positional.length)) {
-    fail(`cdp ${verb}: ${unsupported.join(', ') || 'a dom ref'} needs agent-view. Without it: --testid, --selector, -f, --pos.`)
-  }
-  const page = await openPage(opt('--window', '-w'))
-  const evaluate = async (expression, awaitPromise = false) => {
-    const { result, exceptionDetails } = await page.send('Runtime.evaluate', { expression, awaitPromise, returnByValue: true })
-    if (exceptionDetails) fail(`cdp ${verb}: ${exceptionDetails.exception?.description ?? exceptionDetails.text}`)
-    return result.value
-  }
-  const target = targetOf(opt)
-  const find = `(${findElementSource()})(${JSON.stringify(target)})`
-  const describe = () => JSON.stringify(Object.fromEntries(Object.entries(target).filter(([, v]) => v)))
-  const centre = async () => {
-    const pos = opt('--pos', '-p')
-    if (pos) return pos.split(',').map(Number)
-    return await evaluate(`(() => { const el = ${find}; if (!el) return null
-      el.scrollIntoView({ block: 'nearest', inline: 'nearest' }); const r = el.getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2] })()`)
-      ?? fail(`cdp ${verb}: no element ${describe()} in "${page.title}"`)
-  }
-  const mouse = (type, [x, y], button = 'left', clickCount = 1) =>
-    page.send('Input.dispatchMouseEvent', { type, x, y, button, buttons: type === 'mouseReleased' || button === 'none' ? 0 : { left: 1, right: 2, middle: 4 }[button], clickCount })
-  try {
-    if (verb === 'click') {
-      const at = await centre()
-      const button = has('--right') ? 'right' : 'left'
-      await mouse('mouseMoved', at, 'none')
-      for (const count of has('--double') ? [1, 2] : [1]) {
-        await mouse('mousePressed', at, button, count)
-        await mouse('mouseReleased', at, button, count)
-      }
-    } else if (verb === 'fill') {
-      const value = positional.at(-1) ?? fail('cdp fill: no value')
-      // A test id or label may name a wrapper: the field is the element itself or the first one inside it.
-      const isFocused = await evaluate(`(() => { const el = ${find}
-        const field = el?.matches('input, textarea, [contenteditable]') ? el : el?.querySelector('input, textarea, [contenteditable]')
-        if (!field) return false
-        field.focus(); field.select ? field.select() : document.execCommand('selectAll'); return true })()`)
-      if (!isFocused) fail(`cdp fill: no field at ${describe()} in "${page.title}"`)
-      await page.send('Input.insertText', { text: value })
-    } else if (verb === 'wait') {
-      const deadline = Date.now() + Number(opt('--timeout', '-t') ?? 10) * 1000
-      while (!(await evaluate(`!!${find}`))) {
-        if (Date.now() > deadline) fail(`cdp wait: ${describe()} did not appear in "${page.title}" within ${opt('--timeout', '-t') ?? 10}s`)
-        await sleep(200)
-      }
-    } else if (verb === 'eval') {
-      const value = await evaluate(positional.at(-1) ?? fail('cdp eval: no expression'), has('--await'))
-      return has('--json') ? JSON.stringify(value) : typeof value === 'string' ? value : JSON.stringify(value, null, 2)
-    } else if (verb === 'drag') {
-      const from = (opt('--from-pos') ?? fail('cdp drag: needs --from-pos and --to-pos')).split(',').map(Number)
-      const to = (opt('--to-pos') ?? fail('cdp drag: needs --to-pos')).split(',').map(Number)
-      const button = opt('--button') ?? 'left'
-      const steps = Number(opt('--steps') ?? 10)
-      await mouse('mouseMoved', from, 'none')
-      await mouse('mousePressed', from, button)
-      await sleep(Number(opt('--hold-ms') ?? 0))
-      for (let i = 1; i <= steps; i++) await mouse('mouseMoved', from.map((v, k) => v + ((to[k] - v) * i) / steps), button)
-      await mouse('mouseReleased', to, button)
-    } else if (verb === 'screenshot') {
-      const { data } = await page.send('Page.captureScreenshot', { format: 'png' })
-      const file = path.resolve(positional[0] ?? 'screenshot.png')
-      writeFileSync(file, Buffer.from(data, 'base64'))
-      return file
-    } else {
-      fail(`cdp: unknown verb ${verb}; supported: click, fill, wait, eval, drag, screenshot`)
-    }
-  } finally {
-    page.close()
-  }
-}
-
-async function openPage(window) {
-  const pages = (await (await fetch(`http://127.0.0.1:${cdpPort()}/json/list`)).json()).filter((t) => t.type === 'page')
-  const target = window ? pages.find((p) => p.id === window || p.title.includes(window)) : pages[0]
-  if (!target) fail(`no window "${window ?? ''}"; open: ${pages.map((p) => `"${p.title}"`).join(', ') || 'none'}`)
-  const ws = new WebSocket(target.webSocketDebuggerUrl)
-  await new Promise((resolve, reject) => { ws.onopen = resolve; ws.onerror = () => reject(new Error(`cannot connect to "${target.title}"`)) })
-  const pending = new Map()
-  let seq = 0
-  ws.onmessage = ({ data }) => {
-    const message = JSON.parse(data)
-    const call = pending.get(message.id)
-    if (!call) return
-    pending.delete(message.id)
-    message.error ? call.reject(new Error(message.error.message)) : call.resolve(message.result)
-  }
-  const send = (method, params = {}) => new Promise((resolve, reject) => {
-    pending.set(++seq, { resolve, reject })
-    ws.send(JSON.stringify({ id: seq, method, params }))
-  })
-  return { send, title: target.title, close: () => ws.close() }
-}
-
-function cdpPort() {
-  if (process.env.CDP_PORT) return process.env.CDP_PORT
-  if (existsSync('agent-view.config.json')) return JSON.parse(readFileSync('agent-view.config.json', 'utf8')).port
-  fail('no CDP port: run from a checkout with agent-view.config.json, or set CDP_PORT')
-}
-
 // Joins the case captures in scenario order; `timeline.json` holds each step's start in the joined capture.
 function assemble() {
   const durations = readJson('durations.json')
@@ -404,8 +212,8 @@ function subtitlesFilter(fontFamily) {
 }
 
 async function startCapture(out) {
-  const region = flags.window ? await windowClientArea(flags.window, true, readInnerSize) : flags.region
-  const { args, regionCrop } = captureInput(region)
+  const region = flags.window ? await windowClientArea(flags.window, true, innerSizeReader(flags.inner)) : flags.region
+  const { args, regionCrop } = captureInput(region, flags.cursor === true)
   // yuv420p needs an even width and height: libx264 refuses to open on an odd one.
   return spawn(FFMPEG, ['-y', ...args,
     '-vf', `${regionCrop}crop=trunc(iw/2)*2:trunc(ih/2)*2`, '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '18', '-pix_fmt', 'yuv420p', out], { stdio: ['pipe', 'ignore', 'pipe'] })
@@ -418,15 +226,16 @@ async function attach() {
   console.log(await attachVideo({ file, target: typeof flags.to === 'string' ? flags.to : undefined, body, settings: scenario, isDryRun: flags['dry-run'] === true }))
 }
 
-async function readInnerSize(title) {
-  return JSON.parse(await agentView(['eval', '--json', '--window', title, '[innerWidth, innerHeight]']))
+function innerSizeReader(value) {
+  const [width, height] = typeof value === 'string' ? value.split('x').map(Number) : []
+  return async () => (width > 0 && height > 0 ? [width, height] : undefined)
 }
 
 async function windowAction([action, ...args]) {
   const opt = optionReader(args)
   if (action === 'place') return placeWindows({ left: opt('--left'), right: opt('--right'), splitX: opt('--split-x'), waitSec: Number(opt('--wait') ?? 0) })
   if (action === 'pin') {
-    return pinWindow({ title: opt('--title') ?? fail('window pin: --title'), width: Number(opt('--width')), height: Number(opt('--height')), secondary: args.includes('--secondary') }, readInnerSize)
+    return pinWindow({ title: opt('--title') ?? fail('window pin: --title'), width: Number(opt('--width')), height: Number(opt('--height')), secondary: args.includes('--secondary') }, innerSizeReader(opt('--inner')))
   }
   fail(`window: unknown action ${action}; supported: place, pin`)
 }
@@ -437,8 +246,7 @@ function checkRequirements() {
     [Boolean(edgeTtsCommand()), 'edge-tts (pipx install edge-tts, or pip install edge-tts)'],
     ...platformRequirements(),
   ]
-  const optional = [[AGENT_VIEW !== undefined, 'agent-view (npm i -g @petukhovart/agent-view); without it fv.mjs drives the app over raw CDP']]
-  for (const [isMet, requirement] of [...required, ...optional]) console.log(`${isMet ? 'ok  ' : 'MISS'} ${requirement}`)
+  for (const [isMet, requirement] of required) console.log(`${isMet ? 'ok  ' : 'MISS'} ${requirement}`)
   process.exit(required.every(([isMet]) => isMet) ? 0 : 1)
 }
 

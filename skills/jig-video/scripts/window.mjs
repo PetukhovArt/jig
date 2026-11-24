@@ -23,21 +23,22 @@ export function platformRequirements() {
   ]
 }
 
-export function captureInput(region) {
+export function captureInput(region, drawMouse = false) {
+  const cursor = drawMouse ? '1' : '0'
   const [x, y, w, h] = region ? region.split(',').map(Number) : []
   if (OS === 'win32') {
     const area = region ? ['-offset_x', x, '-offset_y', y, '-video_size', `${w}x${h}`].map(String) : []
-    return { args: ['-f', 'gdigrab', '-framerate', '30', '-draw_mouse', '0', ...area, '-i', 'desktop'], regionCrop: '' }
+    return { args: ['-f', 'gdigrab', '-framerate', '30', '-draw_mouse', cursor, ...area, '-i', 'desktop'], regionCrop: '' }
   }
   if (OS === 'darwin') {
     return {
-      args: ['-f', 'avfoundation', '-framerate', '30', '-pixel_format', 'uyvy422', '-capture_cursor', '0', '-i', `${macMainScreenDevice()}:none`],
+      args: ['-f', 'avfoundation', '-framerate', '30', '-pixel_format', 'uyvy422', '-capture_cursor', cursor, '-i', `${macMainScreenDevice()}:none`],
       regionCrop: region ? `crop=${w}:${h}:${x}:${y},` : '',
     }
   }
   const display = process.env.DISPLAY ?? fail('no DISPLAY: recording on Linux needs an X11 session')
   const size = region ? `${w}x${h}` : x11DesktopSize()
-  return { args: ['-f', 'x11grab', '-framerate', '30', '-draw_mouse', '0', '-video_size', size, '-i', `${display}+${region ? `${x},${y}` : '0,0'}`], regionCrop: '' }
+  return { args: ['-f', 'x11grab', '-framerate', '30', '-draw_mouse', cursor, '-video_size', size, '-i', `${display}+${region ? `${x},${y}` : '0,0'}`], regionCrop: '' }
 }
 
 export async function windowClientArea(title, isTopmost, readInnerSize) {
@@ -45,7 +46,7 @@ export async function windowClientArea(title, isTopmost, readInnerSize) {
   if (OS === 'darwin') {
     const win = macWindow(title)
     if (isTopmost) macRaise(win)
-    const [, innerHeight] = await readInnerSize(title)
+    const innerHeight = (await readInnerSize(title))?.[1] ?? fail('capturing a window on macOS needs its inner size: pass --inner <innerWidth>x<innerHeight>, read from the app')
     const mainScreen = macScreens()[0]
     const clientTop = win.y + win.h - innerHeight
     return [win.x - mainScreen.x, clientTop - mainScreen.y, win.w, innerHeight].map((v) => Math.round(v * mainScreen.scale)).join(',')
@@ -85,7 +86,9 @@ export async function pinWindow({ title, width, height, secondary }, readInnerSi
   const area = workArea(secondary)
   if (OS === 'darwin') {
     setOuterFrame(macWindow(title), area.x, area.y, width, height)
-    const [innerWidth, innerHeight] = await readInnerSize(title)
+    const inner = await readInnerSize(title)
+    if (inner === undefined) return `pinned '${title}': outer ${width}x${height}; read the inner size from the app and run again with --inner <innerWidth>x<innerHeight> to correct for the title bar`
+    const [innerWidth, innerHeight] = inner
     const [titleBarW, titleBarH] = [width - innerWidth, height - innerHeight]
     setOuterFrame(macWindow(title), area.x, area.y, width + titleBarW, height + titleBarH)
   } else {

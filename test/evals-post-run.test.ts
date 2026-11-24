@@ -60,21 +60,21 @@ writeFileSync(out, JSON.stringify({ testResults: [{ name: 'src/app.test.ts', sta
 })
 
 describe('UI check step', () => {
-  const fakeAgentView = (verdicts: string[]) => {
+  const fakeDriver = (verdicts: string[]) => {
     const bin = join(root, 'bin')
     mkdirSync(bin)
     writeFileSync(join(root, 'verdicts.txt'), `${verdicts.join('\n')}\n`)
-    const script = join(bin, 'agent-view')
+    const script = join(bin, 'drive-app')
     writeFileSync(
       script,
       `#!/usr/bin/env bash
-echo "agent-view $*" >> "$FAKE_LOG"
-if [ "$1 $2" = "act replay" ]; then
+echo "drive-app $*" >> "$FAKE_LOG"
+if [ "$1" = "run" ]; then
   n=$(( $(cat "$FAKE_STATE" 2>/dev/null || echo 0) + 1 )); echo "$n" > "$FAKE_STATE"
   line=$(sed -n "\${n}p" "$FAKE_VERDICTS"); echo "$line"
   case "$line" in DONE*) exit 0 ;; STALE*) exit 3 ;; *) exit 1 ;; esac
 fi
-if [ "$1" = "screenshot" ]; then
+if [ "$1" = "shot" ]; then
   shot="$FAKE_TMP/shot-$RANDOM.png"; printf 'png' > "$shot"; echo "$shot"
 fi
 `,
@@ -85,8 +85,8 @@ fi
 
   const uiCase = (runDir: string): EvalCase => {
     const caseDir = join(root, 'case')
-    mkdirSync(join(caseDir, 'acts', 'flows'), { recursive: true })
-    writeFileSync(join(caseDir, 'acts', 'flows', 'use-case.json'), '{}')
+    mkdirSync(join(caseDir, 'fixtures', 'flows'), { recursive: true })
+    writeFileSync(join(caseDir, 'fixtures', 'flows', 'use-case.json'), '{}')
     writeFileSync(join(runDir, 'src', 'app.ts'), 'export const port = Number(process.env.PORT)\n')
     writeFileSync(join(caseDir, 'local.patch'), git(runDir, 'diff').stdout)
     git(runDir, 'checkout', '--', '.')
@@ -96,21 +96,24 @@ fi
       name: 'c',
       dir: caseDir,
       ui: {
-        start: 'grep -q process.env "$JIG_RUN_DIR/src/app.ts" && echo "start $JIG_UI_REPLAY" >> "$FAKE_LOG"',
+        start: 'grep -q process.env "$JIG_RUN_DIR/src/app.ts" && echo "start $JIG_UI_ID $JIG_UI_SCENARIO" >> "$FAKE_LOG"',
         stop: 'echo stop >> "$FAKE_LOG"',
         restore: 'echo restore >> "$FAKE_LOG"',
         reset: 'echo reset >> "$FAKE_LOG"',
-        replay: 'use-case',
+        id: 'use-case',
+        scenario: 'Open the list and filter it',
+        drive: 'drive-app run',
+        screenshot: 'drive-app shot',
         final_steps: ['paired'],
         patch: 'local.patch',
-        acts: ['acts/flows'],
+        files: [{ from: 'fixtures/flows', to: 'saved/flows' }],
         env,
       },
     }
   }
 
   it('retries an early failure once, keeps a final-check failure, then stops, restores and unpatches', async () => {
-    fakeAgentView(['STALE: step open: step 1/2 click testid=x — not on screen within 10s', 'FAIL: step paired — steps ran, until expr not met after 10s'])
+    fakeDriver(['STALE: step open: step 1/2 click testid=x — not on screen within 10s', 'FAIL: step paired — steps ran, until expr not met after 10s'])
     const runDir = project()
     const testCase = uiCase(runDir)
     const outDir = join(root, 'out')
@@ -123,18 +126,18 @@ fi
     expect(check.attempts.map((attempt) => attempt.outcome)).toEqual(['early', 'final'])
     expect(check.screenshots).toEqual(['ui/c-with-1/attempt-1.png', 'ui/c-with-1/attempt-2.png'])
     expect(existsSync(join(outDir, 'ui', 'c-with-1', 'attempt-2.png'))).toBe(true)
-    expect(existsSync(join(tempDir, 'act', '.agent-view', 'scripts', 'flows', 'use-case.json'))).toBe(true)
+    expect(existsSync(join(tempDir, 'act', 'saved', 'flows', 'use-case.json'))).toBe(true)
     expect(
       readFileSync(join(root, 'log.txt'), 'utf8')
         .trim()
         .split('\n')
         .map((line) => line.trim()),
-    ).toEqual(['start use-case', 'agent-view act replay use-case', 'agent-view screenshot --scale 0.5', 'reset', 'agent-view act replay use-case', 'agent-view screenshot --scale 0.5', 'stop', 'restore'])
+    ).toEqual(['start use-case Open the list and filter it', 'drive-app run', 'drive-app shot', 'reset', 'drive-app run', 'drive-app shot', 'stop', 'restore'])
     expect(readFileSync(join(runDir, 'src', 'app.ts'), 'utf8')).toBe('export const port = 1\n')
   })
 
   it('gives no verdict when the app does not start, and still stops it', async () => {
-    fakeAgentView(['DONE: replay use-case'])
+    fakeDriver(['DONE: replay use-case'])
     const runDir = project()
     const testCase = uiCase(runDir)
     testCase.ui = { ...testCase.ui!, start: 'exit 4' }
@@ -147,7 +150,7 @@ fi
   })
 
   it('keeps start and stop output, and puts patched files back byte for byte', async () => {
-    fakeAgentView(['DONE: replay use-case'])
+    fakeDriver(['DONE: replay use-case'])
     const runDir = project()
     const testCase = uiCase(runDir)
     testCase.ui = { ...testCase.ui!, start: `${testCase.ui!.start} && echo logged in`, stop: 'echo fixture deleted' }

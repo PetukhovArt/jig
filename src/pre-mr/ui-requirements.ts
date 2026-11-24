@@ -20,6 +20,7 @@ export interface UiRequirement {
 }
 
 export const mockupRule = (n: number): string => `ui-mockup:${n}`
+export const attachRule = (n: number): string => `ui-reference:${n}`
 
 export const scopeMessage = (value: UiScope, why: string): string => `${value}: ${why}`
 
@@ -34,6 +35,7 @@ export const uiRequirements = (root: string, config: JigConfig): UiRequirement[]
   const needed: UiRequirement[] = [{ rule: 'ui-reference', hint: 'jig ui reference add "<source>" or jig ui reference none "<reason>"', declaration: true }]
   if (Object.keys(ui.components?.map ?? {}).length > 0) needed.push({ rule: 'ui-reuse', hint: 'jig ui reuse', declaration: false })
   for (const entry of readReferences(root)?.entries ?? []) {
+    needed.push({ rule: attachRule(entry.n), hint: `jig ui reference attach ${entry.n} --tree <json> --image <png> (flow ui step 3), or --none "<why>" for a text spec`, declaration: true })
     if (entry.tree !== undefined) needed.push({ rule: mockupRule(entry.n), hint: `jig ui mockup ${entry.n}`, declaration: false })
   }
   if (buildMatrix(ui).combos.length > 0) {

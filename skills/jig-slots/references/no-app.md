@@ -1,6 +1,6 @@
 # One worktree, no running app
 
-A slot is a worktree that reserves a numeric port and CDP offset, so a dev server or an `agent-view` verify can run without colliding with parallel work. Tests, a refactoring or an analysis that never start the app need no ports: a plain worktree is enough.
+A slot is a worktree that reserves a numeric port offset, so a dev server or a UI check can run without colliding with parallel work. Tests, a refactoring or an analysis that never start the app need no ports: a plain worktree is enough.
 
 - `git worktree add <dir> <branch>` for an existing branch, `git worktree add <dir> -b <branch>` for a new one (base it off the branch the user names).
 - Or the agent's native mechanism: `isolation: worktree` on a subagent, a background session, or `claude --worktree <name>`. These land in `.claude/worktrees/`, with `cleanupPeriodDays` auto-sweep and `.worktreeinclude` for gitignored files. No port math needed there. Read `native-worktrees.md` before such a worktree starts a dev server.

@@ -1,5 +1,5 @@
 import { spawn, spawnSync } from 'node:child_process'
-import { copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { basename, dirname, extname, isAbsolute, join, relative, resolve } from 'node:path'
@@ -357,7 +357,7 @@ Answer with exactly PASS or FAIL on the first line, then one or two sentences of
 
 const focusLabel = (focus) => {
   if (typeof focus === 'object') return `file ${focus.path}`
-  if (focus === 'ui') return 'act replay of the use case in the app built from the run, screenshots after each attempt attached in order'
+  if (focus === 'ui') return 'the UI scenario driven in the app built from the run, screenshots after each attempt attached in order'
   return focus === 'files' ? 'git diff of the run vs the base commit, new files included' : 'final assistant message'
 }
 
@@ -481,19 +481,6 @@ const claimPort = async () => {
   }
 }
 
-const AGENT_VIEW_CONFIG = 'agent-view.config.json'
-
-const ownCdpPort = async (runDir) => {
-  const configPath = join(runDir, AGENT_VIEW_CONFIG)
-  if (!existsSync(configPath)) return undefined
-  const port = await claimPort()
-  const config = JSON.parse(readFileSync(configPath, 'utf8'))
-  writeFileSync(configPath, `${JSON.stringify({ ...config, port }, null, 2)}\n`)
-  git(runDir, ['add', AGENT_VIEW_CONFIG])
-  git(runDir, ['-c', 'user.email=eval@jig', '-c', 'user.name=eval', 'commit', '-qm', `eval: CDP port ${port}`])
-  return port
-}
-
 const baseProjects = new Map()
 
 const baseProjectOf = (testCase) => {
@@ -508,12 +495,12 @@ const baseProjectOf = (testCase) => {
 const runAgent = async (testCase, arm, index, options, outDir, runDir, tempDir, record) => {
   await scaffoldInto(testCase, runDir)
   if (testCase.baseLink) writeFileSync(join(runDir, testCase.baseLink), `${await baseProjectOf(testCase)}\n`)
-  record.cdpPort = await ownCdpPort(runDir)
+  record.appPort = await claimPort()
   const base = git(runDir, ['rev-parse', 'HEAD']).stdout.trim()
   const tracePath = join(outDir, 'traces', `${testCase.name}-${arm}-${index + 1}.jsonl`)
   const agent = await runClaude(agentArgs(testCase, arm, options), {
     cwd: runDir,
-    env: { ...isolatedEnv(), TMPDIR: tempDir, TEMP: tempDir, TMP: tempDir },
+    env: { ...isolatedEnv(), JIG_APP_PORT: String(record.appPort), TMPDIR: tempDir, TEMP: tempDir, TMP: tempDir },
     input: testCase.prompt,
     timeoutMs: testCase.timeoutSeconds * 1000,
     onStdoutLine: trackUtilization,
@@ -581,16 +568,19 @@ const withApp = (task) => {
 
 const parseEnv = (text) => Object.fromEntries([...String(text ?? '').matchAll(/(\w+)=(?:"([^"]*)"|'([^']*)'|(\S*))/g)].map(([, key, double, single, bare]) => [key, double ?? single ?? bare]))
 
-const copyActs = (testCase, actDir) => {
-  const scripts = join(actDir, '.agent-view', 'scripts')
-  const { store, store_sections: storeSections = [], acts = [] } = testCase.ui
-  for (const section of storeSections) cpSync(join(store, section), join(scripts, section), { recursive: true })
-  for (const section of acts) cpSync(join(testCase.dir, section), join(scripts, basename(section)), { recursive: true })
+const copyFiles = (testCase, actDir) => {
+  for (const { from, to } of testCase.ui.files ?? []) cpSync(resolve(testCase.dir, from), resolve(actDir, to), { recursive: true })
+}
+
+const scenarioText = (testCase) => {
+  const scenario = testCase.ui.scenario ?? testCase.ui.replay ?? ''
+  const file = resolve(testCase.dir, scenario)
+  return scenario !== '' && existsSync(file) && statSync(file).isFile() ? readFileSync(file, 'utf8') : scenario
 }
 
 const uiEvidence = (check) =>
   [
-    `use case ${check.replay}: ${check.verdict}${check.error ? ` (${check.error})` : ''}`,
+    `scenario ${check.id}: ${check.verdict}${check.error ? ` (${check.error})` : ''}`,
     ...check.attempts.flatMap((attempt, index) => [`attempt ${index + 1}: ${attempt.outcome}, exit ${attempt.exitCode}, screenshot ${attempt.screenshot ?? 'none'}`, attempt.output]),
     'Only a failure at the final check is the app failing; an earlier failure was retried once.',
   ].join('\n')
@@ -608,7 +598,8 @@ const runUiCheck = async (testCase, runDir, tempDir, outDir, id) => {
   const actDir = join(tempDir, 'act')
   mkdirSync(shotsDir, { recursive: true })
   mkdirSync(actDir, { recursive: true })
-  copyActs(testCase, actDir)
+  copyFiles(testCase, actDir)
+  const scenarioId = ui.id ?? ui.replay ?? 'scenario'
   const env = {
     ...isolatedEnv(),
     ...parseEnv(ui.env),
@@ -616,12 +607,13 @@ const runUiCheck = async (testCase, runDir, tempDir, outDir, id) => {
     JIG_ACT_DIR: actDir,
     JIG_CASE_DIR: testCase.dir,
     JIG_EVALS_DIR: EVALS_DIR,
-    JIG_CDP_PORT: String(await claimPort()),
+    JIG_APP_PORT: String(await claimPort()),
     JIG_DEV_PORT: String(await claimPort()),
-    JIG_UI_REPLAY: ui.replay,
+    JIG_UI_ID: scenarioId,
+    JIG_UI_SCENARIO: scenarioText(testCase),
   }
   const shell = (command, { cwd = testCase.dir, timeoutMs = 600_000 } = {}) => run(BASH, ['-c', command], { cwd, env, timeoutMs })
-  const check = { replay: ui.replay, cdpPort: Number(env.JIG_CDP_PORT), devPort: Number(env.JIG_DEV_PORT), attempts: [], verdict: 'inconclusive', screenshots: [] }
+  const check = { id: scenarioId, appPort: Number(env.JIG_APP_PORT), devPort: Number(env.JIG_DEV_PORT), attempts: [], verdict: 'inconclusive', screenshots: [] }
   const patch = ui.patch ? resolve(testCase.dir, ui.patch) : undefined
   let originals = []
   try {
@@ -633,15 +625,16 @@ const runUiCheck = async (testCase, runDir, tempDir, outDir, id) => {
         throw new Error(`patch ${ui.patch} does not apply: ${cap(applied.stderr, 300)}`)
       }
     }
+    if (!ui.drive) throw new Error('ui_check.drive is not set: the runner names no tool; set the command that follows $JIG_UI_SCENARIO in the running app')
     const started = await shell(ui.start)
     check.start = { exitCode: started.code, output: cap(`${started.stdout}\n${started.stderr}`.trim(), 1000) }
     if (started.code !== 0) throw new Error(`start failed (${started.code}): ${cap(check.start.output, 500)}`)
     for (;;) {
-      const replay = await shell('agent-view act replay "$JIG_UI_REPLAY"', { cwd: actDir, timeoutMs: (ui.replay_timeout_seconds ?? 900) * 1000 })
-      const output = `${replay.stdout}\n${replay.stderr}`.trim()
-      const attempt = { outcome: classifyReplay({ code: replay.code, output }, { useCase: ui.replay, finalSteps: ui.final_steps ?? [] }), exitCode: replay.code, output: cap(output, 2000) }
-      const shot = await shell('agent-view screenshot --scale 0.5', { cwd: actDir, timeoutMs: 60_000 })
-      const shotPath = /^(.*\.(?:png|jpe?g|webp))\s*$/im.exec(shot.stdout)?.[1]?.trim()
+      const driven = await shell(ui.drive, { cwd: actDir, timeoutMs: (ui.drive_timeout_seconds ?? ui.replay_timeout_seconds ?? 900) * 1000 })
+      const output = `${driven.stdout}\n${driven.stderr}`.trim()
+      const attempt = { outcome: classifyReplay({ code: driven.code, output }, { useCase: scenarioId, finalSteps: ui.final_steps ?? [] }), exitCode: driven.code, output: cap(output, 2000) }
+      const shot = ui.screenshot ? await shell(ui.screenshot, { cwd: actDir, timeoutMs: 60_000 }) : undefined
+      const shotPath = shot && /^(.*\.(?:png|jpe?g|webp))\s*$/im.exec(shot.stdout)?.[1]?.trim()
       if (shotPath && existsSync(shotPath)) {
         const saved = join(shotsDir, `attempt-${check.attempts.length + 1}${extname(shotPath)}`)
         copyFileSync(shotPath, saved)

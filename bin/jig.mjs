@@ -2635,6 +2635,9 @@ var readSlotEnv = (validator, value, path2) => {
   const target = object["target"] === void 0 ? DEFAULT_PORT_TARGET : validator.string(object["target"], childPath(path2, "target"));
   return key === void 0 || target === void 0 ? void 0 : { key, target };
 };
+var DEPRECATED_SLOT_KEYS = {
+  cdp: '"slots.cdp" is ignored: a slot gives ports and environment only; move that port to a slots.ports entry'
+};
 var SLOT_KEYS = [
   "worktreesDir",
   "install",
@@ -2643,14 +2646,14 @@ var SLOT_KEYS = [
   "verifyRuntime",
   "linkedPackages",
   "ports",
-  "cdp",
   "slotEnv",
   "instance",
   "clearCache"
 ];
+var SLOT_ROOT_KEYS = [...SLOT_KEYS, ...Object.keys(DEPRECATED_SLOT_KEYS)];
 var readSlots = (validator, value) => {
   const path2 = "$.slots";
-  const object = validator.object(value, path2, SLOT_KEYS);
+  const object = validator.object(value, path2, SLOT_ROOT_KEYS);
   if (object === void 0 || !required(validator, object, path2, ["worktreesDir"])) return void 0;
   const at = (key) => childPath(path2, key);
   const slots = { worktreesDir: validator.string(object["worktreesDir"], at("worktreesDir")) ?? "" };
@@ -2661,7 +2664,6 @@ var readSlots = (validator, value) => {
     verifyRuntime: (raw) => validator.oneOf(raw, at("verifyRuntime"), VERIFY_RUNTIMES),
     linkedPackages: (raw) => validator.strings(raw, at("linkedPackages")),
     ports: (raw) => readPorts(validator, raw, at("ports")),
-    cdp: (raw) => readStep(validator, raw, at("cdp"), ["base", "step"]),
     slotEnv: (raw) => readSlotEnv(validator, raw, at("slotEnv")),
     instance: (raw) => validator.object(raw, at("instance"), void 0),
     clearCache: (raw) => validator.strings(raw, at("clearCache"))
@@ -2756,7 +2758,11 @@ var validateConfig = (value) => {
     ...reviewCycle === void 0 ? {} : { reviewCycle },
     ...ui2 === void 0 ? {} : { ui: ui2 }
   };
-  const deprecated = Object.entries(DEPRECATED_KEYS).flatMap(([key, note]) => Object.hasOwn(root, key) ? [note] : []);
+  const rawSlots = isObject(root["slots"]) ? root["slots"] : {};
+  const deprecated = [
+    ...Object.entries(DEPRECATED_KEYS).flatMap(([key, note]) => Object.hasOwn(root, key) ? [note] : []),
+    ...Object.entries(DEPRECATED_SLOT_KEYS).flatMap(([key, note]) => Object.hasOwn(rawSlots, key) ? [note] : [])
+  ];
   return { config, errors: validator.errors, deprecated };
 };
 var mergeChecks = (shared, local) => {
@@ -6516,7 +6522,7 @@ var REFERENCES_FILE = "references.json";
 var REFERENCE_IMAGE = "image.png";
 var REFERENCE_TREE = "tree.json";
 var MISSING_REFERENCES = `no references recorded for this branch: step 2 of flow ui lists the task's references (jig ui reference add "<source>") or records none (jig ui reference none "<reason>")`;
-var ENTRY_KEYS = ["n", "source", "covers", "image", "tree"];
+var ENTRY_KEYS = ["n", "source", "covers", "image", "tree", "unattached"];
 var FILE_KEYS = ["$schema", "version", "none", "entries"];
 var referencesFile = (root) => join31(existingUiBranchDir(root), REFERENCES_FILE);
 var referenceDir = (root, n) => join31(uiBranchDir(root), "references", String(n));
@@ -6529,8 +6535,9 @@ var readEntry = (validator, value, path2) => {
   const covers4 = text4("covers");
   const image = text4("image");
   const tree = text4("tree");
+  const unattached = text4("unattached");
   if (n === void 0 || source === void 0) return void 0;
-  return { n, source, ...covers4 === void 0 ? {} : { covers: covers4 }, ...image === void 0 ? {} : { image }, ...tree === void 0 ? {} : { tree } };
+  return { n, source, ...covers4 === void 0 ? {} : { covers: covers4 }, ...image === void 0 ? {} : { image }, ...tree === void 0 ? {} : { tree }, ...unattached === void 0 ? {} : { unattached } };
 };
 var parseReferences = (text4) => {
   let value;
@@ -6634,6 +6641,7 @@ var SCOPE_HINT = 'jig ui scope ui|none "<why>"';
 var MATRIX_APP_HINT = "jig ui prove, with ui.driver set in .jig/config.local.jsonc, or jig ui prove --collect after capturing every combination yourself";
 var MINUTES_PER_TARGET = 5;
 var mockupRule = (n) => `ui-mockup:${n}`;
+var attachRule = (n) => `ui-reference:${n}`;
 var scopeMessage = (value, why) => `${value}: ${why}`;
 var scopeOf = (record2) => {
   const found = /^(ui|none): ([\s\S]*)$/.exec(record2.message ?? "");
@@ -6645,6 +6653,7 @@ var uiRequirements = (root, config) => {
   const needed = [{ rule: "ui-reference", hint: 'jig ui reference add "<source>" or jig ui reference none "<reason>"', declaration: true }];
   if (Object.keys(ui2.components?.map ?? {}).length > 0) needed.push({ rule: "ui-reuse", hint: "jig ui reuse", declaration: false });
   for (const entry of readReferences(root)?.entries ?? []) {
+    needed.push({ rule: attachRule(entry.n), hint: `jig ui reference attach ${entry.n} --tree <json> --image <png> (flow ui step 3), or --none "<why>" for a text spec`, declaration: true });
     if (entry.tree !== void 0) needed.push({ rule: mockupRule(entry.n), hint: `jig ui mockup ${entry.n}`, declaration: false });
   }
   if (buildMatrix(ui2).combos.length > 0) {
@@ -10034,7 +10043,6 @@ var installSteps = (changed, install, lockfiles = LOCKFILES) => {
 
 // src/slot/slot.ts
 var SLOT_LOCK = "slot.lock";
-var AGENT_VIEW_CONFIG = "agent-view.config.json";
 var SLUG = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 var NO_VALUE = "none";
 var fail3 = (message, code) => {
@@ -10074,48 +10082,12 @@ var lowestFreeSlot = (slots) => {
 };
 var slotDirName = (repo, slot, slug2) => slug2 === void 0 ? `${repo}-s${slot}` : `${repo}-s${slot}-${slug2}`;
 var slotPorts = (config, slot) => Object.fromEntries(Object.entries(config.ports ?? {}).map(([key, port]) => [key, port.base + slot * port.step]));
-var slotCdpPort = (config, slot) => config.cdp === void 0 ? void 0 : config.cdp.base + slot * config.cdp.step;
 var setEnvValue = (text4, key, value) => {
   const eol = text4.includes("\r\n") ? "\r\n" : "\n";
   const line = new RegExp(`^([ \\t]*(?:export[ \\t]+)?)${escapeRegExp(key)}[ \\t]*=.*$`, "gm");
   if (line.test(text4)) return text4.replace(line, (_match, prefix) => `${prefix}${key}=${value}`);
   const separator = text4 === "" || text4.endsWith("\n") ? "" : eol;
   return `${text4}${separator}${key}=${value}${eol}`;
-};
-var LOCAL_HOSTS = /* @__PURE__ */ new Set(["localhost", "127.0.0.1", "[::1]", "0.0.0.0"]);
-var slotUrl = (url, ports, slot) => {
-  let parsed;
-  try {
-    parsed = new URL(url);
-  } catch {
-    return url;
-  }
-  if (!LOCAL_HOSTS.has(parsed.hostname) || parsed.port === "") return url;
-  const port = Object.values(ports).find((entry) => entry.base === Number(parsed.port));
-  if (port === void 0) return void 0;
-  parsed.port = String(port.base + slot * port.step);
-  return parsed.toString();
-};
-var agentViewConfig = (base, config, slot, cdpPort) => {
-  const result = { ...base, port: cdpPort };
-  if (typeof base["url"] === "string") {
-    const url = slotUrl(base["url"], config.ports ?? {}, slot);
-    if (url === void 0) {
-      delete result["url"];
-      process.stderr.write(`jig: agent-view url ${base["url"]} names a local port no slots.ports entry starts at: left out of the slot's ${AGENT_VIEW_CONFIG}
-`);
-    } else {
-      result["url"] = url;
-    }
-  }
-  const runtime = config.verifyRuntime ?? config.runtime;
-  if (runtime !== void 0 && runtime !== "none") {
-    result["runtime"] = runtime;
-  }
-  if (result["launch"] === void 0 && config.dev !== void 0) {
-    result["launch"] = config.dev;
-  }
-  return result;
 };
 var formatPorts = (ports) => {
   const entries = Object.entries(ports).map(([key, value]) => `${key}=${value}`);
@@ -10163,18 +10135,6 @@ var writePorts = (dir2, slots, slot) => {
   if (slots.slotEnv !== void 0) {
     writeEnv(dir2, slots.slotEnv.target, slots.slotEnv.key, slot);
   }
-};
-var readJsonObject = (path2) => {
-  if (!existsSync25(path2)) return {};
-  const value = parseJsonc(readFileSync40(path2, "utf8"));
-  const isObject7 = typeof value === "object" && value !== null && !Array.isArray(value);
-  return isObject7 ? value : {};
-};
-var writeAgentView = (mainRoot, dir2, slots, slot, cdpPort) => {
-  const own = join44(dir2, AGENT_VIEW_CONFIG);
-  const base = readJsonObject(existsSync25(own) ? own : join44(mainRoot, AGENT_VIEW_CONFIG));
-  writeLocalFile(dir2, AGENT_VIEW_CONFIG, `${JSON.stringify(agentViewConfig(base, slots, slot, cdpPort), null, 2)}
-`);
 };
 var branchExists = (cwd, branch) => git(["show-ref", "--verify", "--quiet", `refs/heads/${branch}`], cwd).ok;
 var worktreeAddArgs = (cwd, dir2, branch) => {
@@ -10233,10 +10193,6 @@ var slotNew = async (args) => {
 `);
   }
   writePorts(dir2, slots, slot);
-  const cdpPort = slotCdpPort(slots, slot);
-  if (cdpPort !== void 0) {
-    writeAgentView(context.mainRoot, dir2, slots, slot, cdpPort);
-  }
   for (const cache of slots.clearCache ?? []) {
     rmSync12(insideDir(dir2, cache), { recursive: true, force: true });
   }
@@ -10246,7 +10202,7 @@ var slotNew = async (args) => {
     const status = runInstall(slots.install, dir2);
     if (status !== 0) return fail3(`install failed (exit ${status}) in slot ${slot} ${toSlash(dir2)}`, 1);
   }
-  print(`slot ${slot} ${toSlash(dir2)} ports ${formatPorts(slotPorts(slots, slot))} cdp ${cdpPort ?? NO_VALUE}`);
+  print(`slot ${slot} ${toSlash(dir2)} ports ${formatPorts(slotPorts(slots, slot))}`);
   return 0;
 };
 var slotLs = (args) => {
@@ -10256,15 +10212,14 @@ var slotLs = (args) => {
     slot: worktree.slot,
     path: toSlash(worktree.path),
     branch: worktree.branch ?? null,
-    ports: context.slots === void 0 ? {} : slotPorts(context.slots, worktree.slot),
-    cdp: context.slots === void 0 ? null : slotCdpPort(context.slots, worktree.slot) ?? null
+    ports: context.slots === void 0 ? {} : slotPorts(context.slots, worktree.slot)
   }));
   if (values.json === true) {
     print(JSON.stringify(rows, null, 2));
     return 0;
   }
   for (const row of rows) {
-    print(`s${row.slot}  ${row.path}  ${row.branch ?? "(detached)"}  ports ${formatPorts(row.ports)}  cdp ${row.cdp ?? NO_VALUE}`);
+    print(`s${row.slot}  ${row.path}  ${row.branch ?? "(detached)"}  ports ${formatPorts(row.ports)}`);
   }
   return 0;
 };
@@ -10358,7 +10313,8 @@ var slotShow = (args) => {
     const status = runInstall(step.command, resolve19(worktree.path, step.dir));
     if (status !== 0) return fail3(`install failed (exit ${status}) in slot ${slot} ${toSlash(worktree.path)}`, 1);
   }
-  print(`slot ${slot} ${toSlash(worktree.path)} at ${(after ?? "").slice(0, 12)} ${ref}`);
+  const ports = context.slots === void 0 ? {} : slotPorts(context.slots, slot);
+  print(`slot ${slot} ${toSlash(worktree.path)} at ${(after ?? "").slice(0, 12)} ${ref} ports ${formatPorts(ports)}`);
   return 0;
 };
 var subcommands2 = /* @__PURE__ */ new Map([
@@ -11957,17 +11913,20 @@ var REFERENCE_USAGE = `usage: jig ui reference
        jig ui reference add "<source>" [--covers "<screen or state>"] [--fetch]
        jig ui reference none "<reason>"
        jig ui reference attach <n> [--image <png>] [--tree <json>] [--fetch]
+       jig ui reference attach <n> --none "<why no image or tree can be made>"
 
 add      list one reference of the task: its source exactly as the user gave it (a link, a path, a name) and the screen or state it covers
 none     the task has no reference: the user said so, answered so, or nobody can be asked (afk)
-attach   give reference <n> its jig-format files: a PNG and a node tree (schema/ui-tree.schema.json)
+attach   give reference <n> its jig-format files: a PNG and a node tree (schema/ui-tree.schema.json); jig pre-mr asks this for every listed reference
+--none   reference <n> has no visual form (a text spec): its criteria go to the reviewer
 --fetch  with ui.reference.fetch set in .jig/config.local.jsonc: jig runs it for the source and attaches {out}/image.png and {out}/tree.json
 no args  print the list`;
 var PNG_SIGNATURE = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
 var emptyReferences = () => ({ version: 1, entries: [] });
 var describeEntry = (entry) => {
   const files = [entry.image === void 0 ? void 0 : "image", entry.tree === void 0 ? void 0 : "tree"].filter((part) => part !== void 0);
-  return `${entry.n}  ${entry.source}${entry.covers === void 0 ? "" : `  covers: ${entry.covers}`}  [${files.length === 0 ? "no files attached" : files.join(", ")}]`;
+  const state = entry.unattached === void 0 ? files.length === 0 ? "no files attached" : files.join(", ") : `no files: ${entry.unattached}`;
+  return `${entry.n}  ${entry.source}${entry.covers === void 0 ? "" : `  covers: ${entry.covers}`}  [${state}]`;
 };
 var list = (root, ctx) => {
   const references = readReferences(root);
@@ -12043,19 +12002,20 @@ var attach = (args, root, ctx) => {
     args,
     allowPositionals: true,
     strict: true,
-    options: { image: { type: "string" }, tree: { type: "string" }, fetch: { type: "boolean" } }
+    options: { image: { type: "string" }, tree: { type: "string" }, fetch: { type: "boolean" }, none: { type: "string" } }
   });
   const n = Number(positionals[0]);
-  if (positionals.length !== 1 || !Number.isInteger(n) || values.image === void 0 && values.tree === void 0 && values.fetch !== true) throw new UsageError3(REFERENCE_USAGE);
+  const files = values.image !== void 0 || values.tree !== void 0 || values.fetch === true;
+  const reason = values.none?.trim();
+  if (positionals.length !== 1 || !Number.isInteger(n) || files === (reason !== void 0) || reason === "") throw new UsageError3(REFERENCE_USAGE);
   const references = readReferences(root);
   const entry = references?.entries.find((own) => own.n === n);
   if (references === void 0 || entry === void 0) throw new UsageError3(`no reference ${n}: list it first with jig ui reference add "<source>"`);
-  const fetched2 = values.fetch === true ? fetchInto(root, entry, ctx) : entry;
-  const next = attachChecked(root, fetched2, values.image === void 0 ? void 0 : resolve21(ctx.cwd, values.image), values.tree === void 0 ? void 0 : resolve21(ctx.cwd, values.tree));
+  const next = reason === void 0 ? attachChecked(root, values.fetch === true ? fetchInto(root, entry, ctx) : entry, values.image === void 0 ? void 0 : resolve21(ctx.cwd, values.image), values.tree === void 0 ? void 0 : resolve21(ctx.cwd, values.tree)) : { ...entry, unattached: reason };
   writeReferences(root, replaceEntry(references, next));
   ctx.io.out(`${describeEntry(next)}
 `);
-  return 0;
+  return recordPassed(root, attachRule(n), `jig ui reference attach ${n}: ${reason === void 0 ? "files attached" : `none: ${reason}`}`, ctx.io) ? 0 : EXIT_FINDINGS2;
 };
 var reference = (args, ctx) => {
   const [action, ...rest] = args;

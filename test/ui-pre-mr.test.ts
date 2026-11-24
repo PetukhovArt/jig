@@ -84,6 +84,9 @@ describe('jig pre-mr with a ui profile', () => {
 
     write('tree.json', TREE)
     expect(uiRun('reference', 'add', 'design-file', '--covers', 'the page')).toBe(0)
+    err = []
+    expect(run('main')).toBe(1)
+    expect(err.join('')).toContain('- ui-reference:1: not recorded. Run: jig ui reference attach 1')
     expect(uiRun('reference', 'attach', '1', '--tree', 'tree.json')).toBe(0)
     err = []
     expect(run('main')).toBe(1)

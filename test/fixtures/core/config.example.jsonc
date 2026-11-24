@@ -21,7 +21,6 @@
     "dev": "npm run dev",
     "runtime": "electron",
     "ports": { "VITE_SERVER_PORT": { "base": 3000, "step": 10, "target": ".env" } },
-    "cdp": { "base": 9900, "step": 1 },
     "clearCache": []
   },
   "worktree": {

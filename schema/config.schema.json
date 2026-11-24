@@ -67,12 +67,7 @@
             }
           }
         },
-        "cdp": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["base", "step"],
-          "properties": { "base": { "type": "integer", "minimum": 1, "maximum": 65535 }, "step": { "type": "integer", "minimum": 1 } }
-        },
+        "cdp": { "description": "Deprecated and ignored: a slot gives ports and environment only. Move the port to a ports entry." },
         "slotEnv": {
           "type": "object",
           "additionalProperties": false,

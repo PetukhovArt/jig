@@ -9,6 +9,7 @@ export interface ReferenceEntry {
   covers?: string
   image?: string
   tree?: string
+  unattached?: string
 }
 
 export interface References {
@@ -22,7 +23,7 @@ export const REFERENCE_IMAGE = 'image.png'
 export const REFERENCE_TREE = 'tree.json'
 export const MISSING_REFERENCES = 'no references recorded for this branch: step 2 of flow ui lists the task\'s references (jig ui reference add "<source>") or records none (jig ui reference none "<reason>")'
 
-const ENTRY_KEYS = ['n', 'source', 'covers', 'image', 'tree'] as const
+const ENTRY_KEYS = ['n', 'source', 'covers', 'image', 'tree', 'unattached'] as const
 const FILE_KEYS = ['$schema', 'version', 'none', 'entries'] as const
 
 export const referencesFile = (root: string): string => join(existingUiBranchDir(root), REFERENCES_FILE)
@@ -34,12 +35,13 @@ const readEntry = (validator: Validator, value: unknown, path: string): Referenc
   if (object === undefined || !required(validator, object, path, ['n', 'source'])) return undefined
   const n = validator.integer(object['n'], childPath(path, 'n'), 1)
   const source = validator.string(object['source'], childPath(path, 'source'))
-  const text = (key: 'covers' | 'image' | 'tree'): string | undefined => (object[key] === undefined ? undefined : validator.string(object[key], childPath(path, key)))
+  const text = (key: 'covers' | 'image' | 'tree' | 'unattached'): string | undefined => (object[key] === undefined ? undefined : validator.string(object[key], childPath(path, key)))
   const covers = text('covers')
   const image = text('image')
   const tree = text('tree')
+  const unattached = text('unattached')
   if (n === undefined || source === undefined) return undefined
-  return { n, source, ...(covers === undefined ? {} : { covers }), ...(image === undefined ? {} : { image }), ...(tree === undefined ? {} : { tree }) }
+  return { n, source, ...(covers === undefined ? {} : { covers }), ...(image === undefined ? {} : { image }), ...(tree === undefined ? {} : { tree }), ...(unattached === undefined ? {} : { unattached }) }
 }
 
 export const parseReferences = (text: string): { references?: References; errors: string[] } => {

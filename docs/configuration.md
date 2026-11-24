@@ -48,8 +48,7 @@ Slots need a `slots` section; `worktreesDir` is required. The `worktree` section
   "slots": {
     "worktreesDir": "..",
     "install": "npm ci",
-    "ports": { "VITE_PORT": { "base": 5173, "step": 10 } },
-    "cdp": { "base": 9222, "step": 1 },
+    "ports": { "VITE_PORT": { "base": 5173, "step": 10 }, "REMOTE_DEBUG_PORT": { "base": 9876, "step": 1 } },
     "slotEnv": { "key": "SLOT", "target": ".env" }
   },
   "worktree": { "seedExclude": ["coverage"], "depsPool": { "after": "npm run build -w packages/shared" } }
@@ -60,7 +59,7 @@ Slots need a `slots` section; `worktreesDir` is required. The `worktree` section
 
 A gitignored lock file (a project whose CI regenerates it) is an output of the install, not its input: the key covers every tracked `package.json` instead, a miss runs the resolving command (`npm install`, `yarn install`) instead of the frozen one, and each entry keeps the lock file it was installed with and writes it into the worktree on reuse. Such an entry keeps what the install resolved: a dist-tag that moved on the registry later reaches it only through `jig worktree deps <dir> --refresh` or another install, so commit the lock file when you can. `slots.install`, when set, is the install command in both cases, so for such a project make it a resolving one (`npm install --prefer-offline --no-audit --no-fund`). With `worktree.depsPool` the hooks also name each linked worktree that has no `node_modules` of its own ([hooks](hooks.md)).
 
-`slots.slotEnv` writes the slot number itself into an env file, for a dev script that derives its ports from it. A slot's `agent-view.config.json` takes the main checkout's `url` with a `ports` base moved to the slot's port ([slots](../skills/jig-slots/references/app-slots.md)).
+`slots.slotEnv` writes the slot number itself into an env file, for a dev script that derives its ports from it. A slot gives ports and environment only, and writes no config for any app control tool: the model points its own tool at the ports `jig slot new`, `slot ls` and `slot show` print. A port the app opens for such a tool is one more `ports` entry. `slots.cdp`, which earlier versions read, is ignored with a `jig doctor` warning: move it to a `ports` entry ([slots](../skills/jig-slots/references/app-slots.md)).
 
 ## UI profile
 

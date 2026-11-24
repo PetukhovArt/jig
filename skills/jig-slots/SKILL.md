@@ -1,6 +1,6 @@
 ---
 name: jig-slots
-description: "Give a task its own git worktree, and show finished branches in a slot: a worktree with a warm dev server on offset dev and CDP ports. Use when work must run in parallel with other agents or app instances, or a flow asks for a worktree or a slot."
+description: "Give a task its own git worktree, and show finished branches in a slot: a worktree with a warm dev server on offset ports. Use when work must run in parallel with other agents or app instances, or a flow asks for a worktree or a slot."
 ---
 
 # jig slots
@@ -25,6 +25,6 @@ Rules for every case:
 - `slot show` remembers who showed last and refuses a slot another session showed to in the last 2 hours (or that a plain `git checkout` moved). Your own session is never refused. Never pass `--force` to get past that: it breaks the other session's running work. Take another slot, ask the user, or `slot release <n>` when you are done with yours.
 - A fresh worktree has only tracked files: `worktree seed <dir>` copies the ignored files and links from the main checkout. `slot new` seeds by itself.
 - `slot new` prints the path, the slot number and the ports. Work only inside that path.
-- Verify against the instance of your slot (its CDP port), not a neighbour's.
+- Check against the app instance of your slot (its ports from `slot new`, `slot ls` or `slot show`), not a neighbour's: point your app control tool (`skills/jig/SKILL.md`) at them.
 - Tear down what you started: `slot rm <n>` stops nothing for you; stop your processes by their ports first.
 - `worktree sweep` sorts worktrees into buckets and deletes nothing. A bucket is advice: delete an item only after the user agrees to that item, with `worktree sweep --yes <path|slot>`.

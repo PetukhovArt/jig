@@ -58,11 +58,6 @@ export interface SlotEnvConfig {
   target: string
 }
 
-export interface CdpConfig {
-  base: number
-  step: number
-}
-
 export interface SlotsConfig {
   worktreesDir: string
   install?: string
@@ -71,7 +66,6 @@ export interface SlotsConfig {
   verifyRuntime?: (typeof VERIFY_RUNTIMES)[number]
   linkedPackages?: string[]
   ports?: Record<string, PortConfig>
-  cdp?: CdpConfig
   slotEnv?: SlotEnvConfig
   instance?: Record<string, unknown>
   clearCache?: string[]
@@ -244,6 +238,10 @@ const readSlotEnv = (validator: Validator, value: unknown, path: string): SlotEn
   return key === undefined || target === undefined ? undefined : { key, target }
 }
 
+const DEPRECATED_SLOT_KEYS: Readonly<Record<string, string>> = {
+  cdp: '"slots.cdp" is ignored: a slot gives ports and environment only; move that port to a slots.ports entry',
+}
+
 const SLOT_KEYS = [
   'worktreesDir',
   'install',
@@ -252,15 +250,15 @@ const SLOT_KEYS = [
   'verifyRuntime',
   'linkedPackages',
   'ports',
-  'cdp',
   'slotEnv',
   'instance',
   'clearCache',
 ] as const
+const SLOT_ROOT_KEYS: readonly string[] = [...SLOT_KEYS, ...Object.keys(DEPRECATED_SLOT_KEYS)]
 
 const readSlots = (validator: Validator, value: unknown): SlotsConfig | undefined => {
   const path = '$.slots'
-  const object = validator.object(value, path, SLOT_KEYS)
+  const object = validator.object(value, path, SLOT_ROOT_KEYS)
   if (object === undefined || !required(validator, object, path, ['worktreesDir'])) return undefined
   const at = (key: string): string => childPath(path, key)
   const slots: SlotsConfig = { worktreesDir: validator.string(object['worktreesDir'], at('worktreesDir')) ?? '' }
@@ -271,7 +269,6 @@ const readSlots = (validator: Validator, value: unknown): SlotsConfig | undefine
     verifyRuntime: (raw) => validator.oneOf(raw, at('verifyRuntime'), VERIFY_RUNTIMES),
     linkedPackages: (raw) => validator.strings(raw, at('linkedPackages')),
     ports: (raw) => readPorts(validator, raw, at('ports')),
-    cdp: (raw) => readStep(validator, raw, at('cdp'), ['base', 'step']),
     slotEnv: (raw) => readSlotEnv(validator, raw, at('slotEnv')),
     instance: (raw) => validator.object(raw, at('instance'), undefined),
     clearCache: (raw) => validator.strings(raw, at('clearCache')),
@@ -379,7 +376,11 @@ export const validateConfig = (value: unknown): { config: JigConfig; errors: str
     ...(reviewCycle === undefined ? {} : { reviewCycle }),
     ...(ui === undefined ? {} : { ui }),
   }
-  const deprecated = Object.entries(DEPRECATED_KEYS).flatMap(([key, note]) => (Object.hasOwn(root, key) ? [note] : []))
+  const rawSlots = isObject(root['slots']) ? root['slots'] : {}
+  const deprecated = [
+    ...Object.entries(DEPRECATED_KEYS).flatMap(([key, note]) => (Object.hasOwn(root, key) ? [note] : [])),
+    ...Object.entries(DEPRECATED_SLOT_KEYS).flatMap(([key, note]) => (Object.hasOwn(rawSlots, key) ? [note] : [])),
+  ]
   return { config, errors: validator.errors, deprecated }
 }
 

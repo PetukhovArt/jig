@@ -11,11 +11,12 @@ A receipt is a journal record bound to the state of the working tree. It counts 
 jig does not know which files are UI. Whether the task touches the UI is the model's judgment, recorded with `jig ui scope ui|none "<why>"` (receipt `ui-scope`, required of every branch with changes). With `none` no UI receipt is required, and the reason stays in the journal for the reviewer. With `ui` the receipts below are required.
 
 - `ui-reference` is written by `jig ui reference add` or `jig ui reference none` at step 2 of flow `ui`: the decision about references is made. Always required with `ui`. Without it the other `jig ui` commands do not run.
+- `ui-reference:<n>` is written by `jig ui reference attach <n>` at step 3: reference `<n>` got its PNG and node tree, or `--none "<why>"` says it has no visual form (a text spec). Required for every listed reference, so a design is never left without the tree that `jig ui mockup` checks.
 - `ui-reuse` is written by `jig ui reuse` when no raw element stands on the changed lines. Required when `ui.components.map` names at least one element.
 - `ui-mockup` is written by `jig ui mockup <n>` when it reports no blocking finding. Required for every reference in `.jig/ui/<branch>/references.json` that has a node tree.
 - `ui-matrix` is written by `jig ui prove` when every matrix combination has a result and no audit error stands. Required when proof on a running app is possible (`ui.driver`, or `--collect`).
 
-`jig skip-verify --level unit-test|type-check|none --why "<reason>"` waives only the receipts that need a running app (`ui-matrix`). `ui-reference`, `ui-reuse` and `ui-mockup` read the code and the references, so they stay required. The level goes to the journal.
+`jig skip-verify --level unit-test|type-check|none --why "<reason>"` waives only the receipts that need a running app (`ui-matrix`). `ui-reference`, `ui-reference:<n>`, `ui-reuse` and `ui-mockup` read the code and the references, so they stay required. The level goes to the journal.
 
 ## break-it
 
