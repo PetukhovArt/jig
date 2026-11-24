@@ -11910,7 +11910,7 @@ import { existsSync as existsSync29, readFileSync as readFileSync45 } from "node
 import { join as join49, resolve as resolve21 } from "node:path";
 import { parseArgs as parseArgs10 } from "node:util";
 var REFERENCE_USAGE = `usage: jig ui reference
-       jig ui reference add "<source>" [--covers "<screen or state>"] [--fetch]
+       jig ui reference add "<source>" [--covers "<screen or state>"] [--no-fetch]
        jig ui reference none "<reason>"
        jig ui reference attach <n> [--image <png>] [--tree <json>] [--fetch]
        jig ui reference attach <n> --none "<why no image or tree can be made>"
@@ -11919,7 +11919,7 @@ add      list one reference of the task: its source exactly as the user gave it 
 none     the task has no reference: the user said so, answered so, or nobody can be asked (afk)
 attach   give reference <n> its jig-format files: a PNG and a node tree (schema/ui-tree.schema.json); jig pre-mr asks this for every listed reference
 --none   reference <n> has no visual form (a text spec): its criteria go to the reviewer; never for a design, a screenshot or an export
---fetch  with ui.reference.fetch set in .jig/config.local.jsonc: jig runs it for the source and attaches {out}/image.png and {out}/tree.json
+fetch    with ui.reference.fetch set in .jig/config.local.jsonc, add runs it for the source and attaches {out}/image.png and {out}/tree.json (--no-fetch skips it); attach --fetch reruns it
 no args  print the list`;
 var PNG_SIGNATURE = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
 var emptyReferences = () => ({ version: 1, entries: [] });
@@ -11968,9 +11968,10 @@ ${parsed.errors.join("\n")}`);
   }
   return next;
 };
+var fetchConfigured = (root) => loadConfig(root).ui?.reference?.fetch !== void 0;
 var replaceEntry = (references, entry) => ({ ...references, entries: references.entries.map((own) => own.n === entry.n ? entry : own) });
 var add = (args, root, ctx) => {
-  const { values, positionals } = parseArgs10({ args, allowPositionals: true, strict: true, options: { covers: { type: "string" }, fetch: { type: "boolean" } } });
+  const { values, positionals } = parseArgs10({ args, allowPositionals: true, strict: true, options: { covers: { type: "string" }, fetch: { type: "boolean" }, "no-fetch": { type: "boolean" } } });
   const source = positionals.join(" ").trim();
   if (source === "") throw new UsageError3(REFERENCE_USAGE);
   const current = readReferences(root) ?? emptyReferences();
@@ -11982,11 +11983,18 @@ var add = (args, root, ctx) => {
   ctx.io.out(`reference ${n} listed
 `);
   if (!recordPassed(root, "ui-reference", `jig ui reference add: ${entries.length} references listed`, ctx.io)) return EXIT_FINDINGS2;
-  if (values.fetch !== true) return 0;
-  writeReferences(root, replaceEntry({ version: 1, entries }, fetchInto(root, entry, ctx)));
-  ctx.io.out(`reference ${n} fetched
+  if (values["no-fetch"] === true || values.fetch !== true && !fetchConfigured(root)) return 0;
+  try {
+    writeReferences(root, replaceEntry({ version: 1, entries }, fetchInto(root, entry, ctx)));
+  } catch (error) {
+    ctx.io.err(`jig: reference ${n} is listed but not attached: ${error instanceof Error ? error.message : String(error)}
+Fix the cause and run jig ui reference attach ${n} --fetch
 `);
-  return 0;
+    return EXIT_FINDINGS2;
+  }
+  ctx.io.out(`reference ${n} fetched: ${describeEntry(readReferences(root)?.entries.find((own) => own.n === n) ?? entry)}
+`);
+  return recordPassed(root, attachRule(n), `jig ui reference add ${n}: fetched`, ctx.io) ? 0 : EXIT_FINDINGS2;
 };
 var none = (args, root, ctx) => {
   const { positionals } = parseArgs10({ args, allowPositionals: true, strict: true, options: {} });
@@ -12011,6 +12019,7 @@ var attach = (args, root, ctx) => {
   const references = readReferences(root);
   const entry = references?.entries.find((own) => own.n === n);
   if (references === void 0 || entry === void 0) throw new UsageError3(`no reference ${n}: list it first with jig ui reference add "<source>"`);
+  if (values.tree !== void 0 && fetchConfigured(root)) throw new UsageError3(`ui.reference.fetch is set: the tree comes from it, run jig ui reference attach ${n} --fetch and fix the cause if it fails`);
   const next = reason === void 0 ? attachChecked(root, values.fetch === true ? fetchInto(root, entry, ctx) : entry, values.image === void 0 ? void 0 : resolve21(ctx.cwd, values.image), values.tree === void 0 ? void 0 : resolve21(ctx.cwd, values.tree)) : { ...entry, unattached: reason };
   writeReferences(root, replaceEntry(references, next));
   ctx.io.out(`${describeEntry(next)}
