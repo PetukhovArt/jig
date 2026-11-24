@@ -15,3 +15,5 @@ metadata:
 - An import cycle: invert the dependency (the lower module defines the interface, the higher one implements it) or extract the shared part.
 - Undoable or queued operations: Command objects.
 - A pattern is justified by a second variant that exists now. One variant is just code.
+
+All patterns, each with the problem it solves and when it is not worth it: `<root>/skills/jig/references/patterns/catalog.md`. Code for one: the language adapter next to it (`<root>/skills/jig/references/patterns/typescript.md`); a language without one uses the catalog alone.
