@@ -17,7 +17,7 @@ export interface AuditFinding {
 }
 
 export interface AuditOutcome {
-  kind: 'dom' | 'scene'
+  kind: 'layout' | 'scene'
   errors: number
   warnings: number
   scanned?: number
@@ -27,6 +27,7 @@ export interface AuditOutcome {
 }
 
 export interface ReferenceDiff {
+  n: number
   reference: string
   map: string
   differing: number
@@ -40,14 +41,15 @@ export interface StateResult {
   failure?: string
   shot?: string
   audits: AuditOutcome[]
-  diff?: ReferenceDiff
-  referenceNote?: string
+  diffs: ReferenceDiff[]
+  referenceNotes: string[]
 }
 
 export interface ComboResult {
   id: string
   combo: Combo
   tree: string
+  scaleFactor?: number
   failure?: string
   states: StateResult[]
 }

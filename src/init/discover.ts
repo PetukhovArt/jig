@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync, type Dirent } from 'node:fs'
 import { join, posix } from 'node:path'
 import { ALL_MARKERS, CATALOG, catalogMarkers, type CatalogEntry } from '../catalog'
-import type { JigConfig, ToolSetting } from '../core/config'
+import type { JigConfig } from '../core/config'
 import { git } from '../core/git'
 import { resolveBin } from '../core/proc'
 import { detectTypeCheck, type TypeCheckDetection } from './typecheck'
@@ -118,12 +118,8 @@ export const discover = (projectRoot: string): Discovery => {
   return { found, packages: [...declared].sort(), packageFiles, typeCheck: detectTypeCheck(projectRoot, files) }
 }
 
-const settingsOf = (config: Pick<JigConfig, 'tools' | 'proofs'>, kind: CatalogEntry['kind']): Readonly<Record<string, ToolSetting>> =>
-  kind === 'tool' ? config.tools : config.proofs
-
-export const isListed = (config: Pick<JigConfig, 'tools' | 'proofs'>, found: Pick<Found, 'name' | 'kind'>): boolean =>
-  Object.hasOwn(settingsOf(config, found.kind), found.name)
+export const isListed = (config: Pick<JigConfig, 'tools'>, found: Pick<Found, 'name'>): boolean => Object.hasOwn(config.tools, found.name)
 
 /** Catalog entries the project has and the config does not name, neither on nor `false`. */
-export const unlisted = (config: Pick<JigConfig, 'tools' | 'proofs'>, discovery: Discovery): Found[] =>
+export const unlisted = (config: Pick<JigConfig, 'tools'>, discovery: Discovery): Found[] =>
   discovery.found.filter((found) => found.status === 'ready' && !isListed(config, found))

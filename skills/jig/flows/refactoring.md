@@ -8,7 +8,7 @@ description: "change structure, keep behavior, prove equivalence."
 
 Atoms: reader-cost, smells, do-less, one-way, dead-code, automate-repeats, patterns, domain-model, effects, change-impact, small-steps, prove-shippable.
 
-1. Pin the behavior: an existing test, a characterization test, or an act replay that passes now.
+1. Pin the behavior: an existing test, a characterization test, or a use case replay that passes now.
 2. Name the missing structure: what makes the code hard to change (atoms reader-cost, domain-model, patterns).
 3. Name the target shape as types and module boundaries before moving code; crossing a function boundary → `flows/module-design.md`.
 4. Subtract first: delete dead code, redundant layers and stub references.

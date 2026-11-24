@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/PetukhovArt/jig/main/schema/ui-result.schema.json",
+  "title": "jig UI combination result",
+  "description": ".jig/ui/<branch>/<target>-<width>-<theme>[-<locale>]/result.json, read by jig ui prove --collect (and written by jig ui prove for a driver run). Without states the folder holds shot.png and audit.json of one state, screen.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "version": { "const": 1 },
+    "scaleFactor": { "type": "number", "exclusiveMinimum": 0, "default": 1, "description": "Device scale factor of the captures: a shot is width x scaleFactor pixels wide" },
+    "failure": { "type": "string", "description": "Why the combination could not be captured" },
+    "states": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1, "description": "The use case, as passed to jig ui prove --states" },
+          "shot": { "type": "string", "description": "PNG, relative to this folder" },
+          "audit": { "type": "string", "description": "schema/ui-audit.schema.json, relative to this folder" },
+          "failure": { "type": "string", "description": "Why the state could not be captured; replaces shot and audit" }
+        },
+        "anyOf": [{ "required": ["shot", "audit"] }, { "required": ["failure"] }]
+      }
+    }
+  }
+}

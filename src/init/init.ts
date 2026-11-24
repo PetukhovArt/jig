@@ -46,7 +46,7 @@ const readSharedConfig = (projectRoot: string): Json => {
 const proposedSetting = (found: Found): Json => (found.command === undefined ? {} : { command: found.command })
 
 /** The explicit config jig would write: the current one (with --update) plus every ready catalog entry it does not name. */
-export const buildProposal = (base: Json, discovery: Discovery, config: Pick<LoadedConfig, 'tools' | 'proofs'>, ui?: Json): Json => {
+export const buildProposal = (base: Json, discovery: Discovery, config: Pick<LoadedConfig, 'tools'>, ui?: Json): Json => {
   const proposal: Json = { $schema: SCHEMA_URL, ...base }
   if (ui !== undefined && !Object.hasOwn(base, 'ui')) proposal['ui'] = ui
   for (const found of discovery.found) {
@@ -57,11 +57,11 @@ export const buildProposal = (base: Json, discovery: Discovery, config: Pick<Loa
   return withTypesCheck(proposal, discovery, config)
 }
 
-const withTypesCheck = (proposal: Json, discovery: Discovery, config: Pick<LoadedConfig, 'tools' | 'proofs'>): Json => {
+const withTypesCheck = (proposal: Json, discovery: Discovery, config: Pick<LoadedConfig, 'tools'>): Json => {
   const check = typesCheck(discovery.typeCheck)
   const command = discovery.typeCheck.script?.command
   if (check === undefined || command === undefined) return proposal
-  if (!isListed(config, { name: 'tsc', kind: 'tool' })) proposal['tsc'] = false
+  if (!isListed(config, { name: 'tsc' })) proposal['tsc'] = false
   const checks = Array.isArray(proposal['checks']) ? proposal['checks'] : []
   const isCovered = checks.some(
     (entry: unknown) => isObject(entry) && (entry['name'] === TYPES_CHECK_NAME || (typeof entry['run'] === 'string' && entry['run'].startsWith(command))),
@@ -83,9 +83,6 @@ const questionsFor = (discovery: Discovery, boundaries: boolean, hasSlots: boole
   const byName = new Map(discovery.found.map((found) => [found.name, found]))
   const setupOf = (name: string): string => catalogEntry(name)?.setup.join(', then ') ?? ''
   const questions = hasSlots ? [] : ['App run command (slots.dev) and install command (slots.install), if the project runs an app.']
-  const agentView = byName.get('agent-view')
-  const agentViewState = agentView === undefined ? 'not installed' : agentView.status === 'ready' ? 'configured' : 'installed, no agent-view.config.json'
-  questions.push(`agent-view for UI proof (${agentViewState}): needed? Setup: ${setupOf('agent-view')}.`)
   const stratum = byName.get('stratum')
   const stratumState = stratum === undefined ? 'not installed' : stratum.status === 'ready' ? 'configured' : 'installed, no stratum.config.jsonc'
   const port = boundaries ? ` ${BOUNDARIES_PLUGIN} is present: port its rules to stratum, then "eslint": { "ignoreRules": ["${BOUNDARIES_IGNORE}"] }.` : ''
@@ -105,7 +102,7 @@ export const buildInitReport = (projectRoot: string, update: boolean): InitRepor
   const base = update ? readSharedConfig(projectRoot) : {}
   const boundaries = discovery.packages.includes(BOUNDARIES_PLUGIN)
   const drift = update ? configDrift(projectRoot, config, resolveTools(projectRoot, config).unresolved) : []
-  const listed = update ? config : { tools: {}, proofs: {} }
+  const listed = update ? config : { tools: {} }
   const ui = Object.hasOwn(base, 'ui') ? undefined : detectUi(projectRoot, discovery.packages)
   const questions = [...questionsFor(discovery, boundaries, config.slots !== undefined), ...(ui?.questions ?? [])]
   return { update, discovery, boundaries, drift, questions, uiNotes: ui?.notes ?? [], proposal: buildProposal(base, discovery, listed, ui?.proposal) }

@@ -67,13 +67,12 @@ export interface ResolvedTools {
   unresolved: string[]
 }
 
-/** Resolves the binary of every tool and proof the config turns on; nothing outside the config runs. */
-export const resolveTools = (projectRoot: string, config: Pick<JigConfig, 'tools' | 'proofs'>): ResolvedTools => {
+/** Resolves the binary of every tool the config turns on; nothing outside the config runs. */
+export const resolveTools = (projectRoot: string, config: Pick<JigConfig, 'tools'>): ResolvedTools => {
   const tools: PlanTools = {}
   const unresolved: string[] = []
-  const named = [...Object.keys(config.tools).map((name) => [name, config.tools] as const), ...Object.keys(config.proofs).map((name) => [name, config.proofs] as const)]
-  for (const [name, settings] of named) {
-    const setting = enabledSetting(settings, name)
+  for (const name of Object.keys(config.tools)) {
+    const setting = enabledSetting(config.tools, name)
     const entry = catalogEntry(name)
     const [primary] = entry?.binaries ?? []
     if (setting === undefined || entry === undefined || primary === undefined) continue
@@ -95,7 +94,7 @@ export const configDrift = (projectRoot: string, config: LoadedConfig, unresolve
   const found = unlisted(config, discover(projectRoot))
   if (config.files.length === 0) return found.length === 0 ? [] : [`no .jig/config.jsonc, so nothing runs; found ${found.map((item) => item.name).join(', ')}`]
   return [
-    ...found.map((item) => (item.kind === 'proof' ? `found ${item.name}, not in config: UI proof is off` : `found ${item.name}, not in config`)),
+    ...found.map((item) => `found ${item.name}, not in config`),
     ...unresolved.map((name) => `${name} is on in config, its binary is not installed`),
   ]
 }

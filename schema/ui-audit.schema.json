@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/PetukhovArt/jig/main/schema/ui-audit.schema.json",
+  "title": "jig UI audit",
+  "description": "What a capture of one state of one combination found: {out}/audit.json, written by ui.driver.capture or by the agent for jig ui prove --collect.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "audits"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "version": { "const": 1 },
+    "audits": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/audit" } }
+  },
+  "$defs": {
+    "audit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "findings"],
+      "properties": {
+        "kind": { "enum": ["layout", "scene"], "description": "layout: the page's elements; scene: a drawn scene" },
+        "scanned": { "type": "integer", "minimum": 0, "description": "How many elements were checked" },
+        "findings": { "type": "array", "items": { "$ref": "#/$defs/finding" } },
+        "note": { "type": "string" },
+        "shot": { "type": "string", "description": "An annotated shot, relative to the audit file" }
+      }
+    },
+    "finding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rule", "severity", "target", "rect", "detail"],
+      "properties": {
+        "rule": { "type": "string" },
+        "severity": { "enum": ["error", "warn"], "description": "An error fails jig ui prove" },
+        "target": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["selector"],
+          "properties": { "selector": { "type": "string" }, "testid": { "type": "string" }, "role": { "type": "string" }, "name": { "type": "string" }, "text": { "type": "string" } }
+        },
+        "rect": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["x", "y", "width", "height"],
+          "properties": { "x": { "type": "number" }, "y": { "type": "number" }, "width": { "type": "number" }, "height": { "type": "number" } }
+        },
+        "detail": { "type": "string" }
+      }
+    }
+  }
+}

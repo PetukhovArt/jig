@@ -24,7 +24,6 @@ At runtime jig reads only `.jig/config.jsonc` and `.jig/config.local.jsonc`; a t
 | `stratum` | `stratum.config.jsonc` | after each edit and at the end of a turn |
 | `tsc` (or `"command": "vue-tsc"`) | nearest `tsconfig.json` | end of turn, errors in the turn's files only |
 | `eslint` | `eslint.config.*` or `.eslintrc*` | end of turn, errors on changed lines only |
-| `agent-view` | `agent-view.config.json` | `jig pre-mr`: [UI proof](ui-proof.md) before the merge request |
 
 With `worktree.depsPool` in the config, the hooks name, once per agent, each linked worktree that has a lock file or `package.json` of npm or yarn at its root but no `node_modules` of its own (missing, or a link or junction into another checkout), with the `jig worktree seed` and `jig worktree deps` commands for it. After a shell command, only the linked worktrees that appeared while it ran are checked (a `git worktree list` before and after it); at session start and after an edit, only the linked worktree the agent's working directory is in. The hooks never install ([native worktrees](../skills/jig-slots/references/native-worktrees.md)).
 

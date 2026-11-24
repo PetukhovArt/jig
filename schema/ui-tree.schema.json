@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/PetukhovArt/jig/main/schema/ui-tree.schema.json",
+  "title": "jig UI reference tree",
+  "description": "A reference design as a node tree, attached with `jig ui reference attach <n> --tree <file>` and read by `jig ui mockup <n>`. Whatever tool exports the design writes this format.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "nodes"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "version": { "const": 1 },
+    "name": { "type": "string", "description": "The design's name" },
+    "nodes": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/node" }, "description": "Top nodes; ids are unique in the whole tree" }
+  },
+  "$defs": {
+    "color": { "type": "string", "description": "#RGB, #RRGGBB, #RRGGBBAA, rgb() or rgba()" },
+    "node": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "name": { "type": "string" },
+        "kind": { "enum": ["text", "shape", "group", "instance"], "description": "Default: text when the node has text, else group when it has children, else shape. instance: a use of a library component." },
+        "text": { "type": "string", "description": "The visible string of a text node" },
+        "fill": { "$ref": "#/$defs/color" },
+        "stroke": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["color"],
+          "properties": { "color": { "$ref": "#/$defs/color" }, "weight": { "type": "number" } }
+        },
+        "font": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": { "family": { "type": "string" }, "size": { "type": "number" }, "weight": { "type": "number" }, "lineHeight": { "type": "number" } }
+        },
+        "bounds": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["width", "height"],
+          "properties": { "x": { "type": "number" }, "y": { "type": "number" }, "width": { "type": "number" }, "height": { "type": "number" } }
+        },
+        "radius": { "type": "number" },
+        "opacity": { "type": "number" },
+        "children": { "type": "array", "items": { "$ref": "#/$defs/node" } }
+      }
+    }
+  }
+}

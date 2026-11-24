@@ -31,7 +31,7 @@ The core doesn't care which agent, language or framework you use: it deals in ev
 
 - **Deterministic checks.** If code can decide something, code decides it: the gates, the review plan, whether a merge request may go, which merge requests need review. Same input, same answer. The model only gets the questions no tool can answer.
 - **Architecture.** [stratum](https://github.com/PetukhovArt/stratum) checks module layers and boundaries on every edit, and the `module-design` flow sketches two designs before writing either.
-- **Verification.** Types and lint every turn, the UI proven in the running app through [agent-view](https://github.com/PetukhovArt/agent-view), review findings confirmed by a second model.
+- **Verification.** Types and lint every turn, the UI checked against its reference and proven in the running app, review findings confirmed by a second model.
 - **Extensibility.** Other languages plug in through your own `checks`, other agents through an adapter, your team's review process through a [process adapter](docs/review-cycle.md#process-adapter).
 
 | | works today | needs an extension |
@@ -105,7 +105,7 @@ It repeats the task back with a done check, picks a flow and puts the flow's ste
 | [refactoring](skills/jig/flows/refactoring.md) | change structure, keep behavior, prove equivalence. |
 | [session-pause](skills/jig/flows/session-pause.md) | stop cleanly with a resume point. |
 | [session-resume](skills/jig/flows/session-resume.md) | resume work a previous session left. |
-| [ui](skills/jig/flows/ui.md) | build or change UI against a reference (Figma, an image, an existing implementation, a spec) or the project's own tokens and components, then prove it on every target, width and theme. |
+| [ui](skills/jig/flows/ui.md) | build or change the UI part of a task against a reference (a design, an image, an existing implementation, a spec) or the project's own design system, then prove it on every target, width and theme. |
 
 </details>
 
@@ -134,7 +134,7 @@ The model can start four of them on its own, because a flow or a schedule needs 
 | [`/jig`](skills/jig/SKILL.md) | you | Run a task through a jig flow: pick the flow, track its steps, prove the result. |
 | [`/jig-explain`](skills/jig-explain/SKILL.md) | you | Explain the current topic visually: pseudocode, call trees, file trees, diagrams. |
 | [`/jig-grill`](skills/jig-grill/SKILL.md) | you | Interview the user about a plan, a decision or an idea, walking its decision tree one question at a time until nothing is silently assumed. |
-| [`/jig-init`](skills/jig-init/SKILL.md) | you | Set jig up for this project, or settle it after the project changed: discover tools by the jig catalog, ask the user only what code cannot know, write an explicit .jig/config.jsonc, set up agent-view and stratum with their own commands, then run jig doctor. |
+| [`/jig-init`](skills/jig-init/SKILL.md) | you | Set jig up for this project, or settle it after the project changed: discover tools by the jig catalog, ask the user only what code cannot know, write an explicit .jig/config.jsonc, set up the tools the user chose with their own commands, propose the personal UI driver commands, then run jig doctor. |
 | [`/jig-prune-comments`](skills/jig-prune-comments/SKILL.md) | you | Remove code comments the comments atom does not allow, across a merge request, a folder or the whole repository, with a swarm of cheap agents. |
 | [`/jig-review`](skills/jig-review/SKILL.md) | you or the model | Review a diff with finders, a separate judge and proven findings. Mode review: someone else's merge request, threads, --post, re-review. Mode pre-mr: your own diff before the merge request, a verdict in four buckets. |
 | [`/jig-review-cycle`](skills/jig-review-cycle/SKILL.md) | you or the model | Review every merge request awaiting your review in one pass: filter, review each in its own worktree with jig-review, post the threads, record the verdict through the team's process adapter. |
@@ -162,7 +162,7 @@ The model can start four of them on its own, because a flow or a schedule needs 
 
 **Rules live in hooks.** A rule that a tool can enforce goes in a hook. The model can't skip a hook, argue with it or forget it after compaction ([hooks and gates](docs/hooks.md)).
 
-**UI proof means the real app.** Passing tests don't show that a screen still works. [agent-view](https://github.com/PetukhovArt/agent-view) clicks through the app the way a user would: a replayed use case covers the behavior and a screenshot covers the look ([UI proof](docs/ui-proof.md)).
+**UI proof means the real app.** Passing tests don't show that a screen still works. The agent brings the app up and acts as a user would, with whatever app control tool the environment gives it (for example agent-view, a browser DevTools client or computer use). The UI part of a task is compared with its reference, and every target, width and theme of the project's matrix is captured and audited; `jig pre-mr` checks the receipts ([UI proof](docs/ui-proof.md)).
 
 **Architecture gets checked too.** Module layers and boundaries live in a [stratum](https://github.com/PetukhovArt/stratum) config and are checked on every edit, fast enough that nobody notices.
 

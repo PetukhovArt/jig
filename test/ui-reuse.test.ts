@@ -37,6 +37,7 @@ beforeEach(() => {
   gitIn('add', '-A')
   gitIn('commit', '-q', '-m', 'base')
   gitIn('checkout', '-q', '-b', 'feat')
+  ui(['reference', 'none', 'test'], { cwd: root, io: { out: () => undefined, err: () => undefined } })
 })
 
 afterEach(() => {

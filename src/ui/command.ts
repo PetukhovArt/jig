@@ -3,15 +3,13 @@ import type { UiConfig } from '../core/config-ui'
 import { gitToplevel } from '../core/git'
 import { resolveProjectRoot } from '../core/paths'
 import type { Io } from '../pre-mr/pre-mr'
-import type { FetchFn } from './prove/reference'
-import type { AgentViewRunner } from './prove/runner'
+import { MISSING_REFERENCES, readReferences, type References } from './references'
+import type { CommandRunner } from './run'
 
 export interface UiContext {
   cwd: string
   io: Io
-  agentView?: AgentViewRunner
-  fetch?: FetchFn
-  env?: NodeJS.ProcessEnv
+  run?: CommandRunner
 }
 
 export type UiSubcommand = (args: string[], ctx: UiContext) => number
@@ -33,4 +31,10 @@ export const requireUi = (root: string): UiConfig => {
   if (config.error !== undefined) throw new Error(`config: ${config.error}`)
   if (config.ui === undefined) throw new Error('no "ui" section in .jig/config.jsonc: run jig init and add the proposed ui key, or write one (docs/configuration.md)')
   return config.ui
+}
+
+export const requireReferences = (root: string): References => {
+  const references = readReferences(root)
+  if (references === undefined) throw new UsageError(MISSING_REFERENCES)
+  return references
 }

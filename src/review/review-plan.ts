@@ -4,7 +4,10 @@ import { tmpdir } from 'node:os'
 import { isAbsolute, join, relative, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 import { Validator, childPath } from '../core/config'
+import { loadConfig } from '../core/config'
 import { git, gitStatus, gitToplevel } from '../core/git'
+import { readJournal } from '../core/journal'
+import { scopeOf as uiScopeOf } from '../pre-mr/ui-requirements'
 import { createMatcher } from '../core/glob'
 import { parseJsonc } from '../core/jsonc'
 import { ensureJigDir, resolvePluginRoot, toSlash } from '../core/paths'
@@ -12,7 +15,6 @@ import { listWorktrees } from '../worktree/list'
 import { realPath } from '../core/proc'
 import { isLockfile } from '../catalog'
 import { fileSource, isTestFile } from '../catalog/languages'
-import { isUiFile } from '../catalog/proofs/agent-view'
 import { detectAgent, loadUserConfig, resolveTiers, type TierMap } from '../tiers/tiers'
 import { DIFF_PART_MAX_LINES, isUnreviewed, writeDiffFiles, type Audience, type DiffFiles } from './diff-files'
 import { estimateLine, estimateReview, finderReader, type Estimate } from './estimate'
@@ -584,6 +586,18 @@ const formulaOf = (plan: Plan, lines: number, policy: boolean): string => {
   return `ceil(${lines}/${LINES_PER_FINDER}) = ${Math.ceil(lines / LINES_PER_FINDER)}, max ${MAX_FINDERS} → N = ${plan.n}, at least 1; two finders each`
 }
 
+// The task is UI when the project has a ui section and the model has not recorded `jig ui scope none` on this branch.
+const isUiTask = (root: string, mergeBase: string): boolean => {
+  if (loadConfig(root).ui === undefined) return false
+  const commits = git(['rev-list', `${mergeBase}..HEAD`], root)
+  const onBranch = new Set([mergeBase, ...(commits.ok ? commits.stdout.split('\n').map((line) => line.trim()).filter(Boolean) : [])])
+  const latest = readJournal(root)
+    .filter((entry) => entry.kind === 'proof' && entry.rule === 'ui-scope' && entry.head !== undefined && onBranch.has(entry.head))
+    .sort((left, right) => right.ts.localeCompare(left.ts))
+    .find((entry) => uiScopeOf(entry) !== undefined)
+  return latest === undefined || uiScopeOf(latest)?.value === 'ui'
+}
+
 export const buildReport = (root: string, options: ReportOptions): ReviewPlanReport => {
   const base = resolveBase(root, options.base, 'review-plan', options.paths ?? [])
   const { stats, diffBase, paths, diffPaths, rereview } = scopeOf(root, base, options.paths ?? [], options.statePath)
@@ -595,7 +609,7 @@ export const buildReport = (root: string, options: ReportOptions): ReviewPlanRep
   const testPaths = project?.config.testPaths ?? []
   const shape: Shape = {
     tests: stats.some((stat) => stat.added > 0 && isTestStat(stat.path, root, testPaths)),
-    ui: stats.some((stat) => !isTestStat(stat.path, root, testPaths) && isUiFile(stat.path)),
+    ui: isUiTask(root, base.mergeBase),
     newSourceFiles: isEmpty ? 0 : addedNewSourceFiles(root, diffBase, diffPaths),
     spec: options.spec,
   }

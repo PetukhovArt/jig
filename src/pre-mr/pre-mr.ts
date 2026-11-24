@@ -3,9 +3,7 @@ import { copyFileSync, existsSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
-import { fileSource } from '../catalog/languages'
-import { AGENT_PROOF_KINDS, CHECKS, isUiProofKind, type AgentProofKind, type CheckDefinition, type ProofKind, type UiProofKind } from '../checks'
-import { enabledSetting, loadConfig } from '../core/config'
+import { loadConfig, type JigConfig } from '../core/config'
 import { git, gitStatus, gitToplevel } from '../core/git'
 import { appendJournal, readJournal, type JournalEntry, type JournalRecord } from '../core/journal'
 import { ensureJigDir } from '../core/paths'
@@ -13,7 +11,7 @@ import { MAIN_AGENT } from '../core/state'
 import { requireScopedChanges, resolveBase, splitPathspec, toRootPaths } from '../review/review-plan'
 import { logToActiveJournal } from '../task-status/task-status'
 import { listWorktrees } from '../worktree/list'
-import { uiRequirements, type UiRequirement } from './ui-requirements'
+import { breakItMinutes, scopeOf, SCOPE_HINT, uiRequirements } from './ui-requirements'
 
 export const VERIFY_LEVELS = ['unit-test', 'type-check', 'none'] as const
 
@@ -24,29 +22,22 @@ export interface Io {
   err: (text: string) => void
 }
 
-/** Runs a proof command through the shell with the terminal attached; returns its exit code. */
-export type Exec = (command: string, cwd: string) => number
-
 export interface PreMrContext {
   cwd: string
   io: Io
-  exec: Exec
 }
 
-export interface Requirement {
-  kind: AgentProofKind
-  files: string[]
+export interface Gap {
+  rule: string
+  hint: string
+  latest?: JournalRecord
 }
-
-export type Gap =
-  | { what: 'proof'; kind: ProofKind; files: string[]; latest?: JournalRecord; hint: string }
-  | { what: 'break-it' }
 
 export type Verdict =
-  | { type: 'no-ui' }
-  | { type: 'no-proof-tool'; files: string[] }
-  | { type: 'proven'; proofs: JournalRecord[]; breakIt?: JournalRecord }
-  | { type: 'skipped'; skip: JournalRecord; gaps: Gap[]; breakIt?: JournalRecord }
+  | { type: 'no-ui-section' }
+  | { type: 'no-ui'; reason: string }
+  | { type: 'proven'; proofs: JournalRecord[]; breakIt?: JournalRecord; breakItMinutes: number }
+  | { type: 'skipped'; skip: JournalRecord; gaps: Gap[]; breakIt?: JournalRecord; breakItMinutes: number }
   | { type: 'missing'; gaps: Gap[]; skippable: boolean }
 
 const EXIT_MISSING = 1
@@ -56,9 +47,9 @@ const MAX_BUFFER = 64 * 1024 * 1024
 
 const isBreakIt = (entry: JournalRecord): boolean => entry.kind === 'break-it' || entry.kind === 'bug-bash'
 
-const APPLESS_PROOFS: ReadonlySet<ProofKind> = new Set<ProofKind>(['ui-reuse', 'ui-mockup'])
+const WAIVED_BY_SKIP: ReadonlySet<string> = new Set<string>(['ui-matrix'])
 
-const PRE_MR_USAGE = 'usage: jig pre-mr [<base>] [-- <pathspec>...] |jig pre-mr proof "<command>" | jig pre-mr break-it "<result>"'
+const PRE_MR_USAGE = 'usage: jig pre-mr [<base>] [-- <pathspec>...] | jig pre-mr break-it "<result>"'
 const SKIP_USAGE = `usage: jig skip-verify --level ${VERIFY_LEVELS.join('|')} --why "<reason>"`
 
 class UsageError extends Error {}
@@ -110,34 +101,6 @@ const snapshot = (root: string): { head: string; tree: string } => {
   return { head, tree: workingTree(root) }
 }
 
-/** Drops directory prefixes and Windows launcher extensions, so `C:\bin\agent-view.cmd act replay` reads as `agent-view act replay`. */
-const normalizeCommand =(command: string): string =>
-  command
-    .replace(/["']/g, '')
-    .replace(/[^\s;&|]*[\\/](?=[^\s\\/;&|]+(?:\s|$))/g, '')
-    .replace(/\.(?:cmd|exe|bat|ps1)(?=\s|$)/gi, '')
-
-export const provenKinds = (command: string): { check: string; kinds: readonly ProofKind[] }[] => {
-  const normalized = normalizeCommand(command)
-  return CHECKS.map((check) => ({ check: check.name, kinds: check.proves(normalized) })).filter((entry) => entry.kinds.length > 0)
-}
-
-/** Proof tools the project names in its config; without one, pre-mr asks for no UI proof. */
-export const configuredChecks = (root: string): CheckDefinition[] => {
-  const { proofs } = loadConfig(root)
-  return CHECKS.filter((check) => enabledSetting(proofs, check.name) !== undefined)
-}
-
-export const requirements = (root: string, files: readonly string[], checks: readonly CheckDefinition[] = CHECKS): Requirement[] =>
-  AGENT_PROOF_KINDS.map((kind) => ({
-    kind,
-    files: files.filter((file) => checks.some((check) => check.requires(file, fileSource(root, file)).includes(kind))),
-  })).filter(
-    (requirement) => requirement.files.length > 0,
-  )
-
-const hintFor = (kind: AgentProofKind): string => CHECKS.map((check) => check.hints[kind]).find((hint) => hint !== undefined) ?? kind
-
 const record = (root: string, entry: Omit<JournalEntry, 'session' | 'agent'>): JournalRecord =>
   appendJournal(root, { session: CLI_SESSION, agent: MAIN_AGENT, ...entry })
 
@@ -186,49 +149,51 @@ export interface Evaluation {
   tree: string
   files: string[]
   records: JournalRecord[]
-  checks: readonly CheckDefinition[]
-  ui?: readonly UiRequirement[]
+  config: JigConfig
 }
 
-export const evaluate = ({ root, mergeBase, head, tree, files, records, checks, ui = [] }: Evaluation): Verdict => {
-  const agentNeeded = requirements(root, files, checks)
-  const needed: { kind: ProofKind; files: string[]; hint?: string }[] = [...agentNeeded, ...ui]
-  if (needed.length === 0) {
-    const unproven = requirements(root, files).flatMap((requirement) => requirement.files)
-    return unproven.length === 0 ? { type: 'no-ui' } : { type: 'no-proof-tool', files: [...new Set(unproven)] }
-  }
+const ruleOf = (entry: JournalRecord): string => entry.rule ?? ''
+
+export const evaluate = ({ root, mergeBase, head, tree, files, records, config }: Evaluation): Verdict => {
+  if (config.ui === undefined) return { type: 'no-ui-section' }
+  const commits = branchCommits(root, mergeBase, head)
+  commits.add(mergeBase)
+  const onBranch = (entry: JournalRecord): boolean => entry.head !== undefined && commits.has(entry.head)
+  const proofsOf = (rule: string): JournalRecord[] => records.filter((entry) => entry.kind === 'proof' && ruleOf(entry) === rule)
+  const scopeRecord = proofsOf('ui-scope').find((entry) => onBranch(entry) && scopeOf(entry) !== undefined)
+  if (scopeRecord === undefined) return { type: 'missing', gaps: [{ rule: 'ui-scope', hint: SCOPE_HINT }], skippable: false }
+  const scope = scopeOf(scopeRecord)
+  if (scope?.value === 'none') return { type: 'no-ui', reason: scope.reason }
   const diffs = new Map<string, Set<string> | undefined>()
   const editedSince = (entry: JournalRecord): Set<string> | undefined => {
     const from = entry.tree ?? ''
     if (!diffs.has(from)) diffs.set(from, from === '' ? undefined : changedPaths(root, from, tree))
     return diffs.get(from)
   }
-  const covers = (entry: JournalRecord, paths: readonly string[]): boolean => {
+  const isFresh = (entry: JournalRecord): boolean => {
     const edited = editedSince(entry)
-    return edited !== undefined && paths.every((path) => !edited.has(path))
+    return edited !== undefined && files.every((path) => !edited.has(path))
   }
   const gaps: Gap[] = []
-  const proofs: JournalRecord[] = []
-  for (const { kind, files: kindFiles, hint } of needed) {
-    const candidates = records.filter((entry) => entry.kind === 'proof' && (entry.rule ?? '').split(',').includes(kind))
-    const proof = candidates.find((entry) => covers(entry, kindFiles))
+  const proofs: JournalRecord[] = [scopeRecord]
+  for (const { rule, hint, declaration } of uiRequirements(root, config)) {
+    const candidates = proofsOf(rule)
+    const proof = candidates.find((entry) => (declaration ? onBranch(entry) : isFresh(entry)))
     if (proof !== undefined) {
       proofs.push(proof)
       continue
     }
     const latest = candidates[0]
-    gaps.push({ what: 'proof', kind, files: kindFiles, hint: hint ?? (isUiProofKind(kind) ? kind : hintFor(kind)), ...(latest === undefined ? {} : { latest }) })
+    gaps.push({ rule, hint, ...(latest === undefined ? {} : { latest }) })
   }
-  const commits = branchCommits(root, mergeBase, head)
-  const breakIt = records.find((entry) => isBreakIt(entry) && entry.head !== undefined && commits.has(entry.head))
-  const needsBreakIt = agentNeeded.length > 0
-  if (breakIt === undefined && needsBreakIt) gaps.push({ what: 'break-it' })
-  if (gaps.length === 0) return { type: 'proven', proofs, ...(breakIt === undefined || !needsBreakIt ? {} : { breakIt }) }
+  const breakIt = records.find((entry) => isBreakIt(entry) && onBranch(entry))
+  const advice = { ...(breakIt === undefined ? {} : { breakIt }), breakItMinutes: breakItMinutes(config) }
+  if (gaps.length === 0) return { type: 'proven', proofs, ...advice }
   const skip = records.find((entry) => entry.kind === 'skip-verify' && entry.tree !== undefined && editedSince(entry)?.size === 0)
-  if (skip === undefined) return { type: 'missing', gaps, skippable: true }
-  const appless = gaps.filter((gap) => gap.what === 'proof' && APPLESS_PROOFS.has(gap.kind))
-  if (appless.length > 0) return { type: 'missing', gaps: appless, skippable: false }
-  return { type: 'skipped', skip, gaps, ...(breakIt === undefined ? {} : { breakIt }) }
+  if (skip === undefined) return { type: 'missing', gaps, skippable: gaps.some((gap) => WAIVED_BY_SKIP.has(gap.rule)) }
+  const required = gaps.filter((gap) => !WAIVED_BY_SKIP.has(gap.rule))
+  if (required.length > 0) return { type: 'missing', gaps: required, skippable: false }
+  return { type: 'skipped', skip, gaps, ...advice }
 }
 
 const untrackedPaths = (root: string, paths: readonly string[]): string[] =>
@@ -236,50 +201,31 @@ const untrackedPaths = (root: string, paths: readonly string[]): string[] =>
 
 const levelLine = (skip: JournalRecord): string => `Verification level: ${skip.rule ?? 'none'} (${skip.message ?? 'no reason given'})`
 
-const fileList = (files: readonly string[]): string => {
-  const shown = files.slice(0, 5).join(', ')
-  return files.length > 5 ? `${shown} and ${files.length - 5} more` : shown
+const describeGap = (gap: Gap): string => {
+  const state = gap.latest === undefined ? 'not recorded' : `last receipt at ${gap.latest.ts} (\`${gap.latest.message ?? ''}\`) predates edits`
+  return `- ${gap.rule}: ${state}. Run: ${gap.hint}`
 }
 
-const describeGap = (gap: Gap): string => {
-  if (gap.what === 'break-it') return '- break-it: no record on this branch. Run flows/break-it.md on your diff, then: jig pre-mr break-it "<bugs found and fixed, what could not be tested>"'
-  const state = gap.latest === undefined ? 'never proven' : `last proof at ${gap.latest.ts} (\`${gap.latest.message ?? ''}\`) predates edits`
-  const command = isUiProofKind(gap.kind) ? gap.hint : `jig pre-mr proof "${gap.hint}"`
-  return `- ${gap.kind}: ${state} for ${fileList(gap.files)}. Run: ${command}`
-}
+const breakItLine = (verdict: { breakIt?: JournalRecord; breakItMinutes: number }): string =>
+  verdict.breakIt === undefined ? `Break-it: recommended (~${verdict.breakItMinutes} min), not recorded` : `Break-it: ${verdict.breakIt.message ?? ''}`
 
 export const formatVerdict = (verdict: Verdict, baseLine: string): string[] => {
   switch (verdict.type) {
+    case 'no-ui-section':
+      return [baseLine, 'UI: no ui section in .jig/config.jsonc, not checked', 'Break-it: UI not touched', 'Verification level: full']
     case 'no-ui':
-      return [baseLine, 'UI files: none', 'Break-it: UI not touched', 'Verification level: full']
-    case 'no-proof-tool':
-      return [
-        baseLine,
-        `UI files: ${fileList(verdict.files)}; no UI proof tool in .jig/config.jsonc, UI not proven`,
-        'Break-it: not run, no UI proof tool configured',
-        'Verification level: no UI proof tool configured',
-      ]
+      return [baseLine, `UI scope: none (${verdict.reason})`, 'Break-it: UI not touched', 'Verification level: full']
     case 'proven':
-      return [
-        baseLine,
-        ...[...new Set(verdict.proofs)].map((proof) => `proof: \`${proof.message ?? ''}\` at ${proof.ts}`),
-        verdict.breakIt === undefined ? 'Break-it: not run, no agent-view proof asked' : `Break-it: ${verdict.breakIt.message ?? ''}`,
-        'Verification level: full',
-      ]
+      return [baseLine, ...[...new Set(verdict.proofs)].map((proof) => `proof: \`${proof.message ?? ''}\` at ${proof.ts}`), breakItLine(verdict), 'Verification level: full']
     case 'skipped':
-      return [
-        baseLine,
-        `not proven: ${verdict.gaps.map((gap) => (gap.what === 'proof' ? gap.kind : gap.what)).join(', ')}`,
-        `Break-it: ${verdict.breakIt?.message ?? 'not run, verification skipped'}`,
-        levelLine(verdict.skip),
-      ]
+      return [baseLine, `not proven: ${verdict.gaps.map((gap) => gap.rule).join(', ')}`, breakItLine(verdict), levelLine(verdict.skip)]
     case 'missing':
       return [
         baseLine,
-        'pre-mr: the branch touches UI files and lacks:',
+        'pre-mr: the branch lacks UI receipts:',
         ...verdict.gaps.map(describeGap),
         verdict.skippable
-          ? `The proof cannot run here: jig skip-verify --level ${VERIFY_LEVELS.join('|')} --why "<reason>"`
+          ? `The proof on a running app cannot run here: jig skip-verify --level ${VERIFY_LEVELS.join('|')} --why "<reason>"`
           : 'These need no running app, so jig skip-verify does not waive them.',
       ]
   }
@@ -296,9 +242,7 @@ const check = (args: string[], ctx: PreMrContext): number => {
   const files = [...new Set([...base.stats.map((stat) => stat.path), ...untrackedPaths(root, paths)])]
   requireScopedChanges(paths, files.length, base.ref)
   const { head, tree } = snapshot(root)
-  const checks = configuredChecks(root)
-  const ui = uiRequirements(root, files, loadConfig(root), checks.length > 0)
-  const verdict = evaluate({ root, mergeBase: base.mergeBase, head, tree, files, records: recordsOf(root), checks, ui })
+  const verdict = evaluate({ root, mergeBase: base.mergeBase, head, tree, files, records: recordsOf(root), config: loadConfig(root) })
   const baseLine = `base: ${base.ref} (merge base ${base.mergeBase.slice(0, 8)}, from ${base.source})`
   const lines = formatVerdict(verdict, baseLine)
   if (verdict.type === 'missing') {
@@ -316,30 +260,7 @@ const textArgument = (args: string[], usage: string): string => {
   return text
 }
 
-const proof = (args: string[], ctx: PreMrContext): number => {
-  const command = textArgument(args, `usage: jig pre-mr proof "<command>", e.g. jig pre-mr proof "${hintFor('behavior')}"`)
-  const proven = provenKinds(command)
-  if (proven.length === 0) {
-    const hints = AGENT_PROOF_KINDS.map(hintFor).join('`, `')
-    throw new UsageError(`\`${command}\` proves nothing jig knows; proof commands: \`${hints}\``)
-  }
-  const root = requireRoot(ctx.cwd)
-  ensureJigDir(root)
-  const state = snapshot(root)
-  const code = ctx.exec(command, ctx.cwd)
-  if (code !== 0) {
-    ctx.io.err(`jig: \`${command}\` exited ${code}; no proof recorded\n`)
-    return code
-  }
-  for (const { check: name, kinds } of proven) {
-    const entry = record(root, { kind: 'proof', tool: name, rule: kinds.join(','), message: command, ...state })
-    mirror(root, `proof:${kinds.join(',')}`, { evidence: command, result: 'passed' })
-    ctx.io.out(`jig: recorded ${kinds.join(', ')} proof at ${entry.ts}\n`)
-  }
-  return 0
-}
-
-export const recordUiProof = (root: string, kind: UiProofKind, message: string): JournalRecord => {
+export const recordUiProof = (root: string, kind: string, message: string): JournalRecord => {
   ensureJigDir(root)
   const entry = record(root, { kind: 'proof', tool: 'ui', rule: kind, message, ...snapshot(root) })
   mirror(root, `proof:${kind}`, { evidence: message, result: 'passed' })
@@ -369,7 +290,6 @@ const withUsage = (run: () => number, io: Io): number => {
 export const preMr = (args: string[], ctx: PreMrContext): number =>
   withUsage(() => {
     const [sub, ...rest] = args
-    if (sub === 'proof') return proof(rest, ctx)
     if (sub === 'break-it') return breakIt(rest, ctx)
     return check(args, ctx)
   }, ctx.io)
@@ -387,20 +307,11 @@ export const skipVerify = (args: string[], ctx: Pick<PreMrContext, 'cwd' | 'io'>
     return 0
   }, ctx.io)
 
-const shellExec: Exec = (command, cwd) => {
-  const result = spawnSync(command, { cwd, shell: true, stdio: 'inherit', windowsHide: true })
-  if (result.error !== undefined) {
-    process.stderr.write(`jig: ${result.error.message}\n`)
-    return 1
-  }
-  return result.status ?? 1
-}
-
 const processIo: Io = {
   out: (text) => process.stdout.write(text),
   err: (text) => process.stderr.write(text),
 }
 
-export const runPreMr = (args: string[]): number => preMr(args, { cwd: process.cwd(), io: processIo, exec: shellExec })
+export const runPreMr = (args: string[]): number => preMr(args, { cwd: process.cwd(), io: processIo })
 
 export const runSkipVerify = (args: string[]): number => skipVerify(args, { cwd: process.cwd(), io: processIo })

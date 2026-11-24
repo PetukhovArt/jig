@@ -64,15 +64,16 @@ const auditTable = (audit: AuditOutcome): string => {
 }
 
 const stateBlock = (state: StateResult): string => {
-  const diff = state.diff
   const images = [
-    figure('reference', diff?.reference),
     figure('result', state.shot),
-    figure(diff === undefined ? 'diff map' : `diff map: ${percent(diff.ratio)} of pixels differ${diff.sizeMismatch ? ', sizes differ' : ''}`, diff?.map),
+    ...state.diffs.flatMap((diff) => [
+      figure(`reference ${diff.n}`, diff.reference),
+      figure(`diff map ${diff.n}: ${percent(diff.ratio)} of pixels differ${diff.sizeMismatch ? ', sizes differ' : ''}`, diff.map),
+    ]),
     ...state.audits.map((audit) => (audit.findings.length > 0 ? figure(`${audit.kind} audit shot`, audit.shot) : '')),
   ].join('')
   const failure = state.failure === undefined ? '' : `<p class="status-fail">${escapeHtml(state.failure)}</p>`
-  const note = state.referenceNote === undefined ? '' : `<p class="muted">${escapeHtml(state.referenceNote)}</p>`
+  const note = state.referenceNotes.map((entry) => `<p class="muted">${escapeHtml(entry)}</p>`).join('')
   return `<article><h3>${escapeHtml(state.state)}</h3>${failure}${note}<div class="shots">${images}</div>${state.audits.map(auditTable).join('')}</article>`
 }
 

@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from 'node:fs'
-import { OUTPUT_FORMATS, EXIT_FORMAT, PROOF_NAMES, TOOL_NAMES } from '../catalog'
+import { OUTPUT_FORMATS, EXIT_FORMAT, TOOL_NAMES } from '../catalog'
 import { parseJsonc } from './jsonc'
 import { jigPaths } from './paths'
 import { readUi, type UiConfig } from './config-ui'
@@ -98,7 +98,6 @@ export interface ReviewCycleConfig {
 export interface JigConfig {
   rules: Record<JigRuleId, Severity>
   tools: Record<string, ToolSetting>
-  proofs: Record<string, ToolSetting>
   checks: CustomCheck[]
   slots?: SlotsConfig
   worktree?: WorktreeConfig
@@ -109,6 +108,7 @@ export interface JigConfig {
 export interface LoadedConfig extends JigConfig {
   files: string[]
   error?: string
+  deprecated?: string[]
 }
 
 const TOOL_KEYS = ['level', 'command', 'ignoreRules', 'timeout'] as const
@@ -344,23 +344,27 @@ export const defaultRules =(): Record<JigRuleId, Severity> => {
   return rules
 }
 
-export const defaultConfig = (): JigConfig => ({ rules: defaultRules(), tools: {}, proofs: {}, checks: [] })
+export const defaultConfig = (): JigConfig => ({ rules: defaultRules(), tools: {}, checks: [] })
 
 const SECTION_KEYS = ['$schema', 'rules', 'checks', 'slots', 'worktree', 'reviewCycle', 'ui'] as const
 
-/** Root keys: the fixed sections plus every catalog name, so a tool outside the catalog is an unknown key. */
-export const ROOT_KEYS: readonly string[] = [...SECTION_KEYS, ...TOOL_NAMES, ...PROOF_NAMES]
+/** Root keys that earlier versions read and the config still carries: ignored, with a note, so an existing config stays valid. */
+const DEPRECATED_KEYS: Readonly<Record<string, string>> = {
+  'agent-view': '"agent-view" is ignored: jig no longer names a UI proof tool; UI proof is the ui section, jig ui prove with ui.driver or --collect',
+}
 
-export const validateConfig = (value: unknown): { config: JigConfig; errors: string[] } => {
+/** Root keys: the fixed sections plus every catalog name, so a tool outside the catalog is an unknown key. */
+export const ROOT_KEYS: readonly string[] = [...SECTION_KEYS, ...TOOL_NAMES, ...Object.keys(DEPRECATED_KEYS)]
+
+export const validateConfig = (value: unknown): { config: JigConfig; errors: string[]; deprecated: string[] } => {
   const validator = new Validator()
   const root = validator.object(value, '$', ROOT_KEYS)
-  if (root === undefined) return { config: defaultConfig(), errors: validator.errors }
+  if (root === undefined) return { config: defaultConfig(), errors: validator.errors, deprecated: [] }
   if (root['$schema'] !== undefined) {
     validator.string(root['$schema'], '$.$schema')
   }
   const rules = readRules(validator, root['rules'])
   const tools = readNamed(validator, root, TOOL_NAMES)
-  const proofs = readNamed(validator, root, PROOF_NAMES)
   const checks = readChecks(validator, root['checks'])
   const slots = root['slots'] === undefined ? undefined : readSlots(validator, root['slots'])
   const worktree = root['worktree'] === undefined ? undefined : readWorktree(validator, root['worktree'])
@@ -369,14 +373,14 @@ export const validateConfig = (value: unknown): { config: JigConfig; errors: str
   const config: JigConfig = {
     rules,
     tools,
-    proofs,
     checks,
     ...(slots === undefined ? {} : { slots }),
     ...(worktree === undefined ? {} : { worktree }),
     ...(reviewCycle === undefined ? {} : { reviewCycle }),
     ...(ui === undefined ? {} : { ui }),
   }
-  return { config, errors: validator.errors }
+  const deprecated = Object.entries(DEPRECATED_KEYS).flatMap(([key, note]) => (Object.hasOwn(root, key) ? [note] : []))
+  return { config, errors: validator.errors, deprecated }
 }
 
 const mergeChecks = (shared: unknown, local: unknown): unknown => {
@@ -415,9 +419,9 @@ const parseText = (text: string, label: string): { value: unknown } | { error: s
 }
 
 const loadValue = (value: unknown, files: string[]): LoadedConfig => {
-  const { config, errors } = validateConfig(value)
+  const { config, errors, deprecated } = validateConfig(value)
   if (errors.length > 0) return failed(files, errors.join('; '))
-  return { ...config, files }
+  return { ...config, files, ...(deprecated.length === 0 ? {} : { deprecated }) }
 }
 
 export const parseConfig = (text: string): LoadedConfig => {

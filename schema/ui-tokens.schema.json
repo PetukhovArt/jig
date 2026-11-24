@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/PetukhovArt/jig/main/schema/ui-tokens.schema.json",
+  "title": "jig UI design tokens",
+  "description": "jig's token table in the W3C Design Tokens (DTCG) JSON format: groups nest, a token is an object with $value. Only color tokens are read. The jig extension adds the theme values and the names by which the code refers to the token. A file listed in ui.tokens, or the stdout of ui.tokens.command.",
+  "type": "object",
+  "properties": { "$schema": { "type": "string" } },
+  "additionalProperties": { "$ref": "#/$defs/groupOrToken" },
+  "$defs": {
+    "groupOrToken": {
+      "oneOf": [{ "$ref": "#/$defs/token" }, { "type": "object", "description": "A group of tokens and groups", "additionalProperties": { "$ref": "#/$defs/groupOrToken" } }]
+    },
+    "token": {
+      "type": "object",
+      "required": ["$value"],
+      "properties": {
+        "$type": { "const": "color" },
+        "$value": {
+          "description": "A color string (#RGB, #RRGGBB, #RRGGBBAA, rgb(), rgba()), a DTCG color object with hex, or an alias {group.token}",
+          "oneOf": [{ "type": "string" }, { "type": "object", "required": ["hex"], "properties": { "hex": { "type": "string" } } }]
+        },
+        "$description": { "type": "string" },
+        "$extensions": {
+          "type": "object",
+          "properties": {
+            "jig": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "themes": { "type": "object", "additionalProperties": { "type": "string" }, "description": "Theme name (as in ui.themes) to the value in that theme; a color string or an alias" },
+                "refs": { "type": "array", "items": { "type": "string", "minLength": 1 }, "description": "The names by which code refers to the token (e.g. a variable name or a dotted key); jig finds them by a literal search" }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -38,8 +38,25 @@ export interface UiLocales {
 
 export interface UiComponents {
   dirs: string[]
-  files: string[]
   map: Record<string, string>
+}
+
+/** Where jig reads its design token table (DTCG JSON): files, and/or a command that prints the table on stdout. */
+export interface UiTokens {
+  files: string[]
+  command?: string
+}
+
+/** Command templates that drive the running app per combination; placeholders {width} {height} {pointer} {theme} {locale} {state} {out} {target}. */
+export interface UiDriver {
+  prepare?: string
+  capture: string
+  reset?: string
+}
+
+/** Fetches a reference from its source into jig's formats; placeholders {source} {out}. */
+export interface UiReferenceConfig {
+  fetch?: string
 }
 
 export interface UiConfig {
@@ -47,16 +64,22 @@ export interface UiConfig {
   themes: UiVariant[]
   locales?: UiLocales
   components?: UiComponents
-  tokens: string[]
+  tokens: UiTokens
+  driver?: UiDriver
+  reference?: UiReferenceConfig
 }
 
-export const DEFAULT_COMPONENT_FILES = '**/*.{tsx,jsx,vue,svelte,astro}'
+export const DRIVER_PLACEHOLDERS = ['width', 'height', 'pointer', 'theme', 'locale', 'state', 'out', 'target'] as const
+export const FETCH_PLACEHOLDERS = ['source', 'out'] as const
 
-const UI_KEYS = ['targets', 'themes', 'locales', 'components', 'tokens'] as const
+const UI_KEYS = ['targets', 'themes', 'locales', 'components', 'tokens', 'driver', 'reference'] as const
 const TARGET_KEYS = ['name', 'runtime', 'widths', 'height', 'minWidth', 'input', 'proof'] as const
 const VARIANT_KEYS = ['name', 'switch'] as const
 const LOCALES_KEYS = ['list', 'check'] as const
-const COMPONENTS_KEYS = ['dirs', 'files', 'map'] as const
+const COMPONENTS_KEYS = ['dirs', 'map', 'files'] as const
+const TOKENS_KEYS = ['files', 'command'] as const
+const DRIVER_KEYS = ['prepare', 'capture', 'reset'] as const
+const REFERENCE_KEYS = ['fetch'] as const
 const MAX_PIXELS = 100_000
 
 const readGlobs = (validator: Validator, value: unknown, path: string): string[] | undefined =>
@@ -176,9 +199,49 @@ const readComponents = (validator: Validator, value: unknown, path: string): UiC
   const object: Json | undefined = validator.object(value, path, COMPONENTS_KEYS)
   if (object === undefined) return undefined
   const dirs = object['dirs'] === undefined ? [] : (validator.strings(object['dirs'], childPath(path, 'dirs')) ?? [])
-  const files = object['files'] === undefined ? [DEFAULT_COMPONENT_FILES] : (readGlobs(validator, object['files'], childPath(path, 'files')) ?? [])
   const map = object['map'] === undefined ? {} : (readMap(validator, object['map'], childPath(path, 'map')) ?? {})
-  return { dirs, files, map }
+  return { dirs, map }
+}
+
+const readCommand = (validator: Validator, value: unknown, path: string, allowed: readonly string[]): string | undefined => {
+  const command = readName(validator, value, path)
+  if (command === undefined) return undefined
+  for (const match of command.matchAll(/\{(\w+)\}/g)) {
+    if (!allowed.includes(match[1] ?? '')) return validator.report(path, `unknown placeholder {${match[1]}}, expected ${allowed.map((name) => `{${name}}`).join(' ')}`)
+  }
+  return command
+}
+
+const readTokens = (validator: Validator, value: unknown, path: string): UiTokens | undefined => {
+  if (value === undefined) return { files: [] }
+  if (typeof value === 'string' || Array.isArray(value)) {
+    const files = readGlobs(validator, value, path)
+    return files === undefined ? undefined : { files }
+  }
+  const object = validator.object(value, path, TOKENS_KEYS)
+  if (object === undefined) return undefined
+  const files = object['files'] === undefined ? [] : (readGlobs(validator, object['files'], childPath(path, 'files')) ?? [])
+  const command = object['command'] === undefined ? undefined : readName(validator, object['command'], childPath(path, 'command'))
+  return { files, ...(command === undefined ? {} : { command }) }
+}
+
+const readDriver = (validator: Validator, value: unknown, path: string): UiDriver | undefined => {
+  const object = validator.object(value, path, DRIVER_KEYS)
+  if (object === undefined || !required(validator, object, path, ['capture'])) return undefined
+  const read = (key: (typeof DRIVER_KEYS)[number]): string | undefined =>
+    object[key] === undefined ? undefined : readCommand(validator, object[key], childPath(path, key), DRIVER_PLACEHOLDERS)
+  const capture = read('capture')
+  const prepare = read('prepare')
+  const reset = read('reset')
+  if (capture === undefined) return undefined
+  return { capture, ...(prepare === undefined ? {} : { prepare }), ...(reset === undefined ? {} : { reset }) }
+}
+
+const readReference = (validator: Validator, value: unknown, path: string): UiReferenceConfig | undefined => {
+  const object = validator.object(value, path, REFERENCE_KEYS)
+  if (object === undefined) return undefined
+  const fetch = object['fetch'] === undefined ? undefined : readCommand(validator, object['fetch'], childPath(path, 'fetch'), FETCH_PLACEHOLDERS)
+  return fetch === undefined ? {} : { fetch }
 }
 
 export const readUi = (validator: Validator, value: unknown): UiConfig | undefined => {
@@ -190,7 +253,17 @@ export const readUi = (validator: Validator, value: unknown): UiConfig | undefin
   const themes = readNamedList(validator, object['themes'], at('themes'), readVariant(validator, SWITCH_KINDS))
   const locales = object['locales'] === undefined ? undefined : readLocales(validator, object['locales'], at('locales'))
   const components = object['components'] === undefined ? undefined : readComponents(validator, object['components'], at('components'))
-  const tokens = object['tokens'] === undefined ? [] : (readGlobs(validator, object['tokens'], at('tokens')) ?? [])
+  const tokens = readTokens(validator, object['tokens'], at('tokens')) ?? { files: [] }
+  const driver = object['driver'] === undefined ? undefined : readDriver(validator, object['driver'], at('driver'))
+  const reference = object['reference'] === undefined ? undefined : readReference(validator, object['reference'], at('reference'))
   if (targets === undefined || themes === undefined) return undefined
-  return { targets, themes, ...(locales === undefined ? {} : { locales }), ...(components === undefined ? {} : { components }), tokens }
+  return {
+    targets,
+    themes,
+    ...(locales === undefined ? {} : { locales }),
+    ...(components === undefined ? {} : { components }),
+    tokens,
+    ...(driver === undefined ? {} : { driver }),
+    ...(reference === undefined ? {} : { reference }),
+  }
 }

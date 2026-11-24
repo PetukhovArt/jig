@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import type { UiComponents } from '../core/config-ui'
 import { gitStatus } from '../core/git'
@@ -7,6 +7,7 @@ import { exclusionOf } from '../review/review-plan'
 import { formatFinding, type Finding } from '../tools/finding'
 import { changedLines, isOnChangedLine, type ChangedLines } from '../tools/tool'
 import { resolveUiBase } from './base'
+import { readText } from './text'
 
 export const REUSE_RULE = 'ui/raw-element'
 
@@ -54,16 +55,17 @@ export const changedFiles = (root: string, tracked: readonly string[]): string[]
 
 export const checkReuse = (root: string, components: UiComponents, given: string | undefined): ReuseResult => {
   const base = resolveUiBase(root, given, 'ui reuse')
-  const isComponentFile = createMatcher(components.files)
   const isShared = createMatcher(components.dirs.map((dir) => `${dir.replace(/\\/g, '/').replace(/\/+$/, '')}/**`))
-  const files = changedFiles(root, base.tracked).filter((path) => isComponentFile(path) && !isShared(path) && exclusionOf(path, root) === undefined)
+  const files = changedFiles(root, base.tracked).filter((path) => !isShared(path) && exclusionOf(path, root) === undefined)
   const lines = changedLines(root, files, base.mergeBase)
   const elements = Object.keys(components.map)
   const findings: ReuseFinding[] = []
   for (const file of files) {
     const own = lines.get(file)
     if (own === undefined) continue
-    for (const { line, element } of rawElementsIn(readFileSync(join(root, file), 'utf8'), elements, own)) {
+    const text = readText(join(root, file))
+    if (text === undefined) continue
+    for (const { line, element } of rawElementsIn(text, elements, own)) {
       const use = components.map[element] ?? ''
       findings.push({ tool: 'ui', rule: REUSE_RULE, severity: 'error', file, line, message: `use ${use} instead of <${element}>`, element, use })
     }
@@ -74,5 +76,5 @@ export const checkReuse = (root: string, components: UiComponents, given: string
 export const formatReuse = (result: ReuseResult): string[] => {
   const lines = result.findings.map(formatFinding)
   const summary = result.findings.length === 0 ? 'no raw elements on changed lines' : `${result.findings.length} raw elements on changed lines`
-  return [...lines, `ui reuse: ${summary} (${result.files} component files read, base ${result.base})`]
+  return [...lines, `ui reuse: ${summary} (${result.files} files read, base ${result.base})`]
 }

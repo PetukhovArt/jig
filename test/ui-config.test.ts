@@ -27,7 +27,7 @@ const errorsOf = (value: unknown): string[] => validateConfig({ ui: value }).err
 describe('config ui', () => {
   it('reads the profile of the spec', () => {
     const { config, errors } = validateConfig({
-      ui: { targets: [desktop, phone, ios], themes, locales, components: { dirs: ['src/shared/ui'], map: { button: 'Button (@/shared/ui/buttons)' } }, tokens: ['src/tokens/**/*.css'] },
+      ui: { targets: [desktop, phone, ios], themes, locales, components: { dirs: ['src/shared/ui'], map: { button: 'Button (@/shared/ui/buttons)' } }, tokens: ['src/tokens.json'] },
     })
     expect(errors).toEqual([])
     expect(config.ui?.targets.map((target) => [target.name, target.proof])).toEqual([
@@ -35,7 +35,6 @@ describe('config ui', () => {
       ['phone', 'auto'],
       ['ios', 'manual'],
     ])
-    expect(config.ui?.components?.files).toEqual(['**/*.{tsx,jsx,vue,svelte,astro}'])
     expect(config.ui?.locales?.check).toBe('one')
   })
 

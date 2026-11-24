@@ -44,6 +44,11 @@ const unfilter = (filter: number, left: number, up: number, upLeft: number): num
   }
 }
 
+export const pngSize = (png: Buffer): { width: number; height: number } => {
+  if (png.length < 24 || !png.subarray(0, 8).equals(SIGNATURE)) throw new Error('not a PNG file')
+  return { width: png.readUInt32BE(16), height: png.readUInt32BE(20) }
+}
+
 export const decodePng = (png: Buffer): Image => {
   if (!png.subarray(0, 8).equals(SIGNATURE)) throw new Error('not a PNG file')
   let width = 0

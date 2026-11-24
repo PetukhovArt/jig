@@ -1,14 +1,13 @@
-import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { git } from '../../core/git'
-import type { Json } from '../../core/validator'
-import { isSourceFile, isTestFile, location, parseRoles, sizesInCode, type CodeColors, type CodeFile } from './code'
-import { hexOf, layoutOf, normText, textOf, textStyleOf, type FigmaExport, type FigmaNode } from './export'
+import { readText } from '../text'
+import { flattenTree, normText, type FlatNode, type Tree } from '../tree'
+import { isTestFile, location, parseRoles, sizesInCode, type CodeColors, type CodeFile } from './code'
 
 export interface MockupInput {
   root: string
-  exportName: string
-  exported: FigmaExport
+  referenceName: string
+  tree: Tree
   componentId: string
   code: readonly CodeFile[]
   colors: CodeColors
@@ -36,6 +35,8 @@ export interface MockupReport {
 const LIBRARY_UI_SHARE = 0.3
 const NEAR = 4
 const UI_KEY = /\b(label|title|text|placeholder|tooltip|caption|header|heading|description|hint)\s*[:=]\s*$/i
+const IDENTIFIER_LIKE = /^[a-z][\w.-]*$|^[A-Z0-9_]+$|^[A-Z][a-z0-9]+(?:[A-Z][a-z0-9]+)+$/
+const PATH_LIKE = /^[#.\/@]|^[\w.-]+\.[a-z]{2,4}$|^\S+\/\S+$/
 
 const FAIL_LINES = [
   'FAIL. The mockup is the source of truth for the whole component, not only for the part the task names.',
@@ -50,18 +51,17 @@ const PASS_LINE = 'PASS. EXTRA lines are for review only: a color of a state the
 
 const text = (value: unknown, fallback = ''): string => (value === undefined || value === null ? fallback : String(value))
 
-const subtreeOf = (nodes: readonly FigmaNode[], rootIndex: number): FigmaNode[] => {
+const subtreeOf = (nodes: readonly FlatNode[], rootIndex: number): FlatNode[] => {
   const root = nodes[rootIndex]
   if (root === undefined) return []
-  const out: FigmaNode[] = []
-  for (let at = rootIndex + 1; at < nodes.length && (nodes[at]?.depth ?? 0) > root.depth; at++) out.push(nodes[at] as FigmaNode)
+  const out: FlatNode[] = []
+  for (let at = rootIndex + 1; at < nodes.length && (nodes[at]?.depth ?? 0) > root.depth; at++) out.push(nodes[at] as FlatNode)
   return out
 }
 
-const sampleTexts = (list: readonly FigmaNode[], max = 4): string[] => [...new Set(list.map(textOf).filter(Boolean))].slice(0, max)
+const sampleTexts = (list: readonly FlatNode[], max = 4): string[] => [...new Set(list.map((node) => node.text).filter(Boolean))].slice(0, max)
 
-const libraryShare = (list: readonly FigmaNode[]): number =>
-  list.filter((node) => node.type === 'INSTANCE' || node.props['componentId'] || node.id.startsWith('I')).length / Math.max(1, list.length)
+const libraryShare = (list: readonly FlatNode[]): number => list.filter((node) => node.kind === 'instance').length / Math.max(1, list.length)
 
 const rgbOf = (hex: string): number[] => [1, 3, 5].map((at) => parseInt(hex.slice(at, at + 2), 16))
 
@@ -71,49 +71,50 @@ const isNear = (a: string, b: string): boolean => {
   return Math.max(Math.abs((r ?? 0) - (r2 ?? 0)), Math.abs((g ?? 0) - (g2 ?? 0)), Math.abs((bl ?? 0) - (b2 ?? 0))) <= NEAR
 }
 
-export const listTopNodes = (exported: FigmaExport): string[] => {
-  const { nodes } = exported
-  const lines = ['Top nodes of the frame (pass the component with --component <id>):']
-  for (const node of nodes.filter((entry) => entry.depth === 1)) {
+const topNodes = (nodes: readonly FlatNode[]): FlatNode[] => {
+  const roots = nodes.filter((node) => node.depth === 0)
+  const single = roots.length === 1 && nodes.length > 1
+  return nodes.filter((node) => node.depth === (single ? 1 : 0))
+}
+
+export const listTopNodes = (nodes: readonly FlatNode[]): string[] => {
+  const lines = ['Top nodes of the reference (pass the component with --component <id>):']
+  for (const node of topNodes(nodes)) {
     const own = subtreeOf(nodes, nodes.indexOf(node))
     const texts = sampleTexts(own, 3).map((sample) => JSON.stringify(sample)).join(', ')
     const kind = own.length >= 10 ? (libraryShare(own) > LIBRARY_UI_SHARE ? '  [app UI from library instances]' : '  [drawn shapes: a scene component?]') : ''
-    lines.push(`  ${node.id}  ${node.type}${node.name === '' ? '' : ` "${node.name}"`}  ${own.length} nodes  ${texts}${kind}`)
+    lines.push(`  ${node.id}  ${node.kind}${node.name === '' ? '' : ` "${node.name}"`}  ${own.length} nodes  ${texts}${kind}`)
   }
   return lines
 }
 
 interface Context {
   input: MockupInput
-  nodes: readonly FigmaNode[]
+  nodes: readonly FlatNode[]
   rootIndex: number
-  comp: readonly FigmaNode[]
-  variants: readonly FigmaNode[]
+  comp: readonly FlatNode[]
+  variants: readonly FlatNode[]
   counts: Counts
 }
 
-const describeNode = (input: MockupInput, node: FigmaNode): string => {
-  const dimensions = layoutOf(input.exported, node)['dimensions']
-  const d: Json = typeof dimensions === 'object' && dimensions !== null ? (dimensions as Json) : {}
-  const size = d['width'] != null || d['height'] != null ? ` ${text(d['width'], '?')}×${text(d['height'], '?')}` : ''
-  const sample = textOf(node)
-  return `${node.type}${node.name === '' ? '' : ` "${node.name}"`}${sample === '' ? size : ` ${JSON.stringify(sample)}`}`
+const describeNode = (node: FlatNode): string => {
+  const size = node.bounds === undefined ? '' : ` ${node.bounds.width}×${node.bounds.height}`
+  return `${node.kind}${node.name === '' ? '' : ` "${node.name}"`}${node.text === '' ? size : ` ${JSON.stringify(node.text)}`}`
 }
 
 const colorsSection = (ctx: Context): string[] => {
   const { input, comp, counts } = ctx
-  const { exported } = input
   const mockColors = new Map<string, { uses: number; roles: Map<string, number> }>()
-  const addColor = (hex: string, role: string, node: FigmaNode): void => {
+  const addColor = (hex: string, role: string, node: FlatNode): void => {
     const entry = mockColors.get(hex) ?? { uses: 0, roles: new Map<string, number>() }
     entry.uses++
-    const key = `${role} ${describeNode(input, node)}`
+    const key = `${role} ${describeNode(node)}`
     entry.roles.set(key, (entry.roles.get(key) ?? 0) + 1)
     mockColors.set(hex, entry)
   }
   for (const node of comp) {
-    for (const hex of hexOf(exported.resolveVar(node.props['fills']))) addColor(hex, node.type === 'TEXT' ? 'text' : 'fill', node)
-    for (const hex of hexOf(exported.resolveVar(node.props['strokes']))) addColor(hex, `stroke ${text(node.props['strokeWeight'])}`.trim(), node)
+    for (const hex of node.fill) addColor(hex, node.kind === 'text' ? 'text' : 'fill', node)
+    for (const hex of node.stroke.color) addColor(hex, `stroke ${text(node.stroke.weight)}`.trim(), node)
   }
   const out = ['', '## colors (mockup component → code)']
   const codeColors = input.colors.colors
@@ -149,23 +150,19 @@ const colorsSection = (ctx: Context): string[] => {
 
 const typographySection = (ctx: Context): string[] => {
   const { input, comp, counts } = ctx
-  const { exported } = input
-  const groups = new Map<string, FigmaNode[]>()
+  const groups = new Map<string, FlatNode[]>()
   for (const node of comp) {
-    if (node.type !== 'TEXT') continue
-    const style = textStyleOf(exported, node)
-    if (style === null) continue
-    const lineHeight = style['lineHeight'] ? ` lh ${text(style['lineHeight'])}` : ''
-    const textCase = style['textCase'] ? ` ${text(style['textCase'])}` : ''
-    const key = `${text(style['fontFamily'], '?')} ${text(style['fontWeight'] ?? style['fontStyle'])} ${text(style['fontSize'], '?')}px${lineHeight}${textCase} ${hexOf(exported.resolveVar(node.props['fills'])).join(',')}`
+    if (node.kind !== 'text' || node.font === undefined) continue
+    const { font } = node
+    const lineHeight = font.lineHeight === undefined ? '' : ` lh ${font.lineHeight}`
+    const key = `${text(font.family, '?')} ${text(font.weight)} ${text(font.size, '?')}px${lineHeight} ${node.fill.join(',')}`
     groups.set(key, [...(groups.get(key) ?? []), node])
   }
   const roles = parseRoles(input.roles, normText)
   const out = ['', '## typography (mockup component)']
   for (const [key, list] of [...groups].sort((a, b) => b[1].length - a[1].length)) {
-    const first = list[0]
-    const size = first === undefined ? undefined : textStyleOf(exported, first)?.['fontSize']
-    const texts = [...new Set(list.map(textOf).filter(Boolean))]
+    const size = list[0]?.font?.size
+    const texts = [...new Set(list.map((node) => node.text).filter(Boolean))]
     const role = roles.find((candidate) => texts.some((sample) => normText(sample) === candidate.sample))
     let verdict: string
     if (role === undefined) {
@@ -193,23 +190,21 @@ const typographySection = (ctx: Context): string[] => {
 }
 
 const geometrySection = (ctx: Context): string[] => {
-  const { input, nodes, comp, variants } = ctx
-  const { exported } = input
+  const { nodes, comp, variants } = ctx
   const first = variants[0]
   const out = ['', `## geometry (first child ${first?.id ?? '-'}, and shapes outside it)`]
   const firstVariant = first === undefined ? [] : subtreeOf(nodes, nodes.indexOf(first))
-  const shapeKey = (node: FigmaNode): string => {
-    const dimensions = layoutOf(exported, node)['dimensions']
-    const d: Json = typeof dimensions === 'object' && dimensions !== null ? (dimensions as Json) : {}
-    const fill = hexOf(exported.resolveVar(node.props['fills'])).join(',')
-    const stroke = hexOf(exported.resolveVar(node.props['strokes'])).join(',')
-    const radius = node.props['borderRadius']
-    const hasRadius = typeof radius === 'string' && radius !== '' && !/^0px( 0px)*$/.test(radius)
-    return `${node.type} ${text(d['width'], '?')}×${text(d['height'], '?')}${fill ? ` fill ${fill}` : ''}${stroke ? ` stroke ${stroke} ${text(node.props['strokeWeight'])}` : ''}${hasRadius ? ` radius ${radius}` : ''}${node.props['opacity'] != null ? ` opacity ${text(node.props['opacity'])}` : ''}`
+  const shapeKey = (node: FlatNode): string => {
+    const fill = node.fill.join(',')
+    const stroke = node.stroke.color.join(',')
+    const hasRadius = node.radius !== undefined && node.radius !== 0
+    const size = node.bounds === undefined ? '?×?' : `${node.bounds.width}×${node.bounds.height}`
+    return `${node.kind} ${size}${fill ? ` fill ${fill}` : ''}${stroke ? ` stroke ${stroke} ${text(node.stroke.weight)}` : ''}${hasRadius ? ` radius ${node.radius}` : ''}${node.opacity !== undefined ? ` opacity ${node.opacity}` : ''}`
   }
-  const outside = comp.filter((node) => !firstVariant.includes(node) && !variants.includes(node) && node.type !== 'TEXT' && node.type !== 'GROUP' && node.type !== 'FRAME')
+  const isShape = (node: FlatNode): boolean => node.kind !== 'text' && node.kind !== 'group'
+  const outside = comp.filter((node) => !firstVariant.includes(node) && !variants.includes(node) && isShape(node))
   const shapes = new Map<string, number>()
-  for (const node of [...firstVariant.filter((entry) => entry.type !== 'TEXT' && entry.type !== 'GROUP'), ...outside]) {
+  for (const node of [...firstVariant.filter(isShape), ...outside]) {
     const key = shapeKey(node)
     shapes.set(key, (shapes.get(key) ?? 0) + 1)
   }
@@ -233,8 +228,10 @@ const addedLines = (root: string, base: string, paths: readonly string[]): Added
     else if (line.startsWith('+') && current !== null && !isTestFile(current)) added.push({ file: current, text: line.slice(1) })
   }
   const untracked = git(['-c', 'core.quotePath=false', 'ls-files', '--others', '--exclude-standard', ...pathspec(paths)], root)
-  for (const file of untracked.stdout.split('\n').filter((entry) => isSourceFile(entry) && !isTestFile(entry))) {
-    for (const line of readFileSync(join(root, file), 'utf8').split(/\r?\n/)) added.push({ file, text: line })
+  for (const file of untracked.stdout.split('\n').filter((entry) => entry !== '' && !isTestFile(entry))) {
+    const content = readText(join(root, file))
+    if (content === undefined) continue
+    for (const line of content.split(/\r?\n/)) added.push({ file, text: line })
   }
   return added
 }
@@ -255,12 +252,17 @@ const occurrences = (label: string, source: readonly CodeFile[]): string[] => {
   return hits
 }
 
+const isVisibleString = (label: string, before: string): boolean => {
+  if (!/\p{L}/u.test(label) || PATH_LIKE.test(label)) return false
+  return UI_KEY.test(before) || !IDENTIFIER_LIKE.test(label)
+}
+
 const labelsSection = (ctx: Context): string[] => {
   const { input, nodes, counts } = ctx
   const out = ['', '## labels the change adds']
   const added = addedLines(input.root, input.base, input.paths)
   const baseCode = baseCodeOf(input.root, input.base, input.paths, input.code)
-  const mockTexts = nodes.map(textOf).filter(Boolean).map((sample) => normText(sample.replace(/\{\/?\w+\}|\*\*/g, '')))
+  const mockTexts = nodes.map((node) => node.text).filter(Boolean).map((sample) => normText(sample.replace(/\{\/?\w+\}|\*\*/g, '')))
   const inMockup = (label: string): boolean => {
     const wanted = normText(label)
     return mockTexts.some((sample) => sample === wanted || ` ${sample} `.includes(` ${wanted} `))
@@ -270,8 +272,7 @@ const labelsSection = (ctx: Context): string[] => {
     for (const match of line.matchAll(/(['"`])((?:\\.|(?!\1).)*?)\1/g)) {
       const label = match[2] ?? ''
       if (label === '' || label.includes('${') || label.length < 2) continue
-      const isUi = /[а-яё]/i.test(label) || UI_KEY.test(line.slice(0, match.index ?? 0))
-      if (!isUi || /^[#.\/@]|^[\w.-]+\.[a-z]{2,4}$/.test(label)) continue
+      if (!isVisibleString(label, line.slice(0, match.index ?? 0))) continue
       if (!labels.has(label)) labels.set(label, file)
     }
   }
@@ -298,7 +299,7 @@ const labelsSection = (ctx: Context): string[] => {
 export type MockupResult = { type: 'unknown-node' } | { type: 'report'; report: MockupReport }
 
 export const buildReport = (input: MockupInput): MockupResult => {
-  const { nodes } = input.exported
+  const nodes = flattenTree(input.tree)
   const rootIndex = nodes.findIndex((node) => node.id === input.componentId)
   const root = nodes[rootIndex]
   if (root === undefined) return { type: 'unknown-node' }
@@ -306,7 +307,7 @@ export const buildReport = (input: MockupInput): MockupResult => {
   const variants = nodes.filter((node, at) => at > rootIndex && node.depth === root.depth + 1 && at <= rootIndex + comp.length)
   const counts: Counts = { missing: 0, extra: 0, notInMockup: 0, duplicate: 0, typography: 0, wrongNode: 0 }
   const ctx: Context = { input, nodes, rootIndex, comp, variants, counts }
-  const out = [`# ui mockup ${input.exportName} ${root.id}${root.name === '' ? '' : ` "${root.name}"`}: ${comp.length} nodes, ${variants.length} children`]
+  const out = [`# ui mockup ${input.referenceName} ${root.id}${root.name === '' ? '' : ` "${root.name}"`}: ${comp.length} nodes, ${variants.length} children`]
   if (!input.isAppUi && libraryShare(comp) > LIBRARY_UI_SHARE) {
     counts.wrongNode++
     out.push(
@@ -315,7 +316,7 @@ export const buildReport = (input: MockupInput): MockupResult => {
   }
   for (const variant of variants.slice(0, 12)) {
     const texts = sampleTexts(subtreeOf(nodes, nodes.indexOf(variant)).concat(variant), 3).map((sample) => JSON.stringify(sample)).join(', ')
-    out.push(`  ${variant.id} ${describeNode(input, variant)}${texts === '' ? '' : `  ${texts}`}`)
+    out.push(`  ${variant.id} ${describeNode(variant)}${texts === '' ? '' : `  ${texts}`}`)
   }
   out.push(...colorsSection(ctx), ...typographySection(ctx), ...geometrySection(ctx), ...labelsSection(ctx))
   out.push('', `summary: ${counts.missing} MISSING, ${counts.extra} EXTRA, ${counts.notInMockup} NOT IN MOCKUP, ${counts.duplicate} DUPLICATE, ${counts.typography} TYPOGRAPHY${counts.wrongNode > 0 ? ', WRONG NODE' : ''}`)
@@ -323,4 +324,3 @@ export const buildReport = (input: MockupInput): MockupResult => {
   out.push(...(blocking > 0 ? FAIL_LINES : [PASS_LINE]))
   return { type: 'report', report: { lines: out, counts, blocking } }
 }
-

@@ -11,16 +11,13 @@
       "type": "object",
       "additionalProperties": false,
       "description": "jig's own rules. Suppression directives are always denied; these levels set the gates for new comments and new test cases (default error for both).",
-      "properties": {
-        "jig/comments": { "$ref": "#/$defs/severity" },
-        "jig/tests": { "$ref": "#/$defs/severity" }
-      }
+      "properties": { "jig/comments": { "$ref": "#/$defs/severity" }, "jig/tests": { "$ref": "#/$defs/severity" } }
     },
     "oxlint": { "$ref": "#/$defs/tool" },
     "tsc": { "$ref": "#/$defs/tool" },
     "eslint": { "$ref": "#/$defs/tool" },
     "stratum": { "$ref": "#/$defs/tool" },
-    "agent-view": { "$ref": "#/$defs/tool", "description": "Proof of UI changes in the running app, read by jig pre-mr" },
+    "agent-view": { "description": "Deprecated and ignored: jig names no UI proof tool. UI proof is the ui section." },
     "checks": {
       "type": "array",
       "description": "The project's own checks, run after an edit or at the end of a turn on the matching files.",
@@ -74,20 +71,14 @@
           "type": "object",
           "additionalProperties": false,
           "required": ["base", "step"],
-          "properties": {
-            "base": { "type": "integer", "minimum": 1, "maximum": 65535 },
-            "step": { "type": "integer", "minimum": 1 }
-          }
+          "properties": { "base": { "type": "integer", "minimum": 1, "maximum": 65535 }, "step": { "type": "integer", "minimum": 1 } }
         },
         "slotEnv": {
           "type": "object",
           "additionalProperties": false,
           "required": ["key"],
           "description": "Writes the slot number itself into an env file, for a dev script that derives its ports from it",
-          "properties": {
-            "key": { "type": "string", "pattern": "^[A-Za-z_]\\w*$" },
-            "target": { "type": "string", "default": ".env" }
-          }
+          "properties": { "key": { "type": "string", "pattern": "^[A-Za-z_]\\w*$" }, "target": { "type": "string", "default": ".env" } }
         },
         "instance": { "type": "object" },
         "clearCache": { "type": "array", "items": { "type": "string" } }
@@ -98,13 +89,21 @@
       "additionalProperties": false,
       "properties": {
         "seedExclude": { "type": "array", "items": { "type": "string" }, "description": "Globs (repo-relative, forward slashes) that jig worktree seed skips" },
-        "copyFiles": { "type": "array", "items": { "type": "string" }, "description": "Files inside fully ignored folders that jig worktree seed copies as well" },
+        "copyFiles": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Files inside fully ignored folders that jig worktree seed copies as well"
+        },
         "depsPool": {
           "type": "object",
           "additionalProperties": false,
           "description": "Present: jig slot new and jig slot show fill node_modules (npm, yarn) as a hardlink copy of a pool entry keyed by the lock file instead of installing; the first worktree with a lock file installs and fills the entry",
           "properties": {
-            "after": { "type": "string", "minLength": 1, "description": "Command run in the worktree after a reuse, for what the install also makes outside node_modules (a postinstall build)" }
+            "after": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Command run in the worktree after a reuse, for what the install also makes outside node_modules (a postinstall build)"
+            }
           }
         }
       }
@@ -139,7 +138,11 @@
             "properties": {
               "name": { "type": "string", "minLength": 1 },
               "runtime": { "enum": ["electron", "tauri", "browser", "native"] },
-              "widths": { "type": "array", "items": { "type": "integer", "minimum": 1 }, "description": "Viewport widths in CSS px; required unless the runtime is native. A width below minWidth is an error." },
+              "widths": {
+                "type": "array",
+                "items": { "type": "integer", "minimum": 1 },
+                "description": "Viewport widths in CSS px; required unless the runtime is native. A width below minWidth is an error."
+              },
               "height": { "type": "integer", "minimum": 1 },
               "minWidth": { "type": "integer", "minimum": 1, "description": "The narrowest window the app allows" },
               "input": { "enum": ["fine", "coarse"], "description": "Pointer to emulate" },
@@ -173,22 +176,57 @@
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "dirs": { "type": "array", "items": { "type": "string" }, "description": "Where the shared components live; raw elements there are fine" },
-            "files": {
-              "oneOf": [{ "type": "string" }, { "type": "array", "items": { "type": "string" } }],
-              "default": "**/*.{tsx,jsx,vue,svelte,astro}",
-              "description": "Glob or globs of the files jig ui reuse reads"
+            "dirs": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Where the shared components live; raw elements there are fine. jig ui reuse reads every other changed file."
             },
             "map": {
               "type": "object",
               "additionalProperties": { "type": "string", "minLength": 1 },
               "description": "Raw element (tag) to the component to use instead, e.g. \"button\": \"Button (@/shared/ui/buttons)\""
-            }
+            },
+            "files": { "deprecated": true, "description": "Ignored: jig no longer classifies files as UI; the model records jig ui scope." }
           }
         },
         "tokens": {
-          "oneOf": [{ "type": "string" }, { "type": "array", "items": { "type": "string" } }],
-          "description": "Files or folders with the design tokens (CSS custom properties); the default of jig ui mockup --tokens"
+          "description": "jig's design token table, W3C Design Tokens JSON with the jig extension (schema/ui-tokens.schema.json). A string or an array is the files; an object has files and/or a command that prints the table on stdout.",
+          "oneOf": [
+            { "type": "string" },
+            { "type": "array", "items": { "type": "string" } },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "minProperties": 1,
+              "properties": {
+                "files": { "oneOf": [{ "type": "string" }, { "type": "array", "items": { "type": "string" } }] },
+                "command": { "type": "string", "minLength": 1 }
+              }
+            }
+          ]
+        },
+        "driver": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["capture"],
+          "description": "Personal (.jig/config.local.jsonc). Command templates jig ui prove runs per combination; placeholders {width} {height} {pointer} {theme} {locale} {state} {out} {target}.",
+          "properties": {
+            "prepare": { "type": "string", "minLength": 1, "description": "Brings the app to the combination and state" },
+            "capture": { "type": "string", "minLength": 1, "description": "Writes {out}/shot.png and {out}/audit.json (schema/ui-audit.schema.json)" },
+            "reset": { "type": "string", "minLength": 1, "description": "Runs after the combination, also when it failed" }
+          }
+        },
+        "reference": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Personal (.jig/config.local.jsonc).",
+          "properties": {
+            "fetch": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Command template with {source} and {out}; writes {out}/image.png and/or {out}/tree.json (schema/ui-tree.schema.json). jig ui reference attach <n> --fetch runs it."
+            }
+          }
         }
       }
     }
@@ -205,7 +243,7 @@
           "additionalProperties": false,
           "minProperties": 1,
           "maxProperties": 1,
-          "description": "Exactly one: media (an emulated prefers-color-scheme value), act (an agent-view use case), launch (a string the flow passes to the app launch). A locale takes act or launch only.",
+          "description": "Exactly one: media (an emulated prefers-color-scheme value), act (how the app is switched, as a step description or a command), launch (a string the flow passes to the app launch). A locale takes act or launch only.",
           "properties": {
             "media": { "type": "string", "minLength": 1 },
             "act": { "type": "string", "minLength": 1 },
@@ -222,7 +260,7 @@
       "description": "Seconds it may run at the end of a turn; every end-of-turn check shares 110 s. A run that does not finish leaves the result unknown and blocks the turn once."
     },
     "tool": {
-      "description": "A catalog tool or proof by name. {} turns it on, false turns it off; a name missing from the config never runs.",
+      "description": "A catalog tool by name. {} turns it on, false turns it off; a name missing from the config never runs.",
       "oneOf": [
         { "const": false },
         {
@@ -232,7 +270,10 @@
             "level": { "$ref": "#/$defs/severity", "default": "error" },
             "command": { "type": "string", "minLength": 1, "description": "Replaces the catalog command, e.g. vue-tsc for tsc" },
             "ignoreRules": { "type": "array", "items": { "type": "string" }, "description": "Rule globs whose findings are dropped, e.g. boundaries/*" },
-            "timeout": { "$ref": "#/$defs/timeout", "description": "Seconds the tool may run at the end of a turn; default eslint 30 plus 1 per file, tsc 60, stratum 15" }
+            "timeout": {
+              "$ref": "#/$defs/timeout",
+              "description": "Seconds the tool may run at the end of a turn; default eslint 30 plus 1 per file, tsc 60, stratum 15"
+            }
           }
         }
       ]

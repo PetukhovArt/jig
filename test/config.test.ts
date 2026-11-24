@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { OUTPUT_FORMATS, PROOF_NAMES, TOOL_NAMES } from '../src/catalog'
+import { OUTPUT_FORMATS, TOOL_NAMES } from '../src/catalog'
 import { defaultRules, enabledSetting, loadConfig, mergeConfigValues, parseConfig, ROOT_KEYS, validateConfig } from '../src/core/config'
 
 const example = readFileSync(join(import.meta.dirname, 'fixtures', 'core', 'config.example.jsonc'), 'utf8')
@@ -20,7 +20,6 @@ describe('parseConfig', () => {
       oxlint: false,
       stratum: { level: 'warn', ignoreRules: [] },
     })
-    expect(config.proofs).toEqual({ 'agent-view': { level: 'error', ignoreRules: [] } })
     expect(config.checks).toEqual([
       { name: 'unit', files: ['src/**/*.ts'], on: 'stop', run: 'vitest related --run {files}', format: 'exit', level: 'error' },
     ])
@@ -48,7 +47,6 @@ describe('parseConfig', () => {
   it('runs nothing that the config does not name', () => {
     const config = parseConfig('{}')
     expect(config.tools).toEqual({})
-    expect(config.proofs).toEqual({})
     expect(config.checks).toEqual([])
   })
 
@@ -79,7 +77,6 @@ describe('validateConfig', () => {
     ['root not an object', 'x', ['$: expected an object']],
     ['tool outside the catalog', { ruff: {} }, ['$.ruff: unknown key']],
     ['tool true', { eslint: true }, ['$.eslint: expected an object']],
-    ['proof as a tool entry', { 'agent-view': 'on' }, ['$["agent-view"]: expected an object']],
     ['tool unknown key', { eslint: { config: 'x' } }, ['$.eslint.config: unknown key']],
     ['tool wrong level', { eslint: { level: 'fatal' } }, ['$.eslint.level: expected one of off, warn, error']],
     ['tool empty command', { tsc: { command: ' ' } }, ['$.tsc.command: is empty']],
@@ -131,7 +128,7 @@ describe('schema/config.schema.json', () => {
 
   it('names the same root keys and check formats as the validator and the catalog', () => {
     expect(Object.keys(schema.properties).sort()).toEqual([...ROOT_KEYS].sort())
-    expect(Object.keys(schema.properties)).toEqual(expect.arrayContaining([...TOOL_NAMES, ...PROOF_NAMES]))
+    expect(Object.keys(schema.properties)).toEqual(expect.arrayContaining([...TOOL_NAMES]))
     expect(schema.properties.checks.items.properties.format.enum).toEqual(OUTPUT_FORMATS)
   })
 })
@@ -199,7 +196,7 @@ describe('loadConfig', () => {
   })
 
   it('uses defaults without slots when the file is missing', () => {
-    expect(loadConfig(project({}))).toEqual({ rules: defaultRules(), tools: {}, proofs: {}, checks: [], files: [] })
+    expect(loadConfig(project({}))).toEqual({ rules: defaultRules(), tools: {}, checks: [], files: [] })
   })
 
   it('reads .jig/config.jsonc', () => {

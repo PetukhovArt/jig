@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/PetukhovArt/jig/main/schema/ui-references.schema.json",
+  "title": "jig UI references of a branch",
+  "description": ".jig/ui/<branch>/references.json, written by jig ui reference. Its existence is the declaration that step 2 of flow ui was done.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "entries"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "version": { "const": 1 },
+    "none": { "type": "string", "description": "Why the task has no reference (the user said so, answered, or is away)" },
+    "entries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["n", "source"],
+        "properties": {
+          "n": { "type": "integer", "minimum": 1 },
+          "source": { "type": "string", "description": "Opaque: a URL, path or artifact name, exactly as the user gave it" },
+          "covers": { "type": "string", "description": "The screen or state the reference shows; jig ui prove compares its image with the combinations it names" },
+          "image": { "type": "string", "description": "PNG under the branch folder, set by jig ui reference attach --image" },
+          "tree": { "type": "string", "description": "Tree under the branch folder (schema/ui-tree.schema.json), set by jig ui reference attach --tree" }
+        }
+      }
+    }
+  }
+}

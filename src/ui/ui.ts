@@ -1,11 +1,13 @@
 import { parseArgs } from 'node:util'
 import type { UiLocaleCheck } from '../core/config-ui'
-import { EXIT_FINDINGS, EXIT_USAGE, isUsageError, projectRootOf, requireUi, UsageError, type AsyncUiSubcommand, type UiContext, type UiSubcommand } from './command'
+import { EXIT_FINDINGS, EXIT_USAGE, isUsageError, projectRootOf, requireReferences, requireUi, UsageError, type AsyncUiSubcommand, type UiContext, type UiSubcommand } from './command'
 import { buildMatrix, formatMatrix } from './matrix'
 import { mockup } from './mockup/mockup'
 import { recordPassed } from './proof'
 import { prove } from './prove/prove'
+import { reference } from './reference'
 import { checkReuse, formatReuse } from './reuse'
+import { scope } from './scope'
 
 export type { UiContext, UiSubcommand }
 
@@ -27,6 +29,7 @@ const reuse: UiSubcommand = (args, ctx) => {
   const { values, positionals } = parseArgs({ args, allowPositionals: true, strict: true, options: { json: { type: 'boolean' }, base: { type: 'string' } } })
   if (positionals.length > 0) throw new UsageError(REUSE_USAGE)
   const root = projectRootOf(ctx.cwd)
+  requireReferences(root)
   const components = requireUi(root).components
   if (components === undefined || Object.keys(components.map).length === 0) {
     throw new Error('ui.components.map is empty: name the raw elements and the component to use for each (docs/configuration.md#ui-profile)')
@@ -34,7 +37,7 @@ const reuse: UiSubcommand = (args, ctx) => {
   const result = checkReuse(root, components, values.base)
   ctx.io.out(values.json === true ? `${JSON.stringify(result, null, 2)}\n` : `${formatReuse(result).join('\n')}\n`)
   if (result.findings.length > 0) return EXIT_FINDINGS
-  recordPassed(root, 'ui-reuse', `jig ui reuse: no raw elements on changed lines (${result.files} component files read)`, ctx.io)
+  recordPassed(root, 'ui-reuse', `jig ui reuse: no raw elements on changed lines (${result.files} files read)`, ctx.io)
   return 0
 }
 
@@ -42,6 +45,8 @@ export const SUBCOMMANDS = new Map<string, UiSubcommand>([
   ['matrix', matrix],
   ['reuse', reuse],
   ['mockup', mockup],
+  ['scope', scope],
+  ['reference', reference],
 ])
 
 export const ASYNC_SUBCOMMANDS = new Map<string, AsyncUiSubcommand>([['prove', prove]])

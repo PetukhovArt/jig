@@ -2,15 +2,13 @@ import { spawnSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { CATALOG, type CatalogEntry } from './catalog'
-import { AGENT_VIEW_CONFIG, agentViewCheck } from './catalog/proofs'
 import { loadConfig, type LoadedConfig, type ToolSettings } from './core/config'
-import { createMatcher } from './core/glob'
 import { JOURNAL_MAX_BYTES, listJournalFiles } from './core/journal'
 import { parseJsonc } from './core/jsonc'
 import { jigPaths, resolvePluginRoot, resolveProjectRoot } from './core/paths'
 import { resolveTools, type PlanTools } from './core/plan'
 import { findInPath, findUnresolvedShim, isLockAbandoned, readLock } from './core/proc'
-import { discover, projectFiles, type Discovery } from './init/discover'
+import { discover, type Discovery } from './init/discover'
 import { detectAgent, isUserMapped, loadUserConfig, resolveTiers, tierEntries, UNKNOWN_AGENT } from './tiers/tiers'
 
 type Command = (args: string[]) => number | Promise<number>
@@ -90,8 +88,7 @@ const settingText = (setting: ToolSettings): string => {
 }
 
 const checkCatalogEntry = (entry: CatalogEntry, config: LoadedConfig, tools: PlanTools, discovery: Discovery): Check => {
-  const settings = entry.kind === 'tool' ? config.tools : config.proofs
-  const setting = settings[entry.name]
+  const setting = config.tools[entry.name]
   const found = discovery.found.find((item) => item.name === entry.name)
   if (setting === false) return ok(`${entry.name}: off in config`)
   if (setting === undefined) {
@@ -103,17 +100,6 @@ const checkCatalogEntry = (entry: CatalogEntry, config: LoadedConfig, tools: Pla
   const shim = entry.binaries.map((binary) => findUnresolvedShim(binary.command)).find((path) => path !== undefined)
   if (shim !== undefined) return warn(`${entry.name}: shim ${shim} has no recognizable target, tool not used`)
   return warn(`${entry.name}: on in config, binary not installed, tool not used`)
-}
-
-const hasUiFiles = (projectRoot: string): boolean => projectFiles(projectRoot).some(createMatcher(agentViewCheck.files))
-
-const checkAgentViewSetup = (projectRoot: string, config: LoadedConfig, discovery: Discovery): Check | undefined => {
-  const setting = config.proofs[agentViewCheck.name]
-  if (setting === false || setting?.level === 'off') return undefined
-  const agentView = discovery.found.find((item) => item.name === agentViewCheck.name)
-  if (agentView?.status === 'ready' || !hasUiFiles(projectRoot)) return undefined
-  const setup = agentViewCheck.setup?.join(', then ') ?? 'agent-view init'
-  return warn(`agent-view: no ${AGENT_VIEW_CONFIG}; UI changes cannot be proven in the running app. Set it up: ${setup}`)
 }
 
 const checkCustom = (config: LoadedConfig): Check[] =>
@@ -174,7 +160,6 @@ export const doctorChecks = (projectRoot: string, pluginRoot: string): Check[] =
   const config = loadConfig(projectRoot)
   const { tools } = resolveTools(projectRoot, config)
   const discovery = discover(projectRoot)
-  const agentViewSetup = checkAgentViewSetup(projectRoot, config, discovery)
   const nodeOnPath = checkNodeOnPath(process.env)
   return [
     checkNode(),
@@ -182,9 +167,9 @@ export const doctorChecks = (projectRoot: string, pluginRoot: string): Check[] =
     ok(`plugin: ${pluginRoot}`),
     ok(`project: ${projectRoot}`),
     checkConfig(config),
+    ...(config.deprecated ?? []).map((note) => warn(`config: ${note}`)),
     checkTiers(),
     ...CATALOG.map((entry) => checkCatalogEntry(entry, config, tools, discovery)),
-    ...(agentViewSetup === undefined ? [] : [agentViewSetup]),
     ...checkCustom(config),
     checkGitignore(projectRoot),
     ...(denyApplies(detectAgent(undefined)) ? [checkDeny(projectRoot)] : []),

@@ -28,7 +28,8 @@ These hold for the whole task, in every flow.
 - When a step names an atom, read `<root>/atoms/<name>.md` before acting on that step. When what you are about to do matches a trigger in the atom index below, read that atom too.
 - When a step names a role, spawn a subagent whose prompt begins `Read <root>/skills/jig/references/roles/<name>.md and follow it.`, then your brief: goal, scope, file pointers, and the paths of the atoms it must read. Do not read the role file yourself. Its tier and effort are in `references/roles.md`; run `jig tiers` once per session for the models of each tier; no mapping for this agent: pick the model that fits the tier description in `references/tiers.md`. OpenCode's `task` tool takes no model: pass `subagent_type: jig-<tier>`. Review what it returns; do not pass its text through.
 - Code crossing a function boundary → `flows/module-design.md` before writing it.
-- **agent-view configured**: `.jig/config.jsonc` (or `.jig/config.local.jsonc`) names `"agent-view"` and does not set it to `false`, the same test `jig pre-mr` uses; an `agent-view.config.json` alone does not count. Configured: a step that drives the app uses agent-view on the runtime `agent-view.config.json` names in `runtime` (electron, tauri or browser) and on its `port`, never a browser or port 9222 by default. Not configured: that step is `skip: agent-view not configured`.
+- **App control**: a way to bring the app up in the right checkout (Where the app runs, below), act as the user (click, type and press keys on elements the user sees), replay a named use case, take a screenshot and read the layout. Which tool gives it is your judgment by the environment: for example agent-view, a browser DevTools protocol client or computer use. A step that drives the app uses the app's own runtime and port, never a browser or a port picked by default. A use case is text in the project's behavior catalog; recording a replay of it is the tool's business. No tool found: that step is `skip: no app control`.
+- **A check never takes the user's focus**: headless when the tool can, otherwise a window started without activation and behind other windows. Never move or close the window the user is watching. The tool cannot do that: in hitl, ask before taking the screen; afk, `skip: no app control`.
 - **Where the app runs**: never run the dev server or a verify in a checkout where another agent writes code at the same time. One writer working in turn (edit, commit, then run): the dev server and the verify run in its own checkout. A slot (`jig slot show <n> <branch>`, the `jig-slots` skill) only when another agent writes in that checkout meanwhile or it serves another task; a slot shows commits only, so commit first.
 - Hooks may deny an edit or keep you from finishing. Read the reason, fix the cause, do not work around it.
 
@@ -93,7 +94,7 @@ These hold for the whole task, in every flow.
 - `refactoring`: change structure, keep behavior, prove equivalence.
 - `session-pause`: stop cleanly with a resume point.
 - `session-resume`: resume work a previous session left.
-- `ui`: build or change UI against a reference (Figma, an image, an existing implementation, a spec) or the project's own tokens and components, then prove it on every target, width and theme.
+- `ui`: build or change the UI part of a task against a reference (a design, an image, an existing implementation, a spec) or the project's own design system, then prove it on every target, width and theme.
 <!-- flows:end -->
 Every code-changing flow ends with the shared step in `flows/mr.md`.
 Reviewing someone else's merge request: the `jig-review` skill in mode `review`.

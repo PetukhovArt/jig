@@ -1,5 +1,4 @@
 import { TIERS, type Tier } from '../tiers/tiers'
-import { isUiFile } from '../catalog/proofs/agent-view'
 import { groupFiles, partitionFiles, type Edge, type Group, type Partition, type PartitionFile } from './partition'
 
 export const EFFORTS = ['low', 'medium', 'high'] as const
@@ -209,7 +208,7 @@ const selectedAngles = (tokens: readonly string[], settings: PlanInput['angles']
 const inapplicable = (angle: Angle, shape: Shape): string | undefined => {
   if (angle === 15 && !shape.spec) return 'no spec found'
   if (angle === 16 && !shape.tests) return 'no tests in the diff'
-  if (angle === 18 && !shape.ui) return 'no UI files in the diff'
+  if (angle === 18 && !shape.ui) return 'the task is not UI (ui-scope none, or no ui section)'
   return undefined
 }
 
@@ -222,14 +221,13 @@ const partitionFinders = (
   projectAngles: readonly ProjectAngle[],
   grades: Readonly<Record<string, Grade>>,
   hasTests: (partition: Partition) => boolean,
-  hasUi: (partition: Partition) => boolean,
 ): Finder[] =>
   partitions.flatMap((partition) =>
     FINDER_KINDS.map((kind) => ({
       name: `${partition.name}-${kind}`,
       kind,
       role: KIND_ROLES[kind],
-      angles: angles.filter((angle) => KIND_ANGLES[kind].includes(angle) && (angle !== 16 || hasTests(partition)) && (angle !== 18 || hasUi(partition))),
+      angles: angles.filter((angle) => KIND_ANGLES[kind].includes(angle) && (angle !== 16 || hasTests(partition))),
       projectAngles: projectAngles.filter((angle) => angle.kind === kind).map((angle) => angle.name),
       partition: partition.name,
       ...roleGrade(kind, grades),
@@ -303,7 +301,6 @@ export const planReview = (input: PlanInput): Plan => {
       projectAngles,
       grades,
       (partition) => input.files === undefined || partition.files.some((path) => testFiles.has(path)),
-      (partition) => input.files === undefined || partition.files.some(isUiFile),
     ),
     deepening: wantsDeepening && n > 0 ? roleGrade('deepening', grades) : undefined,
     verify: roleGrade('verify', grades),

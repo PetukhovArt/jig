@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os'
 import { dirname, join, relative, resolve } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { catalogEntry, isTestFile, languageFor, outputParser, PROOF_NAMES, TOOL_NAMES } from '../src/catalog'
+import { catalogEntry, isTestFile, languageFor, outputParser, TOOL_NAMES } from '../src/catalog'
 import { splitCommand } from '../src/core/command'
 import { loadConfig, validateConfig, type CustomCheck } from '../src/core/config'
 import { git } from '../src/core/git'
@@ -34,9 +34,7 @@ afterEach(() => {
 describe('catalog', () => {
   it('looks definitions up by the names the config uses', () => {
     expect(TOOL_NAMES).toEqual(['oxlint', 'tsc', 'eslint', 'stratum'])
-    expect(PROOF_NAMES).toEqual(['agent-view'])
     expect(catalogEntry('tsc')?.binaries.map((binary) => binary.command)).toEqual(['tsc', 'vue-tsc'])
-    expect(catalogEntry('agent-view')?.kind).toBe('proof')
     expect(catalogEntry('ruff')).toBeUndefined()
   })
 
@@ -148,11 +146,6 @@ describe('discovery and drift', () => {
     expect(configDrift(root, config({ tsc: { command: 'vue-tsc' } }), [])).toEqual(['found eslint, not in config'])
   })
 
-  it('says UI proof is off when agent-view.config.json exists and the config does not name agent-view', () => {
-    write('agent-view.config.json', '{}')
-    expect(configDrift(root, config({ tsc: {}, eslint: {} }), [])).toEqual(['found agent-view, not in config: UI proof is off'])
-  })
-
   it('accepts false as a decision, not drift', () => {
     expect(configDrift(root, config({ tsc: {}, eslint: false }), [])).toEqual([])
   })
@@ -237,7 +230,7 @@ describe('jig init: the project type-check script', () => {
     manifest({ lint: 'eslint .', 'check:types': 'node tools/ts-decl-check.mjs --unchecked-ok' })
     const report = buildInitReport(root, false)
     const check = { name: 'types', files: ['**/*.ts', '**/*.vue'], on: 'stop', run: 'node tools/ts-decl-check.mjs --unchecked-ok {files}' }
-    expect(report.proposal).toEqual({ $schema: SCHEMA_URL, tsc: false, checks: [check], ui: expect.any(Object) })
+    expect(report.proposal).toEqual({ $schema: SCHEMA_URL, tsc: false, checks: [check] })
     expect(validateConfig(report.proposal).errors).toEqual([])
     expect(checkArgv(root, check, ['src/a.ts']).slice(-3)).toEqual(['tools/ts-decl-check.mjs', '--unchecked-ok', 'src/a.ts'])
     expect(report.questions.join('\n')).not.toMatch(/--unchecked-ok/)
@@ -265,23 +258,6 @@ describe('jig init: the project type-check script', () => {
 })
 
 describe('jig doctor', () => {
-  it('suggests setting agent-view up when the project has UI files and no agent-view.config.json', () => {
-    const agentViewTexts = () => doctorChecks(root, root).map((check) => `${check.status} ${check.text}`).filter((text) => text.includes('agent-view.config.json'))
-    write('src/server.ts', 'export {}\n')
-    expect(agentViewTexts()).toEqual([])
-    write('src/App.vue', '<template />\n')
-    expect(agentViewTexts()).toContainEqual(expect.stringMatching(/^warn agent-view: no agent-view\.config\.json; .*agent-view init$/))
-    write('agent-view.config.json', '{}')
-    expect(doctorChecks(root, root).map((check) => check.text)).not.toContainEqual(expect.stringMatching(/no agent-view\.config\.json/))
-  })
-
-  it.each([false, { level: 'off' }])('keeps the agent-view setup hint quiet when the config turns agent-view off (%o)', (setting) => {
-    write('src/App.tsx', 'export {}\n')
-    write('.jig/config.jsonc', JSON.stringify({ tsc: {}, 'agent-view': setting }))
-    const texts = doctorChecks(root, root).map((check) => `${check.status} ${check.text}`).filter((text) => text.startsWith('ok agent-view') || text.startsWith('warn agent-view'))
-    expect(texts).toEqual(['ok agent-view: off in config'])
-  })
-
   it('warns when the hooks would find no node on PATH', () => {
     const nodeTexts = () => doctorChecks(root, root).map((check) => check.text).filter((text) => text.includes('not on PATH'))
     expect(nodeTexts()).toEqual([])

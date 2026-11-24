@@ -9,7 +9,6 @@
   "tsc": { "command": "vue-tsc" },
   "eslint": { "ignoreRules": ["boundaries/*"] },
   "oxlint": false,
-  "agent-view": {},
   "checks": [
     { "name": "i18n-keys", "files": ["src/**/*.vue", "src/**/*.ts"], "on": "stop", "run": "node scripts/check-i18n.mjs {files}" }
   ]
@@ -17,7 +16,7 @@
 ```
 
 - `rules`: `jig/comments` and `jig/tests`, levels `off`, `warn`, `error` (default `error`); any level but `off` keeps the gate on. `"jig/comments": "off"` turns the comment gate off; suppressions stay denied.
-- A catalog name (`oxlint`, `tsc`, `eslint`, `stratum`, `agent-view`) turns that tool on; `false` turns it off. Its settings: `level`, `command`, `ignoreRules`, `timeout`. A name outside the catalog is an unknown key. When each tool runs: [hooks](hooks.md#what-needs-project-configuration).
+- A catalog name (`oxlint`, `tsc`, `eslint`, `stratum`) turns that tool on; `false` turns it off. Its settings: `level`, `command`, `ignoreRules`, `timeout`. A name outside the catalog is an unknown key. When each tool runs: [hooks](hooks.md#what-needs-project-configuration).
 - `checks`: the project's own commands, run after an edit (`"on": "edit"`) or at the end of a turn (`"on": "stop"`) on the files matching `files` (a glob or a list). `run` starts with a command found in the project's `node_modules/.bin` (up to the git root), then on `PATH`, npm `.cmd` shims included; it needs the `{files}` token, which becomes one argument per file; `format` reads the output (`exit` by default: a non-zero exit is one finding; `jsonl`, or a tool name for its parser); `level` as for rules. Findings carry the rule `check/<name>`.
 - `timeout` on a tool or a check: the seconds it may run at the end of a turn, 1 to 110 (defaults: eslint 30 plus 1 per file, tsc 60, stratum 15, a check 30). Every end-of-turn check shares 110 s; after-edit runs keep 5 s.
 - `slots` and `worktree`: [below](#slots-and-worktrees).
@@ -65,7 +64,7 @@ A gitignored lock file (a project whose CI regenerates it) is an output of the i
 
 ## UI profile
 
-The `ui` section says what a UI change is proven on and which components it must reuse. `jig init` proposes it from code signals; the user confirms it, since a code signal cannot know which theme switch or which locale the project means. The signals: the runtime from `tauri` / `electron` dependencies (a `capacitor` or `react-native` stack adds a native target proven by hand); desktop widths `[1280, 1920]`; a `phone` target (`[390]`, `input: coarse`) only with a responsive signal (a `max-width` or `min-width` media query below 768px, `pointer: coarse`, a `viewport` or `responsive` module), and for a Tauri or Electron shell only with `pointer: coarse`; themes from `.dark` / `.light` classes, `[data-theme]`, `prefers-color-scheme` and Vuetify, MUI or PrimeVue theme configs, switched by `media` when the app follows `prefers-color-scheme` and else by a `TODO` act the user fills in; locales from i18n bundles (two to six), longest average text first, each with a `TODO` act; `components.dirs` from the common shared-UI folders, `components.map` from wrapper names found there (`Button`, `UiButton`, `TextField`, `Input`, `Select`, `Textarea`) or the UI library's own component; `tokens` from a `tokens` folder. A project without UI signals gets no `ui` key; an existing `ui` key is left as it is.
+The `ui` section says what a UI change is proven on and which components it must reuse. `jig init` proposes it from code signals; the user confirms it, since a code signal cannot know which theme switch or which locale the project means. The signals: the runtime from `tauri` / `electron` dependencies (a `capacitor` or `react-native` stack adds a native target proven by hand); desktop widths `[1280, 1920]`; a `phone` target (`[390]`, `input: coarse`) only with a responsive signal (a `max-width` or `min-width` media query below 768px, `pointer: coarse`, a `viewport` or `responsive` module), and for a Tauri or Electron shell only with `pointer: coarse`; themes from `.dark` / `.light` classes, `[data-theme]`, `prefers-color-scheme` and Vuetify, MUI or PrimeVue theme configs, switched by `media` when the app follows `prefers-color-scheme` and else by a `TODO` act the user fills in; locales from i18n bundles (two to six), longest average text first, each with a `TODO` act; `components.dirs` from the common shared-UI folders, `components.map` from wrapper names found there (`Button`, `UiButton`, `TextField`, `Input`, `Select`, `Textarea`) or the UI library's own component. A project without UI signals gets no `ui` key; an existing `ui` key is left as it is.
 
 ```jsonc
 "ui": {
@@ -81,19 +80,33 @@ The `ui` section says what a UI change is proven on and which components it must
   "locales": { "list": [{ "name": "ru", "switch": { "launch": "LANG=ru" } }, { "name": "en", "switch": { "act": "settings/lang-en" } }], "check": "one" },
   "components": {
     "dirs": ["src/shared/ui"],
-    "files": "**/*.{tsx,jsx,vue,svelte,astro}",
     "map": { "button": "Button (@/shared/ui/buttons)", "input": "TextField", "select": "Select" }
   },
-  "tokens": ["src/shared/libs/theme/tokens"]
+  "tokens": { "files": ["design/tokens.json"] }
+}
+```
+
+Personal keys, in `.jig/config.local.jsonc` (the tool belongs to the person, not the project):
+
+```jsonc
+"ui": {
+  "driver": {
+    "prepare": "<command> --width {width} --height {height} --pointer {pointer} --theme {theme} --locale {locale}",
+    "capture": "<command> --state {state} --target {target} --out {out}",
+    "reset": "<command> --reset"
+  },
+  "reference": { "fetch": "<command> {source} {out}" }
 }
 ```
 
 - `targets` and `themes` are required, everything else is optional; names are unique within a list. A target has a `runtime` (`electron`, `tauri`, `browser`, `native`), `widths` in CSS px (required unless the runtime is `native`; a width below `minWidth` is an error), `height`, `minWidth`, `input` (`fine` or `coarse`, the pointer to emulate) and `proof`: `auto` (default) or `manual`. A `native` target is always `manual`, and an explicit `auto` on it is an error: jig cannot drive it, so `jig ui matrix` lists it apart for the user to prove.
-- `switch` is exactly one of `media` (an emulated `prefers-color-scheme` value), `act` (an agent-view use case) or `launch` (a string the flow passes to the app launch). It is required for every entry when a list has more than one; a locale switches only by `act` or `launch`.
+- `switch` is exactly one of `media` (an emulated `prefers-color-scheme` value), `act` (a use case from the project's behavior catalog, replayed by the app control tool) or `launch` (a string the flow passes to the app launch). It is required for every entry when a list has more than one; a locale switches only by `act` or `launch`.
 - `locales.check`: `one` (default) proves only the first listed locale, `all` proves each. `jig init` orders the list by longest texts first, so the first one is the likeliest to overflow. A task that touches texts asks for all (`jig ui matrix --locales all`).
-- `components.dirs` holds the project's shared components, where raw elements are fine. `components.files` (default `**/*.{tsx,jsx,vue,svelte,astro}`) are the files `jig ui reuse` reads, and `components.map` names for each raw element (a tag) the component to use instead: a project wrapper, or a library component where the project uses the library directly (`"button": "v-btn"`).
-- `tokens` are CSS files, folders or globs with the design tokens; `jig ui mockup` reads them when `--tokens` is not given.
-- The `ui` section also decides what `jig pre-mr` asks for and what `jig ui prove` drives: [UI proof](ui-proof.md#with-a-ui-profile). The `act` switches of `themes` and `locales` are agent-view use cases that `jig ui prove` replays; a `launch` switch is proven only when the app was launched with it (`--launched`).
+- `components.dirs` holds the project's shared components, where raw elements are fine. `components.map` names for each raw element (a tag) the component to use instead: a project wrapper, or a library component where the project uses the library directly (`"button": "v-btn"`).
+- `ui.tokens` names where the table is: `files` (files, folders or globs) holding jig's token table in the W3C Design Tokens (DTCG) JSON format: the name, the value per theme and the names code uses to refer to the token. jig reads nothing else (not CSS, Vuetify, MUI or WPF). Or `command`: a project command that prints the table. The model can also build the table itself. `jig ui mockup` reads the table.
+- `ui.driver` (personal, `.jig/config.local.jsonc`) holds the command templates `jig ui prove` runs to bring the app to a combination and capture it. Placeholders: `{width}`, `{height}`, `{pointer}`, `{theme}`, `{locale}`, `{state}`, `{out}`, `{target}`. Without it the agent captures the combinations itself and runs `jig ui prove --collect`. `/jig-init` proposes the commands for the app control tool it finds and writes them after the user confirms.
+- `ui.reference.fetch` (personal, `.jig/config.local.jsonc`) is a command template that gets a reference from its source: placeholders `{source}` and `{out}`. When set, jig calls it for `jig ui reference attach`; without it the model obtains the PNG and the node tree itself.
+- The `ui` section also decides what `jig pre-mr` asks for and what `jig ui prove` drives: [UI proof](ui-proof.md#receipts). The `act` switches of `themes` and `locales` are use cases that `jig ui prove` replays; a `launch` switch is proven only when the app was launched with it (`--launched`).
 
 ## Guard the config files
 

@@ -25,7 +25,6 @@ import { RULE_FILES } from '../context/chain'
 import { checkEdit } from '../gates/edit'
 import { stopGate } from '../gates/stop'
 import { collapseFindings, limitLines, POST_EDIT_LINE_LIMIT, type Finding } from '../tools/finding'
-import { declareReferenceFromPrompt } from '../ui/prompt-reference'
 import { missingDepsOf, unprovisionedWorktrees, type Unprovisioned } from '../worktree/deps-pool'
 import { linkedWorktreeRoot, listWorktrees, samePath } from '../worktree/list'
 import type { EventBase, FileEdit, JigEvent, Outcome } from './types'
@@ -227,9 +226,7 @@ const prompt = (event: EventOf<'prompt'>, ctx: HookContext): Outcome => {
   state.turn += 1
   ctx.turn = state.turn
   writeState(ctx.projectRoot, state)
-  const text = event.text
-  if (text === undefined || !hasProjectConfig(ctx.projectRoot)) return NONE
-  return contextOf(noteOf(ctx, () => declareReferenceFromPrompt(ctx.projectRoot, text)))
+  return NONE
 }
 
 const gateFile = (event: FileEdit, ctx: HookContext): Outcome => {
