@@ -6653,7 +6653,7 @@ var uiRequirements = (root, config) => {
   const needed = [{ rule: "ui-reference", hint: 'jig ui reference add "<source>" or jig ui reference none "<reason>"', declaration: true }];
   if (Object.keys(ui2.components?.map ?? {}).length > 0) needed.push({ rule: "ui-reuse", hint: "jig ui reuse", declaration: false });
   for (const entry of readReferences(root)?.entries ?? []) {
-    needed.push({ rule: attachRule(entry.n), hint: `jig ui reference attach ${entry.n} --tree <json> --image <png> (flow ui step 3), or --none "<why>" for a text spec`, declaration: true });
+    needed.push({ rule: attachRule(entry.n), hint: `jig ui reference attach ${entry.n} ${ui2.reference?.fetch === void 0 ? "--tree <json> --image <png>" : "--fetch"} (flow ui step 3); --none "<why>" only for a text spec, never for a design`, declaration: true });
     if (entry.tree !== void 0) needed.push({ rule: mockupRule(entry.n), hint: `jig ui mockup ${entry.n}`, declaration: false });
   }
   if (buildMatrix(ui2).combos.length > 0) {
@@ -11918,7 +11918,7 @@ var REFERENCE_USAGE = `usage: jig ui reference
 add      list one reference of the task: its source exactly as the user gave it (a link, a path, a name) and the screen or state it covers
 none     the task has no reference: the user said so, answered so, or nobody can be asked (afk)
 attach   give reference <n> its jig-format files: a PNG and a node tree (schema/ui-tree.schema.json); jig pre-mr asks this for every listed reference
---none   reference <n> has no visual form (a text spec): its criteria go to the reviewer
+--none   reference <n> has no visual form (a text spec): its criteria go to the reviewer; never for a design, a screenshot or an export
 --fetch  with ui.reference.fetch set in .jig/config.local.jsonc: jig runs it for the source and attaches {out}/image.png and {out}/tree.json
 no args  print the list`;
 var PNG_SIGNATURE = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);

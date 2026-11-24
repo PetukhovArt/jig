@@ -18,7 +18,7 @@ export const REFERENCE_USAGE = `usage: jig ui reference
 add      list one reference of the task: its source exactly as the user gave it (a link, a path, a name) and the screen or state it covers
 none     the task has no reference: the user said so, answered so, or nobody can be asked (afk)
 attach   give reference <n> its jig-format files: a PNG and a node tree (schema/ui-tree.schema.json); jig pre-mr asks this for every listed reference
---none   reference <n> has no visual form (a text spec): its criteria go to the reviewer
+--none   reference <n> has no visual form (a text spec): its criteria go to the reviewer; never for a design, a screenshot or an export
 --fetch  with ui.reference.fetch set in .jig/config.local.jsonc: jig runs it for the source and attaches {out}/image.png and {out}/tree.json
 no args  print the list`
 

@@ -35,7 +35,7 @@ export const uiRequirements = (root: string, config: JigConfig): UiRequirement[]
   const needed: UiRequirement[] = [{ rule: 'ui-reference', hint: 'jig ui reference add "<source>" or jig ui reference none "<reason>"', declaration: true }]
   if (Object.keys(ui.components?.map ?? {}).length > 0) needed.push({ rule: 'ui-reuse', hint: 'jig ui reuse', declaration: false })
   for (const entry of readReferences(root)?.entries ?? []) {
-    needed.push({ rule: attachRule(entry.n), hint: `jig ui reference attach ${entry.n} --tree <json> --image <png> (flow ui step 3), or --none "<why>" for a text spec`, declaration: true })
+    needed.push({ rule: attachRule(entry.n), hint: `jig ui reference attach ${entry.n} ${ui.reference?.fetch === undefined ? '--tree <json> --image <png>' : '--fetch'} (flow ui step 3); --none "<why>" only for a text spec, never for a design`, declaration: true })
     if (entry.tree !== undefined) needed.push({ rule: mockupRule(entry.n), hint: `jig ui mockup ${entry.n}`, declaration: false })
   }
   if (buildMatrix(ui).combos.length > 0) {
