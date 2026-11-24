@@ -140,7 +140,7 @@ The model can start four of them on its own, because a flow or a schedule needs 
 | [`/jig-review-cycle`](skills/jig-review-cycle/SKILL.md) | you or the model | Review every merge request awaiting your review in one pass: filter, review each in its own worktree with jig-review, post the threads, record the verdict through the team's process adapter. |
 | [`/jig-slots`](skills/jig-slots/SKILL.md) | you or the model | Give a task its own git worktree, and show finished branches in a slot: a worktree with a warm dev server on offset ports. |
 | [`/jig-task-status`](skills/jig-task-status/SKILL.md) | you | Keep a reviewable decision trail of a long or unattended run: one TSV row per decision, step or question, and an HTML page built from it on demand. |
-| [`/jig-video`](skills/jig-video/SKILL.md) | you | Record a narrated demo video of a change's use cases by driving the running app. |
+| [`/jig-video`](skills/jig-video/SKILL.md) | you or the model | Record a narrated demo video of a change's use cases by driving the running app. |
 | [`/jig-visual-mr`](skills/jig-visual-mr/SKILL.md) | you or the model | Write or rewrite the description of the current branch's merge request from the jig template: the goal, the reviewer notes, how it works in diagrams, the evidence, then publish it with glab or gh. |
 
 </details>

@@ -26,7 +26,7 @@ A skill with `disable-model-invocation: true` runs only when the user types it: 
 | `jig-prune-comments` | user | it edits every file in its scope with a swarm of agents: the scope and the cost are the user's |
 | `jig-explain` | user | it answers a request for a visual explanation; open to the model, it would fire on every "explain" |
 | `jig-visual-mr` | user or model | the `mr` step of every code-changing flow writes and publishes the description with it |
-| `jig-video` | user | it drives the app and records a narrated video: slow and costly, and only the user knows a demo is wanted |
+| `jig-video` | user or model | the user asks for a video of a feature mid-task; hidden from the model, the agent builds its own recorder instead. It never starts one unasked and waits for the user's go-ahead before it takes the screen |
 
 A new skill takes `disable-model-invocation: true` unless a flow, a role or a schedule must start it, and gets a row here naming that caller.
 

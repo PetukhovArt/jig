@@ -1,7 +1,6 @@
 ---
 name: jig-video
-description: "Record a narrated demo video of a change's use cases by driving the running app."
-disable-model-invocation: true
+description: "Record a narrated demo video of a change's use cases by driving the running app. Use when the user asks for a video, demo or screencast of a feature or merge request; never start one unasked."
 argument-hint: "<MR/PR url or number | commit range | use-cases list >"
 ---
 
