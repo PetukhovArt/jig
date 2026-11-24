@@ -386,9 +386,12 @@ const gradeLlm = async (grader, context, options) => {
 }
 
 const diffAgainstBase = (runDir, base) => (exclude = []) => {
-  git(runDir, ['add', '-A'])
+  const staged = git(runDir, ['add', '-A'])
+  if (staged.status !== 0) throw new Error(`git add in ${runDir} failed: ${staged.stderr || staged.error?.message}`)
   const skipped = [exclude].flat().map((glob) => `:(exclude,glob)${glob}`)
-  return git(runDir, ['diff', '--cached', base, '--', '.', ':(exclude)ci-result.log', ':(exclude)package-lock.json', ...skipped]).stdout
+  const diff = git(runDir, ['diff', '--cached', base, '--', '.', ':(exclude)ci-result.log', ':(exclude)package-lock.json', ...skipped])
+  if (diff.status !== 0) throw new Error(`git diff in ${runDir} failed: ${diff.stderr || diff.error?.message}`)
+  return diff.stdout
 }
 
 const allowedTools = (testCase) => {
