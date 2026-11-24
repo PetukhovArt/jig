@@ -2,13 +2,14 @@
 
 ## Rules
 
-**Remove a block you have nothing for.** No ticket, no warnings: the block goes entirely, no "n/a", so the reviewer reads nothing extra.
-
-**Only what was done.** The description lists the work done and the checks that ran. A skipped step (break-it, UI proof, a check "not run" or "later") is not mentioned. The pre-MR review verdict (Act on, Consider, Noted, Dismissed) stays in the agent's reply and the task-status log, never in the description.
+- **Remove a block you have nothing for.** No ticket, no warnings: the block goes entirely, no "n/a", so the reviewer reads nothing extra.
+- **One language for all of it.** Headings, labels (`**Rollback:**`) and diagram node labels use the language of the text: `review.language`, otherwise the language of the repository's recent merge requests.
+- **Only what was done.** The description lists the work done and the checks that ran. A skipped step is not mentioned.
 
 ### Budget
 
-A description longer than ~70 lines stops being a description and becomes a second source of truth. Two diagrams and one contract block explain more than five code blocks. Cut type declarations already visible in the diff, pseudocode that repeats a diagram, file trees whose nodes a diagram already names.
+A description longer than ~70 lines stops being a description and becomes a second source of truth. 
+Two diagrams and one contract block explain more than five code blocks. Cut type declarations already visible in the diff, pseudocode that repeats a diagram, file trees whose nodes a diagram already names.
 
 ### Choice of views
 
