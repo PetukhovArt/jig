@@ -12021,7 +12021,18 @@ var attach = (args, root, ctx) => {
   const entry = references?.entries.find((own) => own.n === n);
   if (references === void 0 || entry === void 0) throw new UsageError3(`no reference ${n}: list it first with jig ui reference add "<source>"`);
   if (values.tree !== void 0 && fetchConfigured(root)) throw new UsageError3(`ui.reference.fetch is set: the tree comes from it, run jig ui reference attach ${n} --fetch and fix the cause if it fails`);
-  const next = reason === void 0 ? attachChecked(root, values.fetch === true ? fetchInto(root, entry, ctx) : entry, values.image === void 0 ? void 0 : resolve21(ctx.cwd, values.image), values.tree === void 0 ? void 0 : resolve21(ctx.cwd, values.tree)) : { ...entry, unattached: reason };
+  const fetched2 = () => {
+    if (values.fetch === true) return fetchInto(root, entry, ctx);
+    if (!fetchConfigured(root)) return entry;
+    try {
+      return fetchInto(root, entry, ctx);
+    } catch (error) {
+      ctx.io.err(`jig: ui.reference.fetch could not prepare reference ${n} (${error instanceof Error ? error.message : String(error)}): attaching the given files only
+`);
+      return entry;
+    }
+  };
+  const next = reason === void 0 ? attachChecked(root, fetched2(), values.image === void 0 ? void 0 : resolve21(ctx.cwd, values.image), values.tree === void 0 ? void 0 : resolve21(ctx.cwd, values.tree)) : { ...entry, unattached: reason };
   writeReferences(root, replaceEntry(references, next));
   ctx.io.out(`${describeEntry(next)}
 `);

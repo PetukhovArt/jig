@@ -125,7 +125,17 @@ const attach = (args: string[], root: string, ctx: UiContext): number => {
   const entry = references?.entries.find((own) => own.n === n)
   if (references === undefined || entry === undefined) throw new UsageError(`no reference ${n}: list it first with jig ui reference add "<source>"`)
   if (values.tree !== undefined && fetchConfigured(root)) throw new UsageError(`ui.reference.fetch is set: the tree comes from it, run jig ui reference attach ${n} --fetch and fix the cause if it fails`)
-  const next = reason === undefined ? attachChecked(root, values.fetch === true ? fetchInto(root, entry, ctx) : entry, values.image === undefined ? undefined : resolve(ctx.cwd, values.image), values.tree === undefined ? undefined : resolve(ctx.cwd, values.tree)) : { ...entry, unattached: reason }
+  const fetched = (): ReferenceEntry => {
+    if (values.fetch === true) return fetchInto(root, entry, ctx)
+    if (!fetchConfigured(root)) return entry
+    try {
+      return fetchInto(root, entry, ctx)
+    } catch (error) {
+      ctx.io.err(`jig: ui.reference.fetch could not prepare reference ${n} (${error instanceof Error ? error.message : String(error)}): attaching the given files only\n`)
+      return entry
+    }
+  }
+  const next = reason === undefined ? attachChecked(root, fetched(), values.image === undefined ? undefined : resolve(ctx.cwd, values.image), values.tree === undefined ? undefined : resolve(ctx.cwd, values.tree)) : { ...entry, unattached: reason }
   writeReferences(root, replaceEntry(references, next))
   ctx.io.out(`${describeEntry(next)}\n`)
   return recordPassed(root, attachRule(n), `jig ui reference attach ${n}: ${reason === undefined ? 'files attached' : `none: ${reason}`}`, ctx.io) ? 0 : EXIT_FINDINGS
