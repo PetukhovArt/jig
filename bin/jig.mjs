@@ -10655,7 +10655,7 @@ var collect = (validator, value, names, path2, out) => {
   }
   if (Object.hasOwn(value, "$value")) {
     const { themes, refs } = readJigExtension(validator, value["$extensions"], childPath(path2, "$extensions"));
-    out.push({ name: names.join("."), value: value["$value"], themes, refs });
+    out.push({ name: names.join("."), type: value["$type"], value: value["$value"], themes, refs });
     return;
   }
   for (const [key, child] of Object.entries(value)) {
@@ -10688,6 +10688,7 @@ var resolveTokens = (raw) => {
   for (const token of raw) if (!byName.has(token.name)) byName.set(token.name, token);
   const tokens = [];
   for (const token of byName.values()) {
+    if (token.type === "dimension") continue;
     const value = resolveColor(token.value, byName);
     if (value === void 0) continue;
     const themes = {};
@@ -10698,6 +10699,29 @@ var resolveTokens = (raw) => {
     tokens.push({ name: token.name, value, themes, refs: token.refs });
   }
   return tokens;
+};
+var resolveSize = (value, byName, depth = 0) => {
+  if (typeof value === "number") return value;
+  if (isObject(value) && typeof value["value"] === "number" && (value["unit"] === void 0 || value["unit"] === "px")) return value["value"];
+  if (typeof value !== "string") return void 0;
+  const alias = ALIAS.exec(value.trim());
+  if (alias !== null) {
+    const target = byName.get(alias[1] ?? "");
+    return target === void 0 || depth >= MAX_ALIAS_DEPTH ? void 0 : resolveSize(target.value, byName, depth + 1);
+  }
+  const plain = /^(\d+(?:\.\d+)?)(px)?$/.exec(value.trim());
+  return plain === null ? void 0 : Number(plain[1]);
+};
+var resolveSizeTokens = (raw) => {
+  const byName = /* @__PURE__ */ new Map();
+  for (const token of raw) if (!byName.has(token.name)) byName.set(token.name, token);
+  const sizes = [];
+  for (const token of byName.values()) {
+    if (token.type !== "dimension") continue;
+    const size = resolveSize(token.value, byName);
+    if (size !== void 0) sizes.push({ name: token.name, size, refs: token.refs });
+  }
+  return sizes;
 };
 var tokenColor = (token, theme) => theme === void 0 ? token.value : token.themes[theme] ?? token.value;
 var loadTokens = (root, cwd, source, extraFiles, run3) => {
@@ -10723,7 +10747,7 @@ var loadTokens = (root, cwd, source, extraFiles, run3) => {
       errors.push(...parsed.errors);
     }
   }
-  return { tokens: resolveTokens(raw), errors };
+  return { tokens: resolveTokens(raw), sizes: resolveSizeTokens(raw), errors };
 };
 
 // src/ui/mockup/code.ts
@@ -10798,7 +10822,22 @@ var declarationMentionsFont = (lines2, index) => {
   }
   return false;
 };
-var sizesInCode = (code, role) => {
+var sizeTokenHits = (code, role, sizes) => {
+  const token = sizes.find((candidate) => candidate.name === role.key || candidate.refs.includes(role.key));
+  if (token === void 0) return [];
+  const names = [.../* @__PURE__ */ new Set([role.key, ...token.refs])];
+  const hits = [];
+  for (const { file, lines: lines2 } of code) {
+    if (role.file !== null && !file.endsWith(role.file)) continue;
+    lines2.forEach((line, index) => {
+      if (names.some((name) => line.includes(name))) hits.push({ size: token.size, where: `${location(file, index)} (token ${token.name})` });
+    });
+  }
+  return hits;
+};
+var sizesInCode = (code, role, sizes = []) => {
+  const viaToken = sizeTokenHits(code, role, sizes);
+  if (viaToken.length > 0) return viaToken;
   const hits = [];
   const esc = role.key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const direct = new RegExp(`(?:^\\s*|[{,]\\s*|\\b(?:const|let|var|readonly|static)\\s+)${esc}\\s*[:=]\\s*(\\d+(?:\\.\\d+)?)\\b`);
@@ -10938,7 +10977,7 @@ var typographySection = (ctx) => {
       counts.typography++;
       verdict2 = "UNMAPPED";
     } else {
-      const hits = sizesInCode(input.code, role);
+      const hits = sizesInCode(input.code, role, input.sizeTokens);
       const wrong = hits.filter((hit) => hit.size !== size);
       if (hits.length === 0) {
         counts.typography++;
@@ -10953,7 +10992,7 @@ var typographySection = (ctx) => {
     out.push(`${key.padEnd(44)} ${String(list2.length).padStart(3)} \xD7  ${texts.slice(0, 5).map((sample) => JSON.stringify(sample)).join(", ")}  ${verdict2}`);
   }
   if (counts.typography > 0) {
-    out.push(`Each UNMAPPED row needs --role "<one of its texts>=[<file>:]<code key of that text's font size>"; NOT FOUND and TYPO rows need the code default set to the mockup size.`);
+    out.push(`Each UNMAPPED row needs --role "<one of its texts>=[<file>:]<key>": the code key that holds that text's font size, or the name or a ref of the size token ($type dimension in the token table) the code styles that text with; NOT FOUND and TYPO rows need the code default set to the mockup size.`);
   }
   return out;
 };
@@ -11090,7 +11129,7 @@ Compares the node tree attached to reference <n> (jig ui reference attach <n> --
   --theme      the theme whose token values stand for the reference (default: the first of ui.themes)
   --tokens     DTCG token files (schema/ui-tokens.schema.json) instead of ui.tokens: a token whose refs the code names counts as its color
   --base       git ref the change started from (default: merge base with the upstream or origin/HEAD)
-  --role       "<mockup text>=[<file>:]<key>": the code key that holds the font size of the text role the sample belongs to; one per typography row
+  --role       "<mockup text>=[<file>:]<key>": the code key that holds the font size of the text role the sample belongs to, or the name or a ref of a size token ($type dimension) the code uses for it; one per typography row
   --ui         the component is app UI assembled from library instances (a panel, a toolbar), not a drawn one
   code paths   files or folders holding the component and its spec, tests are skipped; default: every changed file
 
@@ -11163,6 +11202,7 @@ ${MOCKUP_USAGE}`);
     code,
     colors,
     roles: values.role ?? [],
+    sizeTokens: loaded.sizes,
     isAppUi: values.ui === true,
     base: base.mergeBase,
     paths

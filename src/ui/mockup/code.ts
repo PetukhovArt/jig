@@ -1,7 +1,7 @@
 import { readdirSync, statSync, type Stats } from 'node:fs'
 import { join, posix } from 'node:path'
 import { readText } from '../text'
-import { tokenColor, type Token } from '../tokens'
+import { tokenColor, type SizeToken, type Token } from '../tokens'
 import { normHex } from '../tree'
 
 export interface CodeFile {
@@ -105,7 +105,23 @@ export interface SizeHit {
   where: string
 }
 
-export const sizesInCode = (code: readonly CodeFile[], role: TypographyRole): SizeHit[] => {
+const sizeTokenHits = (code: readonly CodeFile[], role: TypographyRole, sizes: readonly SizeToken[]): SizeHit[] => {
+  const token = sizes.find((candidate) => candidate.name === role.key || candidate.refs.includes(role.key))
+  if (token === undefined) return []
+  const names = [...new Set([role.key, ...token.refs])]
+  const hits: SizeHit[] = []
+  for (const { file, lines } of code) {
+    if (role.file !== null && !file.endsWith(role.file)) continue
+    lines.forEach((line, index) => {
+      if (names.some((name) => line.includes(name))) hits.push({ size: token.size, where: `${location(file, index)} (token ${token.name})` })
+    })
+  }
+  return hits
+}
+
+export const sizesInCode = (code: readonly CodeFile[], role: TypographyRole, sizes: readonly SizeToken[] = []): SizeHit[] => {
+  const viaToken = sizeTokenHits(code, role, sizes)
+  if (viaToken.length > 0) return viaToken
   const hits: SizeHit[] = []
   const esc = role.key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
   const direct = new RegExp(`(?:^\\s*|[{,]\\s*|\\b(?:const|let|var|readonly|static)\\s+)${esc}\\s*[:=]\\s*(\\d+(?:\\.\\d+)?)\\b`)

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://raw.githubusercontent.com/PetukhovArt/jig/main/schema/ui-tokens.schema.json",
   "title": "jig UI design tokens",
-  "description": "jig's token table in the W3C Design Tokens (DTCG) JSON format: groups nest, a token is an object with $value. Only color tokens are read. The jig extension adds the theme values and the names by which the code refers to the token. A file listed in ui.tokens, or the stdout of ui.tokens.command.",
+  "description": "jig's token table in the W3C Design Tokens (DTCG) JSON format: groups nest, a token is an object with $value. Color tokens are read for colors, dimension tokens (px) for the font sizes of typography roles. The jig extension adds the theme values and the names by which the code refers to the token. A file listed in ui.tokens, or the stdout of ui.tokens.command.",
   "type": "object",
   "properties": { "$schema": { "type": "string" } },
   "additionalProperties": { "$ref": "#/$defs/groupOrToken" },
@@ -14,10 +14,10 @@
       "type": "object",
       "required": ["$value"],
       "properties": {
-        "$type": { "const": "color" },
+        "$type": { "enum": ["color", "dimension"] },
         "$value": {
-          "description": "A color string (#RGB, #RRGGBB, #RRGGBBAA, rgb(), rgba()), a DTCG color object with hex, or an alias {group.token}",
-          "oneOf": [{ "type": "string" }, { "type": "object", "required": ["hex"], "properties": { "hex": { "type": "string" } } }]
+          "description": "A color: a color string (#RGB, #RRGGBB, #RRGGBBAA, rgb(), rgba()) or a DTCG color object with hex. A dimension: 12px, a number of px, or a DTCG object {value, unit: px}. Either may be an alias {group.token}",
+          "oneOf": [{ "type": "string" }, { "type": "number" }, { "type": "object", "required": ["hex"], "properties": { "hex": { "type": "string" } } }, { "type": "object", "required": ["value"], "properties": { "value": { "type": "number" }, "unit": { "const": "px" } } }]
         },
         "$description": { "type": "string" },
         "$extensions": {

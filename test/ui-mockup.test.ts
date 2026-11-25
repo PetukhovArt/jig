@@ -95,4 +95,11 @@ describe('jig ui mockup', () => {
     expect(run('mockup', '1', '--component', 'comp', '--base', 'main', '--role', 'Value=fontSize')).toBe(0)
     expect(out.join('')).toMatch(/^ok {6}#FF0000 .*src\/comp\/view\.ts:2 \(brand\.red\)/m)
   })
+
+  it('takes the font size of a typography role from the size token the code styles it with', () => {
+    write('tokens.json', JSON.stringify({ ...TOKENS, font: { value: { $type: 'dimension', $value: '15px', $extensions: { jig: { refs: ['text-value'] } } } } }))
+    write('src/comp/view.ts', "export const cls = 'text-value'\nexport const fill = 'brand.red'\n")
+    expect(run('mockup', '1', '--component', 'comp', '--base', 'main', '--role', 'Value=text-value', 'src/comp')).toBe(0)
+    expect(out.join('')).toMatch(/ok text-value ← src\/comp\/view\.ts:1 \(token font\.value\)/)
+  })
 })

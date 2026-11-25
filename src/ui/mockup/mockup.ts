@@ -22,7 +22,7 @@ Compares the node tree attached to reference <n> (jig ui reference attach <n> --
   --theme      the theme whose token values stand for the reference (default: the first of ui.themes)
   --tokens     DTCG token files (schema/ui-tokens.schema.json) instead of ui.tokens: a token whose refs the code names counts as its color
   --base       git ref the change started from (default: merge base with the upstream or origin/HEAD)
-  --role       "<mockup text>=[<file>:]<key>": the code key that holds the font size of the text role the sample belongs to; one per typography row
+  --role       "<mockup text>=[<file>:]<key>": the code key that holds the font size of the text role the sample belongs to, or the name or a ref of a size token (\$type dimension) the code uses for it; one per typography row
   --ui         the component is app UI assembled from library instances (a panel, a toolbar), not a drawn one
   code paths   files or folders holding the component and its spec, tests are skipped; default: every changed file
 
@@ -92,6 +92,7 @@ export const mockup: UiSubcommand = (args, ctx) => {
     code,
     colors,
     roles: values.role ?? [],
+    sizeTokens: loaded.sizes,
     isAppUi: values.ui === true,
     base: base.mergeBase,
     paths,

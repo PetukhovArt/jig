@@ -3,6 +3,7 @@ import { git } from '../../core/git'
 import { readText } from '../text'
 import { flattenTree, normText, type FlatNode, type Tree } from '../tree'
 import { isTestFile, location, parseRoles, sizesInCode, type CodeColors, type CodeFile } from './code'
+import type { SizeToken } from '../tokens'
 
 export interface MockupInput {
   root: string
@@ -12,6 +13,7 @@ export interface MockupInput {
   code: readonly CodeFile[]
   colors: CodeColors
   roles: readonly string[]
+  sizeTokens?: readonly SizeToken[]
   isAppUi: boolean
   base: string
   paths: readonly string[]
@@ -170,7 +172,7 @@ const typographySection = (ctx: Context): string[] => {
       counts.typography++
       verdict = 'UNMAPPED'
     } else {
-      const hits = sizesInCode(input.code, role)
+      const hits = sizesInCode(input.code, role, input.sizeTokens)
       const wrong = hits.filter((hit) => hit.size !== size)
       if (hits.length === 0) {
         counts.typography++
@@ -185,7 +187,7 @@ const typographySection = (ctx: Context): string[] => {
     out.push(`${key.padEnd(44)} ${String(list.length).padStart(3)} ×  ${texts.slice(0, 5).map((sample) => JSON.stringify(sample)).join(', ')}  ${verdict}`)
   }
   if (counts.typography > 0) {
-    out.push(`Each UNMAPPED row needs --role "<one of its texts>=[<file>:]<code key of that text's font size>"; NOT FOUND and TYPO rows need the code default set to the mockup size.`)
+    out.push(`Each UNMAPPED row needs --role "<one of its texts>=[<file>:]<key>": the code key that holds that text's font size, or the name or a ref of the size token (\$type dimension in the token table) the code styles that text with; NOT FOUND and TYPO rows need the code default set to the mockup size.`)
   }
   return out
 }
